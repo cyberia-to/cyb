@@ -58,6 +58,7 @@ import Cybernet from './features/cybernet/ui/Cybernet';
 import Settings from './pages/Settings/Settings';
 import FreestyleIde from './pages/robot/Soul/RuneEditor/FreestyleIde/FreestyleIde';
 import Map from './pages/Portal/Map/Map';
+import OracleLanding from './pages/oracle/landing/OracleLanding';
 
 type WrappedRouterProps = {
   children: React.ReactNode;
@@ -115,9 +116,7 @@ function AppRouter() {
     <WrappedRouter>
       <Routes>
         <Route path={routes.home.path} element={<App />}>
-          <Route index element={<Cybernet />} />
-          {/*           
-          <Route index element={<OracleLanding />} /> */}
+          <Route index element={<OracleLanding />} />
           <Route path="/ide" element={<FreestyleIde />} />
 
           <Route path="/robot/*" element={<Robot />} />
