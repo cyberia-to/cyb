@@ -134,18 +134,6 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
     navigate(`/warp/create-pool?from=${sortCoin[0]}&to=${sortCoin[1]}`);
   }, [tokenA, tokenB, navigate]);
 
-  // eslint-disable-next-line no-constant-condition
-  if (true) {
-    return (
-      <ActionBarCenter
-        button={{
-          text: 'disabled',
-          disabled: true,
-        }}
-      />
-    );
-  }
-
   if (!selectedPool && stage === STAGE_INIT) {
     return (
       <ActionBarCenter
