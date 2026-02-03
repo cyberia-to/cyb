@@ -6,10 +6,12 @@ function* toGenerator<R>(p: Promise<R>) {
   return (yield p) as R;
 }
 
-function useGetStatus(item: HistoriesItem) {
+function useGetStatus(item?: HistoriesItem) {
   const { traceHistoryStatus, updateStatusByTxHash } = useIbcHistory();
 
-  const [status, setStatus] = useState(item.status);
+  const [status, setStatus] = useState<StatusTx>(
+    item ? item.status : StatusTx.PENDING
+  );
 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   function* tryUpdateHistoryStatus(item: HistoriesItem) {
@@ -27,6 +29,9 @@ function useGetStatus(item: HistoriesItem) {
   }
 
   useEffect(() => {
+    if (!item) {
+      return;
+    }
     const getValue = async () => {
       const gen = await helper(tryUpdateHistoryStatus(item));
 

@@ -275,6 +275,11 @@ const getMenuItems = () => {
           to: '/genesis',
           icon: require('./images/aos.png'),
         },
+        {
+          name: 'Buy',
+          to: '/buy',
+          icon: '🤑',
+        },
         // { name: 'Release', to: '/release' },
       ],
     });

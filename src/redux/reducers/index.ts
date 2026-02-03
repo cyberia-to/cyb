@@ -3,6 +3,7 @@
 import commanderReducer from 'src/containers/application/Header/Commander/commander.redux';
 import scriptingReducer from 'src/redux/reducers/scripting';
 
+import energyReducer from 'src/pages/Energy/redux/energy.redux';
 import golReducer from './gol';
 import bandwidthReducer from './bandwidth';
 import pocketReducer from '../features/pocket';
@@ -29,6 +30,7 @@ const rootReducer = {
   scripting: scriptingReducer,
   hub: hubReducer,
   timeHistory: timeHistoryReducer,
+  energy: energyReducer,
 };
 
 export default rootReducer;

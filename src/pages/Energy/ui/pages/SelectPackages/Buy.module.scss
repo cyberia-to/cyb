@@ -1,0 +1,179 @@
+.buyContainer {
+  display: grid;
+  grid-template-columns: repeat(5, 200px);
+  justify-content: center;
+  padding: 1rem;
+}
+
+.labelsColumn {
+  padding: 65px 10px 0px 30px;
+  z-index: 1;
+}
+
+.planContent {
+  display: flex;
+  flex-direction: column;
+  min-width: 195px;
+  width: 100%;
+  padding: 10px 0px;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.planWrapper {
+  background: transparent;
+  outline: none;
+
+  &:hover {
+    .displayWrapper:not(.active) {
+      background-color: var(--hover-bg-color, rgba(255, 255, 255, 0.1));
+    }
+  }
+}
+
+%flex-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+%row-common {
+  @extend %flex-center;
+  height: 45px;
+  width: 100%;
+  text-align: center;
+  padding: 7px 0;
+}
+
+.row,
+.uploads,
+.symbols,
+.influence,
+.price,
+.excluded,
+.fuel,
+.energy {
+  @extend %row-common;
+}
+
+.labelGroup {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.label,
+.subLabel {
+  text-align: center;
+}
+
+.label {
+  font-size: 16px;
+  color: var(--grayscale-primary);
+}
+
+.subLabel {
+  font-size: 14px;
+  color: var(--grayscale-disabled);
+}
+
+.checkmark {
+  width: 31px;
+  height: 31px;
+  fill: var(--green-light);
+}
+
+.excluded {
+  color: var(--red);
+}
+
+.symbols,
+.fuel,
+.energy,
+.influence,
+.uploads,
+.planName {
+  font-size: 20px;
+  color: var(--grayscale-primary);
+}
+
+.price {
+  font-size: 30px;
+  margin-top: 10px;
+}
+
+.symbolsDigit {
+  color: var(--grayscale-primary);
+  margin-right: 2px;
+}
+
+.symbolsText {
+  color: var(--grayscale-disabled);
+}
+
+.fuelIcon,
+.energyIcon {
+  margin-left: 3px;
+}
+
+.white {
+  color: var(--grayscale-primary);
+  --hover-bg-color: rgba(255, 255, 255, 0.1);
+  --active-bg-color: rgba(255, 255, 255, 0.2);
+}
+.green {
+  color: var(--primary-color);
+  --hover-bg-color: rgba(54, 214, 174, 0.1);
+  --active-bg-color: rgba(54, 214, 174, 0.2);
+}
+.blue {
+  color: var(--blue-light);
+  --hover-bg-color: rgba(0, 122, 255, 0.1);
+  --active-bg-color: rgba(0, 122, 255, 0.2);
+}
+.purple {
+  color: var(--pink);
+  --hover-bg-color: rgba(175, 82, 222, 0.1);
+  --active-bg-color: rgba(175, 82, 222, 0.2);
+}
+.gray {
+  color: var(--grayscale-disabled);
+  --hover-bg-color: rgba(128, 128, 128, 0.1);
+  --active-bg-color: rgba(128, 128, 128, 0.2);
+}
+
+.displayWrapper {
+  position: relative;
+  transition: all 0.3s ease;
+
+  &.active {
+    background-color: var(--active-bg-color, rgba(54, 214, 174, 0.1));
+  }
+}
+
+.planTitleWrapper {
+  @extend %flex-center;
+}
+
+.planIcon {
+  width: 65px;
+  height: 65px;
+  object-fit: fill;
+}
+
+.adviserContent {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+
+  img {
+    vertical-align: middle;
+    margin-right: 4px;
+  }
+
+  .blue-lights {
+    margin: 0 4px;
+    color: var(--blue-light);
+  }
+}

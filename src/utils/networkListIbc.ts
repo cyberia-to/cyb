@@ -1,12 +1,11 @@
 import defaultNetworks from 'src/constants/defaultNetworks';
-import { ObjectKey } from 'src/types/data';
 
-export type NetworkCons = {
+type NetworkIbc = {
   chainId: string;
-  sourceChainId: string;
-  sourceChannelId: string;
-  destinationChainId: string;
-  destChannelId: string;
+  sourceChainId?: string;
+  sourceChannelId?: string;
+  destinationChainId?: string;
+  destChannelId?: string;
   coinMinimalDenom: string;
   coinDecimals: number;
   denom: string;
@@ -15,11 +14,30 @@ export type NetworkCons = {
   explorerUrlToTx: string;
 };
 
-const networkList: ObjectKey<NetworkCons> = {
+enum NetworkChainID {
+  bostrom = 'bostrom',
+  osmosis = 'osmosis-1',
+  cosmoshub = 'cosmoshub-4',
+  spacePussy = 'space-pussy',
+  juno = 'juno-1',
+  gravityBridge = 'gravity-bridge-3',
+  desmosMainnet = 'desmos-mainnet',
+  evmos_9001 = 'evmos_9001-2',
+  chihuahua = 'chihuahua-1',
+  axelarDojo = 'axelar-dojo-1',
+}
+
+type NetworkList = { [key in NetworkChainID]: NetworkIbc };
+
+const networkList: NetworkList = {
   bostrom: {
     chainId: defaultNetworks.bostrom.CHAIN_ID,
     rpc: defaultNetworks.bostrom.RPC_URL,
     coinMinimalDenom: defaultNetworks.bostrom.BASE_DENOM,
+    coinDecimals: 0,
+    denom: defaultNetworks.bostrom.BASE_DENOM.toUpperCase(),
+    prefix: defaultNetworks.bostrom.BASE_DENOM,
+    explorerUrlToTx: 'https://cyb.ai/network/bostrom/tx/{txHash}',
   },
   'osmosis-1': {
     chainId: 'osmosis-1',

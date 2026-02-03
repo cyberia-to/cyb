@@ -1,0 +1,15 @@
+.statusColor {
+  color: #00c4ff;
+
+  &.complete {
+    color: #76FF03;
+  }
+
+  &.pending {
+    color: #ffca42;
+  }
+
+  &.timeout {
+    color: #FF0000;
+  }
+}

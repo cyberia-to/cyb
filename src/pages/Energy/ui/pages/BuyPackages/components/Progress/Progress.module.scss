@@ -1,0 +1,84 @@
+$sizePill: 10px;
+$heightContainer: 20px;
+$lineHeight: 2px;
+$dark: #A0A0A0;
+
+@mixin line-gradient() {
+  background-image: linear-gradient(270deg, var(--end-color) 0%, var(--start-color) 100%);
+}
+
+.lineContainer {
+  display: flex;
+  height: $lineHeight;
+  width: 100%;
+  background-color: $dark;
+  padding: 0 calc($sizePill / 2);
+  transform: translate(0, calc(($sizePill - $lineHeight) / -2));
+
+  .lineContainerProgress {
+    --start-color: #00c4ff;
+    --end-color: #ffca42;
+
+    @include line-gradient;
+
+    width: 0%;
+    transition: 1.2s;
+
+    &.half {
+      width: 50%;
+    }
+
+    &.full {
+      --start-color: #76FF03;
+
+      width: 100%;
+    }
+
+    &.greenLine {
+      --start-color: #76FF03;
+      --end-color: #76FF03;
+    }
+
+
+  }
+}
+
+.progressContainer {
+  display: flex;
+  position: relative;
+  width: 70%;
+  margin: 0 auto;
+  height: $heightContainer;
+  justify-content: space-between;
+  align-items: flex-end;
+
+  .lineContainer {
+    position: absolute;
+  }
+}
+
+.pillItem {
+  display: flex;
+  width: $sizePill;
+  height: $sizePill;
+  border-radius: 50%;
+  background-color: $dark;
+  z-index: 1;
+
+
+  &.done {
+    &::before {
+      content: '✅';
+      transform: translate(0, -50%);
+    }
+  }
+
+  &.blue {
+    background-color: #00c4ff;
+  }
+
+  &.yellow {
+    transition: 1.3s;
+    background-color: #ffca42;
+  }
+}

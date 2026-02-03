@@ -34,6 +34,7 @@ type HistoryContext = {
   ) => void;
   useGetHistoriesItems: () => Option<PromiseExtended<HistoriesItem[]>>;
   updateStatusByTxHash: (txHash: string, status: StatusTx) => void;
+  getItemByTxHash: (txHash: string) => Promise<HistoriesItem[]>;
   traceHistoryStatus: (item: HistoriesItem) => Promise<StatusTx>;
 };
 
@@ -45,6 +46,7 @@ const valueContext = {
   useGetHistoriesItems: () => {},
   updateStatusByTxHash: () => {},
   traceHistoryStatus: () => {},
+  getItemByTxHash: () => {},
 };
 
 export const HistoryContext = React.createContext<HistoryContext>(valueContext);
@@ -53,15 +55,6 @@ export const useIbcHistory = () => {
   const context = useContext(HistoryContext);
 
   return context;
-};
-
-const historiesItemsByAddress = (addressActive: AccountValue | null) => {
-  if (addressActive) {
-    return dbIbcHistory.historiesItems
-      .where({ address: addressActive.bech32 })
-      .toArray();
-  }
-  return [];
 };
 
 type UncommitedTx = {
@@ -82,7 +75,7 @@ function HistoryContextProvider({ children }: { children: React.ReactNode }) {
     useState<Option<HistoriesItem[]>>(undefined);
   const { defaultAccount } = useAppSelector((state: RootState) => state.pocket);
   const [update, setUpdate] = useState(0);
-   const addressActive = defaultAccount.account?.cyber || undefined; 
+  const addressActive = defaultAccount.account?.cyber || undefined;
 
   function getBlockSubscriber(chainId: string): PollingStatusSubscription {
     if (!blockSubscriberMap.has(chainId)) {
@@ -198,7 +191,7 @@ function HistoryContextProvider({ children }: { children: React.ReactNode }) {
       timeoutUnsubscriber();
     }
 
-     txTracer.close();
+    txTracer.close();
 
     if (result) {
       return StatusTx.COMPLETE;
@@ -234,15 +227,22 @@ function HistoryContextProvider({ children }: { children: React.ReactNode }) {
     getItem();
   }, [addressActive, update]);
 
+  const getItemByTxHash = async (txHash: string) => {
+    return dbIbcHistory.historiesItems
+      .where({
+        txHash,
+      })
+      .toArray();
+  };
+
   const pingTxsIbc = async (
     cliet: SigningStargateClient | SigningCyberClient,
     uncommitedTx: UncommitedTx
   ) => {
     const ping = async () => {
       const response = await cliet.getTx(uncommitedTx.txHash);
-      if (response) {
-        const result = parseRawLog(response.rawLog);
-        const dataFromEvent = parseEvents(result);
+      if (response && response.events) {
+        const dataFromEvent = parseEvents(response.events);
         if (dataFromEvent) {
           const itemHistories = { ...uncommitedTx, ...dataFromEvent };
           addHistoriesItem({
@@ -285,6 +285,7 @@ function HistoryContextProvider({ children }: { children: React.ReactNode }) {
         useGetHistoriesItems,
         updateStatusByTxHash,
         traceHistoryStatus,
+        getItemByTxHash,
       }}
     >
       {children}

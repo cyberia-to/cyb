@@ -8,8 +8,18 @@ import styles from './Button.module.scss';
 const audioBtn = require('../../sounds/main-button.mp3');
 // const audioBtnHover = require('../../sounds/main-button-hover.mp3');
 
-function GradientContainer({ children }: { children: React.ReactNode }) {
-  return <div className={styles.GradientContainer}>{children}</div>;
+function GradientContainer({
+  children,
+  color,
+}: {
+  children: React.ReactNode;
+  color?: 'yellow';
+}) {
+  return (
+    <div className={cx(styles.GradientContainer, styles[color])}>
+      {children}
+    </div>
+  );
 }
 
 const audioBtnObg = new Audio(audioBtn);
@@ -114,12 +124,13 @@ function Button({
       onClick={handleClick}
       className={cx(styles.containerBtnGrd, className, {
         [styles.smallBtn]: small,
+        [styles.pending]: pending,
       })}
       disabled={disabled || pending}
       {...props}
       {...componentProps}
     >
-      <GradientContainer>
+      <GradientContainer color={pending ? 'yellow' : undefined}>
         {pending ? (
           <>
             {pendingText || 'pending'}

@@ -1,0 +1,13 @@
+.itemHeader {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  gap: 20px;
+
+  .content {
+    font-size: 14px;
+    color: #A0A0A0;
+    text-align: center;
+    height: 50px;
+  }
+}

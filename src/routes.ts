@@ -30,6 +30,9 @@ export const routes = {
   gift: {
     path: '/gift',
   },
+  buy: {
+    path: '/buy',
+  },
   ipfs: {
     path: '/ipfs',
     getLink: (param: string) => `/ipfs/${param}`,

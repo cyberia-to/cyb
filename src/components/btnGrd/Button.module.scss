@@ -1,10 +1,9 @@
 $color-text: #36d6ae;
-
 @mixin linear-gradient-green($route) {
   background: linear-gradient(
     $route,
     rgba(0, 237, 235, 0) 0%,
-    rgba(0, 237, 235, 6) 100%
+    var(--color-gradient) 100%
   );
 }
 
@@ -16,8 +15,8 @@ $color-text: #36d6ae;
   box-sizing: border-box;
   top: 0;
   bottom: 0;
-  box-shadow: 0px 0px 4px 1px rgba(54, 214, 174, 0.5),
-    0px 0px 15px 1px rgba(54, 214, 174, 0.5);
+  box-shadow: 0px 0px 4px 1px var(--color-shadow),
+    0px 0px 15px 1px var(--color-shadow);
 }
 
 @mixin styleGradientPseudoEl {
@@ -46,6 +45,14 @@ $color-text: #36d6ae;
   height: 52px;
   min-width: 217px;
   font-size: 18px;
+  --color-shadow: rgba(54, 214, 174, 0.5);
+  --color-gradient: rgba(0, 237, 235, 6);
+
+  &.pending {
+    color: #FFCA42 !important;
+    --color-shadow: #FFCA42;
+    --color-gradient: #FFCA42;
+  }
 
   &:hover {
     color: #40ecc1;
@@ -108,6 +115,24 @@ a.containerBtnGrd {
   align-items: center;
   justify-content: center;
   padding: 0 10px;
+
+  &.yellow {
+    &::before {
+      @include styleGradientPseudoEl;
+      @include linear-gradient-green(-90deg);
+      left: 3px;
+      transform-origin: left;
+      transform: perspective(100px) rotateY(55deg);
+    }
+
+    &::after {
+      @include styleGradientPseudoEl;
+      @include linear-gradient-green(90deg);
+      right: 3px;
+      transform-origin: right;
+      transform: perspective(100px) rotateY(-55deg);
+    }
+  }
 }
 
 .containerBtnGrd:not(:disabled) {

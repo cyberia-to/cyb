@@ -1,0 +1,11 @@
+.containerContentInfo {
+  margin-top: 40px;
+  gap: 20px;
+  display: grid;
+  grid-template-columns: 1.2fr 1fr 1fr;
+  justify-items: center;
+
+  &>:first-child {
+    transform: translate(-10%, 0);
+  }
+}

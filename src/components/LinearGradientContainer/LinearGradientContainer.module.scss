@@ -91,6 +91,12 @@ $box-shadow-green: rgba(54, 214, 174, 0.53);
       }
     }
 
+    &.blue {
+      .textboxBottomLine {
+        box-shadow: 0px 0px 6px 2px $box-shadow-blue;
+      }
+    }
+
     &.yellow {
       .textboxBottomLine {
         box-shadow: 0px 0px 6px 2px $box-shadow-yellow;
@@ -119,6 +125,12 @@ $box-shadow-green: rgba(54, 214, 174, 0.53);
   &.pink {
     .textboxFace {
       background: $linear-gradient-pink;
+    }
+  }
+
+  &.blue {
+    .textboxFace {
+      background: $linear-gradient-blue;
     }
   }
 

@@ -57,6 +57,7 @@ import BrainRoutes from './routing/Brain';
 import Settings from './pages/Settings/Settings';
 import GovernanceRoutes from './containers/governance/GovernanceRoutes';
 import StudioWrapper from './features/studio/StudioWrapper';
+import Energy from './pages/Energy/Energy';
 import Filtering from './pages/Settings/Filtering/Filtering';
 import Sphere from './pages/Sphere/Sphere';
 
@@ -192,7 +193,7 @@ function AppRouter() {
           <Route path="/release" element={<Release />} />
           <Route path="/portal" element={<MainPartal />} />
           <Route path="/portal/map" element={<Map />} />
-
+          <Route path="/buy/*" element={<Energy />} />
           {/* wasm */}
           <Route path="/libs" element={<Codes />} />
           <Route path="/libs/:codeId" element={<CodePage />} />
