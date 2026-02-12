@@ -5,7 +5,7 @@ export type Citizenship = {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   approvals: any[];
   token_uri: string | null;
-  // https://github.com/cybercongress/cw-cybergift/blob/main/contracts/cw-cyber-passport/schema/passport_metadata.json
+  // https://github.com/cyberia-to/cw-cyber/blob/main/contracts/cw-cyber-passport/schema/passport_metadata.json
   extension: {
     avatar: string;
     nickname: string;
