@@ -13,32 +13,11 @@ import cx from 'classnames';
 import { useSelector } from 'react-redux';
 import { RootState } from 'src/redux/store';
 import MusicalAddress from 'src/components/MusicalAddress/MusicalAddress';
+import PassportLoader from 'src/features/passport/PassportLoader';
 
 type Props = {
   account: AccountValue;
 };
-
-function PassportLoader({
-  tokenId,
-  render,
-}: {
-  tokenId: string;
-  render: (passport: Citizenship) => JSX.Element | null;
-}) {
-  const { data: passport } = usePassportContract<Citizenship>({
-    query: {
-      nft_info: {
-        token_id: tokenId,
-      },
-    },
-  });
-
-  if (!passport) {
-    return null;
-  }
-
-  return render(passport);
-}
 
 function KeyItem({ account, selected, selectKey }: Props) {
   const { name, bech32, keys, path } = account;

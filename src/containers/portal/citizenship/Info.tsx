@@ -53,7 +53,7 @@ function Info({
     let content;
 
     switch (stepCurrent) {
-      case STEP_INIT:
+      /*       case STEP_INIT:
         content = (
           <div
             style={{
@@ -79,7 +79,7 @@ function Info({
             )}
           </div>
         );
-        break;
+        break; */
 
       case STEP_NICKNAME_CHOSE:
         content = (

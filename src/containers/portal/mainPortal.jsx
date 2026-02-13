@@ -66,7 +66,7 @@ function MainPartal({ defaultAccount }) {
             if (responseActivePassport !== null) {
               const { addresses } = responseActivePassport.extension;
               if (addresses !== null) {
-                setStagePortal(STAGE_RELEASE);
+                setStagePortal(STAGE_INIT);
               } else {
                 setStagePortal(STAGE_PROVE);
               }
@@ -83,6 +83,7 @@ function MainPartal({ defaultAccount }) {
     };
     getPasport();
   }, [queryClient, defaultAccount, stagePortal]);
+  console.debug('stagePortal', stagePortal);
 
   const { setAdviser } = useAdviser();
 

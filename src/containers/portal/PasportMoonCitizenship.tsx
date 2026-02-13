@@ -21,8 +21,11 @@ import { Button } from '../../components';
 import { routes } from 'src/routes';
 import { useAppSelector } from 'src/redux/hooks';
 import { selectCurrentPassport } from 'src/features/passport/passports.redux';
-import usePassportByAddress from 'src/features/passport/hooks/usePassportByAddress';
 import { useAdviser } from 'src/features/adviser/context';
+import { selectAccountsPassports } from 'src/features/passport/passports.redux';
+import usePassportContract from 'src/features/passport/usePassportContract';
+import PassportLoader from 'src/features/passport/PassportLoader';
+import convertPassportToCitizenship from './convertPassportToCitizenship';
 
 const portalAmbient = require('../../sounds/portalAmbient112.mp3');
 
@@ -46,6 +49,7 @@ const stopPortalAmbient = () => {
 function PassportMoonCitizenship() {
   const { isMobile: mobile } = useDevice();
   const defaultAccount = useAppSelector((state) => state.pocket.defaultAccount);
+  const accountsPassports = useAppSelector(selectAccountsPassports);
 
   const citizenship = useAppSelector(selectCurrentPassport);
   // FIXME: backward compatibility
@@ -126,20 +130,40 @@ function PassportMoonCitizenship() {
     setTxHash(data);
   };
 
+  const passportIds = usePassportContract<{ tokens: string[] }>({
+    query: {
+      tokens: {
+        owner: addressActive?.bech32,
+      },
+    },
+  });
+
   return (
     <>
       <MainContainer>
         <Stars />
         {!mobile && <MoonAnimation />}
 
-        <PasportCitizenship
-          citizenship={citizenship}
-          txHash={txHash}
-          onClickProveeAddress={onClickProveeAddress}
-          onClickDeleteAddress={onClickDeleteAddress}
-          onClickEditAvatar={onClickEditAvatar}
-          updateFunc={setSelectedAddress}
-        />
+        {passportIds.data?.tokens.map((tokenId) => (
+          <PassportLoader
+            key={tokenId}
+            tokenId={tokenId}
+            render={(passport) => (
+              <PasportCitizenship
+                citizenship={convertPassportToCitizenship(
+                  passport,
+                  addressActive?.bech32
+                )}
+                initStateCard={false}
+                txHash={txHash}
+                onClickProveeAddress={onClickProveeAddress}
+                onClickDeleteAddress={onClickDeleteAddress}
+                onClickEditAvatar={onClickEditAvatar}
+                updateFunc={setSelectedAddress}
+              />
+            )}
+          />
+        ))}
       </MainContainer>
       {Math.floor(appStep) === STEP_INFO.STATE_INIT && (
         <ActionBarSteps>
