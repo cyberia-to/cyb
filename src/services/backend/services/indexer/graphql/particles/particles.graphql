@@ -1,0 +1,23 @@
+# input OrderByInput {
+#   timestamp: order_by
+#   id: order_by
+# }
+
+query particles(
+  $neuron: String
+  $limit: Int = 10
+  $offset: Int = 0
+) # $orderBy: OrderByInput
+{
+  particles(
+    where: { neuron: { _eq: $neuron } }
+    # order_by: $orderBy
+    limit: $limit
+    offset: $offset
+  ) {
+    id
+    particle
+    timestamp
+    transaction_hash
+  }
+}

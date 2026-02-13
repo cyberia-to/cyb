@@ -4,7 +4,7 @@ const getVar = (type: 'from' | 'to', cid: string, neuron) => {
   return { [`particle_${type}`]: { _eq: cid }, neuron: { _eq: neuron } };
 };
 
-function useCyberlinksCount(cid: string, neuron) {
+function useCyberlinksCount(cid: string, neuron?: string) {
   const toCountQuery = useCyberlinksCountByParticleQuery({
     variables: { where: getVar('to', cid, neuron) },
   });

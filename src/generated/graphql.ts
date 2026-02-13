@@ -14816,6 +14816,13 @@ export type CyberlinksCountByNeuronQueryVariables = Exact<{
 
 export type CyberlinksCountByNeuronQuery = { cyberlinks_aggregate: { aggregate?: { count: number } | null } };
 
+export type CyberlinksCountByNeuron2QueryVariables = Exact<{
+  address?: InputMaybe<Scalars['String']['input']>;
+}>;
+
+
+export type CyberlinksCountByNeuron2Query = { cyberlinks_aggregate: { aggregate?: { count: number } | null } };
+
 export type CyberlinksCountByParticleQueryVariables = Exact<{
   cid?: InputMaybe<Scalars['String']['input']>;
   where?: InputMaybe<Cyberlinks_Bool_Exp>;
@@ -14855,6 +14862,22 @@ export type MessagesByAddressSenseWsSubscriptionVariables = Exact<{
 
 
 export type MessagesByAddressSenseWsSubscription = { messages_by_address: Array<{ transaction_hash: string, index: any, value: any, type: string, transaction?: { success: boolean, memo?: string | null, block: { timestamp: any, height: any } } | null }> };
+
+export type ParticlesQueryVariables = Exact<{
+  neuron?: InputMaybe<Scalars['String']['input']>;
+  limit?: InputMaybe<Scalars['Int']['input']>;
+  offset?: InputMaybe<Scalars['Int']['input']>;
+}>;
+
+
+export type ParticlesQuery = { particles: Array<{ id: number, particle: string, timestamp: any, transaction_hash: string }> };
+
+export type ParticlesAggregateQueryVariables = Exact<{
+  neuron?: InputMaybe<Scalars['String']['input']>;
+}>;
+
+
+export type ParticlesAggregateQuery = { particles_aggregate: { aggregate?: { count: number } | null } };
 
 export type TransactionCountQueryVariables = Exact<{ [key: string]: never; }>;
 
@@ -15193,6 +15216,48 @@ export type CyberlinksCountByNeuronQueryHookResult = ReturnType<typeof useCyberl
 export type CyberlinksCountByNeuronLazyQueryHookResult = ReturnType<typeof useCyberlinksCountByNeuronLazyQuery>;
 export type CyberlinksCountByNeuronSuspenseQueryHookResult = ReturnType<typeof useCyberlinksCountByNeuronSuspenseQuery>;
 export type CyberlinksCountByNeuronQueryResult = Apollo.QueryResult<CyberlinksCountByNeuronQuery, CyberlinksCountByNeuronQueryVariables>;
+export const CyberlinksCountByNeuron2Document = gql`
+    query CyberlinksCountByNeuron2($address: String) {
+  cyberlinks_aggregate(where: {neuron: {_eq: $address}}) {
+    aggregate {
+      count
+    }
+  }
+}
+    `;
+
+/**
+ * __useCyberlinksCountByNeuron2Query__
+ *
+ * To run a query within a React component, call `useCyberlinksCountByNeuron2Query` and pass it any options that fit your needs.
+ * When your component renders, `useCyberlinksCountByNeuron2Query` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useCyberlinksCountByNeuron2Query({
+ *   variables: {
+ *      address: // value for 'address'
+ *   },
+ * });
+ */
+export function useCyberlinksCountByNeuron2Query(baseOptions?: Apollo.QueryHookOptions<CyberlinksCountByNeuron2Query, CyberlinksCountByNeuron2QueryVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useQuery<CyberlinksCountByNeuron2Query, CyberlinksCountByNeuron2QueryVariables>(CyberlinksCountByNeuron2Document, options);
+      }
+export function useCyberlinksCountByNeuron2LazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<CyberlinksCountByNeuron2Query, CyberlinksCountByNeuron2QueryVariables>) {
+          const options = {...defaultOptions, ...baseOptions}
+          return Apollo.useLazyQuery<CyberlinksCountByNeuron2Query, CyberlinksCountByNeuron2QueryVariables>(CyberlinksCountByNeuron2Document, options);
+        }
+export function useCyberlinksCountByNeuron2SuspenseQuery(baseOptions?: Apollo.SuspenseQueryHookOptions<CyberlinksCountByNeuron2Query, CyberlinksCountByNeuron2QueryVariables>) {
+          const options = {...defaultOptions, ...baseOptions}
+          return Apollo.useSuspenseQuery<CyberlinksCountByNeuron2Query, CyberlinksCountByNeuron2QueryVariables>(CyberlinksCountByNeuron2Document, options);
+        }
+export type CyberlinksCountByNeuron2QueryHookResult = ReturnType<typeof useCyberlinksCountByNeuron2Query>;
+export type CyberlinksCountByNeuron2LazyQueryHookResult = ReturnType<typeof useCyberlinksCountByNeuron2LazyQuery>;
+export type CyberlinksCountByNeuron2SuspenseQueryHookResult = ReturnType<typeof useCyberlinksCountByNeuron2SuspenseQuery>;
+export type CyberlinksCountByNeuron2QueryResult = Apollo.QueryResult<CyberlinksCountByNeuron2Query, CyberlinksCountByNeuron2QueryVariables>;
 export const CyberlinksCountByParticleDocument = gql`
     query cyberlinksCountByParticle($cid: String, $where: cyberlinks_bool_exp) {
   cyberlinks_aggregate(where: $where) {
@@ -15392,6 +15457,93 @@ export function useMessagesByAddressSenseWsSubscription(baseOptions?: Apollo.Sub
       }
 export type MessagesByAddressSenseWsSubscriptionHookResult = ReturnType<typeof useMessagesByAddressSenseWsSubscription>;
 export type MessagesByAddressSenseWsSubscriptionResult = Apollo.SubscriptionResult<MessagesByAddressSenseWsSubscription>;
+export const ParticlesDocument = gql`
+    query particles($neuron: String, $limit: Int = 10, $offset: Int = 0) {
+  particles(where: {neuron: {_eq: $neuron}}, limit: $limit, offset: $offset) {
+    id
+    particle
+    timestamp
+    transaction_hash
+  }
+}
+    `;
+
+/**
+ * __useParticlesQuery__
+ *
+ * To run a query within a React component, call `useParticlesQuery` and pass it any options that fit your needs.
+ * When your component renders, `useParticlesQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useParticlesQuery({
+ *   variables: {
+ *      neuron: // value for 'neuron'
+ *      limit: // value for 'limit'
+ *      offset: // value for 'offset'
+ *   },
+ * });
+ */
+export function useParticlesQuery(baseOptions?: Apollo.QueryHookOptions<ParticlesQuery, ParticlesQueryVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useQuery<ParticlesQuery, ParticlesQueryVariables>(ParticlesDocument, options);
+      }
+export function useParticlesLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<ParticlesQuery, ParticlesQueryVariables>) {
+          const options = {...defaultOptions, ...baseOptions}
+          return Apollo.useLazyQuery<ParticlesQuery, ParticlesQueryVariables>(ParticlesDocument, options);
+        }
+export function useParticlesSuspenseQuery(baseOptions?: Apollo.SuspenseQueryHookOptions<ParticlesQuery, ParticlesQueryVariables>) {
+          const options = {...defaultOptions, ...baseOptions}
+          return Apollo.useSuspenseQuery<ParticlesQuery, ParticlesQueryVariables>(ParticlesDocument, options);
+        }
+export type ParticlesQueryHookResult = ReturnType<typeof useParticlesQuery>;
+export type ParticlesLazyQueryHookResult = ReturnType<typeof useParticlesLazyQuery>;
+export type ParticlesSuspenseQueryHookResult = ReturnType<typeof useParticlesSuspenseQuery>;
+export type ParticlesQueryResult = Apollo.QueryResult<ParticlesQuery, ParticlesQueryVariables>;
+export const ParticlesAggregateDocument = gql`
+    query particlesAggregate($neuron: String) {
+  particles_aggregate(where: {neuron: {_eq: $neuron}}) {
+    aggregate {
+      count
+    }
+  }
+}
+    `;
+
+/**
+ * __useParticlesAggregateQuery__
+ *
+ * To run a query within a React component, call `useParticlesAggregateQuery` and pass it any options that fit your needs.
+ * When your component renders, `useParticlesAggregateQuery` returns an object from Apollo Client that contains loading, error, and data properties
+ * you can use to render your UI.
+ *
+ * @param baseOptions options that will be passed into the query, supported options are listed on: https://www.apollographql.com/docs/react/api/react-hooks/#options;
+ *
+ * @example
+ * const { data, loading, error } = useParticlesAggregateQuery({
+ *   variables: {
+ *      neuron: // value for 'neuron'
+ *   },
+ * });
+ */
+export function useParticlesAggregateQuery(baseOptions?: Apollo.QueryHookOptions<ParticlesAggregateQuery, ParticlesAggregateQueryVariables>) {
+        const options = {...defaultOptions, ...baseOptions}
+        return Apollo.useQuery<ParticlesAggregateQuery, ParticlesAggregateQueryVariables>(ParticlesAggregateDocument, options);
+      }
+export function useParticlesAggregateLazyQuery(baseOptions?: Apollo.LazyQueryHookOptions<ParticlesAggregateQuery, ParticlesAggregateQueryVariables>) {
+          const options = {...defaultOptions, ...baseOptions}
+          return Apollo.useLazyQuery<ParticlesAggregateQuery, ParticlesAggregateQueryVariables>(ParticlesAggregateDocument, options);
+        }
+export function useParticlesAggregateSuspenseQuery(baseOptions?: Apollo.SuspenseQueryHookOptions<ParticlesAggregateQuery, ParticlesAggregateQueryVariables>) {
+          const options = {...defaultOptions, ...baseOptions}
+          return Apollo.useSuspenseQuery<ParticlesAggregateQuery, ParticlesAggregateQueryVariables>(ParticlesAggregateDocument, options);
+        }
+export type ParticlesAggregateQueryHookResult = ReturnType<typeof useParticlesAggregateQuery>;
+export type ParticlesAggregateLazyQueryHookResult = ReturnType<typeof useParticlesAggregateLazyQuery>;
+export type ParticlesAggregateSuspenseQueryHookResult = ReturnType<typeof useParticlesAggregateSuspenseQuery>;
+export type ParticlesAggregateQueryResult = Apollo.QueryResult<ParticlesAggregateQuery, ParticlesAggregateQueryVariables>;
 export const TransactionCountDocument = gql`
     query transactionCount {
   transaction_aggregate {

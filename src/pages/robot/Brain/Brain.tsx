@@ -8,6 +8,7 @@ import TreedView from './ui/TreedView';
 import styles from './Brain.module.scss';
 import GraphView from './ui/GraphView';
 import useGraphLimit from './useGraphLimit';
+import Particles from './ui/Particles/Particles';
 
 enum TabsKey {
   graph3d = 'graph3d',
@@ -56,6 +57,11 @@ function Brain() {
               to: './list',
               text: 'last cyberlinks',
             },
+            {
+              key: TabsKey.list,
+              to: './particles',
+              text: 'particles',
+            },
           ]}
           selected={selected}
         />
@@ -71,6 +77,7 @@ function Brain() {
         ))}
 
         <Route path="list" element={<TreedView address={address} />} />
+        <Route path="particles" element={<Particles />} />
 
         <Route path="graph3d" element={<GraphView address={address} />} />
       </Routes>

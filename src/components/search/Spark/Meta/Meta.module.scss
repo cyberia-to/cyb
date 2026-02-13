@@ -5,15 +5,10 @@
 
   // temp
   z-index: 1;
-
   font-size: 14px;
 
   & > :first-child {
     position: relative;
     top: 4px;
   }
-}
-
-.size {
-  white-space: nowrap;
 }

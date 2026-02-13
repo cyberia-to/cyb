@@ -14,10 +14,6 @@ function roundMilliseconds(dateTimeString: string) {
   date.setMilliseconds(roundedMilliseconds);
   return dateFormat(date, 'yyyy-mm-dd"T"HH:MM:ss.l');
 }
-function getCurrentTimezoneOffset() {
-  const now = new Date();
-  return -now.getTimezoneOffset() / 60;
-}
 
 function pluralizeUnit(quantity: number, unit: string): string {
   return quantity === 1 ? unit : `${unit}s`;

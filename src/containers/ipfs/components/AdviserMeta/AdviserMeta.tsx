@@ -1,23 +1,22 @@
 import { Account } from 'src/components';
-import { timeSince, formatCurrency } from 'src/utils/utils';
+import { timeSince } from 'src/utils/utils';
 import useRank from 'src/features/cyberlinks/rank/useRank';
 import { Link } from 'react-router-dom';
 import { routes } from 'src/routes';
+import ParticleSize from 'src/features/particle/ParticleSize/ParticleSize';
 import {
   LLMAvatar,
   useIsLLMPageParam,
 } from 'src/containers/Search/LLMSpark/LLMSpark';
 import useGetCreator from '../../hooks/useGetCreator';
-import { PREFIXES } from '../metaInfo';
 import styles from './AdviserMeta.module.scss';
 
 type Props = {
   cid: string;
   type: string | undefined;
-  size: number | bigint | undefined;
 };
 
-function AdviserMeta({ cid, type, size }: Props) {
+function AdviserMeta({ cid, type }: Props) {
   const { creator } = useGetCreator(cid);
   const rank = useRank(cid);
 
@@ -62,9 +61,7 @@ function AdviserMeta({ cid, type, size }: Props) {
       )}
 
       <div className={styles.right}>
-        <span>
-          🟥 {size ? formatCurrency(size, 'B', 0, PREFIXES) : 'unknown'}
-        </span>
+        <ParticleSize cid={cid} />
         <Link to={routes.robot.routes.soul.path}>🌓</Link>
       </div>
     </div>

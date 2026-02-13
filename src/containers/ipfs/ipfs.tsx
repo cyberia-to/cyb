@@ -25,6 +25,7 @@ function Ipfs() {
   const { setAdviser } = useAdviser();
 
   const isText = useMemo(() => !query.match(PATTERN_IPFS_HASH), [query]);
+
   useEffect(() => {
     if (!isReady) {
       return;
@@ -60,14 +61,7 @@ function Ipfs() {
         'yellow'
       );
     } else if (status === 'completed') {
-      setAdviser(
-        <AdviserMeta
-          cid={cid}
-          type={details?.type}
-          size={content?.meta?.size || details?.content?.length}
-        />,
-        'purple'
-      );
+      setAdviser(<AdviserMeta cid={cid} type={details?.type} />, 'purple');
     }
   }, [details, setAdviser, cid, content, status]);
 

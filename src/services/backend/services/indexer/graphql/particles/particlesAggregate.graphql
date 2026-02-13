@@ -1,0 +1,7 @@
+query particlesAggregate($neuron: String) {
+  particles_aggregate(where: { neuron: { _eq: $neuron } }) {
+    aggregate {
+      count
+    }
+  }
+}

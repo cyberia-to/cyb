@@ -17,3 +17,12 @@ query CyberlinksCountByNeuron(
     }
   }
 }
+
+# refactor
+query CyberlinksCountByNeuron2($address: String) {
+  cyberlinks_aggregate(where: { neuron: { _eq: $address } }) {
+    aggregate {
+      count
+    }
+  }
+}
