@@ -1,3 +1,5 @@
+import MusicalAddress from 'src/components/MusicalAddress/MusicalAddress';
+import Stars from 'src/xp/stars';
 import ScrollableTabs from './scrollableTabs/ScrollableTabs';
 import ParseAddressesImg from './imgNetwork';
 import CurrentGift from './currentGift';
@@ -8,8 +10,6 @@ import ActionBarContainer from './ActionBar';
 import ActionBarSteps from './ActionBar/ActionBarSteps';
 import AboutGift from './AboutGift/aboutGift';
 import MoonAnimation from './MoonAnimation/MoonAnimation';
-import Stars from './stars';
-import MusicalAddress from 'src/components/MusicalAddress/MusicalAddress';
 
 // eslint-disable-next-line import/no-unused-modules
 export {
