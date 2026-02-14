@@ -24,10 +24,10 @@ class BackendQueueChannelListener {
     dbInstance$: Observable<DbApi | undefined>
   ) {
     this.particlesResolver = particlesResolver;
+    this.dbInstance$ = new BehaviorSubject<Option<DbApi>>(undefined);
     dbInstance$.subscribe((v) => {
       this.dbInstance$.next(v);
     });
-    this.dbInstance$ = new BehaviorSubject<Option<DbApi>>(undefined);
 
     this.channel.onmessage = (event) => this.onMessage(event);
 

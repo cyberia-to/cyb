@@ -2,10 +2,11 @@ import { Pane } from '@cybercongress/gravity';
 import { CardStatisics, Vitalik } from '../../../components';
 import { dhm } from '../../../utils/utils';
 
-const NS_TO_MS = 1 * 10 ** 6;
-
 function SlashingParam({ data }) {
   try {
+    if (!data) {
+      return null;
+    }
     return (
       <Pane
         display="grid"
@@ -22,7 +23,7 @@ function SlashingParam({ data }) {
         />
         <CardStatisics
           title="downtime jail duration"
-          value={`${dhm(parseFloat(data.downtime_jail_duration) / NS_TO_MS)}`}
+          value={`${dhm(parseFloat(data.downtime_jail_duration) * 1000)}`}
         />
         <CardStatisics
           title="slash fraction double sign"
@@ -35,7 +36,7 @@ function SlashingParam({ data }) {
       </Pane>
     );
   } catch (error) {
-    console.warn('BandwidthParam', error);
+    console.warn('SlashingParam', error);
     return (
       <Pane
         justifyContent="center"

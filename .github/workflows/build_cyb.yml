@@ -37,9 +37,9 @@ jobs:
           CHAIN_ID: 'bostrom'
 
       - name: Deploy 🚀
-        uses: JamesIves/github-pages-deploy-action@3.7.1
+        uses: JamesIves/github-pages-deploy-action@v4
         with:
-          GITHUB_TOKEN: ${{ secrets.ACTIONS_DEPLOY_ACCESS_TOKEN }}
-          BRANCH: build
-          FOLDER: build
-          CLEAN: true
+          token: ${{ secrets.ACTIONS_DEPLOY_ACCESS_TOKEN }}
+          branch: build
+          folder: build
+          clean: true

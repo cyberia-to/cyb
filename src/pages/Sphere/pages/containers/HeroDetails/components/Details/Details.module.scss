@@ -1,0 +1,29 @@
+
+.wrapperDisplay {
+  display: grid;
+  gap: 20px;
+}
+
+.containerColItem {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+
+  &Value {
+    font-size: 16px;
+  }
+
+  &Title {
+    font-size: 14px;
+  }
+}
+
+.wrapperCols {
+  display: flex;
+  width: 50%;
+  flex-flow: row wrap;
+
+  @media (width < 768px) {
+    width: 100%;
+  }
+}

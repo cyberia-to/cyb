@@ -7,21 +7,21 @@ interface Props {
 }
 
 type State = {
-  hasError: boolean;
+  error: Error | null;
 };
 
 class ErrorBoundary extends Component<Props, State> {
-  constructor(props) {
+  constructor(props: Props) {
     super(props);
     this.state = { error: null };
   }
 
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(error: Error) {
     return { error };
   }
 
-  componentDidCatch(error, info) {
-    console.log(error, info.componentStack);
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error(error, info.componentStack);
   }
 
   render() {

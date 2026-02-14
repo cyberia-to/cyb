@@ -5,6 +5,9 @@ import { formatCurrency } from '../../../utils/utils';
 function LiquidityParam({ data }) {
   // TODO add pool_types
   try {
+    if (!data) {
+      return null;
+    }
     return (
       <Pane
         display="grid"

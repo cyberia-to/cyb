@@ -2,10 +2,11 @@ import { Pane } from '@cybercongress/gravity';
 import { CardStatisics, Vitalik } from '../../../components';
 import { dhm } from '../../../utils/utils';
 
-const NS_TO_MS = 1 * 10 ** 6;
-
 function StakingParam({ data }) {
   try {
+    if (!data) {
+      return null;
+    }
     return (
       <Pane
         display="grid"
@@ -14,7 +15,7 @@ function StakingParam({ data }) {
       >
         <CardStatisics
           title="unbonding time"
-          value={dhm(parseFloat(data.unbonding_time / NS_TO_MS))}
+          value={dhm(parseFloat(data.unbonding_time) * 1000)}
         />
         <CardStatisics
           title="max validators"
@@ -31,7 +32,7 @@ function StakingParam({ data }) {
       </Pane>
     );
   } catch (error) {
-    console.warn('BandwidthParam', error);
+    console.warn('StakingParam', error);
     return (
       <Pane
         justifyContent="center"

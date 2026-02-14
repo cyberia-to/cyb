@@ -15,6 +15,7 @@ const findSelectAppByUrl = (
   const isOracle = url.includes('oracle');
   const isSenate = url.includes('senate');
   const isCyberver = url.includes('cyberver');
+  const isSphere = url.includes('sphere');
 
   const itemsMenuObj = reduceRobotSubItems(passport, address);
 
@@ -28,6 +29,10 @@ const findSelectAppByUrl = (
 
   if (isSenate) {
     pathname = routes.senate.path;
+  }
+
+  if (isSphere) {
+    pathname = routes.sphere.path;
   }
 
   if (isCyberver) {

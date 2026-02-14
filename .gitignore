@@ -36,3 +36,6 @@ storybook-static
 
 # WASM build artifacts (installed via uhash-web npm package)
 public/wasm
+
+# Claude Code
+.claude

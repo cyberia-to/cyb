@@ -136,19 +136,42 @@ function HistoryContextProvider({ children }: { children: React.ReactNode }) {
       return item.status;
     }
 
+    // First, always check if recv_packet already happened (packet was completed)
+    const destRpc = findRpc(item.destChainId);
+    if (destRpc) {
+      try {
+        const query = `recv_packet.packet_dst_channel='${item.destChannelId}' AND recv_packet.packet_sequence='${item.sequence}'`;
+        const response = await fetch(
+          `${destRpc}/tx_search?query=${encodeURIComponent(query)}&per_page=1`
+        );
+        if (response.ok) {
+          const data = await response.json();
+          if (data?.result?.total_count !== '0') {
+            return StatusTx.COMPLETE;
+          }
+        }
+      } catch {
+        // ignore, continue with normal flow
+      }
+    }
+
     if (item.status === StatusTx.TIMEOUT) {
       const sourceChainId = findRpc(item.sourceChainId);
       if (!sourceChainId) return item.status;
 
       const txTracer = new TracerTx(sourceChainId, '/websocket');
 
-      await txTracer.traceTx({
-        'timeout_packet.packet_src_channel': item.sourceChannelId,
-        'timeout_packet.packet_sequence': item.sequence,
-      });
-
-      txTracer.close();
-      return StatusTx.REFUNDED;
+      try {
+        await txTracer.traceTx({
+          'timeout_packet.packet_src_channel': item.sourceChannelId,
+          'timeout_packet.packet_sequence': item.sequence,
+        });
+        txTracer.close();
+        return StatusTx.REFUNDED;
+      } catch {
+        txTracer.close();
+        return item.status;
+      }
     }
 
     const blockSubscriber = getBlockSubscriber(item.destChainId);
@@ -170,10 +193,10 @@ function HistoryContextProvider({ children }: { children: React.ReactNode }) {
 
           // Even though the block is reached to the timeout height,
           // the receiving packet event could be delivered before the block timeout if the network connection is unstable.
-          // This it not the chain issue itself, jsut the issue from the frontend, it it impossible to ensure the network status entirely.
-          // To reduce this problem, just wait 10 second more even if the block is reached to the timeout height.
+          // This it not the chain issue itself, just the issue from the frontend, it is impossible to ensure the network status entirely.
+          // To reduce this problem, wait 30 seconds more for relay to complete (relay runs every 10s + indexing time).
           await new Promise((resolve) => {
-            setTimeout(resolve, 10000);
+            setTimeout(resolve, 30000);
           });
         })()
       );
@@ -192,19 +215,27 @@ function HistoryContextProvider({ children }: { children: React.ReactNode }) {
       })
     );
 
-    const result = await Promise.race(promises);
+    try {
+      const result = await Promise.race(promises);
 
-    if (timeoutUnsubscriber) {
-      timeoutUnsubscriber();
+      if (timeoutUnsubscriber) {
+        timeoutUnsubscriber();
+      }
+
+      txTracer.close();
+
+      if (result) {
+        return StatusTx.COMPLETE;
+      }
+
+      return StatusTx.TIMEOUT;
+    } catch {
+      if (timeoutUnsubscriber) {
+        timeoutUnsubscriber();
+      }
+      txTracer.close();
+      return item.status;
     }
-
-     txTracer.close();
-
-    if (result) {
-      return StatusTx.COMPLETE;
-    }
-
-    return StatusTx.TIMEOUT;
   };
 
   const useGetHistoriesItems = useCallback(() => {
@@ -234,10 +265,42 @@ function HistoryContextProvider({ children }: { children: React.ReactNode }) {
     getItem();
   }, [addressActive, update]);
 
+  // Trace pending/timeout items on initial load (only when address changes)
+  useEffect(() => {
+    const tracePendingItems = async () => {
+      if (addressActive) {
+        const items = await dbIbcHistory.historiesItems
+          .where({
+            address: addressActive.bech32,
+          })
+          .toArray();
+
+        items.forEach((item) => {
+          if (
+            item.status === StatusTx.PENDING ||
+            item.status === StatusTx.TIMEOUT
+          ) {
+            traceHistoryStatus(item).then((newStatus) => {
+              if (newStatus !== item.status) {
+                updateStatusByTxHash(item.txHash, newStatus);
+                setUpdate((i) => i + 1);
+              }
+            });
+          }
+        });
+      }
+    };
+    tracePendingItems();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [addressActive]);
+
   const pingTxsIbc = async (
     cliet: SigningStargateClient | SigningCyberClient,
     uncommitedTx: UncommitedTx
   ) => {
+    const MAX_RETRIES = 40; // ~60 seconds
+    let retryCount = 0;
+
     const ping = async () => {
       const response = await cliet.getTx(uncommitedTx.txHash);
       if (response) {
@@ -252,14 +315,31 @@ function HistoryContextProvider({ children }: { children: React.ReactNode }) {
         }
         return;
       }
+      retryCount += 1;
+      if (retryCount >= MAX_RETRIES) {
+        console.warn(
+          `pingTxsIbc: max retries reached for tx ${uncommitedTx.txHash}`
+        );
+        return;
+      }
       setTimeout(ping, 1500);
     };
     ping();
   };
 
-  const addHistoriesItem = (itemHistories: HistoriesItem) => {
-    dbIbcHistory.historiesItems.add(itemHistories);
+  const addHistoriesItem = async (itemHistories: HistoriesItem) => {
+    await dbIbcHistory.historiesItems.add(itemHistories);
     setUpdate((item) => item + 1);
+
+    // Automatically start tracing pending items
+    if (itemHistories.status === StatusTx.PENDING) {
+      traceHistoryStatus(itemHistories).then((newStatus) => {
+        if (newStatus !== itemHistories.status) {
+          updateStatusByTxHash(itemHistories.txHash, newStatus);
+          setUpdate((item) => item + 1);
+        }
+      });
+    }
   };
 
   const updateStatusByTxHash = async (txHash: string, status: StatusTx) => {

@@ -144,6 +144,7 @@ class HeliaNode implements IpfsNode {
       '/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb',
       '/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt',
       '/dns4/swarm.io.cybernode.ai/tcp/443/wss/p2p/QmUgmRxoLtGERot7Y6G7UyF6fwvnusQZfGR15PuE6pY3aB',
+      '/dns4/helia.cybernode.ai/tcp/4444/wss/p2p/12D3KooWLKrsc4qYf3Z9EeUviKBPrp493AEHkrs38wXBs6NuKo2C',
     ];
     let libp2p;
     try {

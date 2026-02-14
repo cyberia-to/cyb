@@ -64,6 +64,9 @@ import Filtering from './pages/Settings/Filtering/Filtering';
 import Settings from './pages/Settings/Settings';
 import Sign from './pages/Sign/Sign';
 import BrainRoutes from './routing/Brain';
+import Sphere from './pages/Sphere/Sphere';
+import { AnalyticsProvider } from './contexts/analytics';
+import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 
 type WrappedRouterProps = {
   children: React.ReactNode;
@@ -114,130 +117,136 @@ function RedirectToRobot() {
 function AppRouter() {
   return (
     <WrappedRouter>
-      <Routes>
-        <Route path={routes.home.path} element={<App />}>
-          <Route index element={<OracleLanding />} />
-          <Route path="/ide" element={<FreestyleIde />} />
+      <AnalyticsProvider>
+        <Routes>
+          <Route path={routes.home.path} element={<App />}>
+            <Route index element={<OracleLanding />} />
+            <Route path="/ide" element={<FreestyleIde />} />
 
-          <Route path="/robot/*" element={<Robot />} />
-          <Route
-            path="/ipfs"
-            element={<Navigate to={routes.settings.path} />}
-          />
-
-          <Route path="/sign" element={<Sign />} />
-
-          <Route path={routes.temple.path} element={<Temple />} />
-          <Route path={routes.neuron.path} element={<Robot />} />
-
-          <Route path={routes.oracle.learn.path} element={<Learn />} />
-
-          <Route path="/oracle/stats" element={<Home />} />
-          <Route path="/oracle-old" element={<Oracle />} />
-
-          <Route path="/ipfs/:query" element={<ToOracleAsk />} />
-          <Route path={routes.oracle.ask.path} element={<Ipfs />} />
-
-          <Route
-            path="/oracle"
-            element={<Navigate to={routes.oracle.path} />}
-          />
-
-          <Route
-            path="/search"
-            element={<Navigate to={routes.oracle.path} />}
-          />
-          <Route path="/search/:query" element={<ToOracleAsk />} />
-
-          <Route path="/senate/*" element={<GovernanceRoutes />} />
-
-          {/* old links - start */}
-          <Route path="/halloffame" element={<Navigate to="/sphere" />} />
-          <Route path="/halloffame/:status" element={<ValidatorsRedirect />} />
-          <Route path="/mint" element={<Navigate to={routes.hfr.path} />} />
-          {/* old links - end */}
-
-          <Route path="/sphere" element={<Validators />} />
-          <Route path="/sphere/:status" element={<Validators />} />
-          <Route path="/episode-1" element={<Story />} />
-          <Route path="/quitter" element={<ForceQuitter />} />
-
-          {BrainRoutes()}
-
-          <Route path="network/bostrom">
-            <Route path="tx" element={<Txs />} />
-            <Route path="tx/:txHash" element={<TxsDetails />} />
-
-            <Route path="contract/:address" element={<RedirectToRobot />} />
+            <Route path="/robot/*" element={<ErrorBoundary><Robot /></ErrorBoundary>} />
             <Route
-              path="contract/:address/:tab"
-              element={<RedirectToRobot />}
+              path="/ipfs"
+              element={<Navigate to={routes.settings.path} />}
             />
 
-            <Route path="hero/:address/" element={<ValidatorsDetails />} />
-            <Route path="hero/:address/:tab" element={<ValidatorsDetails />} />
-            <Route path="parameters" element={<ParamNetwork />} />
-            <Route path="parameters/:param" element={<ParamNetwork />} />
-            <Route path="blocks" element={<Block />} />
-            <Route path="blocks/:idBlock" element={<BlockDetails />} />
-          </Route>
-          <Route path="/degenbox" element={<TrollBoxx />} />
-          <Route path="/test" element={<TestKeplr />} />
-          <Route path={routes.hfr.path} element={<Mint />} />
-          <Route path="/token" element={<Market />} />
-          <Route path="/token/:tab" element={<Market />} />
-          <Route path="/particles" element={<Objects />} />
+            <Route path="/sign" element={<Sign />} />
 
-          <Route path="/teleport/*" element={<Teleport />} />
+            <Route path={routes.temple.path} element={<Temple />} />
+            <Route path={routes.neuron.path} element={<Robot />} />
 
-          <Route path="/warp" element={<WarpDashboardPools />} />
-          <Route path="/warp/:tab" element={<Warp />} />
-          <Route path="/genesis" element={<Movie />} />
-          <Route path="/citizenship" element={<PortalCitizenship />} />
-          <Route path="/gift" element={<PortalGift />} />
-          <Route path="/release" element={<Release />} />
-          <Route path="/portal" element={<MainPartal />} />
-          <Route path="/portal/map" element={<Map />} />
+            <Route path={routes.oracle.learn.path} element={<Learn />} />
 
-          {/* wasm */}
-          <Route path="/libs" element={<Codes />} />
-          <Route path="/libs/:codeId" element={<CodePage />} />
-          <Route path="/contracts" element={<DashboardPage />} />
-          <Route
-            path="/contracts/:contractAddress"
-            element={<ContractPage />}
-          />
+            <Route path="/oracle/stats" element={<Home />} />
+            <Route path="/oracle-old" element={<Oracle />} />
 
-          <Route path="/help" element={<Help />} />
+            <Route path="/ipfs/:query" element={<ToOracleAsk />} />
+            <Route path={routes.oracle.ask.path} element={<Ipfs />} />
 
-          <Route path="/sigma" element={<SigmaWrapper />} />
+            <Route
+              path="/oracle"
+              element={<Navigate to={routes.oracle.path} />}
+            />
 
-          <Route path={routes.mining.path} element={<Mining />} />
+            <Route
+              path="/search"
+              element={<Navigate to={routes.oracle.path} />}
+            />
+            <Route path="/search/:query" element={<ToOracleAsk />} />
 
-          <Route path="/nebula" element={<Nebula />} />
+            <Route path={routes.mining.path} element={<Mining />} />
 
-          {/* seems shouldn't be build
+            <Route path="/senate/*" element={<ErrorBoundary><GovernanceRoutes /></ErrorBoundary>} />
+
+            {/* old links - start */}
+            <Route path="/halloffame" element={<Navigate to="/sphere" />} />
+            <Route
+              path="/halloffame/:status"
+              element={<ValidatorsRedirect />}
+            />
+            <Route path="/mint" element={<Navigate to={routes.hfr.path} />} />
+            {/* old links - end */}
+
+            <Route path="/sphere/*" element={<ErrorBoundary><Sphere /></ErrorBoundary>} />
+            {/* <Route path="/sphere/:chainId/*" element={<Sphere />} /> */}
+
+            <Route path="/episode-1" element={<Story />} />
+            <Route path="/quitter" element={<ForceQuitter />} />
+
+            {BrainRoutes()}
+
+            <Route path="network/bostrom">
+              <Route path="tx" element={<Txs />} />
+              <Route path="tx/:txHash" element={<TxsDetails />} />
+
+              <Route path="contract/:address" element={<RedirectToRobot />} />
+              <Route
+                path="contract/:address/:tab"
+                element={<RedirectToRobot />}
+              />
+
+              {/* <Route path="hero/:address/" element={<ValidatorsDetails />} />
+            <Route path="hero/:address/:tab" element={<ValidatorsDetails />} /> */}
+              <Route path="parameters" element={<ParamNetwork />} />
+              <Route path="parameters/:param" element={<ParamNetwork />} />
+              <Route path="blocks" element={<Block />} />
+              <Route path="blocks/:idBlock" element={<BlockDetails />} />
+            </Route>
+            <Route path="/degenbox" element={<TrollBoxx />} />
+            <Route path="/test" element={<TestKeplr />} />
+            <Route path={routes.hfr.path} element={<Mint />} />
+            <Route path="/token" element={<Market />} />
+            <Route path="/token/:tab" element={<Market />} />
+            <Route path="/particles" element={<Objects />} />
+
+            <Route path="/teleport/*" element={<ErrorBoundary><Teleport /></ErrorBoundary>} />
+
+            <Route path="/warp" element={<WarpDashboardPools />} />
+            <Route path="/warp/:tab" element={<Warp />} />
+            <Route path="/genesis" element={<Movie />} />
+            <Route path="/citizenship" element={<PortalCitizenship />} />
+            <Route path="/gift" element={<PortalGift />} />
+            <Route path="/release" element={<Release />} />
+            <Route path="/portal" element={<MainPartal />} />
+            <Route path="/portal/map" element={<Map />} />
+
+            {/* wasm */}
+            <Route path="/libs" element={<Codes />} />
+            <Route path="/libs/:codeId" element={<CodePage />} />
+            <Route path="/contracts" element={<DashboardPage />} />
+            <Route
+              path="/contracts/:contractAddress"
+              element={<ContractPage />}
+            />
+
+            <Route path="/help" element={<Help />} />
+
+            <Route path="/sigma" element={<SigmaWrapper />} />
+
+            <Route path="/nebula" element={<Nebula />} />
+
+            {/* seems shouldn't be build
           {process.env.CHAIN_ID === Networks.SPACE_PUSSY && (
             <Route path="/cyberver/*" element={<Cybernet />} />
           )} */}
 
-          <Route path="/keys" element={<Keys />} />
+            <Route path="/keys" element={<Keys />} />
 
-          <Route path="/settings/*" element={<Settings />} />
+            <Route path="/settings/*" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
 
-          <Route path={routes.social.path} element={<Social />} />
+            <Route path={routes.social.path} element={<Social />} />
 
-          {['/studio', '/studio/:cid'].map((path) => (
-            <Route key={path} path={path} element={<StudioWrapper />} />
-          ))}
+            {['/studio', '/studio/:cid'].map((path) => (
+              <Route key={path} path={path} element={<StudioWrapper />} />
+            ))}
 
-          <Route path="/restricted-content" element={<Filtering />} />
+            <Route path="/restricted-content" element={<Filtering />} />
 
-          {/* works as 404 also */}
-          <Route path=":username/*" element={<CheckPassportPage />} />
-          <Route path="*" element={<PageNotExist />} />
-        </Route>
-      </Routes>
+            {/* works as 404 also */}
+            <Route path=":username/*" element={<CheckPassportPage />} />
+            <Route path="*" element={<PageNotExist />} />
+          </Route>
+        </Routes>
+      </AnalyticsProvider>
     </WrappedRouter>
   );
 }

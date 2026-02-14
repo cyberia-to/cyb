@@ -84,7 +84,7 @@ function Account({
     }
 
     if (address?.includes(BECH32_PREFIX_VALOPER)) {
-      return `/network/bostrom/hero/${address}`;
+      return routes.hero.getLink(address);
     }
 
     if (moniker) {

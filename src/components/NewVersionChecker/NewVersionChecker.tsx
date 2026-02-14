@@ -18,7 +18,7 @@ const currentBranch = document.head
 
 async function getLastCommit() {
   const response = await axios.get<unknown, CommitsResponse>(
-    `https://api.github.com/repos/cybercongress/cyb-ts/commits`,
+    `https://api.github.com/repos/cyberia-to/cyb-ts/commits`,
     {
       params: {
         sha: currentBranch,

@@ -3,6 +3,9 @@ import { CardStatisics, Vitalik } from '../../../components';
 
 function DistributionParam({ data }) {
   try {
+    if (!data) {
+      return null;
+    }
     return (
       <Pane
         display="grid"

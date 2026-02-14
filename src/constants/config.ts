@@ -1,4 +1,5 @@
 import { Networks } from 'src/types/networks';
+import safeLocalStorage from 'src/utils/safeLocalStorage';
 import defaultNetworks from './defaultNetworks';
 
 // FIXME: seems temp
@@ -9,7 +10,7 @@ export function isWorker() {
   );
 }
 
-const LOCALSTORAGE_CHAIN_ID = !isWorker() && localStorage.getItem('chainId');
+const LOCALSTORAGE_CHAIN_ID = !isWorker() && safeLocalStorage.getItem('chainId');
 
 const DEFAULT_CHAIN_ID: Networks.BOSTROM | Networks.SPACE_PUSSY =
   LOCALSTORAGE_CHAIN_ID || process.env.CHAIN_ID || Networks.BOSTROM;

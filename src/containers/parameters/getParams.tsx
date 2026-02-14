@@ -1,15 +1,13 @@
 import axios from 'axios';
 import { LCD_URL } from 'src/constants/config';
 
-// use hooks from cyber-ts
 const getParamStaking = async () => {
   try {
     const response = await axios({
       method: 'get',
-      url: `${LCD_URL}/cosmos/staking/v1beta1/parameters`,
+      url: `${LCD_URL}/cosmos/staking/v1beta1/params`,
     });
-    debugger;
-    return response.data.result;
+    return response.data.params;
   } catch (e) {
     console.log(e);
     return null;
@@ -20,9 +18,9 @@ const getParamSlashing = async () => {
   try {
     const response = await axios({
       method: 'get',
-      url: `${LCD_URL}/slashing/parameters`,
+      url: `${LCD_URL}/cosmos/slashing/v1beta1/params`,
     });
-    return response.data.result;
+    return response.data.params;
   } catch (e) {
     console.log(e);
     return null;
@@ -33,9 +31,9 @@ const getParamDistribution = async () => {
   try {
     const response = await axios({
       method: 'get',
-      url: `${LCD_URL}/distribution/parameters`,
+      url: `${LCD_URL}/cosmos/distribution/v1beta1/params`,
     });
-    return response.data.result;
+    return response.data.params;
   } catch (e) {
     console.log(e);
     return null;
@@ -46,9 +44,9 @@ const getParamBandwidth = async () => {
   try {
     const response = await axios({
       method: 'get',
-      url: `${LCD_URL}/bandwidth/parameters`,
+      url: `${LCD_URL}/cyber/bandwidth/v1beta1/bandwidth/params`,
     });
-    return response.data.result;
+    return response.data.params;
   } catch (e) {
     console.log(e);
     return null;
@@ -59,23 +57,23 @@ const getParamGov = async () => {
   try {
     const responseGovDeposit = await axios({
       method: 'get',
-      url: `${LCD_URL}/gov/parameters/deposit`,
+      url: `${LCD_URL}/cosmos/gov/v1beta1/params/deposit`,
     });
 
     const responseGovTallying = await axios({
       method: 'get',
-      url: `${LCD_URL}/gov/parameters/tallying`,
+      url: `${LCD_URL}/cosmos/gov/v1beta1/params/tallying`,
     });
 
     const responseGovVoting = await axios({
       method: 'get',
-      url: `${LCD_URL}/gov/parameters/voting`,
+      url: `${LCD_URL}/cosmos/gov/v1beta1/params/voting`,
     });
 
     const response = {
-      deposit: responseGovDeposit.data.result,
-      voting: responseGovTallying.data.result,
-      tallying: responseGovVoting.data.result,
+      deposit: responseGovDeposit.data.deposit_params,
+      tally: responseGovTallying.data.tally_params,
+      voting: responseGovVoting.data.voting_params,
     };
 
     return response;
@@ -89,9 +87,9 @@ const getParamRank = async () => {
   try {
     const response = await axios({
       method: 'get',
-      url: `${LCD_URL}/rank/parameters`,
+      url: `${LCD_URL}/cyber/rank/v1beta1/rank/params`,
     });
-    return response.data.result;
+    return response.data.params;
   } catch (e) {
     console.log(e);
     return null;
@@ -102,9 +100,9 @@ const getParamInlfation = async () => {
   try {
     const response = await axios({
       method: 'get',
-      url: `${LCD_URL}/minting/parameters`,
+      url: `${LCD_URL}/cosmos/mint/v1beta1/params`,
     });
-    return response.data.result;
+    return response.data.params;
   } catch (e) {
     console.log(e);
     return null;

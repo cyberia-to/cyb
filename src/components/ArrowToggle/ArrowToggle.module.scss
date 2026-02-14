@@ -1,0 +1,10 @@
+.btnOpenIconArrowImg {
+  width: 14px;
+  height: 14px;
+  object-fit: contain;
+  transition: 0.5s;
+
+  &Open {
+    transform: rotate(90deg);
+  }
+}

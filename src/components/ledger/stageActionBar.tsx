@@ -1,9 +1,6 @@
-import { OfflineSigner } from '@cybercongress/cyber-js/build/signingcyberclient';
-import { Pane, Text } from '@cybercongress/gravity';
-import { BondStatus } from 'cosmjs-types/cosmos/staking/v1beta1/staking';
 import LocalizedStrings from 'react-localization';
 import { Link } from 'react-router-dom';
-import { BASE_DENOM, CHAIN_ID } from 'src/constants/config';
+import { Pane } from '@cybercongress/gravity';
 import { useBackend } from 'src/contexts/backend/backend';
 import { ConnectMethod } from 'src/pages/Keys/ActionBar/types';
 import { KEY_TYPE } from 'src/pages/Keys/types';
@@ -208,110 +205,6 @@ function InputAutoSize({
       placeholder={placeholder}
       width="180px"
     />
-  );
-}
-
-export function Delegate({
-  moniker,
-  generateTx,
-  onChangeInputAmount,
-  toSend,
-  disabledBtn,
-  delegate,
-  onClickBack,
-  available,
-}) {
-  return (
-    <ActionBar
-      onClickBack={onClickBack}
-      button={{
-        text: T.actionBar.delegate.generate,
-        onClick: generateTx,
-        disabled: disabledBtn,
-      }}
-    >
-      <Text marginRight={20} fontSize="16px" color="#fff">
-        {delegate
-          ? T.actionBar.delegate.delegate
-          : T.actionBar.delegate.unDelegateFrom}{' '}
-        <Text fontSize="20px" color="#fff" fontWeight={600}>
-          {moniker && moniker.length > 14
-            ? `${moniker.substring(0, 14)}...`
-            : moniker}
-        </Text>
-      </Text>
-      <InputAutoSize
-        value={toSend}
-        maxValue={available}
-        onChangeInputAmount={onChangeInputAmount}
-        placeholder="amount"
-      />
-      <Text marginLeft={10} fontSize="16px" color="#fff">
-        {BASE_DENOM.toUpperCase()}
-      </Text>
-    </ActionBar>
-  );
-}
-
-export function ReDelegate({
-  generateTx,
-  onChangeInputAmount,
-  toSend,
-  disabledBtn,
-  validators,
-  validatorsAll,
-  available,
-  valueSelect,
-  onChangeReDelegate,
-  onClickBack,
-}) {
-  return (
-    <ActionBar
-      onClickBack={onClickBack}
-      button={{
-        text: T.actionBar.delegate.generate,
-        onClick: generateTx,
-        disabled: disabledBtn,
-      }}
-    >
-      <InputAutoSize
-        value={toSend}
-        maxValue={available}
-        onChangeInputAmount={onChangeInputAmount}
-        placeholder="amount"
-      />
-      <Text marginLeft={5} fontSize="16px" color="#fff">
-        {BASE_DENOM.toUpperCase()} restake to:
-      </Text>
-      <select
-        style={{
-          width: '120px',
-        }}
-        value={valueSelect}
-        onChange={onChangeReDelegate}
-      >
-        <option value="">pick hero</option>
-        {validatorsAll
-          .filter(
-            (validator) =>
-              BondStatus[validator.status] === BondStatus.BOND_STATUS_BONDED
-          )
-          .map((item) => (
-            <option
-              key={item.operatorAddress}
-              value={item.operatorAddress}
-              style={{
-                display:
-                  validators.operatorAddress === item.operatorAddress
-                    ? 'none'
-                    : 'block',
-              }}
-            >
-              {item.description.moniker}
-            </option>
-          ))}
-      </select>
-    </ActionBar>
   );
 }
 

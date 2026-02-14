@@ -1,4 +1,5 @@
 import { IPFSNodes, IpfsOptsType } from './types';
+import safeLocalStorage from 'src/utils/safeLocalStorage';
 
 export const CYBER_NODE_SWARM_PEER_ID =
   'QmUgmRxoLtGERot7Y6G7UyF6fwvnusQZfGR15PuE6pY3aB';
@@ -12,25 +13,21 @@ export const CYBER_GATEWAY_URL = 'https://gateway.ipfs.cybernode.ai';
 
 export const FILE_SIZE_DOWNLOAD = 20 * 10 ** 6;
 
-export const getIpfsOpts = () => {
-  let ipfsOpts: IpfsOptsType = {
-    ipfsNodeType: IPFSNodes.HELIA,
-    urlOpts: '/ip4/127.0.0.1/tcp/5001', // default url
-    userGateway: 'http://127.0.0.1:8080',
-  };
+const defaultIpfsOpts: IpfsOptsType = {
+  ipfsNodeType: IPFSNodes.HELIA,
+  urlOpts: '/ip4/127.0.0.1/tcp/5001',
+  userGateway: 'http://127.0.0.1:8080',
+};
 
-  // get type ipfs
-  const lsTypeIpfs = localStorage.getItem('ipfsState');
-  if (lsTypeIpfs !== null) {
-    const lsTypeIpfsData = JSON.parse(lsTypeIpfs);
-    ipfsOpts = { ...ipfsOpts, ...lsTypeIpfsData };
-  }
+export const getIpfsOpts = (): IpfsOptsType => {
+  const stored = safeLocalStorage.getJSON<Partial<IpfsOptsType>>('ipfsState', {});
+  const ipfsOpts = { ...defaultIpfsOpts, ...stored };
 
   if (process.env.IS_TAURI) {
     ipfsOpts.ipfsNodeType = IPFSNodes.EXTERNAL;
   }
 
-  localStorage.setItem('ipfsState', JSON.stringify(ipfsOpts));
+  safeLocalStorage.setJSON('ipfsState', ipfsOpts);
 
-  return ipfsOpts as IpfsOptsType;
+  return ipfsOpts;
 };

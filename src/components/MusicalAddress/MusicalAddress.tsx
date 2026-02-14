@@ -1,5 +1,7 @@
 import { useMemo, useState, useCallback } from 'react';
 import { v4 as uuidv4 } from 'uuid';
+import { Link } from 'react-router-dom';
+import { Tooltip } from 'src/components';
 import styles from './MusicalAddress.module.scss';
 import {
   DICTIONARY_ABC,
@@ -8,9 +10,6 @@ import {
   makeSound,
   cutAddress,
 } from './utils';
-import { Link } from 'react-router-dom';
-import { Tooltip } from 'src/components';
-import Pill from '../Pill/Pill';
 
 const classNames = require('classnames');
 

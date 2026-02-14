@@ -40,21 +40,48 @@ class PollingStatusSubscription {
   }
 
   protected async startSubscription() {
+    const BASE_INTERVAL = 7500;
+    const MAX_INTERVAL = 60000;
+    const CIRCUIT_BREAKER_THRESHOLD = 10;
+
+    let currentInterval = BASE_INTERVAL;
+    let consecutiveErrors = 0;
+
     while (this._subscriptionCount > 0) {
       // eslint-disable-next-line no-await-in-loop
       await new Promise((resolve) => {
-        // 7.5 sec.
-        setTimeout(resolve, 7500);
+        setTimeout(resolve, currentInterval);
       });
+
+      // Circuit breaker: pause longer after many consecutive failures
+      if (consecutiveErrors >= CIRCUIT_BREAKER_THRESHOLD) {
+        console.warn(
+          `PollingStatusSubscription: circuit breaker triggered after ${consecutiveErrors} failures, pausing 5 min`
+        );
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => {
+          setTimeout(resolve, 300000);
+        });
+        consecutiveErrors = 0;
+        currentInterval = BASE_INTERVAL;
+      }
 
       try {
         // eslint-disable-next-line no-await-in-loop
         const response = await this.rpcInstance.get('/status');
         if (response.status === 200) {
           this._handlers.forEach((handler) => handler(response.data));
+          // Reset on success
+          consecutiveErrors = 0;
+          currentInterval = BASE_INTERVAL;
         }
       } catch (e: any) {
-        console.error(`Failed to fetch /status: ${e?.toString()}`);
+        consecutiveErrors += 1;
+        // Exponential backoff: double interval up to max
+        currentInterval = Math.min(currentInterval * 2, MAX_INTERVAL);
+        console.error(
+          `Failed to fetch /status (attempt ${consecutiveErrors}): ${e?.toString()}`
+        );
       }
     }
   }

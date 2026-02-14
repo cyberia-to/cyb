@@ -68,6 +68,10 @@
   &.selectable tbody tr {
     cursor: pointer;
   }
+
+  &.hideHeader thead {
+    display: none;
+  }
 }
 
 // .resizer {

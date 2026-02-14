@@ -8357,6 +8357,11 @@
     picocolors "^1.0.0"
     tslib "^2.5.0"
 
+"@plausible-analytics/tracker@^0.4.4":
+  version "0.4.4"
+  resolved "https://registry.yarnpkg.com/@plausible-analytics/tracker/-/tracker-0.4.4.tgz#135e67d722d3161bffd143274db25cf5b45f481b"
+  integrity sha512-fz0NOYUEYXtg1TBaPEEvtcBq3FfmLFuTe1VZw4M8sTWX129br5dguu3M15+plOQnc181ShYe67RfwhKgK89VnA==
+
 "@plotly/d3-sankey-circular@0.33.1":
   version "0.33.1"
   resolved "https://registry.yarnpkg.com/@plotly/d3-sankey-circular/-/d3-sankey-circular-0.33.1.tgz#15d1e0337e0e4b1135bdf0e2195c88adacace1a7"

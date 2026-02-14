@@ -7,15 +7,15 @@ import { AccountValue } from 'src/types/defaultAccount';
 import { useQueryClient } from 'src/contexts/queryClient';
 import BigNumber from 'bignumber.js';
 import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
+import { PATTERN_CYBER } from 'src/constants/patterns';
+import { useAdviser } from 'src/features/adviser/context';
+import { CHAIN_ID } from 'src/constants/config';
 import { GIFT_ICON } from '../utils';
 import { Dots, BtnGrd, ActionBar, Account } from '../../../components';
-import { PATTERN_CYBER } from 'src/constants/patterns';
 import { trimString } from '../../../utils/utils';
 import { TxHash } from '../hook/usePingTxs';
 import { CurrentRelease } from './type';
 import mssgsClaim from '../utilsMsgs';
-import { useAdviser } from 'src/features/adviser/context';
-import { CHAIN_ID } from 'src/constants/config';
 
 const releaseMsg = (giftAddress: string) => {
   return {
@@ -92,7 +92,8 @@ function ActionBarRelease({
           },
           msgs,
           availableRelease(isNanoLedger),
-          queryClient
+          queryClient,
+          true // onlyDelegate
         );
 
         if (isNanoLedger) {

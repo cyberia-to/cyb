@@ -1,0 +1,13 @@
+.idStatus {
+  font-size: 14px;
+  color: #fff;
+
+  &.imperator,
+  &.jedi {
+    color: #ff0000;
+  }
+
+  &.padawan {
+    color: #ffca42;
+  }
+}

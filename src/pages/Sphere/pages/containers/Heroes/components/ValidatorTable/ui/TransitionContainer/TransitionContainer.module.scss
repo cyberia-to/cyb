@@ -1,0 +1,48 @@
+.containerTransition {
+  --height-content: 0px;
+
+  position: relative;
+  // transition: 0.5s ease-in-out;
+  // height: var(--height-content);
+  // min-height: var(--height-content);
+  opacity: 0;
+
+  &entering {
+    opacity: 0;
+    transition: 1ms ease-in-out;
+
+    // transition: 0.5s ease-in-out;
+  }
+
+  &entered {
+    opacity: 1;
+    // min-height: var(--height-content);
+    // height: var(--height-content);
+  }
+
+  &exiting {
+    // opacity: 0;
+    // transition: 0.3s ease-in-out;
+  }
+
+  &exited {
+    display: none;
+    height: 0 !important;
+    opacity: 0;
+  }
+}
+
+.titleContainer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  font-size: 16px;
+}
+
+.btnOpenIcon {
+  &:hover {
+    opacity: 0.8;
+  }
+}

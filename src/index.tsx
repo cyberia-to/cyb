@@ -41,6 +41,7 @@ import CyberClientProvider from './contexts/queryCyberClient';
 import ScriptingProvider from './contexts/scripting/scripting';
 import apolloClient from './services/graphql';
 
+
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
@@ -58,8 +59,9 @@ if (container === null) {
 
 const root = createRoot(container);
 
-// temp
-localStorage.removeItem(localStorageKeys.settings.adviserAudio);
+import safeLocalStorage from './utils/safeLocalStorage';
+
+safeLocalStorage.removeItem(localStorageKeys.settings.adviserAudio);
 
 function Providers({ children }: { children: React.ReactNode }) {
   return (
@@ -78,7 +80,7 @@ function Providers({ children }: { children: React.ReactNode }) {
                             <ScriptingProvider>
                               <DeviceProvider>
                                 <AdviserProvider>
-                                  <ErrorBoundary>{children}</ErrorBoundary>
+                                    <ErrorBoundary>{children}</ErrorBoundary>
                                 </AdviserProvider>
                               </DeviceProvider>
                             </ScriptingProvider>

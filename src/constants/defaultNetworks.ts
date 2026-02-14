@@ -4,6 +4,58 @@ type NetworksList = {
   [key in Networks]: NetworkConfig;
 };
 
+// Backup RPC endpoints for failover
+export const RPC_ENDPOINTS: Record<string, string[]> = {
+  [Networks.BOSTROM]: [
+    'https://rpc.bostrom.cybernode.ai',
+    'https://rpc-cyber-ia.cosmosia.notional.ventures',
+    'https://rpc.cyber.bronbro.io',
+  ],
+  [Networks.SPACE_PUSSY]: [
+    'https://rpc.space-pussy.cybernode.ai',
+  ],
+};
+
+/**
+ * Try RPC endpoints in order, return the first one that responds.
+ * Caches the working endpoint for the session.
+ */
+const rpcCache = new Map<string, string>();
+
+export async function getHealthyRpcUrl(
+  chainId: string,
+  defaultUrl: string
+): Promise<string> {
+  const cached = rpcCache.get(chainId);
+  if (cached) {
+    return cached;
+  }
+
+  const endpoints = RPC_ENDPOINTS[chainId] || [defaultUrl];
+
+  for (const endpoint of endpoints) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000);
+      // eslint-disable-next-line no-await-in-loop
+      const response = await fetch(`${endpoint}/status`, {
+        signal: controller.signal,
+      });
+      clearTimeout(timeoutId);
+
+      if (response.ok) {
+        rpcCache.set(chainId, endpoint);
+        return endpoint;
+      }
+    } catch {
+      // try next endpoint
+    }
+  }
+
+  // Fall back to default if nothing responds
+  return defaultUrl;
+}
+
 const defaultNetworks: NetworksList = {
   bostrom: {
     CHAIN_ID: Networks.BOSTROM,

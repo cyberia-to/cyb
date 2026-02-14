@@ -73,6 +73,7 @@ class TxTracer {
     this.ws.onopen = this.onOpen;
     this.ws.onmessage = this.onMessage;
     this.ws.onclose = this.onClose;
+    this.ws.onerror = this.onError;
   }
 
   close() {
@@ -195,9 +196,37 @@ class TxTracer {
   };
 
   protected readonly onClose = (e: CloseEvent) => {
+    // Reject all pending queries and subscriptions when WebSocket closes
+    const error = new Error(`WebSocket closed: ${e.reason || 'connection lost'}`);
+
+    for (const [id, query] of this.pendingQueries) {
+      query.rejector(error);
+    }
+    this.pendingQueries.clear();
+
+    for (const [id, sub] of this.txSubscribes) {
+      sub.rejector(error);
+    }
+    this.txSubscribes.clear();
+
     for (const listener of this.listeners.close ?? []) {
       listener(e);
     }
+  };
+
+  protected readonly onError = (e: Event) => {
+    // Reject all pending queries and subscriptions on WebSocket error
+    const error = new Error('WebSocket error');
+
+    for (const [id, query] of this.pendingQueries) {
+      query.rejector(error);
+    }
+    this.pendingQueries.clear();
+
+    for (const [id, sub] of this.txSubscribes) {
+      sub.rejector(error);
+    }
+    this.txSubscribes.clear();
   };
 
   /**
@@ -237,28 +266,60 @@ class TxTracer {
 
   // Query the tx and subscribe the tx.
   traceTx(
-    query: Uint8Array | Record<string, string | number | boolean>
+    query: Uint8Array | Record<string, string | number | boolean>,
+    {
+      timeoutMs = 120000,
+      connectionTimeoutMs = 15000,
+    }: { timeoutMs?: number; connectionTimeoutMs?: number } = {}
   ): Promise<any> {
-    return new Promise<any>((resolve) => {
-      // At first, try to query the tx at the same time of subscribing the tx.
-      // But, the querying's error will be ignored.
-      this.queryTx(query)
-        .then((result) => {
-          if (query instanceof Uint8Array) {
-            resolve(result);
-            return;
-          }
-
-          if (result?.total_count !== '0') {
-            resolve(result);
-          }
-        })
-        .catch(() => {
-          // noop
-        });
-
-      this.subscribeTx(query).then(resolve);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(
+        () => reject(new Error(`traceTx timed out after ${timeoutMs}ms`)),
+        timeoutMs
+      );
     });
+
+    const connectionPromise =
+      this.readyState !== WsReadyState.OPEN
+        ? new Promise<void>((resolve, reject) => {
+            const connectionTimer = setTimeout(() => {
+              reject(
+                new Error(
+                  `WebSocket connection timed out after ${connectionTimeoutMs}ms`
+                )
+              );
+            }, connectionTimeoutMs);
+
+            this.addEventListener('open', () => {
+              clearTimeout(connectionTimer);
+              resolve();
+            });
+          })
+        : Promise.resolve();
+
+    const tracePromise = connectionPromise.then(
+      () =>
+        new Promise<any>((resolve) => {
+          this.queryTx(query)
+            .then((result) => {
+              if (query instanceof Uint8Array) {
+                resolve(result);
+                return;
+              }
+
+              if (result?.total_count !== '0') {
+                resolve(result);
+              }
+            })
+            .catch(() => {
+              // noop
+            });
+
+          this.subscribeTx(query).then(resolve);
+        })
+    );
+
+    return Promise.race([tracePromise, timeoutPromise]);
   }
 
   subscribeTx(
@@ -286,7 +347,7 @@ class TxTracer {
     const id = this.createRandomId();
 
     const params = {
-      query: `tm.event='Tx' and ${Object.keys(query)
+      query: `tm.event='Tx' AND ${Object.keys(query)
         .map((key) => {
           return {
             key,
@@ -298,7 +359,7 @@ class TxTracer {
             typeof obj.value === 'string' ? `'${obj.value}'` : obj.value
           }`;
         })
-        .join(' and ')}`,
+        .join(' AND ')}`,
       page: '1',
       per_page: '1',
       order_by: 'desc',
@@ -353,7 +414,7 @@ class TxTracer {
             typeof obj.value === 'string' ? `'${obj.value}'` : obj.value
           }`;
         })
-        .join(' and '),
+        .join(' AND '),
       page: '1',
       per_page: '1',
       order_by: 'desc',

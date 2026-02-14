@@ -1,6 +1,5 @@
 import { Pane } from '@cybercongress/gravity';
-import { getDecimal } from '../../utils/utils';
-import { formatNumber } from '../../utils/search/utils';
+import { formatNumber, getDecimal } from '../../utils/utils';
 
 function FormatNumber({ number, fontSizeDecimal, currency, ...props }) {
   return (

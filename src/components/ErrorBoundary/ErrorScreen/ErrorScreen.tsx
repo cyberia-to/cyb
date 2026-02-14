@@ -18,10 +18,12 @@ function ErrorScreen({ error }: { error: Error }) {
         ...and <LinkWindow to={HUB_LINK}>let us know</LinkWindow> about this
       </p>
 
-      <div className={styles.errorDetails}>
-        <pre>{error.message}</pre>
-        <pre className={styles.stack}>{error.stack}</pre>
-      </div>
+      {process.env.IS_DEV && (
+        <div className={styles.errorDetails}>
+          <pre>{error.message}</pre>
+          <pre className={styles.stack}>{error.stack}</pre>
+        </div>
+      )}
 
       <footer>
         {window.history.length > 0 && (

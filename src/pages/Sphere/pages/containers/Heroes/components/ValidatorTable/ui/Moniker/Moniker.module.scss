@@ -1,0 +1,22 @@
+.monikerContainer {
+  width: 200px;
+  display: flex;
+  gap: 20px;
+  align-items: center;
+  position: relative;
+
+  > img {
+    width: 30px !important;
+    height: 30px !important;
+  }
+
+  .moniker {
+    text-align: start;
+    text-overflow: ellipsis;
+    overflow: hidden;
+    white-space: nowrap;
+    text-transform: none !important;
+    padding-right: 5px;
+    // color: #36d6ae;
+  }
+}

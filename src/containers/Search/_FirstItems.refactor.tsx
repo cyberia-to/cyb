@@ -6,6 +6,7 @@ import {
   PATTERN_TX,
   PATTERN_BLOCK,
 } from 'src/constants/patterns';
+import { routes } from 'src/routes';
 import { trimString, formatNumber } from 'src/utils/utils';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -42,7 +43,7 @@ function FirstItems({ query }: { query: string }) {
   if (query.match(PATTERN_CYBER_VALOPER)) {
     searchItems.push(
       <Wrapper>
-        <Link to={`/network/bostrom/hero/${query}`}>
+        <Link to={routes.hero.getLink(query)}>
           <SearchItem hash={`${query}_PATTERN_CYBER_VALOPER`} status="sparkApp">
             {textPreviewSparkApp(
               'Explore details of hero',

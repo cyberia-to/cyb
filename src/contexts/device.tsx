@@ -29,7 +29,7 @@ function DeviceProvider({ children }: { children: React.ReactNode }) {
     return () => {
       window.removeEventListener('resize', handleResize);
     };
-  });
+  }, []);
 
   const value = useMemo(() => {
     return {

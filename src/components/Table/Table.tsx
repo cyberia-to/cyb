@@ -1,6 +1,5 @@
 import {
   useReactTable,
-  Column,
   ColumnDef,
   getCoreRowModel,
   flexRender,
@@ -8,16 +7,15 @@ import {
   InitialTableState,
   SortingState,
   TableOptions,
-  SortingOptions,
 } from '@tanstack/react-table';
 
+import { useEffect, useState, useCallback } from 'react';
+import cx from 'classnames';
+import { sessionStorageKeys } from 'src/constants/sessionStorageKeys';
 import styles from './Table.module.scss';
 import Loader2 from '../ui/Loader2';
 import NoItems from '../ui/noItems';
-import { useEffect, useState, useCallback } from 'react';
-import cx from 'classnames';
 import Triangle from '../atoms/Triangle/Triangle';
-import { sessionStorageKeys } from 'src/constants/sessionStorageKeys';
 import { tableIDs } from './tableIDs';
 
 const storage = sessionStorage;
@@ -53,6 +51,8 @@ export type Props<T extends object> = {
 
   // maybe temporary
   enableSorting?: boolean;
+  hideHeader?: boolean;
+  hideBody?: boolean;
 };
 
 function Table<T extends object>({
@@ -64,6 +64,8 @@ function Table<T extends object>({
   initialState,
   id,
   enableSorting = true,
+  hideHeader = false,
+  hideBody = false,
 }: Props<T>) {
   const [selected, setSelected] = useState<string | null>(null);
 
@@ -118,36 +120,39 @@ function Table<T extends object>({
         })}
         style={style}
       >
-        <thead>
-          {table.getHeaderGroups().map((headerGroup) => (
-            <tr key={headerGroup.id}>
-              {headerGroup.headers.map((header) => {
-                return (
-                  <th
-                    key={header.id}
-                    className={cx({
-                      [styles.sortable]: header.column.getCanSort(),
-                    })}
-                    colSpan={header.colSpan}
-                    style={{
-                      width: header.column.getSize(),
-                    }}
-                    onClick={header.column.getToggleSortingHandler()}
-                  >
-                    {flexRender(
-                      header.column.columnDef.header,
-                      header.getContext()
-                    )}
-                    &nbsp;
-                    {header.column.getCanSort() && (
-                      <Triangle
-                        disabled={!header.column.getIsSorted()}
-                        direction={
-                          header.column.getIsSorted() === 'desc' ? 'down' : 'up'
-                        }
-                      />
-                    )}
-                    {/* <div
+        {!hideHeader && (
+          <thead className={cx({ [styles.hideHeader]: hideHeader })}>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => {
+                  return (
+                    <th
+                      key={header.id}
+                      className={cx({
+                        [styles.sortable]: header.column.getCanSort(),
+                      })}
+                      colSpan={header.colSpan}
+                      style={{
+                        width: header.column.getSize(),
+                      }}
+                      onClick={header.column.getToggleSortingHandler()}
+                    >
+                      {flexRender(
+                        header.column.columnDef.header,
+                        header.getContext()
+                      )}
+                      &nbsp;
+                      {header.column.getCanSort() && (
+                        <Triangle
+                          disabled={!header.column.getIsSorted()}
+                          direction={
+                            header.column.getIsSorted() === 'desc'
+                              ? 'down'
+                              : 'up'
+                          }
+                        />
+                      )}
+                      {/* <div
                       {...{
                         onDoubleClick: () => header.column.resetSize(),
                         onMouseDown: header.getResizeHandler(),
@@ -157,69 +162,76 @@ function Table<T extends object>({
                         }`,
                       }}
                     /> */}
-                  </th>
-                );
-              })}
-            </tr>
-          ))}
-        </thead>
-
-        <tbody>
-          {table.getRowModel().rows.map((row) => {
-            return (
-              <tr
-                key={row.id}
-                data-id={row.id}
-                className={cx({ [styles.rowSelected]: row.id === selected })}
-                onClick={(e) => {
-                  // TODO: move to tbody
-
-                  if (!onSelect) {
-                    return;
-                  }
-
-                  if (
-                    ['a', 'button', 'input'].includes(
-                      (e.target as any).tagName.toLowerCase()
-                    )
-                  ) {
-                    return;
-                  }
-
-                  const id = e.currentTarget.getAttribute('data-id');
-
-                  if (id === selected) {
-                    setSelected(null);
-                    onSelect(null);
-                    return;
-                  }
-
-                  setSelected(id);
-                  onSelect(id);
-                }}
-              >
-                {row.getVisibleCells().map((cell) => {
-                  return (
-                    <td
-                      key={cell.id}
-                      style={{
-                        width: cell.column.getSize(),
-                      }}
-                    >
-                      {flexRender(
-                        cell.column.columnDef.cell,
-                        cell.getContext()
-                      )}
-                    </td>
+                    </th>
                   );
                 })}
               </tr>
-            );
-          })}
-        </tbody>
+            ))}
+          </thead>
+        )}
+
+        {!hideBody && (
+          <tbody>
+            {table.getRowModel().rows.map((row) => {
+              return (
+                <tr
+                  key={row.id}
+                  data-id={row.id}
+                  className={cx({ [styles.rowSelected]: row.id === selected })}
+                  onClick={(e) => {
+                    // TODO: move to tbody
+
+                    if (!onSelect) {
+                      return;
+                    }
+
+                    if (
+                      ['a', 'button', 'input'].includes(
+                        (e.target as any).tagName.toLowerCase()
+                      )
+                    ) {
+                      return;
+                    }
+
+                    const id = e.currentTarget.getAttribute('data-id');
+
+                    if (id === selected) {
+                      setSelected(null);
+                      onSelect(null);
+                      return;
+                    }
+
+                    setSelected(id);
+                    onSelect(id);
+                  }}
+                >
+                  {row.getVisibleCells().map((cell) => {
+                    return (
+                      <td
+                        key={cell.id}
+                        style={{
+                          width: cell.column.getSize(),
+                        }}
+                      >
+                        {flexRender(
+                          cell.column.columnDef.cell,
+                          cell.getContext()
+                        )}
+                      </td>
+                    );
+                  })}
+                </tr>
+              );
+            })}
+          </tbody>
+        )}
       </table>
 
-      {isLoading ? <Loader2 /> : !data.length && <NoItems text="No data" />}
+      {hideBody ? null : isLoading ? (
+        <Loader2 />
+      ) : (
+        !data.length && <NoItems text="No data" />
+      )}
     </>
   );
 }

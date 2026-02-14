@@ -1,0 +1,22 @@
+.wrapper {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  margin-top: 10px;
+  margin-bottom: 50px;
+  gap: 20px;
+}
+
+.identityContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+}
+
+.monikerContainer {
+  display: flex;
+  gap: 10px;
+
+}

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useQueryClient } from 'src/contexts/queryClient';
 
-import { getDelegatorDelegations } from 'src/features/staking/getDelegatorDelegations';
+import { getDelegatorDelegations } from 'src/features/staking/delegation/getDelegatorDelegations';
 import { useCyberClient } from 'src/contexts/queryCyberClient';
 import { coinDecimals } from '../../../../../utils/utils';
 

@@ -3,6 +3,9 @@ import { CardStatisics, Vitalik } from '../../../components';
 
 function RankParam({ data }) {
   try {
+    if (!data) {
+      return null;
+    }
     return (
       <Pane
         display="grid"

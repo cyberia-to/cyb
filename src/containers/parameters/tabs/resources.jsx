@@ -5,6 +5,9 @@ import { formatCurrency, dhm } from '../../../utils/utils';
 
 function ResourcesParam({ data }) {
   try {
+    if (!data) {
+      return null;
+    }
     return (
       <Pane
         display="grid"

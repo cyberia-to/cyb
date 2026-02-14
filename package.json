@@ -148,7 +148,6 @@
     "workbox-webpack-plugin": "^7.1.0"
   },
   "dependencies": {
-    "uhash-web": "^0.1.0",
     "@ai-sdk/openai": "^0.0.63",
     "@apollo/client": "^3.9.4",
     "@chain-registry/utils": "^1.51.1",
@@ -180,6 +179,7 @@
     "@multiformats/multiaddr": "^11.4.0",
     "@nftstorage/ipfs-cluster": "^5.0.1",
     "@openrouter/ai-sdk-provider": "^0.0.5",
+    "@plausible-analytics/tracker": "^0.4.4",
     "@reduxjs/toolkit": "^1.9.3",
     "@storybook/addon-designs": "^7.0.4",
     "@tableflip/react-inspector": "^2.3.0",
@@ -273,6 +273,7 @@
     "tone": "^14.7.77",
     "ts-jest": "^29.1.1",
     "ts-jest-resolver": "^2.0.1",
+    "uhash-web": "^0.1.0",
     "unist-builder": "^4.0.0",
     "videostream": "^3.2.2",
     "web3": "1.2.4",

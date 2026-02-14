@@ -4,6 +4,9 @@ import { formatNumber } from '../../../utils/utils';
 
 function BandwidthParam({ data }) {
   try {
+    if (!data) {
+      return null;
+    }
     return (
       <Pane
         display="grid"
