@@ -1,0 +1,258 @@
+# Cyb - Cross-Platform Build System
+# Usage: make help
+
+.PHONY: all setup build clean help
+.PHONY: setup-node setup-rust setup-java setup-android setup-ios setup-linux
+.PHONY: web dev dev-tauri build-web build-tauri
+.PHONY: wasm wasm-build wasm-copy
+.PHONY: macos linux ios android
+.PHONY: install-ios install-android
+.PHONY: test lint
+
+# ============================================================================
+# Configuration
+# ============================================================================
+
+SHELL := /bin/bash
+PROJECT_ROOT := $(shell pwd)
+TAURI_DIR := $(PROJECT_ROOT)/src-tauri
+UHASH_ROOT := $(realpath $(PROJECT_ROOT)/../universal-hash)
+
+# Environment
+export JAVA_HOME ?= /opt/homebrew/opt/openjdk@17
+export ANDROID_HOME ?= $(HOME)/Library/Android/sdk
+export NDK_HOME ?= $(ANDROID_HOME)/ndk/26.1.10909125
+export PATH := $(JAVA_HOME)/bin:$(ANDROID_HOME)/platform-tools:$(HOME)/.cargo/bin:$(PATH)
+
+# Colors
+BLUE := \033[0;34m
+GREEN := \033[0;32m
+YELLOW := \033[1;33m
+RED := \033[0;31m
+NC := \033[0m
+
+# ============================================================================
+# Default & Help
+# ============================================================================
+
+all: build ## Build all targets (web + Tauri macOS)
+
+help: ## Show this help
+	@echo "Cyb Build System"
+	@echo ""
+	@echo "Usage: make [target]"
+	@echo ""
+	@echo "Setup:"
+	@grep -E '^setup[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "Development:"
+	@grep -E '^(dev|dev-tauri|web):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "Build:"
+	@grep -E '^(build-web|build-tauri|wasm|macos|linux|ios|android|build):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "Install:"
+	@grep -E '^install[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "Quality:"
+	@grep -E '^(test|lint|clean):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}'
+
+# ============================================================================
+# Setup Targets
+# ============================================================================
+
+setup: setup-node setup-rust ## Setup web + Tauri dev environment
+
+setup-node: ## Install Node.js and Yarn dependencies
+	@echo -e "$(BLUE)[Setup]$(NC) Node.js & Yarn..."
+	@command -v node >/dev/null || (echo -e "$(RED)[Error]$(NC) Node.js not found. Install via: brew install node" && exit 1)
+	@command -v yarn >/dev/null || npm install -g yarn
+	@yarn install
+	@echo -e "$(GREEN)[Done]$(NC) Node.js ready ($(shell node -v))"
+
+setup-rust: ## Install Rust toolchain + Tauri CLI
+	@echo -e "$(BLUE)[Setup]$(NC) Rust toolchain..."
+	@command -v rustup >/dev/null || (curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y)
+	@rustup target add aarch64-apple-ios 2>/dev/null || true
+	@rustup target add aarch64-apple-darwin 2>/dev/null || true
+	@rustup target add x86_64-apple-darwin 2>/dev/null || true
+	@rustup target add aarch64-linux-android 2>/dev/null || true
+	@rustup target add wasm32-unknown-unknown 2>/dev/null || true
+	@command -v wasm-bindgen >/dev/null || cargo install wasm-bindgen-cli
+	@echo -e "$(GREEN)[Done]$(NC) Rust ready ($(shell rustc --version 2>/dev/null | cut -d' ' -f2))"
+
+setup-java: ## Install Java 17 (via Homebrew)
+	@echo -e "$(BLUE)[Setup]$(NC) Java..."
+	@if [ ! -f "$(JAVA_HOME)/bin/java" ]; then \
+		brew install openjdk@17 2>/dev/null || true; \
+	fi
+	@echo -e "$(GREEN)[Done]$(NC) Java ready"
+
+setup-android: setup-java ## Install Android SDK and NDK
+	@echo -e "$(BLUE)[Setup]$(NC) Android SDK..."
+	@mkdir -p $(ANDROID_HOME)
+	@command -v sdkmanager >/dev/null || brew install --cask android-commandlinetools 2>/dev/null || true
+	@if [ -f "/opt/homebrew/share/android-commandlinetools/cmdline-tools/latest/bin/sdkmanager" ]; then \
+		yes | JAVA_HOME=$(JAVA_HOME) /opt/homebrew/share/android-commandlinetools/cmdline-tools/latest/bin/sdkmanager \
+			--sdk_root=$(ANDROID_HOME) --licenses 2>/dev/null || true; \
+		JAVA_HOME=$(JAVA_HOME) /opt/homebrew/share/android-commandlinetools/cmdline-tools/latest/bin/sdkmanager \
+			--sdk_root=$(ANDROID_HOME) \
+			"platform-tools" "platforms;android-34" "build-tools;35.0.0" "ndk;26.1.10909125" 2>/dev/null || true; \
+	fi
+	@if [ ! -f "$(HOME)/.android/debug.keystore" ]; then \
+		mkdir -p $(HOME)/.android; \
+		keytool -genkey -v -keystore $(HOME)/.android/debug.keystore \
+			-storepass android -alias androiddebugkey -keypass android \
+			-keyalg RSA -keysize 2048 -validity 10000 \
+			-dname "CN=Android Debug,O=Android,C=US" 2>/dev/null || true; \
+	fi
+	@echo -e "$(GREEN)[Done]$(NC) Android SDK ready"
+
+setup-ios: ## Verify iOS build environment (requires Xcode)
+	@echo -e "$(BLUE)[Setup]$(NC) iOS environment..."
+	@command -v xcodebuild >/dev/null || (echo -e "$(RED)[Error]$(NC) Xcode not installed. Install from App Store." && exit 1)
+	@echo -e "$(GREEN)[Done]$(NC) iOS ready"
+
+setup-linux: ## Install Linux build dependencies (Ubuntu/Debian)
+	@echo -e "$(BLUE)[Setup]$(NC) Linux dependencies..."
+	@sudo apt-get update
+	@sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+	@echo -e "$(GREEN)[Done]$(NC) Linux ready"
+
+setup-all: setup setup-java setup-android setup-ios ## Setup everything (all platforms)
+
+# ============================================================================
+# Development Targets
+# ============================================================================
+
+dev: setup-node ## Start web dev server (browser, port 3001)
+	@echo -e "$(BLUE)[Dev]$(NC) Starting web dev server at https://localhost:3001"
+	@yarn start
+
+dev-tauri: setup-node setup-rust ## Start Tauri dev server (native desktop)
+	@echo -e "$(BLUE)[Dev]$(NC) Starting Tauri dev server..."
+	@npx @tauri-apps/cli dev
+
+web: dev ## Alias for dev
+
+# ============================================================================
+# WASM Targets
+# ============================================================================
+
+wasm: wasm-build wasm-copy ## Build uhash-web WASM and update npm package
+	@echo -e "$(GREEN)[Done]$(NC) WASM updated in node_modules/uhash-web"
+
+wasm-build: setup-rust ## Build uhash-web WASM from universal-hash workspace
+	@echo -e "$(BLUE)[Build]$(NC) uhash-web WASM..."
+	@if [ ! -d "$(UHASH_ROOT)" ]; then \
+		echo -e "$(RED)[Error]$(NC) universal-hash not found at $(UHASH_ROOT)"; \
+		echo "  Clone it: git clone https://github.com/cyberia-to/universal-hash ../universal-hash"; \
+		exit 1; \
+	fi
+	@cd $(UHASH_ROOT) && cargo build -p uhash-web --release --target wasm32-unknown-unknown
+	@wasm-bindgen $(UHASH_ROOT)/target/wasm32-unknown-unknown/release/uhash_web.wasm \
+		--out-dir $(PROJECT_ROOT)/node_modules/uhash-web --target bundler
+	@echo -e "$(GREEN)[Done]$(NC) WASM built"
+
+wasm-copy: ## Copy WASM artifacts to node_modules/uhash-web
+	@echo -e "$(BLUE)[Copy]$(NC) WASM to node_modules..."
+	@mkdir -p $(PROJECT_ROOT)/node_modules/uhash-web
+	@if [ -f "$(PROJECT_ROOT)/node_modules/uhash-web/uhash_web_bg.wasm" ]; then \
+		echo -e "$(GREEN)[Done]$(NC) WASM files in place"; \
+	else \
+		echo -e "$(YELLOW)[Warn]$(NC) No WASM files found. Run 'make wasm-build' first."; \
+	fi
+
+# ============================================================================
+# Build Targets
+# ============================================================================
+
+build: build-web ## Build web production bundle
+
+build-web: setup-node ## Build web production bundle
+	@echo -e "$(BLUE)[Build]$(NC) Web production..."
+	@yarn build
+	@echo -e "$(GREEN)[Done]$(NC) Web: $(PROJECT_ROOT)/build/"
+
+build-tauri: setup-node setup-rust ## Build Tauri production bundle (current platform)
+	@echo -e "$(BLUE)[Build]$(NC) Tauri production..."
+	@npx @tauri-apps/cli build
+	@echo -e "$(GREEN)[Done]$(NC) Tauri: $(TAURI_DIR)/target/release/bundle/"
+
+macos: setup-node setup-rust ## Build macOS app (.dmg)
+	@echo -e "$(BLUE)[Build]$(NC) macOS..."
+	@npx @tauri-apps/cli build
+	@echo -e "$(GREEN)[Done]$(NC) macOS: $(TAURI_DIR)/target/release/bundle/dmg/"
+
+linux: setup-node setup-rust setup-linux ## Build Linux app (.deb, .AppImage)
+	@echo -e "$(BLUE)[Build]$(NC) Linux..."
+	@npx @tauri-apps/cli build
+	@echo -e "$(GREEN)[Done]$(NC) Linux .deb: $(TAURI_DIR)/target/release/bundle/deb/"
+	@echo -e "$(GREEN)[Done]$(NC) Linux .AppImage: $(TAURI_DIR)/target/release/bundle/appimage/"
+
+ios: setup-node setup-rust setup-ios ## Build iOS app
+	@echo -e "$(BLUE)[Build]$(NC) iOS..."
+	@cd $(TAURI_DIR) && [ -d "gen/apple" ] || npx @tauri-apps/cli ios init
+	@if [ -f "$(TAURI_DIR)/gen/apple/cyb.xcodeproj/project.pbxproj" ]; then \
+		grep -q 'export PATH=.*cargo' $(TAURI_DIR)/gen/apple/cyb.xcodeproj/project.pbxproj || \
+		sed -i '' 's/shellScript = "cargo/shellScript = "export PATH=\\"$$HOME\/.cargo\/bin:$$PATH\\" \&\& cargo/g' \
+			$(TAURI_DIR)/gen/apple/cyb.xcodeproj/project.pbxproj; \
+	fi
+	@npx @tauri-apps/cli ios build
+	@echo -e "$(GREEN)[Done]$(NC) iOS: $(TAURI_DIR)/gen/apple/build/"
+
+android: setup-node setup-rust setup-android ## Build Android app (.apk, aarch64 only)
+	@echo -e "$(BLUE)[Build]$(NC) Android..."
+	@cd $(TAURI_DIR) && [ -d "gen/android" ] || \
+		JAVA_HOME=$(JAVA_HOME) ANDROID_HOME=$(ANDROID_HOME) NDK_HOME=$(NDK_HOME) \
+		npx @tauri-apps/cli android init
+	@echo "sdk.dir=$(ANDROID_HOME)" > $(TAURI_DIR)/gen/android/local.properties
+	@JAVA_HOME=$(JAVA_HOME) ANDROID_HOME=$(ANDROID_HOME) NDK_HOME=$(NDK_HOME) \
+		npx @tauri-apps/cli android build --target aarch64 2>&1 | grep -v "WebSocket" || true
+	@echo -e "$(GREEN)[Done]$(NC) Android APK: $(TAURI_DIR)/gen/android/app/build/outputs/apk/"
+
+# ============================================================================
+# Install Targets
+# ============================================================================
+
+install-ios: ## Install iOS app to connected device
+	@echo -e "$(BLUE)[Install]$(NC) iOS..."
+	@IPA=$$(find $(TAURI_DIR)/gen/apple/build -name "*.ipa" 2>/dev/null | head -1); \
+	if [ -f "$$IPA" ]; then \
+		DEVICE=$$(xcrun devicectl list devices 2>/dev/null | grep -o '[0-9A-F\-]\{36\}' | head -1); \
+		if [ -n "$$DEVICE" ]; then \
+			xcrun devicectl device install app --device "$$DEVICE" "$$IPA"; \
+			echo -e "$(GREEN)[Done]$(NC) iOS app installed"; \
+		else \
+			echo -e "$(RED)[Error]$(NC) No iOS device connected"; \
+		fi \
+	else \
+		echo -e "$(RED)[Error]$(NC) iOS build not found. Run 'make ios' first."; \
+	fi
+
+install-android: ## Install Android app to connected device
+	@echo -e "$(BLUE)[Install]$(NC) Android..."
+	@APK=$$(find $(TAURI_DIR)/gen/android -name "*.apk" -path "*/release/*" 2>/dev/null | head -1); \
+	if [ -f "$$APK" ]; then \
+		$(ANDROID_HOME)/platform-tools/adb install "$$APK"; \
+		echo -e "$(GREEN)[Done]$(NC) Android app installed"; \
+	else \
+		echo -e "$(RED)[Error]$(NC) Android APK not found. Run 'make android' first."; \
+	fi
+
+# ============================================================================
+# Quality Targets
+# ============================================================================
+
+test: setup-node ## Run tests
+	@yarn test
+
+lint: setup-node ## Run ESLint
+	@yarn lint
+
+clean: ## Clean build artifacts
+	@rm -rf $(PROJECT_ROOT)/build
+	@rm -rf $(TAURI_DIR)/target
+	@rm -rf $(TAURI_DIR)/gen/android/app/build
+	@rm -rf $(TAURI_DIR)/gen/apple/build
+	@echo -e "$(GREEN)[Done]$(NC) Cleaned"
