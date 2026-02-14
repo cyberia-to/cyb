@@ -18,9 +18,18 @@ PROJECT_ROOT := $(shell pwd)
 TAURI_DIR := $(PROJECT_ROOT)/src-tauri
 UHASH_ROOT := $(realpath $(PROJECT_ROOT)/../universal-hash)
 
-# Environment
-export JAVA_HOME ?= /opt/homebrew/opt/openjdk@17
-export ANDROID_HOME ?= $(HOME)/Library/Android/sdk
+# OS detection
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+  IS_MACOS := 1
+  export JAVA_HOME ?= /opt/homebrew/opt/openjdk@17
+  export ANDROID_HOME ?= $(HOME)/Library/Android/sdk
+else
+  IS_LINUX := 1
+  export JAVA_HOME ?= /usr/lib/jvm/java-17-openjdk-amd64
+  export ANDROID_HOME ?= $(HOME)/Android/Sdk
+endif
+
 export NDK_HOME ?= $(ANDROID_HOME)/ndk/26.1.10909125
 export PATH := $(JAVA_HOME)/bin:$(ANDROID_HOME)/platform-tools:$(HOME)/.cargo/bin:$(PATH)
 
@@ -35,7 +44,7 @@ NC := \033[0m
 # Default & Help
 # ============================================================================
 
-all: build ## Build all targets (web + Tauri macOS)
+all: build ## Build all targets (web + Tauri)
 
 help: ## Show this help
 	@echo "Cyb Build System"
@@ -65,40 +74,76 @@ setup: setup-node setup-rust ## Setup web + Tauri dev environment
 
 setup-node: ## Install Node.js and Yarn dependencies
 	@echo -e "$(BLUE)[Setup]$(NC) Node.js & Yarn..."
+ifdef IS_MACOS
 	@command -v node >/dev/null || (echo -e "$(RED)[Error]$(NC) Node.js not found. Install via: brew install node" && exit 1)
+else
+	@command -v node >/dev/null || (echo -e "$(YELLOW)[Setup]$(NC) Installing Node.js..." && \
+		curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && \
+		sudo apt-get install -y nodejs)
+endif
 	@command -v yarn >/dev/null || npm install -g yarn
 	@yarn install
-	@echo -e "$(GREEN)[Done]$(NC) Node.js ready ($(shell node -v))"
+	@echo -e "$(GREEN)[Done]$(NC) Node.js ready ($$(node -v))"
 
 setup-rust: ## Install Rust toolchain + Tauri CLI
 	@echo -e "$(BLUE)[Setup]$(NC) Rust toolchain..."
 	@command -v rustup >/dev/null || (curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y)
+ifdef IS_MACOS
 	@rustup target add aarch64-apple-ios 2>/dev/null || true
 	@rustup target add aarch64-apple-darwin 2>/dev/null || true
 	@rustup target add x86_64-apple-darwin 2>/dev/null || true
+endif
 	@rustup target add aarch64-linux-android 2>/dev/null || true
 	@rustup target add wasm32-unknown-unknown 2>/dev/null || true
 	@command -v wasm-bindgen >/dev/null || cargo install wasm-bindgen-cli
-	@echo -e "$(GREEN)[Done]$(NC) Rust ready ($(shell rustc --version 2>/dev/null | cut -d' ' -f2))"
+	@echo -e "$(GREEN)[Done]$(NC) Rust ready ($$(rustc --version 2>/dev/null | cut -d' ' -f2))"
 
-setup-java: ## Install Java 17 (via Homebrew)
+setup-java: ## Install Java 17
 	@echo -e "$(BLUE)[Setup]$(NC) Java..."
+ifdef IS_MACOS
 	@if [ ! -f "$(JAVA_HOME)/bin/java" ]; then \
 		brew install openjdk@17 2>/dev/null || true; \
 	fi
+else
+	@if ! command -v java >/dev/null || ! java -version 2>&1 | grep -q '17'; then \
+		sudo apt-get update && sudo apt-get install -y openjdk-17-jdk; \
+	fi
+endif
 	@echo -e "$(GREEN)[Done]$(NC) Java ready"
 
 setup-android: setup-java ## Install Android SDK and NDK
 	@echo -e "$(BLUE)[Setup]$(NC) Android SDK..."
 	@mkdir -p $(ANDROID_HOME)
+ifdef IS_MACOS
 	@command -v sdkmanager >/dev/null || brew install --cask android-commandlinetools 2>/dev/null || true
-	@if [ -f "/opt/homebrew/share/android-commandlinetools/cmdline-tools/latest/bin/sdkmanager" ]; then \
-		yes | JAVA_HOME=$(JAVA_HOME) /opt/homebrew/share/android-commandlinetools/cmdline-tools/latest/bin/sdkmanager \
-			--sdk_root=$(ANDROID_HOME) --licenses 2>/dev/null || true; \
-		JAVA_HOME=$(JAVA_HOME) /opt/homebrew/share/android-commandlinetools/cmdline-tools/latest/bin/sdkmanager \
-			--sdk_root=$(ANDROID_HOME) \
+	@SDKMGR=""; \
+	if [ -f "/opt/homebrew/share/android-commandlinetools/cmdline-tools/latest/bin/sdkmanager" ]; then \
+		SDKMGR="/opt/homebrew/share/android-commandlinetools/cmdline-tools/latest/bin/sdkmanager"; \
+	elif [ -f "$(ANDROID_HOME)/cmdline-tools/latest/bin/sdkmanager" ]; then \
+		SDKMGR="$(ANDROID_HOME)/cmdline-tools/latest/bin/sdkmanager"; \
+	fi; \
+	if [ -n "$$SDKMGR" ]; then \
+		yes | JAVA_HOME=$(JAVA_HOME) $$SDKMGR --sdk_root=$(ANDROID_HOME) --licenses 2>/dev/null || true; \
+		JAVA_HOME=$(JAVA_HOME) $$SDKMGR --sdk_root=$(ANDROID_HOME) \
 			"platform-tools" "platforms;android-34" "build-tools;35.0.0" "ndk;26.1.10909125" 2>/dev/null || true; \
 	fi
+else
+	@if [ ! -f "$(ANDROID_HOME)/cmdline-tools/latest/bin/sdkmanager" ]; then \
+		echo -e "$(BLUE)[Setup]$(NC) Downloading Android command-line tools..."; \
+		TMPZIP=$$(mktemp); \
+		curl -fsSL "https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip" -o $$TMPZIP; \
+		mkdir -p $(ANDROID_HOME)/cmdline-tools; \
+		unzip -qo $$TMPZIP -d $(ANDROID_HOME)/cmdline-tools; \
+		mv $(ANDROID_HOME)/cmdline-tools/cmdline-tools $(ANDROID_HOME)/cmdline-tools/latest 2>/dev/null || true; \
+		rm -f $$TMPZIP; \
+	fi
+	@SDKMGR="$(ANDROID_HOME)/cmdline-tools/latest/bin/sdkmanager"; \
+	if [ -f "$$SDKMGR" ]; then \
+		yes | JAVA_HOME=$(JAVA_HOME) $$SDKMGR --sdk_root=$(ANDROID_HOME) --licenses 2>/dev/null || true; \
+		JAVA_HOME=$(JAVA_HOME) $$SDKMGR --sdk_root=$(ANDROID_HOME) \
+			"platform-tools" "platforms;android-34" "build-tools;35.0.0" "ndk;26.1.10909125" 2>/dev/null || true; \
+	fi
+endif
 	@if [ ! -f "$(HOME)/.android/debug.keystore" ]; then \
 		mkdir -p $(HOME)/.android; \
 		keytool -genkey -v -keystore $(HOME)/.android/debug.keystore \
@@ -108,18 +153,27 @@ setup-android: setup-java ## Install Android SDK and NDK
 	fi
 	@echo -e "$(GREEN)[Done]$(NC) Android SDK ready"
 
-setup-ios: ## Verify iOS build environment (requires Xcode)
+setup-ios: ## Verify iOS build environment (macOS only, requires Xcode)
+ifdef IS_MACOS
 	@echo -e "$(BLUE)[Setup]$(NC) iOS environment..."
 	@command -v xcodebuild >/dev/null || (echo -e "$(RED)[Error]$(NC) Xcode not installed. Install from App Store." && exit 1)
 	@echo -e "$(GREEN)[Done]$(NC) iOS ready"
+else
+	@echo -e "$(YELLOW)[Skip]$(NC) iOS builds require macOS with Xcode"
+endif
 
 setup-linux: ## Install Linux build dependencies (Ubuntu/Debian)
+ifdef IS_LINUX
 	@echo -e "$(BLUE)[Setup]$(NC) Linux dependencies..."
 	@sudo apt-get update
-	@sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+	@sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf \
+		build-essential curl wget file libssl-dev libayatana-appindicator3-dev
 	@echo -e "$(GREEN)[Done]$(NC) Linux ready"
+else
+	@echo -e "$(YELLOW)[Skip]$(NC) Linux setup only needed on Linux"
+endif
 
-setup-all: setup setup-java setup-android setup-ios ## Setup everything (all platforms)
+setup-all: setup setup-java setup-android setup-ios setup-linux ## Setup everything (all platforms)
 
 # ============================================================================
 # Development Targets
@@ -180,17 +234,26 @@ build-tauri: setup-node setup-rust ## Build Tauri production bundle (current pla
 	@echo -e "$(GREEN)[Done]$(NC) Tauri: $(TAURI_DIR)/target/release/bundle/"
 
 macos: setup-node setup-rust ## Build macOS app (.dmg)
+ifdef IS_MACOS
 	@echo -e "$(BLUE)[Build]$(NC) macOS..."
 	@npx @tauri-apps/cli build
 	@echo -e "$(GREEN)[Done]$(NC) macOS: $(TAURI_DIR)/target/release/bundle/dmg/"
+else
+	@echo -e "$(RED)[Error]$(NC) macOS builds require macOS"
+endif
 
 linux: setup-node setup-rust setup-linux ## Build Linux app (.deb, .AppImage)
+ifdef IS_LINUX
 	@echo -e "$(BLUE)[Build]$(NC) Linux..."
 	@npx @tauri-apps/cli build
 	@echo -e "$(GREEN)[Done]$(NC) Linux .deb: $(TAURI_DIR)/target/release/bundle/deb/"
 	@echo -e "$(GREEN)[Done]$(NC) Linux .AppImage: $(TAURI_DIR)/target/release/bundle/appimage/"
+else
+	@echo -e "$(RED)[Error]$(NC) Linux builds require Linux"
+endif
 
-ios: setup-node setup-rust setup-ios ## Build iOS app
+ios: setup-node setup-rust setup-ios ## Build iOS app (macOS only)
+ifdef IS_MACOS
 	@echo -e "$(BLUE)[Build]$(NC) iOS..."
 	@cd $(TAURI_DIR) && [ -d "gen/apple" ] || npx @tauri-apps/cli ios init
 	@if [ -f "$(TAURI_DIR)/gen/apple/cyb.xcodeproj/project.pbxproj" ]; then \
@@ -200,6 +263,9 @@ ios: setup-node setup-rust setup-ios ## Build iOS app
 	fi
 	@npx @tauri-apps/cli ios build
 	@echo -e "$(GREEN)[Done]$(NC) iOS: $(TAURI_DIR)/gen/apple/build/"
+else
+	@echo -e "$(RED)[Error]$(NC) iOS builds require macOS with Xcode"
+endif
 
 android: setup-node setup-rust setup-android ## Build Android app (.apk, aarch64 only)
 	@echo -e "$(BLUE)[Build]$(NC) Android..."
@@ -215,7 +281,8 @@ android: setup-node setup-rust setup-android ## Build Android app (.apk, aarch64
 # Install Targets
 # ============================================================================
 
-install-ios: ## Install iOS app to connected device
+install-ios: ## Install iOS app to connected device (macOS only)
+ifdef IS_MACOS
 	@echo -e "$(BLUE)[Install]$(NC) iOS..."
 	@IPA=$$(find $(TAURI_DIR)/gen/apple/build -name "*.ipa" 2>/dev/null | head -1); \
 	if [ -f "$$IPA" ]; then \
@@ -229,6 +296,9 @@ install-ios: ## Install iOS app to connected device
 	else \
 		echo -e "$(RED)[Error]$(NC) iOS build not found. Run 'make ios' first."; \
 	fi
+else
+	@echo -e "$(RED)[Error]$(NC) iOS install requires macOS"
+endif
 
 install-android: ## Install Android app to connected device
 	@echo -e "$(BLUE)[Install]$(NC) Android..."
