@@ -11,8 +11,8 @@ export const dropdown: CSSProperties = { paddingTop: '15px' };
 
 export const mnemonics: CSSProperties = {
   display: 'grid',
-  gridTemplateColumns: 'repeat(3, 1fr)',
-  gap: '25px',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
+  gap: '10px',
 };
 
 export const buttons: CSSProperties = {

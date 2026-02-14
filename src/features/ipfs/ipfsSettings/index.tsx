@@ -8,7 +8,7 @@ import { AdviserColors } from 'src/features/adviser/Adviser/Adviser';
 import { useAdviser } from 'src/features/adviser/context';
 import { getIpfsOpts } from 'src/services/ipfs/config';
 import { IPFSNodes } from 'src/services/ipfs/types';
-import { invoke } from '@tauri-apps/api/tauri';
+import { invoke } from '@tauri-apps/api/core';
 import BtnPassport from '../../../containers/portal/pasport/btnPasport';
 import Drive from '../Drive';
 import ErrorIpfsSettings from './ErrorIpfsSettings';

@@ -33,3 +33,6 @@ storybook-static
 
 # Local Netlify folder
 .netlify
+
+# WASM build artifacts (installed via uhash-web npm package)
+public/wasm

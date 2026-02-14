@@ -156,12 +156,18 @@ pub async fn download_and_extract_ipfs() -> Result<(), String> {
 pub async fn start_ipfs() -> Result<(), IpfsError> {
     println!("Starting IPFS");
     // check if installed
-    let is_ipfs_installed = check_if_ipfs_exists().await.unwrap();
+    let is_ipfs_installed = check_if_ipfs_exists()
+        .await
+        .unwrap_or(false);
     println!("IPFS installed: {}", is_ipfs_installed);
 
-    // check if latest version
-    let is_ipfs_latest_version = check_if_ipfs_latest_version().await.unwrap();
-    println!("IPFS installed: {}", is_ipfs_installed);
+    // check if latest version (only if binary exists)
+    let is_ipfs_latest_version = if is_ipfs_installed {
+        check_if_ipfs_latest_version().await.unwrap_or(false)
+    } else {
+        false
+    };
+    println!("IPFS latest version: {}", is_ipfs_latest_version);
 
     // if not download and extract
     if !is_ipfs_installed || !is_ipfs_latest_version {
@@ -174,7 +180,7 @@ pub async fn start_ipfs() -> Result<(), IpfsError> {
     }
 
     // Check if IPFS is initialized
-    let is_ipfs_initialized = is_ipfs_initialized().unwrap();
+    let is_ipfs_initialized = is_ipfs_initialized().unwrap_or(false);
     if !is_ipfs_initialized {
         println!("Initializing IPFS");
         match init_ipfs() {

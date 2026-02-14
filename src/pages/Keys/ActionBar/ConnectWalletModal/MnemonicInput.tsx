@@ -1,4 +1,4 @@
-import { ComponentProps, useCallback } from 'react';
+import { ComponentProps, Dispatch, SetStateAction } from 'react';
 import { Input } from 'src/components';
 
 type InputProps = ComponentProps<typeof Input>;
@@ -8,7 +8,7 @@ interface MnemonicInputProps {
   isTouched: boolean;
 
   onBlurFunc: InputProps['onBlurFnc'];
-  setValues(update: Record<number, string>): void;
+  setValues: Dispatch<SetStateAction<Record<number, string>>>;
 }
 
 export default function MnemonicInput({
@@ -18,21 +18,14 @@ export default function MnemonicInput({
   setValues,
   onBlurFunc,
 }: MnemonicInputProps) {
-  const onInputChange = useCallback<InputProps['onChange']>(
-    (e) => {
-      const update = { ...values };
-      update[index] = e.target.value;
-      setValues(update);
-    },
-    [index, setValues, values]
-  );
-
   return (
     <Input
       title={`${index + 1}`}
       error={isTouched && !values[index] ? `${index} is missing` : undefined}
-      value={values[index]}
-      onChange={onInputChange}
+      value={values[index] || ''}
+      onChange={(e) => {
+        setValues((prev) => ({ ...prev, [index]: e.target.value }));
+      }}
       onBlurFnc={onBlurFunc}
     />
   );

@@ -1,0 +1,240 @@
+.wrapper {
+  display: grid;
+  align-content: flex-start;
+  width: 100%;
+  gap: 20px;
+  min-height: 70vh;
+}
+
+// Header: wallet + status pill
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.walletInfo {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+  color: #999;
+  font-family: monospace;
+}
+
+.copyBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: #777;
+  padding: 2px 4px;
+  font-size: 14px;
+
+  &:hover {
+    color: #36d6ae;
+  }
+}
+
+// Hero: big hashrate + sparkline
+.heroContainer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 20px 0;
+}
+
+.heroValue {
+  font-size: 48px;
+  font-weight: bold;
+  color: #36d6ae;
+  line-height: 1.1;
+}
+
+.heroUnit {
+  font-size: 20px;
+  font-weight: normal;
+  color: #777;
+}
+
+.heroPulse {
+  animation: miningPulse 2s ease-in-out infinite;
+}
+
+@keyframes miningPulse {
+  0%,
+  100% {
+    text-shadow: 0 0 8px rgba(54, 214, 174, 0.3);
+  }
+  50% {
+    text-shadow: 0 0 20px rgba(54, 214, 174, 0.6), 0 0 40px rgba(54, 214, 174, 0.2);
+  }
+}
+
+.sparkline {
+  width: 100%;
+  height: 60px;
+  margin-top: 10px;
+}
+
+// 4-card stat grid
+.statsGrid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+
+  @media (max-width: 600px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.statCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+  padding: 12px 8px;
+  border: 1px solid rgba(54, 214, 174, 0.3);
+  border-radius: 4px;
+  text-align: center;
+}
+
+.statCardLabel {
+  color: #777;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.statCardValue {
+  color: #36d6ae;
+  font-size: 24px;
+  font-weight: bold;
+}
+
+.statCardSuffix {
+  font-size: 14px;
+  font-weight: normal;
+  color: #777;
+}
+
+// LI Balance row
+.balanceRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 15px;
+  border: 1px solid rgba(54, 214, 174, 0.3);
+  border-radius: 4px;
+  font-size: 14px;
+
+  > span:first-child {
+    color: #777;
+    text-transform: uppercase;
+    font-size: 12px;
+  }
+
+  > span:last-child {
+    color: #36d6ae;
+    font-weight: bold;
+  }
+}
+
+// Network info + thread selector row
+.networkRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  font-size: 14px;
+  color: #999;
+}
+
+// Thread selector
+.threadSelector {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.threadLabel {
+  color: #777;
+  font-size: 13px;
+  white-space: nowrap;
+}
+
+.threadRange {
+  width: 120px;
+  accent-color: #36d6ae;
+  cursor: pointer;
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+}
+
+// Submitting indicator
+.submitting {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  color: #777;
+}
+
+// Proof log
+.proofLog {
+  display: grid;
+  gap: 8px;
+}
+
+.proofLogTitle {
+  color: #777;
+  font-size: 12px;
+  text-transform: uppercase;
+}
+
+.proofEntry {
+  display: grid;
+  grid-template-columns: 40px 1fr 1fr 70px;
+  gap: 8px;
+  align-items: center;
+  padding: 8px 12px;
+  border: 1px solid rgba(54, 214, 174, 0.15);
+  border-radius: 4px;
+  font-size: 13px;
+
+  a {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    color: #36d6ae;
+    text-decoration: none;
+
+    &:hover {
+      text-decoration: underline;
+    }
+  }
+}
+
+.proofEntryIndex {
+  color: #555;
+  font-weight: bold;
+}
+
+.proofEntryHash {
+  color: #999;
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.proofEntryStatus {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.proofEntryTime {
+  color: #555;
+  text-align: right;
+  font-size: 12px;
+}

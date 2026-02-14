@@ -136,6 +136,7 @@ const getMenuItems = () => {
       ],
     },
     { name: 'HFR', icon: hfr, to: '/hfr', subItems: [] },
+    { name: 'Mining', icon: hfr, to: '/mining', subItems: [] },
     // { name: 'Lifeforms', to: '/contracts', subItems: [] },
     // {
     //   name: 'Hub',

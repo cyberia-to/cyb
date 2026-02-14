@@ -3,6 +3,7 @@
 .mobileMenu {
   position: fixed;
   padding: 20px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
   bottom: 0;
   left: 0;
   width: 100%;

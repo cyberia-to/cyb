@@ -21,7 +21,10 @@ export const mobileAllowedRoutes = [
 
   routes.brain,
 
-  'network/bostrom/tx/*',
+  routes.mining.path,
 
-  // routes.settings.path,
+  routes.settings.path,
+  routes.keys.path,
+
+  'network/bostrom/tx/*',
 ];

@@ -15,7 +15,10 @@ export const wrapper: CSSProperties = {
   left: '50%',
   transform: 'translate(-50%, -50%)',
   position: 'fixed',
-  minWidth: '500px',
+  minWidth: '300px',
+  maxWidth: 'calc(100vw - 32px)',
+  maxHeight: 'calc(100vh - 32px)',
+  overflow: 'auto',
   backgroundColor: 'black',
   zIndex: 10000,
 };

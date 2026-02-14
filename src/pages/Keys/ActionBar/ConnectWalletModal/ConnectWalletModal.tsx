@@ -43,36 +43,52 @@ export default function ConnectWalletModal({
         'text'
       );
 
-      const words = paste.split(' ');
-      const newValues = { ...values };
-      for (let i = 0; i < words.length; i++) {
-        newValues[i] = words[i];
-      }
-
-      setValues(newValues);
+      const words = paste.trim().split(/\s+/);
+      console.log('[ConnectWalletModal] Pasted words:', words.length, words);
+      setValues((prev) => {
+        const newValues = { ...prev };
+        for (let i = 0; i < words.length; i++) {
+          newValues[i] = words[i].trim();
+        }
+        console.log('[ConnectWalletModal] New values after paste:', newValues);
+        return newValues;
+      });
     },
-    [values]
+    []
   );
 
   useEffect(() => {
     setColumnsIndexes(columns[mnemonicsLength]);
   }, [mnemonicsLength]);
 
-  const onAddClick = useCallback(async () => {
+  const onInputBlurFunc = useCallback(() => {
+    setIsTouched(true);
+  }, []);
+
+  const onAddClickWithValidation = useCallback(async () => {
+    setIsTouched(true);
+
+    const filledCount = Object.values(values).filter(Boolean).length;
+    const targetCount = Number(mnemonicsLength);
+
+    console.log('[ConnectWalletModal] Add clicked. name:', name, 'filled:', filledCount, '/', targetCount, 'values:', values);
+
+    if (!name) {
+      console.log('[ConnectWalletModal] Name is empty');
+      return;
+    }
+
+    if (filledCount < targetCount) {
+      console.log('[ConnectWalletModal] Not all words filled');
+      return;
+    }
+
     try {
       await onAdd(name, Object.values(values).join(' '));
     } catch (error) {
       console.error('[ConnectWalletModal] Failed to add mnemonics:', error);
     }
-  }, [onAdd, name, values]);
-
-  const onInputBlurFunc = useCallback(() => {
-    setIsTouched(true);
-  }, []);
-
-  const canAdd =
-    !!name &&
-    Object.values(values).filter(Boolean).length === Number(mnemonicsLength);
+  }, [onAdd, name, values, mnemonicsLength]);
 
   return (
     <Modal isOpen onPaste={onMnemonicsPaste}>
@@ -109,7 +125,7 @@ export default function ConnectWalletModal({
       </div>
       <div style={styles.buttons}>
         <Button onClick={onCancel}>Cancel</Button>
-        <Button onClick={onAddClick} disabled={!canAdd}>
+        <Button onClick={onAddClickWithValidation}>
           Add
         </Button>
       </div>

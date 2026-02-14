@@ -84,7 +84,7 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
     exception &&
     !location.pathname.includes(routes.gift.path) &&
     !location.pathname.includes('/brain') && // both full and robot
-    !isMobile
+    (!isMobile || process.env.IS_TAURI)
   ) {
     return (
       <ActionBarContainer>
@@ -103,6 +103,14 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
     !location.pathname.includes(routes.gift.path) &&
     !location.pathname.includes('/brain') // both full and robot
   ) {
+    if (process.env.IS_TAURI) {
+      return (
+        <ActionBarContainer>
+          <Button link={routes.keys.path}>Connect wallet</Button>
+        </ActionBarContainer>
+      );
+    }
+
     const activeAddress =
       defaultAccount.account?.cyber.name ||
       trimString(defaultAccount.account?.cyber.bech32, 10, 4);

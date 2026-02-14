@@ -1,79 +1,112 @@
-name: 'publish_tauri_app'
+name: 'Build Tauri Desktop App'
 
 on:
   push:
     tags:
-    - '*'
+      - 'v*'
   workflow_dispatch:
 
+env:
+  NODE_OPTIONS: '--max-old-space-size=8192'
+
 jobs:
-  publish-tauri:
-    permissions:
-      contents: write
+  build-desktop:
     strategy:
       fail-fast: false
       matrix:
-        settings:
-          - platform: 'macos-latest' # for Arm based macs (M1 and above).
-            args: '--target aarch64-apple-darwin'
-          - platform: 'macos-latest' # for Intel based macs.
-            args: '--target x86_64-apple-darwin'
-          - platform: 'ubuntu-22.04'
-            args: ''
-          - platform: 'windows-latest'
-            args: ''
+        include:
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            name: macOS-ARM64
+          - platform: macos-latest
+            target: x86_64-apple-darwin
+            name: macOS-x64
+          - platform: ubuntu-22.04
+            target: x86_64-unknown-linux-gnu
+            name: Linux-x64
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            name: Windows-x64
 
-    runs-on: ${{ matrix.settings.platform }}
+    runs-on: ${{ matrix.platform }}
+    name: Cyb ${{ matrix.name }}
+
     steps:
       - uses: actions/checkout@v4
-      - name: install dependencies (ubuntu only)
-        if: matrix.settings.platform == 'ubuntu-22.04' # This must match the platform value defined above.
-        run: |
-            sudo apt-get update
-            sudo apt-get install -y build-essential libssl-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
-            echo "PKG_CONFIG_PATH=/usr/local/opt/openssl/lib/pkgconfig" >> $GITHUB_ENV
-            echo "LIBRARY_PATH=\$LIBRARY_PATH:/usr/local/opt/openssl/lib" >> $GITHUB_ENV
-            echo "C_INCLUDE_PATH=\$C_INCLUDE_PATH:/usr/local/opt/openssl/include" >> $GITHUB_ENV
 
-      - name: setup node
+      - name: Install Linux dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
+          node-version: 20
           cache: 'yarn'
 
-      - name: cache node modules
-        uses: actions/cache@v3
-        with:
-          path: |
-            **/node_modules
-            ~/.yarn/cache
-          key: ${{ runner.os }}-node-${{ hashFiles('**/yarn.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
-
-      - name: install Rust stable
+      - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.settings.platform == 'macos-latest' && 'aarch64-apple-darwin,x86_64-apple-darwin' || '' }}
+          targets: ${{ matrix.target }}
 
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
           workspaces: './src-tauri -> target'
 
-      - name: install deps
+      - name: Install Node dependencies
         run: yarn install
 
-      - name: install frontend dependencies
-        run: yarn tauri build ${{ matrix.settings.args }}
-      - uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.ACTIONS_RELEASE_ACCESS_TOKEN }}
+      - name: Install Tauri CLI
+        run: cargo install tauri-cli
+
+      - name: Build Tauri App
+        run: cargo tauri build --target ${{ matrix.target }}
+
+      - name: Upload macOS artifacts
+        if: startsWith(matrix.platform, 'macos')
+        uses: actions/upload-artifact@v4
         with:
-          tauriScript: true
-          tagName: cyb-tauri-${{ github.sha }}
-          releaseName: 'Cyb standalone app ${{ github.sha }}'
-          releaseBody: 'See the assets to install this version.'
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.settings.args }}
+          name: Cyb-${{ matrix.name }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+
+      - name: Upload Linux artifacts
+        if: matrix.platform == 'ubuntu-22.04'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cyb-${{ matrix.name }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/deb/*.deb
+            src-tauri/target/${{ matrix.target }}/release/bundle/appimage/*.AppImage
+
+      - name: Upload Windows artifacts
+        if: matrix.platform == 'windows-latest'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Cyb-${{ matrix.name }}
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/msi/*.msi
+            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
+
+  release:
+    needs: [build-desktop]
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/')
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+          draft: true
+          prerelease: ${{ contains(github.ref, '-') }}

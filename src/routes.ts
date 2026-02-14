@@ -160,6 +160,9 @@ export const routes = {
   settings: {
     path: '/settings',
   },
+  mining: {
+    path: '/mining',
+  },
   studio: {
     path: '/studio',
     getLink: (hash: string) => `/studio/${hash}`,

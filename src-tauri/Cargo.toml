@@ -11,24 +11,31 @@ rust-version = "1.60"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
+[lib]
+name = "app_lib"
+crate-type = ["staticlib", "cdylib", "lib"]
+
 [build-dependencies]
-tauri-build = { version = "1.5.5", features = [] }
+tauri-build = { version = "2.5", features = [] }
 
 [dependencies]
 serde_json = "1.0.128"
 serde = { version = "1.0.210", features = ["derive"] }
+tauri = { version = "2.10", features = ["devtools"] }
+tauri-plugin-shell = "2"
+tokio = { version = "1.40.0", features = ["full"] }
+uhash-core = { git = "https://github.com/cyberia-to/universal-hash", rev = "2fc7b15" }
+hex = "0.4"
+
+# Desktop-only dependencies (IPFS, CozoDB, warp server, reqwest)
+[target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 reqwest = { version = "0.12.7", features = ["blocking", "json"] }
-tauri = { version = "1.8.0", features = ["api-all"] }
 futures = "0.3"
 ipfs-api = "0.17.0"
 ipfs-api-backend-hyper = "0.6"
 dirs = "5.0.1"
 cozo = { version = "0.7.6", features = ["storage-rocksdb"] }
 warp = "0.3.7"
-tokio = { version = "1.40.0", features = ["full"] }
 
 [features]
-# this feature is used for production builds or when `devPath` points to the filesystem and the built-in dev server is disabled.
-# If you use cargo directly instead of tauri's cli you can use this feature flag to switch between tauri's `dev` and `build` modes.
-# DO NOT REMOVE!!
-custom-protocol = [ "tauri/custom-protocol" ]
+custom-protocol = ["tauri/custom-protocol"]

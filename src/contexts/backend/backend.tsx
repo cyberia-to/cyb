@@ -81,6 +81,10 @@ window.cyb.db = {
   clear: () => indexedDB.deleteDatabase(DB_NAME),
 };
 
+const isMobileTauri =
+  !!process.env.IS_TAURI &&
+  /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+
 function BackendProvider({ children }: { children: React.ReactNode }) {
   const dispatch = useAppDispatch();
   // const { defaultAccount } = useAppSelector((state) => state.pocket);
@@ -97,7 +101,7 @@ function BackendProvider({ children }: { children: React.ReactNode }) {
     (state) => state.backend.services.sync.status === 'started'
   );
   const [needPFSInitialize, setNeedPFSInitialize] = useState(
-    !!process.env.IS_TAURI
+    !!process.env.IS_TAURI && !isMobileTauri
   );
 
   const myAddress = useAppSelector(selectCurrentAddress);
@@ -111,15 +115,24 @@ function BackendProvider({ children }: { children: React.ReactNode }) {
     return Array.from(new Set([...friends, ...following]));
   }, [friends, following]);
 
-  const isReady =
-    isDbInitialized &&
-    isIpfsInitialized &&
-    isSyncInitialized &&
-    !needPFSInitialize;
+  // On mobile Tauri, skip heavy backend requirements for isReady
+  const isReady = isMobileTauri
+    ? true
+    : isDbInitialized &&
+      isIpfsInitialized &&
+      isSyncInitialized &&
+      !needPFSInitialize;
   const [embeddingApi$, setEmbeddingApi] =
     useState<Option<Observable<EmbeddingApi>>>(undefined);
   // const embeddingApiRef = useRef<Observable<EmbeddingApi>>();
   useEffect(() => {
+    // On mobile Tauri, skip all heavy backend initialization
+    // (IPFS, CozoDb, sync loops, ML embeddings, Rune engine)
+    if (isMobileTauri) {
+      console.log('[Backend] Mobile Tauri — skipping heavy backend services');
+      return;
+    }
+
     console.log(
       process.env.IS_DEV
         ? '🧪 Starting backend in DEV mode...'
@@ -137,15 +150,19 @@ function BackendProvider({ children }: { children: React.ReactNode }) {
 
     const channel = new RxBroadcastChannelListener(dispatch);
 
-    backgroundWorkerInstance.ipfsApi
-      .start(getIpfsOpts())
-      .then(() => {
-        setIpfsError(null);
-      })
-      .catch((err) => {
-        setIpfsError(err);
-        console.log(`☠️ Ipfs error: ${err}`);
-      });
+    // In Tauri mode, IPFS connection is handled by the Tauri useEffect below
+    // which waits for the daemon to be ready before connecting
+    if (!process.env.IS_TAURI) {
+      backgroundWorkerInstance.ipfsApi
+        .start(getIpfsOpts())
+        .then(() => {
+          setIpfsError(null);
+        })
+        .catch((err) => {
+          setIpfsError(err);
+          console.log(`☠️ Ipfs error: ${err}`);
+        });
+    }
 
     cozoDbWorkerInstance.init().then(() => {
       // const dbApi = createDbApi();
@@ -159,6 +176,7 @@ function BackendProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   useEffect(() => {
+    if (isMobileTauri) return;
     backgroundWorkerInstance.setParams({ myAddress });
     dispatch({ type: RESET_SYNC_STATE_ACTION_NAME });
   }, [myAddress, dispatch]);
@@ -167,42 +185,50 @@ function BackendProvider({ children }: { children: React.ReactNode }) {
     isReady && console.log('🟢 backend started!');
   }, [isReady]);
 
-  // useEffect(() => {
-  //   if (process.env.IS_TAURI) {
-  //     console.log('[Backend] need initialize IPFS for TAURI env');
-  //     (async () => {
-  //       try {
-  //         const isIPFSRunning = await invoke('is_ipfs_running');
+  useEffect(() => {
+    if (process.env.IS_TAURI && !isMobileTauri) {
+      console.log('[Backend] need initialize IPFS for TAURI env');
+      (async () => {
+        try {
+          // Poll until IPFS daemon is running (started by Rust side)
+          const maxAttempts = 30;
+          for (let i = 0; i < maxAttempts; i++) {
+            try {
+              const response = await fetch('http://127.0.0.1:5001/api/v0/id', {
+                method: 'POST',
+              });
+              if (response.ok) {
+                console.log('[Backend] IPFS API is reachable');
+                break;
+              }
+            } catch {
+              // not ready yet
+            }
+            console.log(`[Backend] Waiting for IPFS API... (${i + 1}/${maxAttempts})`);
+            await new Promise((r) => setTimeout(r, 2000));
+          }
 
-  //         if (isIPFSRunning) {
-  //           setNeedPFSInitialize(false);
-  //           console.log('[Backend] IPFS is already running');
-  //           return;
-  //         }
+          setNeedPFSInitialize(false);
+          console.log('[Backend] IPFS is ready for TAURI');
 
-  //         console.log('[Backend] check if IPFS binary is downloaded');
-  //         const ipfsExists = await invoke('check_ipfs');
-  //         if (!ipfsExists) {
-  //           await invoke('download_and_extract_ipfs');
-  //           console.log('[Backend] IPFS downloaded successfully');
-  //         }
-
-  //         console.log('[Backend] check if IPFS is initialized');
-  //         const ipfsInitialized = await invoke('is_ipfs_initialized');
-  //         if (!ipfsInitialized) {
-  //           await invoke('init_ipfs');
-  //           console.log('[Backend] IPFS is initialized successfully');
-  //         }
-
-  //         console.log('[Backend] start IPFS...');
-  //         await invoke('start_ipfs');
-  //         console.log('[Backend] IPFS is successfully started');
-  //       } catch (error) {
-  //         console.error('Failed to run kubo IPFS', error);
-  //       }
-  //     })();
-  //   }
-  // }, []);
+          // Reconnect the ipfs client now that daemon is up
+          backgroundWorkerInstance.ipfsApi
+            .start(getIpfsOpts())
+            .then(() => {
+              setIpfsError(null);
+              console.log('[Backend] IPFS client reconnected');
+            })
+            .catch((err) => {
+              setIpfsError(err);
+              console.log(`[Backend] IPFS reconnect error: ${err}`);
+            });
+        } catch (error) {
+          console.error('Failed to initialize IPFS for Tauri', error);
+          setNeedPFSInitialize(false);
+        }
+      })();
+    }
+  }, []);
 
   const [dbApi, setDbApi] = useState<DbApiWrapper | null>(null);
 
@@ -214,6 +240,7 @@ function BackendProvider({ children }: { children: React.ReactNode }) {
   }, [isDbInitialized, dbApi, myAddress, followings]);
 
   useEffect(() => {
+    if (isMobileTauri) return;
     (async () => {
       backgroundWorkerInstance.setRuneDeps({
         address: myAddress,

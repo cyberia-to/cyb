@@ -57,7 +57,7 @@
     "@storybook/react": "^7.2.3",
     "@storybook/react-webpack5": "^7.2.3",
     "@storybook/testing-library": "^0.2.0",
-    "@tauri-apps/cli": "^1.6.2",
+    "@tauri-apps/cli": "^2.0.0",
     "@testing-library/react": "^14.0.0",
     "@types/compression-webpack-plugin": "^9.1.1",
     "@types/dateformat": "^5.0.0",
@@ -148,6 +148,7 @@
     "workbox-webpack-plugin": "^7.1.0"
   },
   "dependencies": {
+    "uhash-web": "^0.1.0",
     "@ai-sdk/openai": "^0.0.63",
     "@apollo/client": "^3.9.4",
     "@chain-registry/utils": "^1.51.1",
@@ -185,7 +186,7 @@
     "@tanstack/react-query": "^4.22.0",
     "@tanstack/react-query-devtools": "^4.22.0",
     "@tanstack/react-table": "^8.9.1",
-    "@tauri-apps/api": "^1.6.0",
+    "@tauri-apps/api": "^2.0.0",
     "@types/file-saver": "^2.0.5",
     "@types/history": "^5.0.0",
     "@types/jest": "^29.5.11",

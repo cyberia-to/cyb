@@ -72,7 +72,7 @@ a:hover {
   /* background-size: cover !important; */
   /* background-repeat: no-repeat !important; */
 
-  padding: 0 1em 135px 1em;
+  padding: 0 1em calc(135px + env(safe-area-inset-bottom, 0px)) 1em;
   position: relative;
   background-color: #000000;
 }

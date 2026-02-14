@@ -49,6 +49,7 @@ import OracleLanding from './pages/oracle/landing/OracleLanding';
 import Learn from './pages/oracle/Learn/Learn';
 import ToOracleAsk from './pages/redirects/ToOracleAsk';
 import Robot from './pages/robot/Robot';
+import Mining from './pages/Mining/Mining';
 import Social from './pages/Social/Social';
 import Teleport from './pages/teleport/Teleport';
 import { routes } from './routes';
@@ -210,6 +211,8 @@ function AppRouter() {
           <Route path="/help" element={<Help />} />
 
           <Route path="/sigma" element={<SigmaWrapper />} />
+
+          <Route path={routes.mining.path} element={<Mining />} />
 
           <Route path="/nebula" element={<Nebula />} />
 

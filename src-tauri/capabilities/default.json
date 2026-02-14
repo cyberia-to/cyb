@@ -1,0 +1,10 @@
+{
+  "identifier": "default",
+  "description": "Default capabilities for Cyb",
+  "windows": ["main", "splashscreen"],
+  "permissions": [
+    "core:default",
+    "shell:allow-open",
+    "shell:allow-execute"
+  ]
+}

@@ -1,8 +1,5 @@
-use tauri::{Manager, Window};
+use tauri::WebviewWindow;
 
-pub fn update_splash_message(window: Window, message: &str) {
-    if let Some(splashscreen) = window.get_window("splashscreen") {
-        // Call JavaScript function to update the splash screen message
-        let _ = splashscreen.eval(&format!("updateSplashMessage('{}')", message));
-    }
+pub fn update_splash_message(window: &WebviewWindow, message: &str) {
+    let _ = window.eval(&format!("updateSplashMessage('{}')", message));
 }
