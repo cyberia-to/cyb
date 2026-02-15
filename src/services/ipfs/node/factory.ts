@@ -1,19 +1,12 @@
-// import { getNodeAutoDialInterval } from './utils-ipfs';
 import { IpfsNodeType, IpfsNode, CybIpfsNode, IpfsOptsType } from '../types';
 import KuboNode from './impl/kubo';
-import HeliaNode from './impl/helia';
-import JsIpfsNode from './impl/js-ipfs';
-// import EnhancedIpfsNode from './node/enhancedNode';
 import {
   CYBERNODE_SWARM_ADDR_TCP,
-  CYBERNODE_SWARM_ADDR_WSS,
   CYBER_NODE_SWARM_PEER_ID,
 } from '../config';
 import { withCybFeatures } from './mixins/withCybFeatures';
 
 const nodeClassMap: Record<IpfsNodeType, new () => IpfsNode> = {
-  helia: HeliaNode,
-  embedded: JsIpfsNode,
   external: KuboNode,
 };
 
@@ -25,10 +18,7 @@ export async function initIpfsNode(
 
   const swarmPeerId = CYBER_NODE_SWARM_PEER_ID;
 
-  const swarmPeerAddress =
-    ipfsNodeType === 'external'
-      ? CYBERNODE_SWARM_ADDR_TCP
-      : CYBERNODE_SWARM_ADDR_WSS;
+  const swarmPeerAddress = CYBERNODE_SWARM_ADDR_TCP;
   console.log('[Worker] initIpfsNode', {
     swarmPeerId,
     swarmPeerAddress,
@@ -50,9 +40,6 @@ export async function initIpfsNode(
     console.log('[Worker] initIpfsNode instance init failed', error);
   }
   console.log('[Worker] initIpfsNode after instance init');
-  // TODO: REFACT
-  //   instance.connMgrGracePeriod = await getNodeAutoDialInterval(instance);
-  // window.ipfs = instance;
 
   await instance.reconnectToSwarm();
   return instance;

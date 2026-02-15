@@ -1,16 +1,22 @@
 /* eslint-disable import/no-unused-modules */
-import { LsResult } from 'ipfs-core-types/dist/src/pin';
 import { Option } from 'src/types';
+
+// Local type definitions (previously from ipfs-core-types)
+export type PinType = 'direct' | 'indirect' | 'recursive' | 'all';
+
+export type LsResult = {
+  cid: { toString(): string; toV0(): { toString(): string } };
+  type: string;
+  metadata?: Uint8Array;
+};
 
 export type CallBackFuncStatus = (a: string) => void;
 
 export enum IPFSNodes {
   EXTERNAL = 'external',
-  EMBEDDED = 'embedded',
-  HELIA = 'helia',
 }
 
-export type IpfsNodeType = 'embedded' | 'external' | 'helia';
+export type IpfsNodeType = 'external';
 
 export type IpfsFileStats = {
   type: 'file' | 'directory' | 'raw';
@@ -130,7 +136,7 @@ export interface IpfsNode {
   stat: (cid: string, options?: AbortOptions) => Promise<IpfsFileStats>;
   add: (content: File | string, options?: AbortOptions) => Promise<string>;
   pin: (cid: string, options?: AbortOptions) => Promise<string | undefined>;
-  ls: () => AsyncIterable<LsResult>;
+  ls: () => AsyncIterable<LsResult> | AsyncGenerator<LsResult>;
   getPeers: () => Promise<string[]>;
   connectPeer: (address: string) => Promise<boolean>;
   info: () => Promise<IpfsNodeInfo>;

@@ -1,16 +1,13 @@
 import {
   Input,
   LinkWindow,
-  ContainerGradientText,
   ActionBar,
   ContainerGradient,
 } from '../../../components';
 import BtnPasport from '../../../containers/portal/pasport/btnPasport';
-import Select from '../../../containers/warp/components/Select';
 import CodeSnipet from './ipfsComponents/codeSnipet';
 import {
   ContainerKeyValue,
-  renderOptions,
 } from './ipfsComponents/utilsComponents';
 
 const ipfsDaemon = `$ ipfs daemon
@@ -25,12 +22,8 @@ $ ipfs config --json API.HTTPHeaders.Access-Control-Allow-Methods '["PUT", "POST
 function ErrorIpfsSettings({ stateErrorIpfsSettings }) {
   const {
     valueInput,
-    valueSelect,
     setValueInput,
-    dataOpts,
     onClickReConnect,
-    onChangeSelect,
-    pending,
     setNewUrl,
   } = stateErrorIpfsSettings;
 
@@ -46,20 +39,6 @@ function ErrorIpfsSettings({ stateErrorIpfsSettings }) {
         gap: '20px',
       }}
     >
-      <ContainerKeyValue>
-        <div>client</div>
-
-        <Select
-          width="300px"
-          valueSelect={valueSelect}
-          textSelectValue={valueSelect !== '' ? valueSelect : ''}
-          onChangeSelect={(item) => onChangeSelect(item)}
-          custom
-        >
-          {renderOptions(dataOpts, valueSelect)}
-        </Select>
-      </ContainerKeyValue>
-
       <div>
         Check out the installation guide in the{' '}
         <LinkWindow to="https://docs.ipfs.tech/how-to/command-line-quick-start/">
@@ -89,27 +68,25 @@ function ErrorIpfsSettings({ stateErrorIpfsSettings }) {
         </LinkWindow>
         , enter it here.
       </div>
-      {valueSelect === 'external' && (
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '300px auto',
-            gap: '10px',
-          }}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: '300px auto',
+          gap: '10px',
+        }}
+      >
+        <Input
+          value={valueInput}
+          onChange={(e) => setValueInput(e.target.value)}
+        />
+        <BtnPasport
+          style={{ maxWidth: '100px', position: 'static' }}
+          typeBtn="blue"
+          onClick={() => setNewUrl()}
         >
-          <Input
-            value={valueInput}
-            onChange={(e) => setValueInput(e.target.value)}
-          />
-          <BtnPasport
-            style={{ maxWidth: '100px', position: 'static' }}
-            typeBtn="blue"
-            onClick={() => setNewUrl()}
-          >
-            edit
-          </BtnPasport>
-        </div>
-      )}
+          edit
+        </BtnPasport>
+      </div>
 
       <ActionBar
         button={{

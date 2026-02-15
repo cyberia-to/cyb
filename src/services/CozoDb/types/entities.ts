@@ -1,4 +1,4 @@
-import { PinType } from 'ipfs-core-types/src/pin';
+import { PinType } from 'src/services/ipfs/types';
 import { QueuePriority } from 'src/services/QueueManager/types';
 import { Transaction } from 'src/services/backend/services/indexer/types';
 import {

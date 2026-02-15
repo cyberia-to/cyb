@@ -3,7 +3,7 @@ import { asyncIterableBatchProcessor } from 'src/utils/async/iterable';
 
 import { mapParticleToEntity } from 'src/services/CozoDb/mapping';
 
-import { LsResult } from 'ipfs-core-types/src/pin';
+import { LsResult } from 'src/services/ipfs/types';
 
 import DbApi from '../../../DbApi/DbApi';
 

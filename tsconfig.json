@@ -14,7 +14,7 @@
     "forceConsistentCasingInFileNames": true,
     "strict": true,
     "noEmit": true,
-    "types": ["node", "jest", "@types/jest", "reflect-metadata"],
+    "types": ["node", "jest", "@types/jest"],
     "jsx": "react-jsx",
     "typeRoots": ["./src/types", "./node_modules/@types"]
   },

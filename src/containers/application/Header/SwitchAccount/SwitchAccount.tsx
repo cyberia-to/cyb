@@ -157,20 +157,12 @@ function SwitchAccount() {
     <div style={{ position: 'relative', fontSize: '20px' }} ref={containerRef}>
       <div className={styles.containerSwichAccount}>
         {(!useGetAddress || !mediaQuery) && (
-          // eslint-disable-next-line react/jsx-no-useless-fragment
-          <>
-            {/* FIXME: because of styles */}
-            {isMobile ? (
-              <div />
-            ) : (
-              <Link
-                className={networkStyles.btnContainerText}
-                to={routes.settings.path}
-              >
-                {mediaQuery ? 'Settings' : '⚙️'}
-              </Link>
-            )}
-          </>
+          <Link
+            className={networkStyles.btnContainerText}
+            to={routes.settings.path}
+          >
+            {mediaQuery ? 'Settings' : '⚙️'}
+          </Link>
         )}
         {mediaQuery && useGetAddress && (
           <div

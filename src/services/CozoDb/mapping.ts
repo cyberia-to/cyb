@@ -1,4 +1,4 @@
-import { LsResult } from 'ipfs-core-types/src/pin';
+import { LsResult } from 'src/services/ipfs/types';
 import { dateToUtcNumber } from 'src/utils/date';
 import { NeuronAddress, ParticleCid, TransactionHash } from 'src/types/base';
 import { IPFSContent } from '../ipfs/types';

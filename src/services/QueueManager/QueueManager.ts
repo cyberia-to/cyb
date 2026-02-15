@@ -66,22 +66,6 @@ const strategies = {
     },
     ['db', 'node', 'gateway']
   ),
-  embedded: new QueueStrategy(
-    {
-      db: { timeout: 5000, maxConcurrentExecutions: 999 },
-      node: { timeout: 60 * 1000, maxConcurrentExecutions: 30 },
-      gateway: { timeout: 21000, maxConcurrentExecutions: 11 },
-    },
-    ['db', 'gateway', 'node']
-  ),
-  helia: new QueueStrategy(
-    {
-      db: { timeout: 5000, maxConcurrentExecutions: 999 },
-      node: { timeout: 60 * 1000, maxConcurrentExecutions: 50 },
-      gateway: { timeout: 10000, maxConcurrentExecutions: 11 },
-    },
-    ['db', 'node', 'gateway']
-  ),
 };
 
 type QueueMap = Map<ParticleCid, QueueItem>;
@@ -293,7 +277,7 @@ class QueueManager {
       }
     });
 
-    this.strategy = strategy || strategies.embedded;
+    this.strategy = strategy || strategies.external;
     this.queueDebounceMs = queueDebounceMs || QUEUE_DEBOUNCE_MS;
 
     // Little hack to handle keep-alive connection to swarm cyber node

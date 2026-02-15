@@ -34,32 +34,54 @@ export default function ConnectWalletModal({
   );
   const [name, setName] = useState('');
   const [isTouched, setIsTouched] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const distributeWords = useCallback((words: string[], startIndex = 0) => {
+    // Auto-switch to 24 if pasting more than 12 words
+    const targetLength: keyof typeof columns = words.length + startIndex > 12 ? '24' : '12';
+    const targetCount = Number(targetLength);
+
+    if (targetLength !== mnemonicsLength) {
+      setMnemonicsLength(targetLength);
+      setColumnsIndexes(columns[targetLength]);
+    }
+
+    setValues((prev) => {
+      const newValues: Record<number, string> = {};
+      // Preserve existing values up to startIndex
+      for (let i = 0; i < targetCount; i++) {
+        newValues[i] = i < startIndex ? (prev[i] || '') : '';
+      }
+      // Fill in pasted words
+      for (let i = 0; i < words.length && startIndex + i < targetCount; i++) {
+        newValues[startIndex + i] = words[i].trim();
+      }
+      return newValues;
+    });
+  }, [mnemonicsLength]);
 
   const onMnemonicsPaste = useCallback<ClipboardEventHandler<HTMLDivElement>>(
     (event) => {
       event.preventDefault();
 
-      const paste = (event.clipboardData || window.clipboardData).getData(
+      const paste = (event.clipboardData || (window as any).clipboardData)?.getData(
         'text'
       );
+      if (!paste) return;
 
       const words = paste.trim().split(/\s+/);
-      console.log('[ConnectWalletModal] Pasted words:', words.length, words);
-      setValues((prev) => {
-        const newValues = { ...prev };
-        for (let i = 0; i < words.length; i++) {
-          newValues[i] = words[i].trim();
-        }
-        console.log('[ConnectWalletModal] New values after paste:', newValues);
-        return newValues;
-      });
+      distributeWords(words);
     },
-    []
+    [distributeWords]
   );
 
   useEffect(() => {
     setColumnsIndexes(columns[mnemonicsLength]);
   }, [mnemonicsLength]);
+
+  const onSingleChange = useCallback((idx: number, val: string) => {
+    setValues((prev) => ({ ...prev, [idx]: val }));
+  }, []);
 
   const onInputBlurFunc = useCallback(() => {
     setIsTouched(true);
@@ -67,26 +89,24 @@ export default function ConnectWalletModal({
 
   const onAddClickWithValidation = useCallback(async () => {
     setIsTouched(true);
+    setError(null);
 
     const filledCount = Object.values(values).filter(Boolean).length;
     const targetCount = Number(mnemonicsLength);
 
-    console.log('[ConnectWalletModal] Add clicked. name:', name, 'filled:', filledCount, '/', targetCount, 'values:', values);
-
     if (!name) {
-      console.log('[ConnectWalletModal] Name is empty');
       return;
     }
 
     if (filledCount < targetCount) {
-      console.log('[ConnectWalletModal] Not all words filled');
       return;
     }
 
     try {
       await onAdd(name, Object.values(values).join(' '));
-    } catch (error) {
-      console.error('[ConnectWalletModal] Failed to add mnemonics:', error);
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(msg);
     }
   }, [onAdd, name, values, mnemonicsLength]);
 
@@ -118,11 +138,17 @@ export default function ConnectWalletModal({
             index={index}
             values={values}
             isTouched={isTouched}
-            setValues={setValues}
             onBlurFunc={onInputBlurFunc}
+            onWordsDetected={distributeWords}
+            onSingleChange={onSingleChange}
           />
         ))}
       </div>
+      {error && (
+        <div style={{ color: '#ff4d4d', fontSize: '14px', marginTop: '8px', textAlign: 'center' }}>
+          {error}
+        </div>
+      )}
       <div style={styles.buttons}>
         <Button onClick={onCancel}>Cancel</Button>
         <Button onClick={onAddClickWithValidation}>

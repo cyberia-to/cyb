@@ -9,6 +9,7 @@ import {
   Input,
   TransactionError,
 } from 'src/components';
+import { toHex } from '@cosmjs/encoding';
 import { CHAIN_ID } from 'src/constants/config';
 import { PATTERN_CYBER } from 'src/constants/patterns';
 import { SignerClientContext } from 'src/contexts/signerClient';
@@ -120,7 +121,7 @@ function ActionBarConnect({
       const { bech32Address, pubKey, name } = await signer.keplr.getKey(
         CHAIN_ID
       );
-      const pk = Buffer.from(pubKey).toString('hex');
+      const pk = toHex(pubKey);
 
       const accounts: AccountValue = {
         bech32: bech32Address,
@@ -152,7 +153,7 @@ function ActionBarConnect({
     if (offlineSigner) {
       setSigner(offlineSigner);
       const [{ address, pubkey: pubKey }] = await offlineSigner.getAccounts();
-      const pk = Buffer.from(pubKey).toString('hex');
+      const pk = toHex(pubKey);
 
       const accounts: AccountValue = {
         pk,

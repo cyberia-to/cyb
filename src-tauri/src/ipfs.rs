@@ -1,262 +1,164 @@
 use serde::Serialize;
-use std::fs::{self, File};
-use std::io::copy;
+
+#[cfg(desktop)]
+use std::path::PathBuf;
+#[cfg(desktop)]
 use std::process::Command;
 
 #[derive(Debug, Serialize)]
 pub enum IpfsError {
-    // AlreadyRunning,
     HomeDirNotFound,
-    // CommandFailed(String),
-    ConfigError(String),
     Other(String),
 }
 
-async fn get_latest_version() -> Result<String, String> {
-    // Use the async version of reqwest
-    let response = reqwest::get("https://dist.ipfs.tech/kubo/versions")
-        .await
-        .map_err(|e| e.to_string())?;
-
-    let text = response.text().await.map_err(|e| e.to_string())?;
-
-    // Split the response into lines and filter out release candidates
-    let latest_stable = text
-        .lines()
-        .filter(|line| !line.contains("-rc")) // Exclude release candidates
-        .max() // Get the maximum version string (latest)
-        .ok_or("No stable versions found")?
-        .to_string();
-
-    Ok(latest_stable)
+/// Returns "local" on desktop (Kubo daemon) or "gateway" on mobile (cybernode)
+#[tauri::command]
+pub fn get_ipfs_mode() -> String {
+    if cfg!(desktop) {
+        "local".to_string()
+    } else {
+        "gateway".to_string()
+    }
 }
 
-fn get_ipfs_download_url(version: &str) -> Result<String, String> {
-    if cfg!(target_os = "windows") {
-        Ok(format!(
-            "https://dist.ipfs.io/kubo/{}/kubo_{}_windows-amd64.zip",
-            version,
-            version // Use the original version with 'v'
-        ))
-    } else if cfg!(target_os = "macos") {
-        if cfg!(target_arch = "x86_64") {
-            Ok(format!(
-                "https://dist.ipfs.io/kubo/{}/kubo_{}_darwin-amd64.tar.gz",
-                version,
-                version // Use the original version with 'v'
-            ))
-        } else if cfg!(target_arch = "aarch64") {
-            Ok(format!(
-                "https://dist.ipfs.io/kubo/{}/kubo_{}_darwin-arm64.tar.gz",
-                version,
-                version // Use the original version with 'v'
-            ))
+// ============================================================================
+// Desktop: full Kubo daemon lifecycle
+// ============================================================================
+
+#[cfg(desktop)]
+/// Returns the IPFS repo path (~/.cyb/ipfs-repo)
+fn get_ipfs_repo_path() -> Result<PathBuf, IpfsError> {
+    let home_dir = dirs::home_dir().ok_or(IpfsError::HomeDirNotFound)?;
+    Ok(home_dir.join(".cyb").join("ipfs-repo"))
+}
+
+#[cfg(desktop)]
+/// Resolves the bundled Kubo sidecar binary path.
+/// In production bundles, Tauri strips the target triple: binary is just "ipfs".
+/// In development, binary is in src-tauri/bin/ with -{target_triple} suffix.
+fn get_ipfs_binary_path() -> Result<PathBuf, IpfsError> {
+    let exe_dir = std::env::current_exe()
+        .map_err(|e| IpfsError::Other(format!("Cannot find current exe: {}", e)))?
+        .parent()
+        .map(|p| p.to_path_buf())
+        .ok_or_else(|| IpfsError::Other("Cannot find exe directory".into()))?;
+
+    let target_triple = get_target_triple();
+    let suffixed = format!("ipfs-{}", target_triple);
+
+    // Production bundle: Tauri strips target triple, binary is just "ipfs" next to app
+    let prod_plain = exe_dir.join("ipfs");
+    if prod_plain.exists() {
+        return Ok(prod_plain);
+    }
+
+    // Production with suffix (some Tauri versions keep it)
+    let prod_suffixed = exe_dir.join(&suffixed);
+    if prod_suffixed.exists() {
+        return Ok(prod_suffixed);
+    }
+
+    // Development: binary is in src-tauri/bin/ with suffix
+    let dev_candidates = [
+        exe_dir.join("../../bin").join(&suffixed),
+        exe_dir.join("../../../src-tauri/bin").join(&suffixed),
+    ];
+    for candidate in &dev_candidates {
+        if let Ok(canonical) = candidate.canonicalize() {
+            if canonical.exists() {
+                return Ok(canonical);
+            }
+        }
+    }
+
+    Err(IpfsError::Other(format!(
+        "Kubo binary not found. Looked for ipfs / {} in {:?}",
+        suffixed, exe_dir
+    )))
+}
+
+#[cfg(desktop)]
+fn get_target_triple() -> &'static str {
+    if cfg!(target_os = "macos") {
+        if cfg!(target_arch = "aarch64") {
+            "aarch64-apple-darwin"
         } else {
-            Err("Unsupported macOS architecture".into())
+            "x86_64-apple-darwin"
         }
     } else if cfg!(target_os = "linux") {
-        Ok(format!(
-            "https://dist.ipfs.io/kubo/{}/kubo_{}_linux-amd64.tar.gz",
-            version,
-            version // Use the original version with 'v'
-        ))
-    } else {
-        Err("Unsupported operating system".into())
-    }
-}
-
-fn get_installed_version() -> Result<String, String> {
-    // Assuming the installed version is stored in a specific file
-    let kubo_binary_path = get_ipfs_binary_path().unwrap();
-    let output = Command::new(&kubo_binary_path)
-        .arg("version")
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        // Convert stdout to a String and trim whitespace
-        let version_output = String::from_utf8_lossy(&output.stdout).trim().to_string();
-
-        // Extract the version number from the output
-        if let Some(version) = version_output.strip_prefix("ipfs version ") {
-            return Ok(format!("v{}", version)); // Format it as "v0.29.0"
+        if cfg!(target_arch = "aarch64") {
+            "aarch64-unknown-linux-gnu"
         } else {
-            return Err("Unexpected output format".into());
+            "x86_64-unknown-linux-gnu"
         }
+    } else if cfg!(target_os = "windows") {
+        "x86_64-pc-windows-msvc"
     } else {
-        Err("Failed to get installed IPFS version".into())
+        "unknown"
     }
 }
 
-pub async fn check_if_ipfs_latest_version() -> Result<bool, String> {
-    println!("Checking if IPFS is the latest version");
-
-    let latest_version = get_latest_version().await?;
-    println!("Latest Version: {}", latest_version);
-
-    let installed_version = get_installed_version()?;
-    println!("Installed Version: {}", installed_version);
-
-    Ok(installed_version == latest_version) // Compare versions
-}
-
-fn get_ipfs_binary_path() -> Result<String, IpfsError> {
-    let home_dir = dirs::home_dir().ok_or(IpfsError::HomeDirNotFound)?;
-    let cyb_dir = home_dir.join(".cyb");
-    let ipfs_binary = cyb_dir.join("kubo/ipfs"); // Adjust based on the extracted path
-
-    Ok(ipfs_binary
-        .to_str()
-        .ok_or(IpfsError::Other("Invalid path".into()))?
-        .to_string())
-}
-
-#[tauri::command]
-pub async fn download_and_extract_ipfs() -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Cannot find home directory")?;
-    let cyb_dir = home_dir.join(".cyb");
-
-    // Create the ~/.cyb directory if it doesn't exist
-    if !cyb_dir.exists() {
-        fs::create_dir_all(&cyb_dir).map_err(|e| e.to_string())?;
-    }
-
-    let version = get_latest_version().await?;
-    println!("Downloading IPFS version: {}", version);
-    let url = get_ipfs_download_url(&version)?;
-    println!("Download URL: {}", url);
-
-    let response = reqwest::get(url).await.map_err(|e| e.to_string())?;
-    let tar_path = cyb_dir.join("kubo-ipfs-binary.tar.gz");
-
-    let mut file = File::create(&tar_path).map_err(|e| e.to_string())?;
-    copy(
-        &mut response.bytes().await.map_err(|e| e.to_string())?.as_ref(),
-        &mut file,
-    )
-    .map_err(|e| e.to_string())?;
-
-    // Extract the tar.gz
-    let output = Command::new("tar")
-        .arg("-xzf")
-        .arg(tar_path.to_str().ok_or("Invalid tar path")?)
-        .arg("-C")
-        .arg(cyb_dir.to_str().ok_or("Invalid extraction directory")?)
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    if output.status.success() {
-        Ok(())
-    } else {
-        Err(String::from_utf8_lossy(&output.stderr).into())
-    }
-}
-
+#[cfg(desktop)]
 #[tauri::command]
 pub async fn start_ipfs() -> Result<(), IpfsError> {
-    println!("Starting IPFS");
-    // check if installed
-    let is_ipfs_installed = check_if_ipfs_exists()
-        .await
-        .unwrap_or(false);
-    println!("IPFS installed: {}", is_ipfs_installed);
-
-    // check if latest version (only if binary exists)
-    let is_ipfs_latest_version = if is_ipfs_installed {
-        check_if_ipfs_latest_version().await.unwrap_or(false)
-    } else {
-        false
-    };
-    println!("IPFS latest version: {}", is_ipfs_latest_version);
-
-    // if not download and extract
-    if !is_ipfs_installed || !is_ipfs_latest_version {
-        println!("Downloading and extracting IPFS");
-        match download_and_extract_ipfs().await {
-            Ok(_) => println!("IPFS downloaded and extracted successfully"),
-            Err(e) => return Err(IpfsError::Other(e)),
-        }
-        println!("IPFS downloaded and extracted successfully");
-    }
-
-    // Check if IPFS is initialized
-    let is_ipfs_initialized = is_ipfs_initialized().unwrap_or(false);
-    if !is_ipfs_initialized {
-        println!("Initializing IPFS");
-        match init_ipfs() {
-            Ok(_) => println!("IPFS initialized successfully"),
-            Err(e) => return Err(IpfsError::Other(e)),
-        }
-        println!("IPFS initialized successfully");
-    }
-
-    // Check if IPFS is already running
-    let is_running = Command::new("pgrep")
-        .arg("ipfs")
-        .output()
-        .map_err(|e| IpfsError::Other(e.to_string()))?;
-
-    if is_running.status.success() {
-        println!("IPFS is already running.");
-
-        if is_ipfs_latest_version {
-            return Ok(()); // If it's already running, don't try to start it again
-        }
-
-        // Stop the running IPFS daemon
-        stop_ipfs().map_err(|e| IpfsError::Other(e))?;
-    }
+    println!("[IPFS] Starting IPFS daemon (bundled sidecar)");
 
     let ipfs_binary = get_ipfs_binary_path()?;
-    // Start the IPFS daemon
-    Command::new(&ipfs_binary)
-        .arg("daemon")
-        .arg("--migrate=true")
-        .spawn()
-        .map_err(|e| IpfsError::Other(e.to_string()))?;
-    println!("IPFS daemon started");
+    let repo_path = get_ipfs_repo_path()?;
+    let repo_str = repo_path.to_string_lossy().to_string();
 
-    // Give IPFS a moment to start up properly
-    std::thread::sleep(std::time::Duration::from_secs(2));
+    // Ensure repo directory exists
+    let _ = std::fs::create_dir_all(&repo_path);
 
-    // Configure IPFS to allow all origins
-    let config_output1 = Command::new(&ipfs_binary)
+    // Check if IPFS is initialized
+    if !is_ipfs_initialized_inner(&ipfs_binary, &repo_str) {
+        println!("[IPFS] Initializing IPFS repo at {}", repo_str);
+        init_ipfs_inner(&ipfs_binary, &repo_str).map_err(IpfsError::Other)?;
+    }
+
+    // Configure CORS before starting daemon
+    let _ = Command::new(&ipfs_binary)
+        .env("IPFS_PATH", &repo_str)
         .arg("config")
         .arg("--json")
         .arg("API.HTTPHeaders.Access-Control-Allow-Origin")
         .arg(r#"["*"]"#)
-        .output()
-        .map_err(|e| IpfsError::Other(e.to_string()))?;
+        .output();
 
-    if !config_output1.status.success() {
-        return Err(IpfsError::ConfigError(
-            String::from_utf8_lossy(&config_output1.stderr).into(),
-        ));
-    }
-
-    // Configure IPFS to allow specific HTTP methods
-    let config_output2 = Command::new(&ipfs_binary)
+    let _ = Command::new(&ipfs_binary)
+        .env("IPFS_PATH", &repo_str)
         .arg("config")
         .arg("--json")
         .arg("API.HTTPHeaders.Access-Control-Allow-Methods")
         .arg(r#"["PUT", "POST", "GET"]"#)
-        .output()
+        .output();
+
+    // Check if already running
+    if is_ipfs_running_inner() {
+        println!("[IPFS] Daemon is already running");
+        return Ok(());
+    }
+
+    // Start the daemon
+    Command::new(&ipfs_binary)
+        .env("IPFS_PATH", &repo_str)
+        .arg("daemon")
+        .arg("--migrate=true")
+        .spawn()
         .map_err(|e| IpfsError::Other(e.to_string()))?;
 
-    if config_output2.status.success() {
-        Ok(())
-    } else {
-        Err(IpfsError::ConfigError(
-            String::from_utf8_lossy(&config_output2.stderr).into(),
-        ))
-    }
+    println!("[IPFS] Daemon spawned");
+    Ok(())
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 pub fn stop_ipfs() -> Result<(), String> {
-    let ipfs_binary = get_ipfs_binary_path().unwrap();
+    let ipfs_binary = get_ipfs_binary_path().map_err(|e| format!("{:?}", e))?;
+    let repo_path = get_ipfs_repo_path().map_err(|e| format!("{:?}", e))?;
 
     Command::new(ipfs_binary)
+        .env("IPFS_PATH", repo_path.to_string_lossy().as_ref())
         .arg("shutdown")
         .spawn()
         .map_err(|e| e.to_string())?;
@@ -264,33 +166,37 @@ pub fn stop_ipfs() -> Result<(), String> {
     Ok(())
 }
 
-#[tauri::command]
-pub async fn check_if_ipfs_exists() -> Result<bool, String> {
-    let home_dir = dirs::home_dir().ok_or("Cannot find home directory")?;
-    let cyb_dir = home_dir.join(".cyb");
-    let ipfs_binary = cyb_dir.join("kubo/ipfs"); // Adjust based on the extracted path
-    let ipfs_exists = ipfs_binary.exists();
-
-    Ok(ipfs_exists)
-}
-
+#[cfg(desktop)]
 #[tauri::command]
 pub fn is_ipfs_running() -> Result<bool, String> {
-    let output = Command::new("pgrep")
-        .arg("ipfs")
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    Ok(output.status.success())
+    Ok(is_ipfs_running_inner())
 }
 
+#[cfg(desktop)]
+fn is_ipfs_running_inner() -> bool {
+    let output = Command::new("pgrep")
+        .arg("-f")
+        .arg("ipfs daemon")
+        .output();
+
+    match output {
+        Ok(o) => o.status.success(),
+        Err(_) => false,
+    }
+}
+
+#[cfg(desktop)]
 #[tauri::command]
 pub fn init_ipfs() -> Result<(), String> {
-    let home_dir = dirs::home_dir().ok_or("Cannot find home directory")?;
-    let cyb_dir = home_dir.join(".cyb");
-    let ipfs_binary = cyb_dir.join("kubo/ipfs"); // Adjust based on the extracted path
+    let ipfs_binary = get_ipfs_binary_path().map_err(|e| format!("{:?}", e))?;
+    let repo_path = get_ipfs_repo_path().map_err(|e| format!("{:?}", e))?;
+    init_ipfs_inner(&ipfs_binary, &repo_path.to_string_lossy())
+}
 
-    let output = Command::new(&ipfs_binary)
+#[cfg(desktop)]
+fn init_ipfs_inner(ipfs_binary: &PathBuf, repo_path: &str) -> Result<(), String> {
+    let output = Command::new(ipfs_binary)
+        .env("IPFS_PATH", repo_path)
         .arg("init")
         .output()
         .map_err(|e| e.to_string())?;
@@ -298,110 +204,73 @@ pub fn init_ipfs() -> Result<(), String> {
     if output.status.success() {
         Ok(())
     } else {
-        Err(String::from_utf8_lossy(&output.stderr).into())
-    }
-}
-
-#[tauri::command]
-pub fn is_ipfs_initialized() -> Result<bool, String> {
-    let home_dir = dirs::home_dir().ok_or("Cannot find home directory")?;
-    let cyb_dir = home_dir.join(".cyb");
-    let ipfs_binary = cyb_dir.join("kubo/ipfs"); // Adjust based on the extracted path
-
-    let output = Command::new(&ipfs_binary)
-        .arg("config")
-        .arg("show")
-        .output()
-        .map_err(|e| e.to_string())?;
-
-    Ok(output.status.success())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    // use reqwest;
-
-    // async fn fetch_data() -> Result<String, reqwest::Error> {
-    //     let response = reqwest::get("https://dist.ipfs.tech/kubo/versions").await?;
-    //     let body = response.text().await?;
-    //     Ok(body)
-    // }
-
-    // #[tokio::test]
-    // async fn test_fetch_data() {
-    //     match fetch_data().await {
-    //         Ok(data) => println!("Response: {}", data),
-    //         Err(e) => eprintln!("Error fetching data: {}", e),
-    //     }
-    // }
-
-    #[tokio::test]
-    async fn test_get_latest_version() {
-        match get_latest_version().await {
-            Ok(data) => println!("Latest version: {}", data),
-            Err(e) => eprintln!("Failed fetch latest version: {}", e),
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        // "already initialized" is not an error
+        if stderr.contains("already") {
+            Ok(())
+        } else {
+            Err(stderr.into_owned())
         }
     }
+}
 
-    #[test]
-    fn test_get_ipfs_download_url() {
-        let version = "v0.32.1";
-        let url = get_ipfs_download_url(version).unwrap();
-        println!("URL: {}", url);
-        assert!(!url.is_empty());
-        assert_eq!(
-            url,
-            "https://dist.ipfs.io/kubo/v0.32.1/kubo_v0.32.1_darwin-arm64.tar.gz"
-        );
+#[cfg(desktop)]
+#[tauri::command]
+pub fn is_ipfs_initialized() -> Result<bool, String> {
+    let ipfs_binary = get_ipfs_binary_path().map_err(|e| format!("{:?}", e))?;
+    let repo_path = get_ipfs_repo_path().map_err(|e| format!("{:?}", e))?;
+    Ok(is_ipfs_initialized_inner(
+        &ipfs_binary,
+        &repo_path.to_string_lossy(),
+    ))
+}
+
+#[cfg(desktop)]
+fn is_ipfs_initialized_inner(ipfs_binary: &PathBuf, repo_path: &str) -> bool {
+    let output = Command::new(ipfs_binary)
+        .env("IPFS_PATH", repo_path)
+        .arg("config")
+        .arg("show")
+        .output();
+
+    match output {
+        Ok(o) => o.status.success(),
+        Err(_) => false,
     }
+}
 
-    #[test]
-    fn test_get_installed_version() {
-        let version = get_installed_version().unwrap();
-        assert!(!version.is_empty());
-        assert_eq!(version, "v0.29.0");
-    }
+// ============================================================================
+// Mobile: no-op stubs (IPFS uses remote gateway on mobile)
+// ============================================================================
 
-    // #[test]
-    // fn test_get_ipfs_binary_path() {
-    //     let path = get_ipfs_binary_path().unwrap();
-    //     assert!(!path.is_empty());
-    // }
+#[cfg(not(desktop))]
+#[tauri::command]
+pub async fn start_ipfs() -> Result<(), IpfsError> {
+    println!("[IPFS] Mobile platform — using remote gateway, daemon not needed");
+    Ok(())
+}
 
-    // #[test]
-    // fn test_start_ipfs() {
-    //     let result = start_ipfs();
-    //     assert!(result.is_ok());
-    // }
+#[cfg(not(desktop))]
+#[tauri::command]
+pub fn stop_ipfs() -> Result<(), String> {
+    Ok(())
+}
 
-    // #[test]
-    // fn test_stop_ipfs() {
-    //     let result = stop_ipfs();
-    //     assert!(result.is_ok());
-    // }
+#[cfg(not(desktop))]
+#[tauri::command]
+pub fn is_ipfs_running() -> Result<bool, String> {
+    // On mobile, "running" means the gateway is available (always true)
+    Ok(true)
+}
 
-    // #[test]
-    // fn test_check_ipfs() {
-    //     let result = check_ipfs();
-    //     assert!(result.is_ok());
-    // }
+#[cfg(not(desktop))]
+#[tauri::command]
+pub fn init_ipfs() -> Result<(), String> {
+    Ok(())
+}
 
-    // #[test]
-    // fn test_is_ipfs_running() {
-    //     let result = is_ipfs_running();
-    //     assert!(result.is_ok());
-    // }
-
-    // #[test]
-    // fn test_init_ipfs() {
-    //     let result = init_ipfs();
-    //     assert!(result.is_ok());
-    // }
-
-    // #[test]
-    // fn test_is_ipfs_initialized() {
-    //     let result = is_ipfs_initialized();
-    //     assert!(result.is_ok());
-    // }
+#[cfg(not(desktop))]
+#[tauri::command]
+pub fn is_ipfs_initialized() -> Result<bool, String> {
+    Ok(true)
 }

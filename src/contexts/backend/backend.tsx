@@ -126,10 +126,25 @@ function BackendProvider({ children }: { children: React.ReactNode }) {
     useState<Option<Observable<EmbeddingApi>>>(undefined);
   // const embeddingApiRef = useRef<Observable<EmbeddingApi>>();
   useEffect(() => {
-    // On mobile Tauri, skip all heavy backend initialization
-    // (IPFS, CozoDb, sync loops, ML embeddings, Rune engine)
+    // On mobile Tauri, start only IPFS (remote gateway) — skip CozoDb, ML, Rune, sync
     if (isMobileTauri) {
-      console.log('[Backend] Mobile Tauri — skipping heavy backend services');
+      console.log('[Backend] Mobile Tauri — starting IPFS with remote gateway');
+
+      // Broadcast channel receives service status updates from background worker
+      const channel = new RxBroadcastChannelListener(dispatch);
+
+      // Connect to remote IPFS gateway (io.cybernode.ai)
+      backgroundWorkerInstance.ipfsApi
+        .start(getIpfsOpts())
+        .then(() => {
+          setIpfsError(null);
+          console.log('[Backend] Mobile IPFS connected');
+        })
+        .catch((err) => {
+          setIpfsError(err);
+          console.error('[Backend] Mobile IPFS failed:', err);
+        });
+
       return;
     }
 

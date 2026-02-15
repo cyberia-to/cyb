@@ -8,6 +8,7 @@
 .PHONY: macos linux ios android
 .PHONY: install-ios install-android
 .PHONY: test lint icons
+.PHONY: download-kubo
 
 # ============================================================================
 # Configuration
@@ -17,6 +18,7 @@ SHELL := /bin/bash
 PROJECT_ROOT := $(shell pwd)
 TAURI_DIR := $(PROJECT_ROOT)/src-tauri
 UHASH_ROOT := $(realpath $(PROJECT_ROOT)/../universal-hash)
+KUBO_VERSION ?= v0.34.1
 
 # OS detection
 UNAME_S := $(shell uname -s)
@@ -186,7 +188,7 @@ dev: setup-node ## Start web dev server (browser, port 3001)
 	@echo -e "$(BLUE)[Dev]$(NC) Starting web dev server at https://localhost:3001"
 	@yarn start
 
-dev-tauri: setup-node setup-rust ## Start Tauri dev server (native desktop)
+dev-tauri: setup-node setup-rust download-kubo ## Start Tauri dev server (native desktop)
 	@echo -e "$(BLUE)[Dev]$(NC) Starting Tauri dev server..."
 	@npx @tauri-apps/cli dev
 
@@ -221,6 +223,15 @@ wasm-copy: ## Copy WASM artifacts to node_modules/uhash-web
 	fi
 
 # ============================================================================
+# Kubo (IPFS) Sidecar
+# ============================================================================
+
+download-kubo: ## Download Kubo binary for current platform
+	@echo -e "$(BLUE)[Kubo]$(NC) Downloading Kubo $(KUBO_VERSION)..."
+	@$(TAURI_DIR)/scripts/download-kubo.sh $(KUBO_VERSION)
+	@echo -e "$(GREEN)[Done]$(NC) Kubo binary ready"
+
+# ============================================================================
 # Build Targets
 # ============================================================================
 
@@ -231,12 +242,12 @@ build-web: setup-node ## Build web production bundle
 	@yarn build
 	@echo -e "$(GREEN)[Done]$(NC) Web: $(PROJECT_ROOT)/build/"
 
-build-tauri: setup-node setup-rust ## Build Tauri production bundle (current platform)
+build-tauri: setup-node setup-rust download-kubo ## Build Tauri production bundle (current platform)
 	@echo -e "$(BLUE)[Build]$(NC) Tauri production..."
 	@npx @tauri-apps/cli build
 	@echo -e "$(GREEN)[Done]$(NC) Tauri: $(TAURI_DIR)/target/release/bundle/"
 
-macos: setup-node setup-rust ## Build macOS app (.dmg)
+macos: setup-node setup-rust download-kubo ## Build macOS app (.dmg)
 ifdef IS_MACOS
 	@echo -e "$(BLUE)[Build]$(NC) macOS..."
 	@npx @tauri-apps/cli build
@@ -245,7 +256,7 @@ else
 	@echo -e "$(RED)[Error]$(NC) macOS builds require macOS"
 endif
 
-linux: setup-node setup-rust setup-linux ## Build Linux app (.deb, .AppImage)
+linux: setup-node setup-rust setup-linux download-kubo ## Build Linux app (.deb, .AppImage)
 ifdef IS_LINUX
 	@echo -e "$(BLUE)[Build]$(NC) Linux..."
 	@npx @tauri-apps/cli build
@@ -255,7 +266,7 @@ else
 	@echo -e "$(RED)[Error]$(NC) Linux builds require Linux"
 endif
 
-ios: setup-node setup-rust setup-ios ## Build iOS app (macOS only)
+ios: setup-node setup-rust setup-ios ## Build iOS app (macOS only, no Kubo — uses gateway)
 ifdef IS_MACOS
 	@echo -e "$(BLUE)[Build]$(NC) iOS..."
 	@cd $(TAURI_DIR) && [ -d "gen/apple" ] || npx @tauri-apps/cli ios init
@@ -270,7 +281,7 @@ else
 	@echo -e "$(RED)[Error]$(NC) iOS builds require macOS with Xcode"
 endif
 
-android: setup-node setup-rust setup-android ## Build Android app (.apk, aarch64 only)
+android: setup-node setup-rust setup-android ## Build Android app (.apk, aarch64 only, no Kubo — uses gateway)
 	@echo -e "$(BLUE)[Build]$(NC) Android..."
 	@cd $(TAURI_DIR) && [ -d "gen/android" ] || \
 		JAVA_HOME=$(JAVA_HOME) ANDROID_HOME=$(ANDROID_HOME) NDK_HOME=$(NDK_HOME) \
@@ -317,95 +328,17 @@ install-android: ## Install Android app to connected device
 # Asset Targets
 # ============================================================================
 
-ICON_SVG ?= $(PROJECT_ROOT)/src/image/robot.svg
-ICON_BG ?= 1a1a2e
+ICON_PNG ?= $(TAURI_DIR)/icons/icon.png
 
-icons: ## Generate app icons from SVG (usage: make icons [ICON_SVG=path/to.svg] [ICON_BG=hex])
-	@echo -e "$(BLUE)[Icons]$(NC) Generating from $(ICON_SVG)..."
-	@if [ ! -f "$(ICON_SVG)" ]; then \
-		echo -e "$(RED)[Error]$(NC) SVG not found: $(ICON_SVG)"; \
+icons: ## Generate all app icons using Tauri's icon generator (usage: make icons [ICON_PNG=path/to/1024x1024.png])
+	@echo -e "$(BLUE)[Icons]$(NC) Generating from $(ICON_PNG)..."
+	@if [ ! -f "$(ICON_PNG)" ]; then \
+		echo -e "$(RED)[Error]$(NC) Source PNG not found: $(ICON_PNG)"; \
+		echo -e "$(YELLOW)[Hint]$(NC) Provide a 1024x1024 PNG: make icons ICON_PNG=path/to/icon.png"; \
 		exit 1; \
 	fi
-	@python3 -c "from PIL import Image; print('Pillow OK')" 2>/dev/null || \
-		(echo -e "$(YELLOW)[Setup]$(NC) Installing Pillow..." && pip3 install Pillow >/dev/null)
-ifdef IS_MACOS
-	@# Render SVG to PNG using macOS Quick Look
-	@rm -f /tmp/_cyb_icon_render.png
-	@qlmanage -t -s 1024 -o /tmp "$(ICON_SVG)" >/dev/null 2>&1
-	@mv "/tmp/$$(basename $(ICON_SVG)).png" /tmp/_cyb_icon_render.png
-	@python3 -c "\
-	from PIL import Image; \
-	import os; \
-	img = Image.open('/tmp/_cyb_icon_render.png').convert('RGBA'); \
-	px = img.load(); \
-	w, h = img.size; \
-	[px.__setitem__((x,y), (px[x,y][0],px[x,y][1],px[x,y][2],0)) for y in range(h) for x in range(w) if px[x,y][0]>250 and px[x,y][1]>250 and px[x,y][2]>250]; \
-	bbox = img.getbbox(); \
-	robot = img.crop(bbox) if bbox else img; \
-	bg = tuple(int('$(ICON_BG)'[i:i+2],16) for i in (0,2,4)) + (255,); \
-	canvas = Image.new('RGBA', (1024,1024), bg); \
-	tw = int(1024*0.75); ratio = tw/robot.width; th = int(robot.height*ratio); \
-	r = robot.resize((tw,th), Image.LANCZOS); \
-	canvas.paste(r, ((1024-tw)//2, (1024-th)//2), r); \
-	d = '$(TAURI_DIR)/icons'; \
-	sizes = {'icon.png':512,'32x32.png':32,'128x128.png':128,'128x128@2x.png':256, \
-		'Square30x30Logo.png':30,'Square44x44Logo.png':44,'Square71x71Logo.png':71, \
-		'Square89x89Logo.png':89,'Square107x107Logo.png':107,'Square142x142Logo.png':142, \
-		'Square150x150Logo.png':150,'Square284x284Logo.png':284,'Square310x310Logo.png':310, \
-		'StoreLogo.png':50}; \
-	[canvas.resize((s,s),Image.LANCZOS).save(os.path.join(d,n),'PNG') for n,s in sizes.items()]; \
-	canvas.save(os.path.join(d,'_master.png'),'PNG'); \
-	canvas.save(os.path.join(d,'icon.ico'),format='ICO',sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)]); \
-	print('  PNGs + .ico generated')"
-	@# Generate .icns using macOS iconutil
-	@ICONSET=/tmp/_cyb_icon.iconset && rm -rf $$ICONSET && mkdir -p $$ICONSET && \
-		MASTER=$(TAURI_DIR)/icons/_master.png && \
-		sips -z 16 16     $$MASTER --out $$ICONSET/icon_16x16.png >/dev/null && \
-		sips -z 32 32     $$MASTER --out $$ICONSET/icon_16x16@2x.png >/dev/null && \
-		sips -z 32 32     $$MASTER --out $$ICONSET/icon_32x32.png >/dev/null && \
-		sips -z 64 64     $$MASTER --out $$ICONSET/icon_32x32@2x.png >/dev/null && \
-		sips -z 128 128   $$MASTER --out $$ICONSET/icon_128x128.png >/dev/null && \
-		sips -z 256 256   $$MASTER --out $$ICONSET/icon_128x128@2x.png >/dev/null && \
-		sips -z 256 256   $$MASTER --out $$ICONSET/icon_256x256.png >/dev/null && \
-		sips -z 512 512   $$MASTER --out $$ICONSET/icon_256x256@2x.png >/dev/null && \
-		sips -z 512 512   $$MASTER --out $$ICONSET/icon_512x512.png >/dev/null && \
-		cp $$MASTER $$ICONSET/icon_512x512@2x.png && \
-		iconutil -c icns $$ICONSET -o $(TAURI_DIR)/icons/icon.icns && \
-		rm -rf $$ICONSET
-	@rm -f $(TAURI_DIR)/icons/_master.png /tmp/_cyb_icon_render.png
+	@npx @tauri-apps/cli icon "$(ICON_PNG)" --output $(TAURI_DIR)/icons
 	@echo -e "$(GREEN)[Done]$(NC) Icons generated in $(TAURI_DIR)/icons/"
-else
-	@# Linux: use rsvg-convert (from librsvg2-bin)
-	@command -v rsvg-convert >/dev/null || (echo -e "$(YELLOW)[Setup]$(NC) Installing rsvg-convert..." && \
-		sudo apt-get install -y librsvg2-bin >/dev/null)
-	@rsvg-convert -w 1024 -h 1024 "$(ICON_SVG)" -o /tmp/_cyb_icon_render.png
-	@python3 -c "\
-	from PIL import Image; \
-	import os; \
-	img = Image.open('/tmp/_cyb_icon_render.png').convert('RGBA'); \
-	px = img.load(); \
-	w, h = img.size; \
-	[px.__setitem__((x,y), (px[x,y][0],px[x,y][1],px[x,y][2],0)) for y in range(h) for x in range(w) if px[x,y][0]>250 and px[x,y][1]>250 and px[x,y][2]>250]; \
-	bbox = img.getbbox(); \
-	robot = img.crop(bbox) if bbox else img; \
-	bg = tuple(int('$(ICON_BG)'[i:i+2],16) for i in (0,2,4)) + (255,); \
-	canvas = Image.new('RGBA', (1024,1024), bg); \
-	tw = int(1024*0.75); ratio = tw/robot.width; th = int(robot.height*ratio); \
-	r = robot.resize((tw,th), Image.LANCZOS); \
-	canvas.paste(r, ((1024-tw)//2, (1024-th)//2), r); \
-	d = '$(TAURI_DIR)/icons'; \
-	sizes = {'icon.png':512,'32x32.png':32,'128x128.png':128,'128x128@2x.png':256, \
-		'Square30x30Logo.png':30,'Square44x44Logo.png':44,'Square71x71Logo.png':71, \
-		'Square89x89Logo.png':89,'Square107x107Logo.png':107,'Square142x142Logo.png':142, \
-		'Square150x150Logo.png':150,'Square284x284Logo.png':284,'Square310x310Logo.png':310, \
-		'StoreLogo.png':50}; \
-	[canvas.resize((s,s),Image.LANCZOS).save(os.path.join(d,n),'PNG') for n,s in sizes.items()]; \
-	canvas.save(os.path.join(d,'icon.ico'),format='ICO',sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)]); \
-	print('  PNGs + .ico generated')"
-	@rm -f /tmp/_cyb_icon_render.png
-	@echo -e "$(YELLOW)[Note]$(NC) .icns not generated (requires macOS iconutil)"
-	@echo -e "$(GREEN)[Done]$(NC) Icons generated in $(TAURI_DIR)/icons/"
-endif
 
 # ============================================================================
 # Quality Targets

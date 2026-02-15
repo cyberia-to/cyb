@@ -37,5 +37,8 @@ storybook-static
 # WASM build artifacts (installed via uhash-web npm package)
 public/wasm
 
+# Kubo IPFS sidecar binaries (downloaded via make download-kubo)
+src-tauri/bin/
+
 # Claude Code
 .claude

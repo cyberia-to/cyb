@@ -26,16 +26,19 @@ tauri-plugin-shell = "2"
 tokio = { version = "1.40.0", features = ["full"] }
 uhash-core = { git = "https://github.com/cyberia-to/universal-hash", rev = "2fc7b15" }
 hex = "0.4"
+dirs = "5.0.1"
 
-# Desktop-only dependencies (IPFS, CozoDB, warp server, reqwest)
+# Desktop-only dependencies (CozoDB, warp server)
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]
 reqwest = { version = "0.12.7", features = ["blocking", "json"] }
 futures = "0.3"
-ipfs-api = "0.17.0"
-ipfs-api-backend-hyper = "0.6"
-dirs = "5.0.1"
 cozo = { version = "0.7.6", features = ["storage-rocksdb"] }
 warp = "0.3.7"
+
+[profile.release]
+lto = "fat"
+codegen-units = 1
+opt-level = 3
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]

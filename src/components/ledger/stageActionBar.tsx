@@ -2,6 +2,7 @@ import LocalizedStrings from 'react-localization';
 import { Link } from 'react-router-dom';
 import { Pane } from '@cybercongress/gravity';
 import { useBackend } from 'src/contexts/backend/backend';
+import { CHAIN_ID, BASE_DENOM } from 'src/constants/config';
 import { ConnectMethod } from 'src/pages/Keys/ActionBar/types';
 import { KEY_TYPE } from 'src/pages/Keys/types';
 import { routes } from 'src/routes';

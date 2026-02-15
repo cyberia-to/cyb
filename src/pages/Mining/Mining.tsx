@@ -198,6 +198,21 @@ function Mining() {
         );
 
         console.log('[Mining] Proof submitted! TX:', result.transactionHash);
+
+        // Extract actual reward from wasm event (not estimate)
+        let actualReward = 0;
+        const wasmEvent = result.events?.find(
+          (e: { type: string }) => e.type === 'wasm'
+        );
+        if (wasmEvent) {
+          const rewardAttr = wasmEvent.attributes?.find(
+            (a: { key: string }) => a.key === 'reward'
+          );
+          if (rewardAttr?.value) {
+            actualReward = Number(rewardAttr.value) / 1_000_000;
+          }
+        }
+
         setProofLog((prev) => [
           {
             hash: proof.hash,
@@ -208,7 +223,7 @@ function Mining() {
           ...prev,
         ]);
         refreshBalance();
-        setSessionLiMined((prev) => prev + rewardPerProof);
+        setSessionLiMined((prev) => prev + actualReward);
       } catch (err: any) {
         console.error('[Mining] Submit failed:', err);
         setProofLog((prev) => [
@@ -224,7 +239,7 @@ function Mining() {
         setSubmitting(false);
       }
     },
-    [signer, signingClient, address, refreshBalance, rewardPerProof]
+    [signer, signingClient, address, refreshBalance]
   );
 
   // Poll mining status and drain proof queue

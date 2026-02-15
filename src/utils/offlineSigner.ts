@@ -34,3 +34,10 @@ export const getOfflineSigner = (mnemonic: string, network?: string) =>
       ? networkList[network].prefix
       : defaultNetworks.bostrom.BECH32_PREFIX,
   });
+
+export async function generateMnemonic(): Promise<string> {
+  const wallet = await DirectSecp256k1HdWallet.generate(12, {
+    prefix: defaultNetworks.bostrom.BECH32_PREFIX,
+  });
+  return wallet.mnemonic;
+}
