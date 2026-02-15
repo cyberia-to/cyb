@@ -78,17 +78,29 @@ type Proof = { hash: string; nonce: number; timestamp: number };
 // Min seconds between submissions (roughly one Bostrom block)
 const SUBMIT_COOLDOWN_MS = 6_000;
 
-const ACTIVATION_URL = 'https://bostrom.cybernode.ai/activate';
+const RELAY_URL = 'https://bostrom.cybernode.ai/relay';
 
-async function activateAccount(addr: string): Promise<boolean> {
+async function relayProof(
+  proof: Proof,
+  minerAddress: string
+): Promise<string | null> {
   try {
-    const res = await fetch(`${ACTIVATION_URL}?address=${addr}`);
+    const res = await fetch(RELAY_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        hash: proof.hash,
+        nonce: Number(proof.nonce),
+        timestamp: Number(proof.timestamp),
+        miner_address: minerAddress,
+      }),
+    });
     const data = await res.json();
-    console.log('[Mining] Activation result:', data);
-    return data.ok === true;
+    console.log('[Mining] Relay result:', data);
+    return data.ok ? data.tx_hash : null;
   } catch (err) {
-    console.error('[Mining] Activation failed:', err);
-    return false;
+    console.error('[Mining] Relay failed:', err);
+    return null;
   }
 }
 
@@ -202,8 +214,8 @@ function Mining() {
       const msg = {
         submit_proof: {
           hash: proof.hash,
-          nonce: proof.nonce,
-          timestamp: proof.timestamp,
+          nonce: Number(proof.nonce),
+          timestamp: Number(proof.timestamp),
         },
       };
 
@@ -222,44 +234,58 @@ function Mining() {
           ''
         );
       } catch (executeErr: any) {
-        // New accounts don't exist on-chain yet — activate then retry
+        // New accounts don't exist on-chain yet — relay the proof instead
         if (executeErr?.message?.includes('does not exist on chain')) {
-          console.log('[Mining] Account not on chain, activating...');
-          const activated = await activateAccount(account.address);
-          if (activated) {
-            // Wait for activation tx to be included in a block
+          console.log('[Mining] Account not on chain, relaying proof...');
+          const txHash = await relayProof(proof, account.address);
+          if (txHash) {
+            console.log('[Mining] Proof relayed! TX:', txHash);
+            // Wait for relay TX to be included (creates account via LI mint)
             await new Promise((r) => setTimeout(r, 7000));
-            // Retry with normal execute
-            result = await signingClient.execute(
-              account.address,
-              UHASH_CONTRACT,
-              msg,
-              Soft3MessageFactory.fee(8),
-              ''
-            );
-          } else {
-            throw new Error('Account activation failed');
+            // Return early — proof was already submitted via relay
+            setProofLog((prev) => [
+              {
+                hash: proof.hash,
+                nonce: proof.nonce,
+                txHash,
+                timestamp: Date.now(),
+              },
+              ...prev,
+            ]);
+            refreshBalance();
+            setSessionLiMined((prev) => prev + (rewardPerProof || 0));
+            return;
           }
-        } else {
-          throw executeErr;
+          throw new Error('Proof relay failed — account does not exist');
         }
+        throw executeErr;
       }
 
-      console.log('[Mining] Proof submitted! TX:', result.transactionHash);
+      console.log('[Mining] Proof submitted! TX:', result.transactionHash,
+        'events:', result.events?.length, 'types:', result.events?.map((e: any) => e.type));
 
       // Extract actual reward from wasm event
       let actualReward = 0;
-      const wasmEvent = result.events?.find(
-        (e: { type: string }) => e.type === 'wasm'
-      );
-      if (wasmEvent) {
-        const rewardAttr = wasmEvent.attributes?.find(
-          (a: { key: string }) => a.key === 'reward'
+      if (result.events) {
+        const wasmEvent = result.events.find(
+          (e: { type: string }) => e.type === 'wasm'
         );
-        if (rewardAttr?.value) {
-          actualReward = Number(rewardAttr.value) / 1_000_000;
+        if (wasmEvent) {
+          console.log('[Mining] wasm attrs:', wasmEvent.attributes?.map(
+            (a: any) => `${a.key}=${a.value}`));
+          const rewardAttr = wasmEvent.attributes?.find(
+            (a: { key: string }) => a.key === 'reward'
+          );
+          if (rewardAttr?.value) {
+            actualReward = Number(rewardAttr.value) / 1_000_000;
+          }
         }
       }
+      // Fallback: use contract estimate if events didn't have reward
+      if (actualReward === 0) {
+        actualReward = rewardPerProof || 0;
+      }
+      console.log('[Mining] reward:', actualReward);
 
       setProofLog((prev) => [
         {
@@ -273,7 +299,7 @@ function Mining() {
       refreshBalance();
       setSessionLiMined((prev) => prev + actualReward);
     },
-    [signer, signingClient, address, refreshBalance]
+    [signer, signingClient, address, refreshBalance, rewardPerProof]
   );
 
   // Process the proof queue: pick best proof, wait for cooldown, submit sequentially
@@ -392,7 +418,7 @@ function Mining() {
       try {
         const status = (await invoke('get_mining_status')) as MiningStatus;
         if (cancelled) return;
-        if (status.mining || status.hashrate > 0) {
+        if (status.mining) {
           console.log('[Mining] Detected active mining on mount, resuming UI');
           setMiningStatus(status);
           setAutoMining(true);
@@ -474,7 +500,7 @@ function Mining() {
           <div className={styles.statsGrid}>
             <StatCard
               label="LI Mined"
-              value={sessionLiMined.toFixed(1)}
+              value={sessionLiMined < 0.1 ? sessionLiMined.toFixed(4) : sessionLiMined.toFixed(2)}
               suffix="LI"
             />
             <StatCard
