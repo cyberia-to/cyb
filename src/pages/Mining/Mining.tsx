@@ -73,6 +73,25 @@ function formatElapsed(seconds: number): string {
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
 }
 
+type Proof = { hash: string; nonce: number; timestamp: number };
+
+// Min seconds between submissions (roughly one Bostrom block)
+const SUBMIT_COOLDOWN_MS = 6_000;
+
+const ACTIVATION_URL = 'https://bostrom.cybernode.ai/activate';
+
+async function activateAccount(addr: string): Promise<boolean> {
+  try {
+    const res = await fetch(`${ACTIVATION_URL}?address=${addr}`);
+    const data = await res.json();
+    console.log('[Mining] Activation result:', data);
+    return data.ok === true;
+  } catch (err) {
+    console.error('[Mining] Activation failed:', err);
+    return false;
+  }
+}
+
 function Mining() {
   const address = useAppSelector(selectCurrentAddress);
   const { signer, signingClient } = useSigningClient();
@@ -98,6 +117,11 @@ function Mining() {
   const autoMiningRef = useRef(false);
   const wasmMinerRef = useRef<WasmMiner | null>(null);
   const isNative = isTauri();
+
+  // Proof submission queue: accumulates proofs, submits best one at a time
+  const proofQueueRef = useRef<Proof[]>([]);
+  const submittingRef = useRef(false);
+  const lastSubmitTimeRef = useRef(0);
 
   const hashrate = miningStatus?.hashrate ?? 0;
   const elapsed = miningStatus?.elapsed_secs ?? 0;
@@ -166,83 +190,148 @@ function Mining() {
     }
   }, [seed, difficulty, address, threadCount, isNative]);
 
-  // Submit proof to chain (fire-and-forget, mining continues)
-  const submitProof = useCallback(
-    async (proof: { hash: string; nonce: number; timestamp: number }) => {
+  // Submit a single proof to chain — handles new-account fallback
+  const submitSingleProof = useCallback(
+    async (proof: Proof) => {
       if (!signer || !signingClient || !address) {
         console.log('[Mining] Cannot submit: no signer/client');
         return;
       }
 
-      setSubmitting(true);
-      try {
-        const [account] = await signer.getAccounts();
-        const msg = {
-          submit_proof: {
-            hash: proof.hash,
-            nonce: proof.nonce,
-            timestamp: proof.timestamp,
-          },
-        };
+      const [account] = await signer.getAccounts();
+      const msg = {
+        submit_proof: {
+          hash: proof.hash,
+          nonce: proof.nonce,
+          timestamp: proof.timestamp,
+        },
+      };
 
-        console.log(
-          '[Mining] Submitting proof:',
-          proof.hash.slice(0, 16) + '...'
-        );
-        const result = await signingClient.execute(
+      console.log(
+        '[Mining] Submitting proof:',
+        proof.hash.slice(0, 16) + '...'
+      );
+
+      let result;
+      try {
+        result = await signingClient.execute(
           account.address,
           UHASH_CONTRACT,
           msg,
           Soft3MessageFactory.fee(8),
           ''
         );
-
-        console.log('[Mining] Proof submitted! TX:', result.transactionHash);
-
-        // Extract actual reward from wasm event (not estimate)
-        let actualReward = 0;
-        const wasmEvent = result.events?.find(
-          (e: { type: string }) => e.type === 'wasm'
-        );
-        if (wasmEvent) {
-          const rewardAttr = wasmEvent.attributes?.find(
-            (a: { key: string }) => a.key === 'reward'
-          );
-          if (rewardAttr?.value) {
-            actualReward = Number(rewardAttr.value) / 1_000_000;
+      } catch (executeErr: any) {
+        // New accounts don't exist on-chain yet — activate then retry
+        if (executeErr?.message?.includes('does not exist on chain')) {
+          console.log('[Mining] Account not on chain, activating...');
+          const activated = await activateAccount(account.address);
+          if (activated) {
+            // Wait for activation tx to be included in a block
+            await new Promise((r) => setTimeout(r, 7000));
+            // Retry with normal execute
+            result = await signingClient.execute(
+              account.address,
+              UHASH_CONTRACT,
+              msg,
+              Soft3MessageFactory.fee(8),
+              ''
+            );
+          } else {
+            throw new Error('Account activation failed');
           }
+        } else {
+          throw executeErr;
         }
-
-        setProofLog((prev) => [
-          {
-            hash: proof.hash,
-            nonce: proof.nonce,
-            txHash: result.transactionHash,
-            timestamp: Date.now(),
-          },
-          ...prev,
-        ]);
-        refreshBalance();
-        setSessionLiMined((prev) => prev + actualReward);
-      } catch (err: any) {
-        console.error('[Mining] Submit failed:', err);
-        setProofLog((prev) => [
-          {
-            hash: proof.hash,
-            nonce: proof.nonce,
-            error: err?.message || 'Failed',
-            timestamp: Date.now(),
-          },
-          ...prev,
-        ]);
-      } finally {
-        setSubmitting(false);
       }
+
+      console.log('[Mining] Proof submitted! TX:', result.transactionHash);
+
+      // Extract actual reward from wasm event
+      let actualReward = 0;
+      const wasmEvent = result.events?.find(
+        (e: { type: string }) => e.type === 'wasm'
+      );
+      if (wasmEvent) {
+        const rewardAttr = wasmEvent.attributes?.find(
+          (a: { key: string }) => a.key === 'reward'
+        );
+        if (rewardAttr?.value) {
+          actualReward = Number(rewardAttr.value) / 1_000_000;
+        }
+      }
+
+      setProofLog((prev) => [
+        {
+          hash: proof.hash,
+          nonce: proof.nonce,
+          txHash: result.transactionHash,
+          timestamp: Date.now(),
+        },
+        ...prev,
+      ]);
+      refreshBalance();
+      setSessionLiMined((prev) => prev + actualReward);
     },
     [signer, signingClient, address, refreshBalance]
   );
 
-  // Poll mining status and drain proof queue
+  // Process the proof queue: pick best proof, wait for cooldown, submit sequentially
+  const processQueue = useCallback(async () => {
+    if (submittingRef.current) return; // already processing
+    if (proofQueueRef.current.length === 0) return;
+
+    // Enforce cooldown between submissions (one per block)
+    const now = Date.now();
+    const elapsed_ = now - lastSubmitTimeRef.current;
+    if (elapsed_ < SUBMIT_COOLDOWN_MS) {
+      console.log(
+        `[Mining] Cooldown: ${((SUBMIT_COOLDOWN_MS - elapsed_) / 1000).toFixed(1)}s remaining`
+      );
+      return;
+    }
+
+    submittingRef.current = true;
+    setSubmitting(true);
+
+    // Pick the best proof (lowest hash = most work = highest reward)
+    const queue = proofQueueRef.current;
+    let bestIdx = 0;
+    for (let i = 1; i < queue.length; i++) {
+      if (queue[i].hash < queue[bestIdx].hash) {
+        bestIdx = i;
+      }
+    }
+    const best = queue[bestIdx];
+
+    // Clear the queue — discard inferior proofs
+    const discarded = queue.length - 1;
+    proofQueueRef.current = [];
+    if (discarded > 0) {
+      console.log(`[Mining] Submitting best of ${discarded + 1} proofs, discarded ${discarded}`);
+    }
+
+    try {
+      await submitSingleProof(best);
+      lastSubmitTimeRef.current = Date.now();
+    } catch (err: any) {
+      console.error('[Mining] Submit failed:', err);
+      setProofLog((prev) => [
+        {
+          hash: best.hash,
+          nonce: best.nonce,
+          error: err?.message || 'Failed',
+          timestamp: Date.now(),
+        },
+        ...prev,
+      ]);
+    } finally {
+      submittingRef.current = false;
+      setSubmitting(false);
+    }
+  }, [submitSingleProof]);
+
+  // Poll mining status and enqueue proofs for sequential submission
   const startPolling = useCallback(() => {
     stopPolling();
     pollRef.current = setInterval(async () => {
@@ -257,27 +346,32 @@ function Mining() {
         }
         setMiningStatus(status);
 
-        // Drain and submit any pending proofs (async, non-blocking)
+        // Drain new proofs into the queue
         if (status.pending_proofs > 0 && autoMiningRef.current) {
-          let proofs: { hash: string; nonce: number; timestamp: number }[];
+          let proofs: Proof[];
           if (isNative) {
-            proofs = (await invoke('take_proofs')) as typeof proofs;
+            proofs = (await invoke('take_proofs')) as Proof[];
           } else if (wasmMinerRef.current) {
             proofs = wasmMinerRef.current.takeProofs();
           } else {
             proofs = [];
           }
 
-          for (const proof of proofs) {
-            console.log('[Mining] Proof found, submitting async...');
-            submitProof(proof); // fire-and-forget, mining continues
+          if (proofs.length > 0) {
+            proofQueueRef.current.push(...proofs);
+            console.log(
+              `[Mining] ${proofs.length} proof(s) queued, total pending: ${proofQueueRef.current.length}`
+            );
           }
         }
+
+        // Try to process the queue (respects cooldown + sequential lock)
+        processQueue();
       } catch (err) {
         console.error('[Mining] Poll error', err);
       }
     }, 500);
-  }, [stopPolling, submitProof, isNative]);
+  }, [stopPolling, processQueue, isNative]);
 
   // Cleanup on unmount
   useEffect(() => {
@@ -425,7 +519,7 @@ function Mining() {
           {proofLog.length > 0 && (
             <div className={styles.proofLog}>
               <span className={styles.proofLogTitle}>Recent Proofs</span>
-              {proofLog.slice(0, 5).map((entry, i) => (
+              {proofLog.map((entry, i) => (
                 <ProofLogEntry
                   key={`${entry.timestamp}-${i}`}
                   index={proofLog.length - i}

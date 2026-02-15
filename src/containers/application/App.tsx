@@ -113,7 +113,11 @@ function App() {
   }, [location.pathname, dispatch]);
 
   useEffect(() => {
-    if (ipfsError && !location.pathname.includes('/drive')) {
+    if (
+      ipfsError &&
+      !location.pathname.includes('/drive') &&
+      !location.pathname.includes('/mining')
+    ) {
       adviserContext.setAdviser(
         <p>
           Could not connect to the IPFS API <br />
