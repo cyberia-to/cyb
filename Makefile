@@ -7,7 +7,7 @@
 .PHONY: wasm wasm-build wasm-copy
 .PHONY: macos linux ios android
 .PHONY: install-ios install-android
-.PHONY: test lint
+.PHONY: test lint icons
 
 # ============================================================================
 # Configuration
@@ -62,6 +62,9 @@ help: ## Show this help
 	@echo ""
 	@echo "Install:"
 	@grep -E '^install[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}'
+	@echo ""
+	@echo "Assets:"
+	@grep -E '^icons:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Quality:"
 	@grep -E '^(test|lint|clean):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}'
@@ -309,6 +312,100 @@ install-android: ## Install Android app to connected device
 	else \
 		echo -e "$(RED)[Error]$(NC) Android APK not found. Run 'make android' first."; \
 	fi
+
+# ============================================================================
+# Asset Targets
+# ============================================================================
+
+ICON_SVG ?= $(PROJECT_ROOT)/src/image/robot.svg
+ICON_BG ?= 1a1a2e
+
+icons: ## Generate app icons from SVG (usage: make icons [ICON_SVG=path/to.svg] [ICON_BG=hex])
+	@echo -e "$(BLUE)[Icons]$(NC) Generating from $(ICON_SVG)..."
+	@if [ ! -f "$(ICON_SVG)" ]; then \
+		echo -e "$(RED)[Error]$(NC) SVG not found: $(ICON_SVG)"; \
+		exit 1; \
+	fi
+	@python3 -c "from PIL import Image; print('Pillow OK')" 2>/dev/null || \
+		(echo -e "$(YELLOW)[Setup]$(NC) Installing Pillow..." && pip3 install Pillow >/dev/null)
+ifdef IS_MACOS
+	@# Render SVG to PNG using macOS Quick Look
+	@rm -f /tmp/_cyb_icon_render.png
+	@qlmanage -t -s 1024 -o /tmp "$(ICON_SVG)" >/dev/null 2>&1
+	@mv "/tmp/$$(basename $(ICON_SVG)).png" /tmp/_cyb_icon_render.png
+	@python3 -c "\
+	from PIL import Image; \
+	import os; \
+	img = Image.open('/tmp/_cyb_icon_render.png').convert('RGBA'); \
+	px = img.load(); \
+	w, h = img.size; \
+	[px.__setitem__((x,y), (px[x,y][0],px[x,y][1],px[x,y][2],0)) for y in range(h) for x in range(w) if px[x,y][0]>250 and px[x,y][1]>250 and px[x,y][2]>250]; \
+	bbox = img.getbbox(); \
+	robot = img.crop(bbox) if bbox else img; \
+	bg = tuple(int('$(ICON_BG)'[i:i+2],16) for i in (0,2,4)) + (255,); \
+	canvas = Image.new('RGBA', (1024,1024), bg); \
+	tw = int(1024*0.75); ratio = tw/robot.width; th = int(robot.height*ratio); \
+	r = robot.resize((tw,th), Image.LANCZOS); \
+	canvas.paste(r, ((1024-tw)//2, (1024-th)//2), r); \
+	d = '$(TAURI_DIR)/icons'; \
+	sizes = {'icon.png':512,'32x32.png':32,'128x128.png':128,'128x128@2x.png':256, \
+		'Square30x30Logo.png':30,'Square44x44Logo.png':44,'Square71x71Logo.png':71, \
+		'Square89x89Logo.png':89,'Square107x107Logo.png':107,'Square142x142Logo.png':142, \
+		'Square150x150Logo.png':150,'Square284x284Logo.png':284,'Square310x310Logo.png':310, \
+		'StoreLogo.png':50}; \
+	[canvas.resize((s,s),Image.LANCZOS).save(os.path.join(d,n),'PNG') for n,s in sizes.items()]; \
+	canvas.save(os.path.join(d,'_master.png'),'PNG'); \
+	canvas.save(os.path.join(d,'icon.ico'),format='ICO',sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)]); \
+	print('  PNGs + .ico generated')"
+	@# Generate .icns using macOS iconutil
+	@ICONSET=/tmp/_cyb_icon.iconset && rm -rf $$ICONSET && mkdir -p $$ICONSET && \
+		MASTER=$(TAURI_DIR)/icons/_master.png && \
+		sips -z 16 16     $$MASTER --out $$ICONSET/icon_16x16.png >/dev/null && \
+		sips -z 32 32     $$MASTER --out $$ICONSET/icon_16x16@2x.png >/dev/null && \
+		sips -z 32 32     $$MASTER --out $$ICONSET/icon_32x32.png >/dev/null && \
+		sips -z 64 64     $$MASTER --out $$ICONSET/icon_32x32@2x.png >/dev/null && \
+		sips -z 128 128   $$MASTER --out $$ICONSET/icon_128x128.png >/dev/null && \
+		sips -z 256 256   $$MASTER --out $$ICONSET/icon_128x128@2x.png >/dev/null && \
+		sips -z 256 256   $$MASTER --out $$ICONSET/icon_256x256.png >/dev/null && \
+		sips -z 512 512   $$MASTER --out $$ICONSET/icon_256x256@2x.png >/dev/null && \
+		sips -z 512 512   $$MASTER --out $$ICONSET/icon_512x512.png >/dev/null && \
+		cp $$MASTER $$ICONSET/icon_512x512@2x.png && \
+		iconutil -c icns $$ICONSET -o $(TAURI_DIR)/icons/icon.icns && \
+		rm -rf $$ICONSET
+	@rm -f $(TAURI_DIR)/icons/_master.png /tmp/_cyb_icon_render.png
+	@echo -e "$(GREEN)[Done]$(NC) Icons generated in $(TAURI_DIR)/icons/"
+else
+	@# Linux: use rsvg-convert (from librsvg2-bin)
+	@command -v rsvg-convert >/dev/null || (echo -e "$(YELLOW)[Setup]$(NC) Installing rsvg-convert..." && \
+		sudo apt-get install -y librsvg2-bin >/dev/null)
+	@rsvg-convert -w 1024 -h 1024 "$(ICON_SVG)" -o /tmp/_cyb_icon_render.png
+	@python3 -c "\
+	from PIL import Image; \
+	import os; \
+	img = Image.open('/tmp/_cyb_icon_render.png').convert('RGBA'); \
+	px = img.load(); \
+	w, h = img.size; \
+	[px.__setitem__((x,y), (px[x,y][0],px[x,y][1],px[x,y][2],0)) for y in range(h) for x in range(w) if px[x,y][0]>250 and px[x,y][1]>250 and px[x,y][2]>250]; \
+	bbox = img.getbbox(); \
+	robot = img.crop(bbox) if bbox else img; \
+	bg = tuple(int('$(ICON_BG)'[i:i+2],16) for i in (0,2,4)) + (255,); \
+	canvas = Image.new('RGBA', (1024,1024), bg); \
+	tw = int(1024*0.75); ratio = tw/robot.width; th = int(robot.height*ratio); \
+	r = robot.resize((tw,th), Image.LANCZOS); \
+	canvas.paste(r, ((1024-tw)//2, (1024-th)//2), r); \
+	d = '$(TAURI_DIR)/icons'; \
+	sizes = {'icon.png':512,'32x32.png':32,'128x128.png':128,'128x128@2x.png':256, \
+		'Square30x30Logo.png':30,'Square44x44Logo.png':44,'Square71x71Logo.png':71, \
+		'Square89x89Logo.png':89,'Square107x107Logo.png':107,'Square142x142Logo.png':142, \
+		'Square150x150Logo.png':150,'Square284x284Logo.png':284,'Square310x310Logo.png':310, \
+		'StoreLogo.png':50}; \
+	[canvas.resize((s,s),Image.LANCZOS).save(os.path.join(d,n),'PNG') for n,s in sizes.items()]; \
+	canvas.save(os.path.join(d,'icon.ico'),format='ICO',sizes=[(16,16),(24,24),(32,32),(48,48),(64,64),(128,128),(256,256)]); \
+	print('  PNGs + .ico generated')"
+	@rm -f /tmp/_cyb_icon_render.png
+	@echo -e "$(YELLOW)[Note]$(NC) .icns not generated (requires macOS iconutil)"
+	@echo -e "$(GREEN)[Done]$(NC) Icons generated in $(TAURI_DIR)/icons/"
+endif
 
 # ============================================================================
 # Quality Targets
