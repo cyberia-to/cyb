@@ -6,10 +6,16 @@ import useQueryContract from 'src/hooks/contract/useQueryContract';
 import { useSigningClient } from 'src/contexts/signerClient';
 import { selectCurrentAddress } from 'src/redux/features/pocket';
 import { useAppSelector } from 'src/redux/hooks';
-import { UHASH_CONTRACT } from 'src/constants/mining';
+import { UHASH_CONTRACT, UHASH_RELAY_URL } from 'src/constants/mining';
 import { isTauri } from 'src/utils/tauri';
 import { trimString, formatNumber } from 'src/utils/utils';
 import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
+import type {
+  RelayProofRequest,
+  RelayProofResponse,
+  SubmitErrorKind,
+  SubmitProofMsg,
+} from 'src/types/miningProofTx';
 import useLiBalance from './hooks/useLiBalance';
 import useRewardEstimate from './hooks/useRewardEstimate';
 import useHashrateSamples from './hooks/useHashrateSamples';
@@ -67,9 +73,12 @@ function loadSessionLi(): number {
 }
 
 function formatElapsed(seconds: number): string {
-  if (seconds < 60) return `${seconds.toFixed(0)}s`;
-  if (seconds < 3600)
+  if (seconds < 60) {
+    return `${seconds.toFixed(0)}s`;
+  }
+  if (seconds < 3600) {
     return `${Math.floor(seconds / 60)}m ${Math.floor(seconds % 60)}s`;
+  }
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
 }
 
@@ -78,24 +87,74 @@ type Proof = { hash: string; nonce: number; timestamp: number };
 // Min seconds between submissions (roughly one Bostrom block)
 const SUBMIT_COOLDOWN_MS = 6_000;
 
-const RELAY_URL = 'https://bostrom.cybernode.ai/relay';
+function normalizeErrorText(error: unknown): string {
+  if (!error) {
+    return '';
+  }
+  if (typeof error === 'string') {
+    return error;
+  }
+  if (error instanceof Error) {
+    return error.message;
+  }
+  try {
+    return JSON.stringify(error);
+  } catch {
+    return String(error);
+  }
+}
+
+function classifySubmitError(error: unknown): SubmitErrorKind {
+  const anyError = error as
+    | { code?: number; message?: string; rawLog?: string }
+    | undefined;
+  if (anyError?.code === 5) {
+    return 'account_not_found';
+  }
+
+  const message = normalizeErrorText(error).toLowerCase();
+  if (
+    /does not exist on chain|account .*not found|unknown address|code\\s*[:=]\\s*5/.test(
+      message
+    )
+  ) {
+    return 'account_not_found';
+  }
+  if (
+    /network|fetch|timeout|timed out|connection|econn|socket|dns|unavailable|503|502/.test(
+      message
+    )
+  ) {
+    return 'transport';
+  }
+  if (
+    /failed to execute|codespace|wasm|out of gas|unauthorized|insufficient/.test(
+      message
+    )
+  ) {
+    return 'contract';
+  }
+
+  return 'unknown';
+}
 
 async function relayProof(
   proof: Proof,
   minerAddress: string
 ): Promise<string | null> {
   try {
-    const res = await fetch(RELAY_URL, {
+    const payload: RelayProofRequest = {
+      hash: proof.hash,
+      nonce: Number(proof.nonce),
+      timestamp: Number(proof.timestamp),
+      miner_address: minerAddress,
+    };
+    const res = await fetch(UHASH_RELAY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        hash: proof.hash,
-        nonce: Number(proof.nonce),
-        timestamp: Number(proof.timestamp),
-        miner_address: minerAddress,
-      }),
+      body: JSON.stringify(payload),
     });
-    const data = await res.json();
+    const data = (await res.json()) as RelayProofResponse;
     console.log('[Mining] Relay result:', data);
     return data.ok ? data.tx_hash : null;
   } catch (err) {
@@ -211,7 +270,7 @@ function Mining() {
       }
 
       const [account] = await signer.getAccounts();
-      const msg = {
+      const msg: SubmitProofMsg = {
         submit_proof: {
           hash: proof.hash,
           nonce: Number(proof.nonce),
@@ -221,7 +280,7 @@ function Mining() {
 
       console.log(
         '[Mining] Submitting proof:',
-        proof.hash.slice(0, 16) + '...'
+        `${proof.hash.slice(0, 16)}...`
       );
 
       let result;
@@ -234,14 +293,18 @@ function Mining() {
           ''
         );
       } catch (executeErr: any) {
+        const kind = classifySubmitError(executeErr);
+
         // New accounts don't exist on-chain yet — relay the proof instead
-        if (executeErr?.message?.includes('does not exist on chain')) {
+        if (kind === 'account_not_found') {
           console.log('[Mining] Account not on chain, relaying proof...');
           const txHash = await relayProof(proof, account.address);
           if (txHash) {
             console.log('[Mining] Proof relayed! TX:', txHash);
             // Wait for relay TX to be included (creates account via LI mint)
-            await new Promise((r) => setTimeout(r, 7000));
+            await new Promise<void>((resolve) => {
+              setTimeout(resolve, 7000);
+            });
             // Return early — proof was already submitted via relay
             setProofLog((prev) => [
               {
@@ -258,11 +321,24 @@ function Mining() {
           }
           throw new Error('Proof relay failed — account does not exist');
         }
-        throw executeErr;
+        if (kind === 'transport') {
+          throw new Error(
+            `Submit transport error: ${normalizeErrorText(executeErr)}`
+          );
+        }
+        throw new Error(
+          `Submit ${kind} error: ${normalizeErrorText(executeErr)}`
+        );
       }
 
-      console.log('[Mining] Proof submitted! TX:', result.transactionHash,
-        'events:', result.events?.length, 'types:', result.events?.map((e: any) => e.type));
+      console.log(
+        '[Mining] Proof submitted! TX:',
+        result.transactionHash,
+        'events:',
+        result.events?.length,
+        'types:',
+        result.events?.map((e: any) => e.type)
+      );
 
       // Extract actual reward from wasm event
       let actualReward = 0;
@@ -271,8 +347,10 @@ function Mining() {
           (e: { type: string }) => e.type === 'wasm'
         );
         if (wasmEvent) {
-          console.log('[Mining] wasm attrs:', wasmEvent.attributes?.map(
-            (a: any) => `${a.key}=${a.value}`));
+          console.log(
+            '[Mining] wasm attrs:',
+            wasmEvent.attributes?.map((a: any) => `${a.key}=${a.value}`)
+          );
           const rewardAttr = wasmEvent.attributes?.find(
             (a: { key: string }) => a.key === 'reward'
           );
@@ -304,15 +382,21 @@ function Mining() {
 
   // Process the proof queue: pick best proof, wait for cooldown, submit sequentially
   const processQueue = useCallback(async () => {
-    if (submittingRef.current) return; // already processing
-    if (proofQueueRef.current.length === 0) return;
+    if (submittingRef.current) {
+      return;
+    } // already processing
+    if (proofQueueRef.current.length === 0) {
+      return;
+    }
 
     // Enforce cooldown between submissions (one per block)
     const now = Date.now();
     const elapsed_ = now - lastSubmitTimeRef.current;
     if (elapsed_ < SUBMIT_COOLDOWN_MS) {
       console.log(
-        `[Mining] Cooldown: ${((SUBMIT_COOLDOWN_MS - elapsed_) / 1000).toFixed(1)}s remaining`
+        `[Mining] Cooldown: ${((SUBMIT_COOLDOWN_MS - elapsed_) / 1000).toFixed(
+          1
+        )}s remaining`
       );
       return;
     }
@@ -334,7 +418,11 @@ function Mining() {
     const discarded = queue.length - 1;
     proofQueueRef.current = [];
     if (discarded > 0) {
-      console.log(`[Mining] Submitting best of ${discarded + 1} proofs, discarded ${discarded}`);
+      console.log(
+        `[Mining] Submitting best of ${
+          discarded + 1
+        } proofs, discarded ${discarded}`
+      );
     }
 
     try {
@@ -412,12 +500,16 @@ function Mining() {
 
   // On mount: detect if mining is still active in the backend and resume UI (Tauri only)
   useEffect(() => {
-    if (!isNative) return;
+    if (!isNative) {
+      return undefined;
+    }
     let cancelled = false;
     (async () => {
       try {
         const status = (await invoke('get_mining_status')) as MiningStatus;
-        if (cancelled) return;
+        if (cancelled) {
+          return;
+        }
         if (status.mining) {
           console.log('[Mining] Detected active mining on mount, resuming UI');
           setMiningStatus(status);
@@ -500,7 +592,11 @@ function Mining() {
           <div className={styles.statsGrid}>
             <StatCard
               label="LI Mined"
-              value={sessionLiMined < 0.1 ? sessionLiMined.toFixed(4) : sessionLiMined.toFixed(2)}
+              value={
+                sessionLiMined < 0.1
+                  ? sessionLiMined.toFixed(4)
+                  : sessionLiMined.toFixed(2)
+              }
               suffix="LI"
             />
             <StatCard
@@ -509,7 +605,11 @@ function Mining() {
             />
             <StatCard
               label="Est. LI/hr"
-              value={`~${estimatedLiPerHour < 1 ? estimatedLiPerHour.toFixed(2) : estimatedLiPerHour.toFixed(0)}`}
+              value={`~${
+                estimatedLiPerHour < 1
+                  ? estimatedLiPerHour.toFixed(2)
+                  : estimatedLiPerHour.toFixed(0)
+              }`}
             />
             <StatCard label="Elapsed" value={formatElapsed(elapsed)} />
           </div>

@@ -5439,8 +5439,8 @@ checksum = "ed646292ffc8188ef8ea4d1e0e0150fb15a5c2e12ad9b8fc191ae7a8a7f3c4b9"
 
 [[package]]
 name = "uhash-core"
-version = "0.2.3"
-source = "git+https://github.com/cyberia-to/universal-hash?rev=2fc7b15#2fc7b152a941b4c009ed2e5ddc4fbc598578fa7e"
+version = "0.2.9"
+source = "git+https://github.com/cyberia-to/universal-hash.git?tag=v0.2.9#897b21c8b1d518656e10c9e86573670ac98d38b9"
 dependencies = [
  "aes",
  "blake3",

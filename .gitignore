@@ -20,13 +20,12 @@ build
 !.vscode/settings.json
 
 .circleci
-.DS_Store
+**/.DS_Store
 
 .yarn
 .yarnrc
 yarn-debug.log*
 yarn-error.log*
-src/.DS_Store
 
 storybook-static
 .env.*.local
