@@ -11,6 +11,10 @@ import { isTauri } from 'src/utils/tauri';
 import { trimString, formatNumber } from 'src/utils/utils';
 import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 import type {
+  LithiumEpochStatus,
+  LithiumMinerEpochStatsResponse,
+  LithiumProofStatsResponse,
+  LithiumTargetResponse,
   RelayProofRequest,
   RelayProofResponse,
   SubmitErrorKind,
@@ -168,12 +172,39 @@ function Mining() {
   const { signer, signingClient } = useSigningClient();
 
   const { data: seedData } = useQueryContract(UHASH_CONTRACT, { seed: {} });
+  const { data: epochData } = useQueryContract(UHASH_CONTRACT, {
+    epoch_status: {},
+  });
   const { data: difficultyData } = useQueryContract(UHASH_CONTRACT, {
     difficulty: {},
+  });
+  const { data: targetData } = useQueryContract(UHASH_CONTRACT, {
+    target: {},
+  });
+  const { data: proofStatsData } = useQueryContract(UHASH_CONTRACT, {
+    proof_stats: {},
   });
 
   const seed = (seedData as any)?.seed as string | undefined;
   const difficulty = (difficultyData as any)?.current as number | undefined;
+  const epochStatus = epochData as LithiumEpochStatus | undefined;
+  const targetStats = targetData as LithiumTargetResponse | undefined;
+  const proofStats = proofStatsData as LithiumProofStatsResponse | undefined;
+  const epochId = epochStatus?.epoch_id ?? proofStats?.epoch_id;
+  const targetSolutions =
+    targetStats?.target_solutions ?? epochStatus?.target_solutions;
+
+  const { data: minerEpochData } = useQueryContract(
+    UHASH_CONTRACT,
+    address && epochId !== undefined
+      ? { lithium_miner_epoch_stats: { address, epoch_id: epochId } }
+      : { epoch_status: {} }
+  );
+  const minerEpochStats = minerEpochData as
+    | LithiumMinerEpochStatsResponse
+    | undefined;
+  const minerEpochProofCount =
+    address && epochId !== undefined ? minerEpochStats?.proof_count ?? 0 : 0;
 
   const [miningStatus, setMiningStatus] = useState<MiningStatus | null>(null);
   const [autoMining, setAutoMining] = useState(false);
@@ -623,7 +654,10 @@ function Mining() {
           {/* Network info + thread selector */}
           <div className={styles.networkRow}>
             <div>
-              Difficulty: {difficulty ?? '...'} · Miners: {uniqueMiners}
+              Difficulty: {difficulty ?? '...'} · Epoch: {epochId ?? '...'} ·
+              Proofs: {proofStats?.proof_count ?? '...'}/
+              {targetSolutions ?? '...'} · My proofs: {minerEpochProofCount} ·
+              Miners: {uniqueMiners}
             </div>
             <ThreadSelector
               value={threadCount}
