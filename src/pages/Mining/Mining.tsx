@@ -24,6 +24,7 @@ import useLiBalance from './hooks/useLiBalance';
 import useRewardEstimate from './hooks/useRewardEstimate';
 import useHashrateSamples from './hooks/useHashrateSamples';
 import useMinerStats from './hooks/useMinerStats';
+import usePeerEstimate from './hooks/usePeerEstimate';
 import HashrateHero from './components/HashrateHero';
 import StatCard from './components/StatCard';
 import ProofLogEntry from './components/ProofLogEntry';
@@ -90,6 +91,12 @@ type Proof = { hash: string; nonce: number; timestamp: number };
 
 // Min seconds between submissions (roughly one Bostrom block)
 const SUBMIT_COOLDOWN_MS = 6_000;
+
+function formatHashrate(hps: number): string {
+  if (hps >= 1_000_000) return `${(hps / 1_000_000).toFixed(1)} MH/s`;
+  if (hps >= 1_000) return `${(hps / 1_000).toFixed(1)} KH/s`;
+  return `${hps.toFixed(0)} H/s`;
+}
 
 function normalizeErrorText(error: unknown): string {
   if (!error) {
@@ -235,6 +242,7 @@ function Mining() {
   );
   const samples = useHashrateSamples(hashrate, autoMining);
   const { uniqueMiners } = useMinerStats();
+  const { networkHashrate, similarDevices } = usePeerEstimate(hashrate);
 
   // Keep autoMining ref in sync with state
   useEffect(() => {
@@ -657,7 +665,11 @@ function Mining() {
               Difficulty: {difficulty ?? '...'} · Epoch: {epochId ?? '...'} ·
               Proofs: {proofStats?.proof_count ?? '...'}/
               {targetSolutions ?? '...'} · My proofs: {minerEpochProofCount} ·
-              Miners: {uniqueMiners}
+              Net: {formatHashrate(networkHashrate)} ·{' '}
+              {similarDevices > 0
+                ? `~${similarDevices} similar devices`
+                : '\u2014'}{' '}
+              · {uniqueMiners} all-time miners
             </div>
             <ThreadSelector
               value={threadCount}
