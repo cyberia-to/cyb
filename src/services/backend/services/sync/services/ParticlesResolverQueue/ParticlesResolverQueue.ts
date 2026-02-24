@@ -1,39 +1,31 @@
 import {
   BehaviorSubject,
-  Observable,
-  filter,
-  mergeMap,
-  tap,
-  map,
   combineLatest,
-  share,
   EMPTY,
-  Subject,
+  filter,
   first,
+  map,
+  mergeMap,
+  Observable,
+  share,
+  tap,
 } from 'rxjs';
+import { PATTERN_COSMOS, PATTERN_CYBER } from 'src/constants/patterns';
+import { enqueueParticleEmbeddingMaybe } from 'src/services/backend/channels/BackendQueueChannel/backendQueueSenders';
 import BroadcastChannelSender from 'src/services/backend/channels/BroadcastChannelSender';
 import { broadcastStatus } from 'src/services/backend/channels/broadcastStatus';
-import { ParticleCid } from 'src/types/base';
-import {
-  SyncQueueJobType,
-  SyncQueueStatus,
-} from 'src/services/CozoDb/types/entities';
-import { QueuePriority } from 'src/services/QueueManager/types';
-import { asyncIterableBatchProcessor } from 'src/utils/async/iterable';
-
-import { enqueueParticleEmbeddingMaybe } from 'src/services/backend/channels/BackendQueueChannel/backendQueueSenders';
-
-import { PATTERN_COSMOS, PATTERN_CYBER } from 'src/constants/patterns';
 import { EmbeddingApi } from 'src/services/backend/workers/background/api/mlApi';
-import { Option } from 'src/types';
-
+import { SyncQueueJobType, SyncQueueStatus } from 'src/services/CozoDb/types/entities';
 import { IPFSContent } from 'src/services/ipfs/types';
+import { QueuePriority } from 'src/services/QueueManager/types';
+import { Option } from 'src/types';
+import { ParticleCid } from 'src/types/base';
+import { asyncIterableBatchProcessor } from 'src/utils/async/iterable';
+import DbApi from '../../../DbApi/DbApi';
 import { FetchIpfsFunc } from '../../types';
+import { MAX_DATABASE_PUT_SIZE } from '../consts';
 import { ServiceDeps } from '../types';
 import { SyncQueueItem } from './types';
-import { MAX_DATABASE_PUT_SIZE } from '../consts';
-
-import DbApi from '../../../DbApi/DbApi';
 
 const QUEUE_BATCH_SIZE = 100;
 
@@ -53,9 +45,7 @@ export const getTextContentIfShouldEmbed = async (content: IPFSContent) => {
 
   let shouldEmbed = contentType === 'text' && !!data;
 
-  shouldEmbed =
-    shouldEmbed &&
-    (!data!.match(PATTERN_COSMOS) || !data!.match(PATTERN_CYBER));
+  shouldEmbed = shouldEmbed && (!data!.match(PATTERN_COSMOS) || !data!.match(PATTERN_CYBER));
 
   return shouldEmbed ? data : undefined;
 };
@@ -75,9 +65,7 @@ class ParticlesResolverQueue {
 
   private statusApi = broadcastStatus('resolver', new BroadcastChannelSender());
 
-  private _syncQueue$ = new BehaviorSubject<Map<ParticleCid, SyncQueueItem>>(
-    new Map()
-  );
+  private _syncQueue$ = new BehaviorSubject<Map<ParticleCid, SyncQueueItem>>(new Map());
 
   public get queue(): Map<ParticleCid, SyncQueueItem> {
     return this._syncQueue$.getValue();
@@ -113,10 +101,7 @@ class ParticlesResolverQueue {
         await this.loadSyncQueue();
       });
 
-    this.isInitialized$ = combineLatest([
-      deps.dbInstance$,
-      deps.ipfsInstance$,
-    ]).pipe(
+    this.isInitialized$ = combineLatest([deps.dbInstance$, deps.ipfsInstance$]).pipe(
       map(([dbInstance, ipfsInstance]) => !!ipfsInstance && !!dbInstance)
     );
   }
@@ -142,7 +127,7 @@ class ParticlesResolverQueue {
       if (!hasItem) {
         const vec = await this.embeddingApi!.createEmbedding(text);
 
-        const result = await this.db!.putEmbedding(cid, vec);
+        const _result = await this.db!.putEmbedding(cid, vec);
       }
 
       return true;
@@ -194,9 +179,7 @@ class ParticlesResolverQueue {
 
           this.statusApi.sendStatus(
             'in-progress',
-            `processing batch ${batchSize - i}/${batchSize} batch. ${
-              this.queue.size
-            } pending...`
+            `processing batch ${batchSize - i}/${batchSize} batch. ${this.queue.size} pending...`
           );
         });
       })
@@ -213,9 +196,7 @@ class ParticlesResolverQueue {
       mergeMap((queue) => {
         const list = [...queue.values()];
 
-        const executingCount = list.filter(
-          (i) => i.status === SyncQueueStatus.executing
-        ).length;
+        const executingCount = list.filter((i) => i.status === SyncQueueStatus.executing).length;
 
         const batchSize = QUEUE_BATCH_SIZE - executingCount;
 
@@ -225,9 +206,7 @@ class ParticlesResolverQueue {
 
         if (batchSize > 0) {
           const pendingItems = list
-            .filter(
-              (i) => i.status === SyncQueueStatus.pending && jobTypeFilter(i)
-            )
+            .filter((i) => i.status === SyncQueueStatus.pending && jobTypeFilter(i))
             .sort((a, b) => {
               return a.priority - b.priority;
             })
@@ -255,7 +234,7 @@ class ParticlesResolverQueue {
     this._loop$ = source$.pipe(share());
 
     this._loop$.subscribe({
-      next: (result) => {
+      next: (_result) => {
         this.statusApi.sendStatus('active');
       },
       error: (err) => this.statusApi.sendStatus('error', err.toString()),
@@ -288,13 +267,11 @@ class ParticlesResolverQueue {
       return;
     }
 
-    const result = await this.db!.putSyncQueue(items);
+    const _result = await this.db!.putSyncQueue(items);
 
     const queue = this._syncQueue$.value;
 
-    items.forEach((item) =>
-      queue.set(item.id, { ...item, status: SyncQueueStatus.pending })
-    );
+    items.forEach((item) => queue.set(item.id, { ...item, status: SyncQueueStatus.pending }));
     this._syncQueue$.next(queue);
   }
 

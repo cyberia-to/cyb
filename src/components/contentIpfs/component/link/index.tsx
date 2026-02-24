@@ -1,5 +1,5 @@
-import GatewayContent from '../gateway';
 import TextMarkdown from 'src/components/TextMarkdown';
+import GatewayContent from '../gateway';
 
 const EMBEDABLE_HOSTS = [
   'www.youtube.com',

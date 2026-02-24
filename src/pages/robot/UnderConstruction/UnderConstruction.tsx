@@ -6,10 +6,7 @@ function UnderConstruction() {
     <>
       <Display>
         <div className={styles.wrapper}>
-          <img
-            src={require('./under-construction.png')}
-            alt="Under construction"
-          />
+          <img src={require('./under-construction.png')} alt="Under construction" />
 
           <h5>
             the page is <br /> under construction

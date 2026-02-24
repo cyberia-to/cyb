@@ -1,5 +1,6 @@
 import React from 'react';
 import { Button } from 'src/components';
+
 function FileInputButton({
   caption,
   processFile,

@@ -1,5 +1,5 @@
-import styles from './RankButton.module.scss';
 import cx from 'classnames';
+import styles from './RankButton.module.scss';
 
 function RankButton({ cid, rankSelected, handleRankClick }) {
   return (

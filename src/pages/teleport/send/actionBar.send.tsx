@@ -1,20 +1,19 @@
-import { useState } from 'react';
-import BigNumber from 'bignumber.js';
-import useSetActiveAddress from 'src/hooks/useSetActiveAddress';
-import { useSigningClient } from 'src/contexts/signerClient';
-import { Option } from 'src/types';
 import { Coin } from '@cosmjs/launchpad';
-import { useIbcDenom } from 'src/contexts/ibcDenom';
-import { RootState } from 'src/redux/store';
-import { useAppSelector } from 'src/redux/hooks';
+import BigNumber from 'bignumber.js';
+import { useState } from 'react';
 import { useBackend } from 'src/contexts/backend/backend';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
+import { useSigningClient } from 'src/contexts/signerClient';
+import useSetActiveAddress from 'src/hooks/useSetActiveAddress';
+import { useAppSelector } from 'src/redux/hooks';
+import { RootState } from 'src/redux/store';
 import { sendTokensWithMessage } from 'src/services/neuron/neuronApi';
+import { Option } from 'src/types';
 import { addIfpsMessageOrCid } from 'src/utils/ipfs/helpers';
-import { convertAmountReverce } from '../../../utils/utils';
+import { Account, ActionBar as ActionBarCenter } from '../../../components';
 
 import { LEDGER } from '../../../utils/config';
-
-import { Account, ActionBar as ActionBarCenter } from '../../../components';
+import { convertAmountReverce } from '../../../utils/utils';
 
 import ActionBarPingTxs from '../components/actionBarPingTxs';
 
@@ -40,18 +39,10 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
   const { tracesDenom } = useIbcDenom();
   const [stage, setStage] = useState(STAGE_INIT);
   const [txHash, setTxHash] = useState<Option<string>>(undefined);
-  const [errorMessage, setErrorMessage] =
-    useState<Option<string | JSX.Element>>(undefined);
+  const [errorMessage, setErrorMessage] = useState<Option<string | JSX.Element>>(undefined);
   const { senseApi, ipfsApi } = useBackend();
 
-  const {
-    tokenAmount,
-    tokenSelect,
-    recipient,
-    updateFunc,
-    isExceeded,
-    memoValue,
-  } = stateActionBar;
+  const { tokenAmount, tokenSelect, recipient, updateFunc, isExceeded, memoValue } = stateActionBar;
 
   const sendOnClick = async () => {
     if (signer && signingClient && tracesDenom && recipient) {
@@ -83,8 +74,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
         setStage(STAGE_ERROR);
         setErrorMessage(
           <span>
-            Add address <Account margin="0 5px" address={address} /> to your
-            pocket or make active{' '}
+            Add address <Account margin="0 5px" address={address} /> to your pocket or make active{' '}
           </span>
         );
       }

@@ -1,7 +1,7 @@
 import { useLocation } from 'react-router-dom';
 import { Tabs } from 'src/components';
-import PillUsers from './ui/PillUsers';
 import styles from './TabsNotOwner.module.scss';
+import PillUsers from './ui/PillUsers';
 
 const tabsPages = {
   sense: {
@@ -44,8 +44,7 @@ const tabsPages = {
 function TabsNotOwner({ menuCounts }: { menuCounts: typeof tabsPages }) {
   const location = useLocation();
   const locationSplit = location.pathname.replace(/^\/|\/$/g, '').split('/');
-  const neuronSplit =
-    locationSplit[0] === 'neuron' ? locationSplit.slice(1) : locationSplit;
+  const neuronSplit = locationSplit[0] === 'neuron' ? locationSplit.slice(1) : locationSplit;
 
   const active = Object.keys(tabsPages).find((item) => {
     return item === neuronSplit[1];

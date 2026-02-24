@@ -13,9 +13,7 @@ function Txs() {
     return <span>∞</span>;
   }
 
-  return (
-    <span>{formatNumber(data.transaction_aggregate.aggregate.count)}</span>
-  );
+  return <span>{formatNumber(data.transaction_aggregate.aggregate.count)}</span>;
 }
 
 export default Txs;

@@ -1,6 +1,6 @@
-import { AppDispatch } from 'src/redux/store';
-import { Observable, Subscription, merge } from 'rxjs';
+import { merge, Observable, Subscription } from 'rxjs';
 import { bufferTime, filter } from 'rxjs/operators';
+import { AppDispatch } from 'src/redux/store';
 
 import {
   BC_MSG_LOAD_COMMUNITY,
@@ -19,26 +19,26 @@ class RxBroadcastChannelListener {
   private subscription: Subscription;
 
   constructor(dispatch: AppDispatch) {
-    const messageObservable = new Observable<
-      MessageEvent<BroadcastChannelMessage>
-    >((subscriber) => {
-      const channel = new BroadcastChannel(CYB_BROADCAST_CHANNEL);
+    const messageObservable = new Observable<MessageEvent<BroadcastChannelMessage>>(
+      (subscriber) => {
+        const channel = new BroadcastChannel(CYB_BROADCAST_CHANNEL);
 
-      channel.onmessage = (msg: MessageEvent<BroadcastChannelMessage>) => {
-        if (
-          msg.data.type === BC_MSG_LOAD_COMMUNITY ||
-          msg.data.type === BC_MSG_SET_DEFAULT_ACCOUNT
-        ) {
-          dispatch(msg.data);
-          return;
-        }
-        subscriber.next(msg);
-      };
+        channel.onmessage = (msg: MessageEvent<BroadcastChannelMessage>) => {
+          if (
+            msg.data.type === BC_MSG_LOAD_COMMUNITY ||
+            msg.data.type === BC_MSG_SET_DEFAULT_ACCOUNT
+          ) {
+            dispatch(msg.data);
+            return;
+          }
+          subscriber.next(msg);
+        };
 
-      return () => {
-        channel.onmessage = null;
-      };
-    });
+        return () => {
+          channel.onmessage = null;
+        };
+      }
+    );
 
     const bufferedMessages = messageObservable.pipe(
       filter((m) => shouldTrottle(m)),

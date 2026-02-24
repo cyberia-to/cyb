@@ -13,9 +13,7 @@ function TitlePool({ pool, totalCap, useInactive }: TitlePoolPool) {
   return (
     <div className={styles.TitlePoolContainer}>
       <div className={styles.TitlePoolContainerInfoPool}>
-        <div className={styles.TitlePoolContainerInfoPoolPoolText}>
-          #{pool.id}
-        </div>
+        <div className={styles.TitlePoolContainerInfoPoolPoolText}>#{pool.id}</div>
 
         <div className={styles.TitlePoolContainerInfoPoolImg}>
           <DenomArr size={30} denomValue={pool.poolCoinDenom} onlyImg />
@@ -26,15 +24,9 @@ function TitlePool({ pool, totalCap, useInactive }: TitlePoolPool) {
         </div>
       </div>
       {totalCap !== undefined && (
-        <FormatNumberTokens
-          value={totalCap}
-          text={DENOM_LIQUID}
-          marginContainer="0px"
-        />
+        <FormatNumberTokens value={totalCap} text={DENOM_LIQUID} marginContainer="0px" />
       )}
-      {useInactive && (
-        <div className={styles.TitlePoolContainerInactive}>inactive</div>
-      )}
+      {useInactive && <div className={styles.TitlePoolContainerInactive}>inactive</div>}
     </div>
   );
 }

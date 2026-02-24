@@ -19,15 +19,9 @@ function ContainerKeyValue({ children }) {
 const renderOptions = (data, selected) => {
   let items = {};
   if (data !== null) {
-    items = (
-      <>
-        {data
-          .filter((item) => item !== selected)
-          .map((itemValue) => (
-            <OptionSelect key={itemValue} value={itemValue} text={itemValue} />
-          ))}
-      </>
-    );
+    items = data
+      .filter((item) => item !== selected)
+      .map((itemValue) => <OptionSelect key={itemValue} value={itemValue} text={itemValue} />);
   }
   return items;
 };

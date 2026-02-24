@@ -14,7 +14,7 @@ function roundMilliseconds(dateTimeString: string) {
   date.setMilliseconds(roundedMilliseconds);
   return dateFormat(date, 'yyyy-mm-dd"T"HH:MM:ss.l');
 }
-function getCurrentTimezoneOffset() {
+function _getCurrentTimezoneOffset() {
   const now = new Date();
   return -now.getTimezoneOffset() / 60;
 }

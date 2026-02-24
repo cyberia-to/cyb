@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
 import InfiniteScroll from 'react-infinite-scroll-component';
+import { Link } from 'react-router-dom';
 import { Dots, MainContainer, TextTable } from 'src/components';
 import Table from 'src/components/Table/Table';
-import { trimString, formatNumber } from '../../utils/utils';
 import { useBlocksQuery } from 'src/generated/graphql';
 import { routes } from 'src/routes';
+import { formatNumber, trimString } from '../../utils/utils';
 
 const dateFormat = require('dateformat');
 
@@ -58,24 +58,14 @@ function Block() {
         hash: <TextTable>{trimString(item.hash, 5, 5)}</TextTable>,
         height: (
           <TextTable>
-            <Link to={routes.blocks.idBlock.getLink(item.height)}>
-              {formatNumber(item.height)}
-            </Link>
+            <Link to={routes.blocks.idBlock.getLink(item.height)}>{formatNumber(item.height)}</Link>
           </TextTable>
         ),
         tx: (
-          <TextTable>
-            {formatNumber(item.transactions_aggregate.aggregate?.count || 0)}
-          </TextTable>
+          <TextTable>{formatNumber(item.transactions_aggregate.aggregate?.count || 0)}</TextTable>
         ),
-        proposerAddress: (
-          <TextTable>{trimString(item.proposer_address, 5, 5)}</TextTable>
-        ),
-        timestampUTC: (
-          <TextTable>
-            {dateFormat(item.timestamp, 'dd/mm/yyyy, HH:MM:ss')}
-          </TextTable>
-        ),
+        proposerAddress: <TextTable>{trimString(item.proposer_address, 5, 5)}</TextTable>,
+        timestampUTC: <TextTable>{dateFormat(item.timestamp, 'dd/mm/yyyy, HH:MM:ss')}</TextTable>,
       };
     });
   }, [data]);

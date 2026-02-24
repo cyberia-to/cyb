@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useIbcHistory } from './historyContext';
 import { HistoriesItem, StatusTx } from './HistoriesItem';
+import { useIbcHistory } from './historyContext';
 
 function* toGenerator<R>(p: Promise<R>) {
   return (yield p) as R;
@@ -18,9 +18,7 @@ function useGetStatus(item: HistoriesItem) {
     return status;
   }
 
-  async function helper(
-    func: Generator<Promise<StatusTx>, StatusTx, StatusTx>
-  ): Promise<StatusTx> {
+  async function helper(func: Generator<Promise<StatusTx>, StatusTx, StatusTx>): Promise<StatusTx> {
     const { value } = func.next();
     const output = await value;
     return output;
@@ -39,7 +37,7 @@ function useGetStatus(item: HistoriesItem) {
       }
     };
     getValue();
-  }, [item, tryUpdateHistoryStatus, updateStatusByTxHash]);
+  }, [item, tryUpdateHistoryStatus, updateStatusByTxHash, helper]);
 
   return status;
 }

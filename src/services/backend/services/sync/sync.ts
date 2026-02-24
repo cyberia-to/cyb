@@ -1,26 +1,19 @@
 /* eslint-disable no-restricted-syntax */
-import { Observable, combineLatest } from 'rxjs';
+import { combineLatest, Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
-
+import { createCyblogChannel } from 'src/utils/logging/cyblog';
+import BackendQueueChannelListener from '../../channels/BackendQueueChannel/BackendQueueChannel';
 import BroadcastChannelSender from '../../channels/BroadcastChannelSender';
-
-import ParticlesResolverQueue from './services/ParticlesResolverQueue/ParticlesResolverQueue';
-
-// import SyncIpfsLoop from './services/SyncIpfsLoop/SyncIpfsLoop';
-import SyncTransactionsLoop from './services/SyncTransactionsLoop/SyncTransactionsLoop';
-import SyncParticlesLoop from './services/SyncParticlesLoop/SyncParticlesLoop';
-
-import { ServiceDeps } from './services/types';
-import {
-  MY_FRIENDS_SYNC_INTERVAL,
-  MY_PARTICLES_SYNC_INTERVAL,
-} from './services/consts';
-import SyncMyFriendsLoop from './services/SyncMyFriendsLoop/SyncMyFriendsLoop';
 import { SyncEntryName } from '../../types/services';
 import BaseSyncLoop from './services/BaseSyncLoop/BaseSyncLoop';
 import createCommunitySync$ from './services/CommunitySync/CommunitySync';
-import { createCyblogChannel } from 'src/utils/logging/cyblog';
-import BackendQueueChannelListener from '../../channels/BackendQueueChannel/BackendQueueChannel';
+import { MY_FRIENDS_SYNC_INTERVAL, MY_PARTICLES_SYNC_INTERVAL } from './services/consts';
+import ParticlesResolverQueue from './services/ParticlesResolverQueue/ParticlesResolverQueue';
+import SyncMyFriendsLoop from './services/SyncMyFriendsLoop/SyncMyFriendsLoop';
+import SyncParticlesLoop from './services/SyncParticlesLoop/SyncParticlesLoop';
+// import SyncIpfsLoop from './services/SyncIpfsLoop/SyncIpfsLoop';
+import SyncTransactionsLoop from './services/SyncTransactionsLoop/SyncTransactionsLoop';
+import { ServiceDeps } from './services/types';
 
 const cyblogCh = createCyblogChannel({ thread: 'bckd' });
 
@@ -37,10 +30,7 @@ export class SyncService {
 
     const particlesResolver = new ParticlesResolverQueue(deps).start();
 
-    const queueListener = new BackendQueueChannelListener(
-      particlesResolver,
-      dbInstance$
-    );
+    const _queueListener = new BackendQueueChannelListener(particlesResolver, dbInstance$);
 
     this.isInitialized$ = combineLatest([dbInstance$, ipfsInstance$]).pipe(
       map(([dbInstance, ipfsInstance]) => !!dbInstance && !!ipfsInstance)
@@ -70,12 +60,7 @@ export class SyncService {
 
     new SyncTransactionsLoop('transactions', deps, particlesResolver).start();
 
-    new SyncParticlesLoop(
-      'particles',
-      MY_PARTICLES_SYNC_INTERVAL,
-      deps,
-      particlesResolver
-    ).start();
+    new SyncParticlesLoop('particles', MY_PARTICLES_SYNC_INTERVAL, deps, particlesResolver).start();
 
     new SyncMyFriendsLoop(
       'my-friends',

@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import { Networks } from 'src/types/networks';
 import { ObjectKey } from 'src/types/data';
 import { Network } from 'src/types/hub';
+import { Networks } from 'src/types/networks';
 import { useNetworks } from './useHub';
 
 export function isNativeChainId(chain: string) {
@@ -16,11 +16,8 @@ export function isNativeChainId(chain: string) {
   return false;
 }
 
-const findChainIdInNetworkList = (
-  chainId: string,
-  networks: ObjectKey<Network>
-) => {
-  if (Object.prototype.hasOwnProperty.call(networks, chainId)) {
+const findChainIdInNetworkList = (chainId: string, networks: ObjectKey<Network>) => {
+  if (Object.hasOwn(networks, chainId)) {
     return networks[chainId];
   }
 
@@ -38,17 +35,10 @@ export const useTracesNetworks = (chainIdTraces: string) => {
   useEffect(() => {
     if (networks) {
       let infoTemp = {};
-      const chainInfoFromList = findChainIdInNetworkList(
-        chainIdTraces,
-        networks
-      );
+      const chainInfoFromList = findChainIdInNetworkList(chainIdTraces, networks);
 
       if (chainInfoFromList) {
-        const {
-          chain_id: chainId,
-          name: chainName,
-          logo: chainIdImageCid,
-        } = chainInfoFromList;
+        const { chain_id: chainId, name: chainName, logo: chainIdImageCid } = chainInfoFromList;
         infoTemp = {
           chainId,
           chainName,

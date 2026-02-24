@@ -1,18 +1,13 @@
+import { Pane, TableEv as Table, Text } from '@cybercongress/gravity';
 import { useEffect, useState } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { v4 as uuidv4 } from 'uuid';
-import { Pane, Text, TableEv as Table } from '@cybercongress/gravity';
 import InfiniteScroll from 'react-infinite-scroll-component';
+import { Link, useParams } from 'react-router-dom';
 import Tooltip from 'src/components/tooltip/tooltip';
-import styles from './styles.module.scss';
-import {
-  Account,
-  Dots,
-  TextTable,
-  ContainerGradientText,
-} from '../../components';
+import { v4 as uuidv4 } from 'uuid';
+import { Account, ContainerGradientText, Dots, TextTable } from '../../components';
 import { getTableVoters, reduceTxsVoters } from '../../utils/governance';
 import { timeSince, trimString } from '../../utils/utils';
+import styles from './styles.module.scss';
 
 const LIMIT = 50;
 
@@ -58,11 +53,6 @@ function ProposalsIdDetailTableVoters({ updateFunc, ...props }) {
   const [loading, setLoading] = useState(true);
   const [allPage, setAllPage] = useState(0);
 
-  useEffect(() => {
-    getFirstItem();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [proposalId, updateFunc]);
-
   const getFirstItem = async () => {
     let tempAllPage = 0;
     let firstItem = [];
@@ -81,6 +71,11 @@ function ProposalsIdDetailTableVoters({ updateFunc, ...props }) {
     setAllPage(tempAllPage);
     setLoading(false);
   };
+
+  useEffect(() => {
+    getFirstItem();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [getFirstItem]);
 
   const fetchMoreData = async () => {
     let nextItem = [];
@@ -138,9 +133,7 @@ function ProposalsIdDetailTableVoters({ updateFunc, ...props }) {
           </Table.TextCell>
           <Table.TextCell textAlign="center">
             <TextTable>
-              <Link to={`/network/bostrom/tx/${item.txhash}`}>
-                {trimString(item.txhash, 6, 6)}
-              </Link>
+              <Link to={`/network/bostrom/tx/${item.txhash}`}>{trimString(item.txhash, 6, 6)}</Link>
             </TextTable>
           </Table.TextCell>
           <Table.TextCell textAlign="end">
@@ -152,11 +145,7 @@ function ProposalsIdDetailTableVoters({ updateFunc, ...props }) {
           <Table.TextCell textAlign="end">
             <Tooltip
               placement="top"
-              tooltip={
-                <TextTable>
-                  {new Date(item.timestamp).toLocaleString()}
-                </TextTable>
-              }
+              tooltip={<TextTable>{new Date(item.timestamp).toLocaleString()}</TextTable>}
             >
               <TextTable>{timeSince(timeAgoInMS)} ago</TextTable>
             </Tooltip>

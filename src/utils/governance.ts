@@ -84,7 +84,7 @@ export const getTableVoters = async (id, offset = 0, limit = 20) => {
     });
 
     return response;
-  } catch (error) {
+  } catch (_error) {
     return null;
   }
 };

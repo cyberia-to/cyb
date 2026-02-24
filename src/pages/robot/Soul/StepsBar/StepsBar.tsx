@@ -18,9 +18,7 @@ function StepsBar({
 
   return (
     <div className={styles.stepsPanel}>
-      {!!currentStep && (
-        <ButtonIcon img={back} onClick={onBack} text="previous step" />
-      )}
+      {!!currentStep && <ButtonIcon img={back} onClick={onBack} text="previous step" />}
       {steps[currentStep]}
     </div>
   );

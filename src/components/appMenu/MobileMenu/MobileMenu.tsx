@@ -1,9 +1,9 @@
-import { useState, useRef } from 'react';
-import { NavLink } from 'react-router-dom';
-import getMenuItems from 'src/utils/appsMenu/appsMenu';
 import cx from 'classnames';
-import useOnClickOutside from 'src/hooks/useOnClickOutside';
+import { useRef, useState } from 'react';
+import { NavLink } from 'react-router-dom';
 import { useActiveMenuItem } from 'src/hooks/useActiveMenuItem';
+import useOnClickOutside from 'src/hooks/useOnClickOutside';
+import getMenuItems from 'src/utils/appsMenu/appsMenu';
 import styles from './MobileMenu.module.scss';
 
 function MobileMenu() {
@@ -17,10 +17,7 @@ function MobileMenu() {
   useOnClickOutside(menuRef, () => setIsOpen(false));
 
   return (
-    <div
-      ref={menuRef}
-      className={cx(styles.mobileMenu, { [styles.open]: isOpen })}
-    >
+    <div ref={menuRef} className={cx(styles.mobileMenu, { [styles.open]: isOpen })}>
       <div className={cx(styles.menuContent, { [styles.visible]: isOpen })}>
         <button
           type="button"
@@ -47,11 +44,7 @@ function MobileMenu() {
                   rel: 'noreferrer noopener',
                 })}
               >
-                <img
-                  src={item.icon}
-                  className={styles.icon}
-                  alt={`${item.name} menu icon`}
-                />
+                <img src={item.icon} className={styles.icon} alt={`${item.name} menu icon`} />
                 {isExternal && <span className={styles.external} />}
               </NavLink>
             )

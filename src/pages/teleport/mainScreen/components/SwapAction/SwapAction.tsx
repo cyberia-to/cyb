@@ -1,11 +1,11 @@
 import { useMemo } from 'react';
-import useWarpDexTickers from 'src/hooks/useGetWarpPools';
 import Display from 'src/components/containerGradient/Display/Display';
-import TitleAction from '../TitleAction/TitleAction';
+import useWarpDexTickers from 'src/hooks/useGetWarpPools';
 import { DefaultPairPoolIdObj, SelectedPool } from '../../type';
-import SwapItem from './SwapItem';
-import styles from './SwapAction.module.scss';
+import TitleAction from '../TitleAction/TitleAction';
 import TotalCount from '../TotalCount/TotalCount';
+import styles from './SwapAction.module.scss';
+import SwapItem from './SwapItem';
 
 const reverse = (value: boolean) => ({
   reverse: value,
@@ -52,13 +52,7 @@ function SwapAction() {
 
   return (
     <Display
-      title={
-        <TitleAction
-          to="swap"
-          title="swap"
-          subTitle="truly free exchange with warp dex"
-        />
-      }
+      title={<TitleAction to="swap" title="swap" subTitle="truly free exchange with warp dex" />}
     >
       <div className={styles.container}>
         {renderItems}

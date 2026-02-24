@@ -169,25 +169,22 @@ function ValueImg({
             {textCurency}
           </span>
           &nbsp;
-          {img && (
-            <>
-              {emojiIcon ? (
-                <span className={styles.emojiIcon}>{img}</span>
-              ) : (
-                <img
-                  style={{
-                    margin: marginImg || 0,
-                    width: size || 20,
-                    height: size || 20,
-                    // objectFit: 'cover',
-                    zIndex: zIndexImg || 0,
-                  }}
-                  src={img}
-                  alt="text"
-                />
-              )}
-            </>
-          )}
+          {img &&
+            (emojiIcon ? (
+              <span className={styles.emojiIcon}>{img}</span>
+            ) : (
+              <img
+                style={{
+                  margin: marginImg || 0,
+                  width: size || 20,
+                  height: size || 20,
+                  // objectFit: 'cover',
+                  zIndex: zIndexImg || 0,
+                }}
+                src={img}
+                alt="text"
+              />
+            ))}
         </>
       )}
     </div>

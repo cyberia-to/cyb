@@ -1,20 +1,19 @@
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { ActionBar, BandwidthBar, Input, MainContainer } from 'src/components';
-import { routes } from 'src/routes';
-import { useEffect, useState } from 'react';
-import { useAdviser } from 'src/features/adviser/context';
-import { useAppSelector } from 'src/redux/hooks';
-import { selectCurrentPassport } from 'src/features/passport/passports.redux';
-import { Networks } from 'src/types/networks';
-import useGetSlots from 'src/containers/mint/useGetSlots';
-import { AdviserColors } from 'src/features/adviser/Adviser/Adviser';
-import { useBackend } from 'src/contexts/backend/backend';
-
 import { CHAIN_ID } from 'src/constants/config';
+import useGetSlots from 'src/containers/mint/useGetSlots';
+import { useBackend } from 'src/contexts/backend/backend';
+import { AdviserColors } from 'src/features/adviser/Adviser/Adviser';
+import { useAdviser } from 'src/features/adviser/context';
 import { useCyberlinkWithWaitAndAdviser } from 'src/features/cyberlinks/hooks/useCyberlink';
+import { selectCurrentPassport } from 'src/features/passport/passports.redux';
 import useCurrentAddress from 'src/hooks/useCurrentAddress';
-import TitleText from '../landing/components/TitleText/TitleText';
+import { useAppSelector } from 'src/redux/hooks';
+import { routes } from 'src/routes';
+import { Networks } from 'src/types/networks';
 import KeywordButton from '../landing/components/KeywordButton/KeywordButton';
+import TitleText from '../landing/components/TitleText/TitleText';
 import styles from './Learn.module.scss';
 
 const learningListConfig = [
@@ -73,8 +72,8 @@ function Learn() {
     if (noPassport) {
       content = (
         <div>
-          moon <Link to={routes.portal.path}>citizenship</Link> unlocks all
-          features and takes 3 minutes
+          moon <Link to={routes.portal.path}>citizenship</Link> unlocks all features and takes 3
+          minutes
         </div>
       );
     } else if (noEnergy) {
@@ -97,24 +96,15 @@ function Learn() {
     <MainContainer>
       <div className={styles.wrapper}>
         <div className={styles.info}>
-          <h3 className={styles.titleText}>
-            linking is fundamental to learning
-          </h3>
+          <h3 className={styles.titleText}>linking is fundamental to learning</h3>
           <p>
             learning can be squeezed into one simple act: creating a link <br />
             when you link two{' '}
-            <Link to={routes.search.getLink('particle')}>
-              pieces of information
-            </Link>{' '}
-            then{' '}
-            <Link to={routes.search.getLink('search is trivial')}>
-              search is trivial
-            </Link>
+            <Link to={routes.search.getLink('particle')}>pieces of information</Link> then{' '}
+            <Link to={routes.search.getLink('search is trivial')}>search is trivial</Link>
             <br />
             the more links you learned, the{' '}
-            <Link to={routes.search.getLink('negentropy')}>
-              smarter you are
-            </Link>
+            <Link to={routes.search.getLink('negentropy')}>smarter you are</Link>
           </p>
         </div>
 

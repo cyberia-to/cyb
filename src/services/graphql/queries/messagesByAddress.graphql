@@ -4,16 +4,16 @@ query MessagesByAddress($address: _text, $limit: bigint, $offset: bigint, $types
     order_by: { transaction: { block: { height: desc } } }
   ) {
     transaction_hash
-      value
-      transaction {
-        success
-        height
-        logs
-        memo
-        block {
-          timestamp
-        }
+    value
+    transaction {
+      success
+      height
+      logs
+      memo
+      block {
+        timestamp
       }
-      type
+    }
+    type
   }
 }

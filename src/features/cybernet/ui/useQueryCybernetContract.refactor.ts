@@ -1,6 +1,5 @@
-import { useQueryClient } from 'src/contexts/queryClient';
-
 import { UseQueryOptions, useQuery } from '@tanstack/react-query';
+import { useQueryClient } from 'src/contexts/queryClient';
 import { CybernetContractQuery, queryCybernetContract } from '../api';
 import { useCybernet } from './cybernet.context';
 
@@ -26,17 +25,13 @@ function useQueryCybernetContract<DataType>({
   const { selectedContract } = useCybernet();
   const contractAddr = contractAddress || selectedContract?.address;
 
-  const { refetch, data, error, isLoading } = useQuery<
-    unknown,
-    unknown,
-    DataType
-  >(
+  const { refetch, data, error, isLoading } = useQuery<unknown, unknown, DataType>(
     ['queryCybernetContract', contractAddr, query],
     () => {
       return queryCybernetContract(contractAddr, query, queryClient!);
     },
     {
-      // @ts-ignore
+      // @ts-expect-error
       refetchInterval,
       enabled: !skip && Boolean(queryClient && contractAddr),
     }

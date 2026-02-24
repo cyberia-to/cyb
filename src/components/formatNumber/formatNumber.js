@@ -5,9 +5,7 @@ function FormatNumber({ number, fontSizeDecimal, currency, ...props }) {
   return (
     <Pane {...props}>
       <span>{formatNumber(Math.floor(number))}</span>.
-      <span style={{ fontSize: `${fontSizeDecimal || 14}px` }}>
-        {getDecimal(number)}
-      </span>{' '}
+      <span style={{ fontSize: `${fontSizeDecimal || 14}px` }}>{getDecimal(number)}</span>{' '}
       {currency}
     </Pane>
   );

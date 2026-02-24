@@ -34,9 +34,7 @@ interface MatchingCxn {
   cxnA: string;
   cxnB: string;
 }
-async function loadConnections(
-  channel: ChannelHub
-): Promise<readonly MatchingCxn[]> {
+async function loadConnections(channel: ChannelHub): Promise<readonly MatchingCxn[]> {
   const {
     source_chain_id: chainA,
     destination_chain_id: chainB,

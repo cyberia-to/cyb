@@ -9,17 +9,15 @@ type ContextType = {
 };
 
 const AdviserContext = React.createContext<ContextType>({
-  setAdviser: (text: string, color: string) => {},
+  setAdviser: (_text: string, _color: string) => {},
 });
 
 function SenseAdviserProvider({ children }: Props) {
-  const [content, setContent] = useState();
-  const [first, setfirst] = useState(second);
+  const [_content, _setContent] = useState();
+  const [_first, _setfirst] = useState(second);
 
   const value = useMemo(() => {}, []);
-  return (
-    <AdviserContext.Provider value={value}>{children}</AdviserContext.Provider>
-  );
+  return <AdviserContext.Provider value={value}>{children}</AdviserContext.Provider>;
 }
 
 export default SenseAdviserProvider;

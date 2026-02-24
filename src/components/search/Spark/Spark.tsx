@@ -1,15 +1,14 @@
-import { useDevice } from 'src/contexts/device';
-import type { IpfsContentType } from 'src/services/ipfs/types';
+import cx from 'classnames';
 import ContentItem from 'src/components/ContentItem/contentItem';
 import { LinksType } from 'src/containers/Search/types';
+import { useDevice } from 'src/contexts/device';
 
 import { useHover } from 'src/hooks/useHover';
-import cx from 'classnames';
-
-import Meta from './Meta/Meta';
-import styles from './Spark.module.scss';
+import type { IpfsContentType } from 'src/services/ipfs/types';
 import Creator from './LeftMeta/Creator/Creator';
 import RankButton from './LeftMeta/RankButton/RankButton';
+import Meta from './Meta/Meta';
+import styles from './Spark.module.scss';
 
 type Props = {
   cid: string;
@@ -41,11 +40,7 @@ function Spark({
           <div className={styles.left}>
             <Creator cid={cid} onlyTime={selfLinks} />
             {handleRankClick && (
-              <RankButton
-                cid={cid}
-                rankSelected={rankSelected}
-                handleRankClick={handleRankClick}
-              />
+              <RankButton cid={cid} rankSelected={rankSelected} handleRankClick={handleRankClick} />
             )}
           </div>
 

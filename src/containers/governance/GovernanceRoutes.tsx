@@ -1,9 +1,9 @@
-import { Routes, Route } from 'react-router-dom';
-import { routes } from 'src/routes';
+import { Route, Routes } from 'react-router-dom';
 import { MainContainer } from 'src/components';
+import { routes } from 'src/routes';
+import CreateProposal from './CreateProposal/CreateProposal';
 import Governance from './governance';
 import ProposalsDetail from './proposalsDetail';
-import CreateProposal from './CreateProposal/CreateProposal';
 
 // FIXME: replace(routes.senate.path, '/')
 function GovernanceRoutes() {
@@ -15,10 +15,7 @@ function GovernanceRoutes() {
           element={<Governance />}
         />
         <Route
-          path={routes.senate.routes.proposal.path.replace(
-            routes.senate.path,
-            '/'
-          )}
+          path={routes.senate.routes.proposal.path.replace(routes.senate.path, '/')}
           element={<ProposalsDetail />}
         />
 

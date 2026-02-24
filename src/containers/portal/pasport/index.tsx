@@ -1,16 +1,16 @@
-import { useEffect, useState, useMemo } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import { useEffect, useMemo, useState } from 'react';
+import { PATTERN_CYBER } from 'src/constants/patterns';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { Nullable } from 'src/types';
+import { Citizenship } from 'src/types/citizenship';
+import { v4 as uuidv4 } from 'uuid';
+import { ContainerGradient } from '../../../components';
+import plus from '../../../image/plus.svg';
+import { formatNumber, trimString } from '../../../utils/utils';
 import { MusicalAddress, ParseAddressesImg } from '../components';
 import { AvataImgIpfs } from '../components/avataIpfs';
 import ContainerAvatar from '../components/avataIpfs/containerAvatar';
-import { formatNumber, trimString } from '../../../utils/utils';
-import { PATTERN_CYBER } from 'src/constants/patterns';
 import BtnPasport from './btnPasport';
-import plus from '../../../image/plus.svg';
-import { ContainerGradient } from '../../../components';
-import { Citizenship } from 'src/types/citizenship';
 
 // generated, check
 type Props = {
@@ -49,10 +49,7 @@ function PasportCitizenship({
 
   useEffect(() => {
     if (updateFunc) {
-      if (
-        addresses !== null &&
-        Object.prototype.hasOwnProperty.call(addresses, active)
-      ) {
+      if (addresses !== null && Object.hasOwn(addresses, active)) {
         updateFunc(addresses[active].address);
       } else {
         updateFunc(null);
@@ -65,7 +62,7 @@ function PasportCitizenship({
   useEffect(() => {
     const getKarma = async () => {
       try {
-        if (owner !== null && owner.match(PATTERN_CYBER) && queryClient) {
+        if (owner?.match(PATTERN_CYBER) && queryClient) {
           const responseKarma = await queryClient.karma(owner);
           if (responseKarma.karma) {
             setKarma(parseFloat(responseKarma.karma));
@@ -83,10 +80,7 @@ function PasportCitizenship({
       if (citizenship) {
         setOwner(citizenship.owner);
         const addressesData = [];
-        if (
-          citizenship.extension.addresses &&
-          citizenship.extension.addresses.length > 0
-        ) {
+        if (citizenship.extension.addresses && citizenship.extension.addresses.length > 0) {
           addressesData.push(...citizenship.extension.addresses);
         }
         setAddresses([{ address: citizenship.owner }, ...addressesData]);
@@ -97,7 +91,7 @@ function PasportCitizenship({
 
   const addressActiveSignatures = useMemo(() => {
     if (addresses !== null) {
-      if (Object.prototype.hasOwnProperty.call(addresses, active)) {
+      if (Object.hasOwn(addresses, active)) {
         return { bech32: addresses[active].address };
       }
       setActive(0);
@@ -120,23 +114,15 @@ function PasportCitizenship({
             height: 32,
           }}
         >
-          <div style={{ color: '#1fcbff' }}>
-            {citizenship && citizenship.extension.nickname}
-          </div>
+          <div style={{ color: '#1fcbff' }}>{citizenship?.extension.nickname}</div>
 
           <div style={{ color: '#36D6AE' }}>
-            {addresses !== null &&
-              Object.prototype.hasOwnProperty.call(addresses, active) && (
-                <div
-                  style={{ display: 'flex', alignItems: 'center', height: 25 }}
-                >
-                  {trimString(addresses[active].address, 8, 4)}
-                  <ParseAddressesImg
-                    key={addresses[active].address}
-                    address={addresses[active]}
-                  />
-                </div>
-              )}
+            {addresses !== null && Object.hasOwn(addresses, active) && (
+              <div style={{ display: 'flex', alignItems: 'center', height: 25 }}>
+                {trimString(addresses[active].address, 8, 4)}
+                <ParseAddressesImg key={addresses[active].address} address={addresses[active]} />
+              </div>
+            )}
           </div>
 
           <div style={{ width: '32px', height: '32px' }}>
@@ -154,11 +140,7 @@ function PasportCitizenship({
       claimed: false,
     };
 
-    if (
-      totalGiftArr &&
-      totalGiftArr !== null &&
-      Object.prototype.hasOwnProperty.call(totalGiftArr, itemAddress)
-    ) {
+    if (totalGiftArr && totalGiftArr !== null && Object.hasOwn(totalGiftArr, itemAddress)) {
       statusAddress.gift = true;
       const giftByAddress = totalGiftArr[itemAddress];
       if (giftByAddress.isClaimed) {
@@ -173,10 +155,7 @@ function PasportCitizenship({
     if (addresses !== null) {
       return addresses.map((item, index) => {
         const key = uuidv4();
-        const statusAddressGiftData = checkClaimedAddress(
-          item.address,
-          totalGift
-        );
+        const statusAddressGiftData = checkClaimedAddress(item.address, totalGift);
 
         return (
           <ParseAddressesImg
@@ -191,7 +170,7 @@ function PasportCitizenship({
     }
 
     return [];
-  }, [active, addresses, totalGift]);
+  }, [active, addresses, totalGift, checkClaimedAddress]);
 
   return (
     <ContainerGradient
@@ -217,11 +196,9 @@ function PasportCitizenship({
           }}
         >
           <div style={{ color: '#36D6AE', lineHeight: '18px' }}>
-            {citizenship && citizenship.extension.nickname}
+            {citizenship?.extension.nickname}
           </div>
-          <div style={{ lineHeight: '18px' }}>
-            karma {karma > 0 ? formatNumber(karma) : ''} 🔮
-          </div>
+          <div style={{ lineHeight: '18px' }}>karma {karma > 0 ? formatNumber(karma) : ''} 🔮</div>
           <ContainerAvatar>
             <AvataImgIpfs cidAvatar={citizenship?.extension.avatar || false} />
             {onClickEditAvatar && (
@@ -267,11 +244,7 @@ function PasportCitizenship({
                     top: 0,
                   }}
                 >
-                  <img
-                    style={{ width: 13, height: 13 }}
-                    src={plus}
-                    alt="plus"
-                  />
+                  <img style={{ width: 13, height: 13 }} src={plus} alt="plus" />
                 </BtnPasport>
               )}
               {active !== 0 && onClickDeleteAddress && (

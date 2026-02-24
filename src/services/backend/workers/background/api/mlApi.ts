@@ -1,20 +1,8 @@
-import {
-  PipelineType,
-  pipeline,
-  env,
-  FeatureExtractionPipeline,
-} from '@xenova/transformers';
+import { env, FeatureExtractionPipeline, PipelineType, pipeline } from '@xenova/transformers';
+import { proxy } from 'comlink';
+import { combineLatest, Observable, ReplaySubject, Subject } from 'rxjs';
 import BroadcastChannelSender from 'src/services/backend/channels/BroadcastChannelSender';
 import DbApiWrapper from 'src/services/backend/services/DbApi/DbApi';
-import {
-  Subject,
-  combineLatest,
-  Observable,
-  shareReplay,
-  ReplaySubject,
-  filter,
-} from 'rxjs';
-import { proxy } from 'comlink';
 
 env.allowLocalModels = false;
 
@@ -37,11 +25,7 @@ const mlModelMap: Record<string, MlModelParams> = {
   // },
 };
 
-const loadPipeline = (
-  name: PipelineType,
-  model: string,
-  onProgress: (data: any) => void
-) => {
+const loadPipeline = (name: PipelineType, model: string, onProgress: (data: any) => void) => {
   return pipeline(name, model, {
     progress_callback: (progressData: any) => {
       try {
@@ -87,36 +71,34 @@ const createEmbeddingApi$ = (
 ) => {
   const replaySubject = new ReplaySubject(1);
 
-  combineLatest([dbInstance$, featureExtractor$]).subscribe(
-    ([dbInstance, featureExtractor]) => {
-      if (dbInstance && featureExtractor) {
-        const createEmbedding = async (text: string) => {
-          const output = await featureExtractor(text, {
-            pooling: 'mean',
-            normalize: true,
-          });
+  combineLatest([dbInstance$, featureExtractor$]).subscribe(([dbInstance, featureExtractor]) => {
+    if (dbInstance && featureExtractor) {
+      const createEmbedding = async (text: string) => {
+        const output = await featureExtractor(text, {
+          pooling: 'mean',
+          normalize: true,
+        });
 
-          return output.data as number[];
-        };
+        return output.data as number[];
+      };
 
-        const searchByEmbedding = async (text: string, count?: number) => {
-          const vec = await createEmbedding(text);
-          // console.log('----searchByEmbedding', vec);
+      const searchByEmbedding = async (text: string, count?: number) => {
+        const vec = await createEmbedding(text);
+        // console.log('----searchByEmbedding', vec);
 
-          const rows = await dbInstance.searchByEmbedding(vec, count);
-          //   console.log('----searcByEmbedding rows', rows);
+        const rows = await dbInstance.searchByEmbedding(vec, count);
+        //   console.log('----searcByEmbedding rows', rows);
 
-          return rows;
-        };
+        return rows;
+      };
 
-        const api = {
-          createEmbedding,
-          searchByEmbedding,
-        };
-        replaySubject.next(proxy(api));
-      }
+      const api = {
+        createEmbedding,
+        searchByEmbedding,
+      };
+      replaySubject.next(proxy(api));
     }
-  );
+  });
   // .pipe(filter((v) => !!v))
   return replaySubject as Observable<EmbeddingApi>;
 };
@@ -156,9 +138,7 @@ export const createMlApi = (
 
         return result;
       })
-      .catch((e) =>
-        broadcastApi.postServiceStatus('ml', 'error', e.toString())
-      );
+      .catch((e) => broadcastApi.postServiceStatus('ml', 'error', e.toString()));
   };
 
   init();

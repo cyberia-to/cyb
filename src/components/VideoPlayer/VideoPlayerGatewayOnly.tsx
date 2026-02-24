@@ -1,8 +1,8 @@
 /* eslint-disable no-restricted-syntax */
 import { useEffect, useState } from 'react';
-import { IPFSContent, IPFSContentDetails } from 'src/services/ipfs/types';
 import { useBackend } from 'src/contexts/backend/backend';
 import { CYBER_GATEWAY_URL } from 'src/services/ipfs/config';
+import { IPFSContent, IPFSContentDetails } from 'src/services/ipfs/types';
 
 interface VideoPlayerProps {
   content: IPFSContent;
@@ -25,11 +25,9 @@ function VideoPlayerGatewayOnly({ content, details }: VideoPlayerProps) {
       }
     };
     load();
-  }, [ipfsApi, content]);
+  }, [content, details.link, details?.gateway]);
 
-  return contentUrl ? (
-    <video style={{ width: '100%' }} src={contentUrl} controls />
-  ) : null;
+  return contentUrl ? <video style={{ width: '100%' }} src={contentUrl} controls /> : null;
   x;
 }
 

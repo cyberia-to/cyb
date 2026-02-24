@@ -1,0 +1,64 @@
+{
+  "$schema": "./node_modules/@biomejs/biome/configuration_schema.json",
+  "files": {
+    "includes": ["src/**", "!src/generated/**"]
+  },
+  "formatter": {
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineEnding": "lf",
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "trailingCommas": "es5",
+      "bracketSpacing": true,
+      "jsxQuoteStyle": "double"
+    }
+  },
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "correctness": {
+        "noUnusedImports": "error",
+        "noUnusedVariables": "warn",
+        "noUnusedFunctionParameters": "off",
+        "useExhaustiveDependencies": "warn",
+        "noInvalidUseBeforeDeclaration": "off",
+        "useHookAtTopLevel": "warn",
+        "noEmptyPattern": "warn"
+      },
+      "style": {
+        "noParameterAssign": "warn",
+        "noNonNullAssertion": "off",
+        "noUnusedTemplateLiteral": "off",
+        "useImportType": "off",
+        "useLiteralEnumMembers": "off"
+      },
+      "suspicious": {
+        "noDebugger": "warn",
+        "noConsole": "off",
+        "noExplicitAny": "off",
+        "noArrayIndexKey": "off",
+        "noAssignInExpressions": "off",
+        "noImplicitAnyLet": "off",
+        "noRedeclare": "off",
+        "noShadowRestrictedNames": "off",
+        "noDoubleEquals": "warn",
+        "useIterableCallbackReturn": "warn"
+      },
+      "complexity": {
+        "noForEach": "off",
+        "noBannedTypes": "off"
+      },
+      "performance": {
+        "noAccumulatingSpread": "warn"
+      },
+      "a11y": {
+        "recommended": false
+      }
+    }
+  }
+}

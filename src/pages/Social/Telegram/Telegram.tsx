@@ -1,6 +1,6 @@
-import telegram from './telegram-icon.svg';
 import { LinkWindow } from '../../../components/link/link';
 import styles from './Telegram.module.scss';
+import telegram from './telegram-icon.svg';
 
 function Telegram() {
   return (

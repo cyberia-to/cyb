@@ -1,11 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-
-import { useQueryClient } from 'src/contexts/queryClient';
-import { BASE_DENOM } from 'src/constants/config';
-import { useWasmDashboardPageQuery } from 'src/generated/graphql';
 import { CardStatisics, Dots, MainContainer, NoItems } from 'src/components';
 import Loader2 from 'src/components/ui/Loader2';
+import { BASE_DENOM } from 'src/constants/config';
+import { useQueryClient } from 'src/contexts/queryClient';
+import { useWasmDashboardPageQuery } from 'src/generated/graphql';
 import { formatNumber } from '../../../utils/utils';
 import { ContainerCardStatisics, ContainerCol } from '../ui/ui';
 import ContractTable from './ContractTable';
@@ -24,7 +23,7 @@ const useGetContracts = (offset) => {
 
   // effect  not needed
   useEffect(() => {
-    if (data && data.contracts && data.contracts_aggregate) {
+    if (data?.contracts && data.contracts_aggregate) {
       setDataContracts((items) => [...items, ...data.contracts]);
       if (data.contracts_aggregate.aggregate) {
         setDataAggregate(data.contracts_aggregate.aggregate);
@@ -73,13 +72,7 @@ function DashboardPage() {
         <ContainerCardStatisics>
           <CardStatisics
             title="Contracts"
-            value={
-              dataAggregate !== null ? (
-                formatNumber(dataAggregate.count)
-              ) : (
-                <Dots />
-              )
-            }
+            value={dataAggregate !== null ? formatNumber(dataAggregate.count) : <Dots />}
           />
           <CardStatisics
             title={`Income, ${BASE_DENOM.toUpperCase()}`}

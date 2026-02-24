@@ -1,7 +1,6 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
-
 import cx from 'classnames';
 import SliderComponent, { SliderProps as RcSliderProps } from 'rc-slider';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import imgSwap from 'src/image/exchange-arrows.svg';
 import 'rc-slider/assets/index.css';
 import styles from './Slider.module.scss';
@@ -23,12 +22,7 @@ function SpetionLabel({ value }: { value: number }) {
     // eslint-disable-next-line jsx-a11y/label-has-associated-control
     <label className={styles.trackLabel}>
       <div className={styles.trackMarkBgBlur} />
-      <div
-        className={cx(
-          styles.trackMarkGradient,
-          styles[`trackMarkGradient${position}`]
-        )}
-      />
+      <div className={cx(styles.trackMarkGradient, styles[`trackMarkGradient${position}`])} />
 
       <div
         className={cx(styles.trackMarkLabel, {
@@ -41,18 +35,9 @@ function SpetionLabel({ value }: { value: number }) {
   );
 }
 
-function SphereValue({
-  angle,
-  children,
-}: {
-  angle: number;
-  children: React.ReactNode;
-}) {
+function SphereValue({ angle, children }: { angle: number; children: React.ReactNode }) {
   return (
-    <div
-      className={cx(styles.debtAmountPosToken)}
-      style={{ transform: `rotate(${angle}deg)` }}
-    >
+    <div className={cx(styles.debtAmountPosToken)} style={{ transform: `rotate(${angle}deg)` }}>
       <div
         className={styles.debtAmountPosTokenObj}
         style={{ transform: `rotate(${angle * -1}deg)` }}
@@ -108,12 +93,9 @@ function roundToOneDecimalPlace(num: number) {
   return Math.round(num * 10) / 10;
 }
 const positionToPercents = (position: number) =>
-  position === 0
-    ? 0
-    : roundToOneDecimalPlace(Math.exp(minlVal + scale * position)) - 1;
+  position === 0 ? 0 : roundToOneDecimalPlace(Math.exp(minlVal + scale * position)) - 1;
 
-const percentsToPosition = (percents: number) =>
-  (Math.log(percents + 1) - minlVal) / scale;
+const percentsToPosition = (percents: number) => (Math.log(percents + 1) - minlVal) / scale;
 
 const scaleMarks = Object.fromEntries(
   scalePercents.map((percents) => [
@@ -131,14 +113,7 @@ export type SliderProps = {
   text?: string | React.ReactNode;
 };
 
-function Slider({
-  onChange,
-  onSwapClick,
-  valuePercents,
-  disabled,
-  tokenPair,
-  text,
-}: SliderProps) {
+function Slider({ onChange, onSwapClick, valuePercents, disabled, tokenPair, text }: SliderProps) {
   const [valueSilder, setValueSilder] = useState(0);
   const [currentPercents, setCurrentPercent] = useState(0);
   const [draggingMode, setDraggingMode] = useState(false);
@@ -148,7 +123,7 @@ function Slider({
   const finishDragging = useCallback(() => {
     clearTimeout(draggingDetectorTimer.current);
     if (!draggingMode) {
-      onSwapClick && onSwapClick();
+      onSwapClick?.();
     }
 
     setDraggingMode(false);
@@ -192,16 +167,14 @@ function Slider({
     requestAnimationFrame(() => {
       const value = positionToPercents(position);
       setCurrentPercent(value);
-      onChange && onChange(value);
+      onChange?.(value);
     });
   };
 
   const renderCustomHandle: RcSliderProps['handle'] = useCallback(
     ({ value }) => {
       const percents =
-        currentPercents < 2
-          ? currentPercents.toFixed(1)
-          : Math.round(currentPercents || 0);
+        currentPercents < 2 ? currentPercents.toFixed(1) : Math.round(currentPercents || 0);
       return (
         // eslint-disable-next-line jsx-a11y/no-static-element-interactions
         <div
@@ -239,7 +212,7 @@ function Slider({
         </div>
       );
     },
-    [tokenPair, currentPercents, disabled, finishDragging]
+    [tokenPair, currentPercents, finishDragging, startDragging]
   );
 
   return (
@@ -263,11 +236,7 @@ function Slider({
             }}
           />
           {text && (
-            <div
-              className={cx(styles.text, valueSilder > 80 && styles.textLeft)}
-            >
-              {text}
-            </div>
+            <div className={cx(styles.text, valueSilder > 80 && styles.textLeft)}>{text}</div>
           )}
         </div>
       </div>

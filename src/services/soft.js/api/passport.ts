@@ -22,10 +22,7 @@ export type PassportContractQuery =
       };
     };
 
-export function queryPassportContract(
-  query: PassportContractQuery,
-  queryClient: CyberClient
-) {
+export function queryPassportContract(query: PassportContractQuery, _queryClient: CyberClient) {
   return getPassport(query);
   // return queryClient.queryContractSmart(CONTRACT_ADDRESS_PASSPORT, query);
 }

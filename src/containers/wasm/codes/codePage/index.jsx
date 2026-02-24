@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { MainContainer } from 'src/components';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { makeTags } from '../../../../utils/utils';
 import InstantiationContract from '../../contract/InstantiationContract';
-import CodeInfo from './CodeInfo';
-import TableInstance from './TableInstance';
-import styles from './styles.scss';
 import { FlexWrapCantainer } from '../../ui/ui';
-import { MainContainer } from 'src/components';
+import CodeInfo from './CodeInfo';
+import styles from './styles.scss';
+import TableInstance from './TableInstance';
 
 const initDetails = {
   checksum: '',
@@ -16,7 +16,7 @@ const initDetails = {
   id: '',
 };
 
-const useGetContractsInfo = (codeId, updateFnc) => {
+const useGetContractsInfo = (codeId, _updateFnc) => {
   const queryClient = useQueryClient();
   const [details, setDetails] = useState(initDetails);
   const [contracts, setContracts] = useState([]);
@@ -31,7 +31,7 @@ const useGetContractsInfo = (codeId, updateFnc) => {
       }
     };
     getContracts();
-  }, [queryClient, codeId, updateFnc]);
+  }, [queryClient, codeId]);
 
   useEffect(() => {
     const getCodeDetails = async () => {
@@ -68,37 +68,20 @@ const useGetContractsInfo = (codeId, updateFnc) => {
 function CodePage() {
   const { codeId } = useParams();
   const [updateFnc, setUpdateFnc] = useState(0);
-  const { uploadTxHash, contracts, details } = useGetContractsInfo(
-    codeId,
-    updateFnc
-  );
+  const { uploadTxHash, contracts, details } = useGetContractsInfo(codeId, updateFnc);
 
   return (
     <MainContainer>
-      <FlexWrapCantainer
-        style={{ flexDirection: 'column', width: '60%', boxShadow: 'none' }}
-      >
+      <FlexWrapCantainer style={{ flexDirection: 'column', width: '60%', boxShadow: 'none' }}>
         <div className={styles.containerCodeDetailsHeader}>
-          <div className={styles.containerCodeDetailsHeaderTitle}>
-            Lib #{codeId}
-          </div>
+          <div className={styles.containerCodeDetailsHeaderTitle}>Lib #{codeId}</div>
           <div className={styles.containerCodeDetailsHeaderFileInfo}>
-            <div className={styles.containerCodeDetailsHeaderFileInfoType}>
-              type: Wasm
-            </div>
-            <div>
-              Size:{' '}
-              {details.data.length > 0 &&
-                Math.round(details.data.length / 1024)}{' '}
-              KiB
-            </div>
+            <div className={styles.containerCodeDetailsHeaderFileInfoType}>type: Wasm</div>
+            <div>Size: {details.data.length > 0 && Math.round(details.data.length / 1024)} KiB</div>
           </div>
         </div>
         <CodeInfo uploadTxHash={uploadTxHash} details={details} />
-        <InstantiationContract
-          updateFnc={() => setUpdateFnc((item) => item + 1)}
-          codeId={codeId}
-        />
+        <InstantiationContract updateFnc={() => setUpdateFnc((item) => item + 1)} codeId={codeId} />
       </FlexWrapCantainer>
 
       <TableInstance contracts={contracts} />

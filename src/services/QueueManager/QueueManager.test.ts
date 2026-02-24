@@ -15,7 +15,7 @@ jest.mock('src/services/ipfs/utils/utils-ipfs', () => ({
 const QUEUE_DEBOUNCE_MS = 100;
 const TIMEOUT_MS = 300;
 
-const waitUtilQueueDebounce = (callback: () => void): NodeJS.Timeout =>
+const waitUtilQueueDebounce = (callback: () => void): ReturnType<typeof setTimeout> =>
   setTimeout(() => {
     callback();
   }, QUEUE_DEBOUNCE_MS);
@@ -26,17 +26,14 @@ function* valuesExpected<T>(values: T[]): Generator<T> {
   }
 }
 
-function wrapPromiseWithSignal(
-  promise: Promise<string>,
-  signal?: AbortSignal
-): Promise<string> {
+function wrapPromiseWithSignal(promise: Promise<string>, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     promise.then((result) => {
       resolve(result);
     });
 
     signal?.addEventListener('abort', (e) => {
-      // @ts-ignore
+      // @ts-expect-error
       if (e?.target?.reason !== 'timeout') {
         reject(new DOMException('canceled', 'AbortError'));
       }
@@ -44,11 +41,7 @@ function wrapPromiseWithSignal(
   });
 }
 
-const getPromise = (
-  result = 'result',
-  timeout = 500,
-  signal?: AbortSignal
-): Promise<string> =>
+const getPromise = (result = 'result', timeout = 500, signal?: AbortSignal): Promise<string> =>
   wrapPromiseWithSignal(
     new Promise<string>((resolve) => {
       setTimeout(() => resolve(`result ${result}`), timeout);
@@ -105,13 +98,16 @@ describe('QueueManager', () => {
       queueManager.enqueue('2', jest.fn);
       queueManager.enqueue('3', jest.fn);
 
-      setTimeout(() => {
-        const itemList = queueManager.getQueueList();
-        expect(itemList[0].status).toEqual('executing');
-        expect(itemList[1].status).toEqual('executing');
-        expect(itemList[2].status).toEqual('pending');
-        done();
-      }, QUEUE_DEBOUNCE_MS * 2 + 1);
+      setTimeout(
+        () => {
+          const itemList = queueManager.getQueueList();
+          expect(itemList[0].status).toEqual('executing');
+          expect(itemList[1].status).toEqual('executing');
+          expect(itemList[2].status).toEqual('pending');
+          done();
+        },
+        QUEUE_DEBOUNCE_MS * 2 + 1
+      );
     } finally {
       (fetchIpfsContent as jest.Mock).mockClear();
     }
@@ -134,7 +130,7 @@ describe('QueueManager', () => {
       const itemId = 'id-to-timeout';
 
       (fetchIpfsContent as jest.Mock).mockImplementation(
-        (cid: string, source: string, { controller }) =>
+        (_cid: string, _source: string, { controller }) =>
           getPromise('result', 50000, controller?.signal)
       );
       queueManager.enqueue(itemId, (cid, status, source) => {
@@ -155,16 +151,14 @@ describe('QueueManager', () => {
 
     const itemId = 'id-to-cancel';
     (fetchIpfsContent as jest.Mock).mockImplementationOnce(
-      (cid: string, source: string, { controller }) =>
+      (_cid: string, _source: string, { controller }) =>
         wrapPromiseWithSignal(getPromise('result', 1000), controller.signal)
     );
     queueManager.enqueue(itemId, (cid, status) => {
       expect(cid).toBe(itemId);
       expect(status).toBe(statuses.next().value);
       if (status === 'cancelled') {
-        expect(queueManager.getQueueList()[0]?.controller?.signal.aborted).toBe(
-          true
-        );
+        expect(queueManager.getQueueList()[0]?.controller?.signal.aborted).toBe(true);
       }
     });
 
@@ -213,9 +207,7 @@ describe('QueueManager', () => {
 
   it('should execute queue items in order by priority', (done) => {
     try {
-      (fetchIpfsContent as jest.Mock).mockImplementation(() =>
-        getPromise('x', 100)
-      );
+      (fetchIpfsContent as jest.Mock).mockImplementation(() => getPromise('x', 100));
       queueManager.enqueue('1', jest.fn);
       queueManager.enqueue('2', jest.fn);
 
@@ -244,9 +236,7 @@ describe('QueueManager', () => {
 
   it('should execute queue items in order by viewportPriority in real-time', (done) => {
     try {
-      (fetchIpfsContent as jest.Mock).mockImplementation(() =>
-        getPromise('x', 100)
-      );
+      (fetchIpfsContent as jest.Mock).mockImplementation(() => getPromise('x', 100));
       queueManager.enqueue('1', jest.fn);
       queueManager.enqueue('2', jest.fn);
 
@@ -295,12 +285,10 @@ describe('QueueManager', () => {
   it('should execute queue items and deprioritize based on viewPortPriority', (done) => {
     try {
       (fetchIpfsContent as jest.Mock).mockImplementation(
-        (cid: string, source: string, { controller }) =>
+        (_cid: string, _source: string, { controller }) =>
           getPromise('result', 1000, controller?.signal)
       );
-      ['1', '2', '3'].map((cid) =>
-        queueManager.enqueue(cid, jest.fn, { initialSource: 'node' })
-      );
+      ['1', '2', '3'].map((cid) => queueManager.enqueue(cid, jest.fn, { initialSource: 'node' }));
 
       waitUtilQueueDebounce(() => {
         const queue = queueManager.getQueueList();
@@ -313,17 +301,20 @@ describe('QueueManager', () => {
         queueManager.updateViewPortPriority('1', -1);
       });
 
-      setTimeout(() => {
-        try {
-          const queueMap = queueManager.getQueueMap();
-          expect(queueMap.get('1').status).toBe('pending');
-          expect(queueMap.get('2').status).toBe('executing');
-          expect(queueMap.get('3').status).toBe('executing');
-          expect(queueMap.get('4').status).toBe('pending');
-        } finally {
-          done();
-        }
-      }, QUEUE_DEBOUNCE_MS * 3 + 10);
+      setTimeout(
+        () => {
+          try {
+            const queueMap = queueManager.getQueueMap();
+            expect(queueMap.get('1').status).toBe('pending');
+            expect(queueMap.get('2').status).toBe('executing');
+            expect(queueMap.get('3').status).toBe('executing');
+            expect(queueMap.get('4').status).toBe('pending');
+          } finally {
+            done();
+          }
+        },
+        QUEUE_DEBOUNCE_MS * 3 + 10
+      );
     } finally {
       (fetchIpfsContent as jest.Mock).mockClear();
     }
@@ -331,9 +322,7 @@ describe('QueueManager', () => {
 
   it('should execute enqueue as promise and get result', async () => {
     try {
-      (fetchIpfsContent as jest.Mock).mockImplementation(() =>
-        Promise.resolve('done!')
-      );
+      (fetchIpfsContent as jest.Mock).mockImplementation(() => Promise.resolve('done!'));
 
       const result = await queueManager.enqueueAndWait('xxx');
       console.log('----r', result);
@@ -345,9 +334,7 @@ describe('QueueManager', () => {
 
   it('should execute enqueue as promise and get undefined', async () => {
     try {
-      (fetchIpfsContent as jest.Mock).mockImplementation(() =>
-        Promise.reject()
-      );
+      (fetchIpfsContent as jest.Mock).mockImplementation(() => Promise.reject());
       const result = await queueManager.enqueueAndWait('xxx');
       expect(result?.status).toBe('not_found');
     } finally {

@@ -1,11 +1,11 @@
 import { Pane } from '@cybercongress/gravity';
-import { LinkWindow, ValueImg } from '../../../components';
-import Table from 'src/components/Table/Table';
-import { renderTableRows } from './income';
-import { DestinationRoute } from '../hooks/useSourceRouted';
 import { createColumnHelper } from '@tanstack/react-table';
 import { Link } from 'react-router-dom';
+import Table from 'src/components/Table/Table';
 import { routes } from 'src/routes';
+import { ValueImg } from '../../../components';
+import { DestinationRoute } from '../hooks/useSourceRouted';
+import { renderTableRows } from './income';
 
 type Props = {
   sourceRouted: DestinationRoute[];
@@ -22,9 +22,8 @@ function Outcome({ sourceRouted, selectRouteFunc }: Props) {
   return (
     <div>
       <Pane marginY={30} textAlign="center">
-        Route your{' '}
-        <Link to={routes.oracle.ask.getLink('free energy')}>free energy</Link>{' '}
-        (W) to those who deserve it
+        Route your <Link to={routes.oracle.ask.getLink('free energy')}>free energy</Link> (W) to
+        those who deserve it
       </Pane>
 
       <Table

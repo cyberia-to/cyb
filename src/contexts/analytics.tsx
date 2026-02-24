@@ -1,13 +1,6 @@
-import {
-  createContext,
-  useContext,
-  useEffect,
-  useMemo,
-  useCallback,
-  ReactNode,
-} from 'react';
+import { init, track } from '@plausible-analytics/tracker';
+import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo } from 'react';
 import { useLocation } from 'react-router-dom';
-import { init, trackPageview, trackEvent } from '@plausible-analytics/tracker';
 import { isDevEnv } from 'src/utils/dev';
 
 const PLAUSIBLE_DOMAIN = 'cyb.ai';
@@ -33,13 +26,10 @@ function AnalyticsProvider({ children }: { children: ReactNode }) {
     try {
       init({
         domain: PLAUSIBLE_DOMAIN,
-        trackLocalhost: false,
-        // Track outbound links automatically
-        // Track file downloads automatically
+        captureOnLocalhost: false,
+        outboundLinks: true,
+        fileDownloads: true,
       });
-
-      // Track initial page view
-      trackPageview();
     } catch (e) {
       console.warn('Analytics init failed:', e);
     }
@@ -53,14 +43,11 @@ function AnalyticsProvider({ children }: { children: ReactNode }) {
         const href = link.getAttribute('href');
 
         // Track outbound links
-        if (
-          href &&
-          (href.startsWith('http://') || href.startsWith('https://'))
-        ) {
+        if (href && (href.startsWith('http://') || href.startsWith('https://'))) {
           const url = new URL(href);
           if (url.hostname !== window.location.hostname) {
             try {
-              trackEvent('Outbound Link: Click', {
+              track('Outbound Link: Click', {
                 props: { url: href },
               });
             } catch {
@@ -89,7 +76,7 @@ function AnalyticsProvider({ children }: { children: ReactNode }) {
           const extension = href.split('.').pop()?.toLowerCase();
           if (extension && fileExtensions.includes(extension)) {
             try {
-              trackEvent('File Download', {
+              track('File Download', {
                 props: { url: href, extension },
               });
             } catch {
@@ -105,7 +92,7 @@ function AnalyticsProvider({ children }: { children: ReactNode }) {
         const eventName = analyticsElement.getAttribute('data-analytics');
         if (eventName) {
           try {
-            trackEvent(eventName);
+            track(eventName, {});
           } catch {
             // ignore
           }
@@ -132,27 +119,24 @@ function AnalyticsProvider({ children }: { children: ReactNode }) {
     const isInitialRender = !document.referrer && location.key === 'default';
     if (!isInitialRender) {
       try {
-        trackPageview();
+        track('pageview', {});
       } catch {
         // ignore
       }
     }
-  }, [location.pathname, location.search]);
+  }, [location.key]);
 
-  const handleTrackEvent = useCallback(
-    (eventName: string, options?: EventOptions) => {
-      if (isDevEnv()) {
-        console.log('[Analytics Dev]', eventName, options);
-        return;
-      }
-      try {
-        trackEvent(eventName, options);
-      } catch {
-        // ignore
-      }
-    },
-    []
-  );
+  const handleTrackEvent = useCallback((eventName: string, options?: EventOptions) => {
+    if (isDevEnv()) {
+      console.log('[Analytics Dev]', eventName, options);
+      return;
+    }
+    try {
+      track(eventName, options || {});
+    } catch {
+      // ignore
+    }
+  }, []);
 
   const value = useMemo(
     () => ({
@@ -161,11 +145,7 @@ function AnalyticsProvider({ children }: { children: ReactNode }) {
     [handleTrackEvent]
   );
 
-  return (
-    <AnalyticsContext.Provider value={value}>
-      {children}
-    </AnalyticsContext.Provider>
-  );
+  return <AnalyticsContext.Provider value={value}>{children}</AnalyticsContext.Provider>;
 }
 
 function useAnalytics() {

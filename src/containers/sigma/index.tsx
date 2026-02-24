@@ -1,20 +1,19 @@
-import { useEffect, useState, useMemo } from 'react';
 import BigNumber from 'bignumber.js';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useLocation } from 'react-router-dom';
-import { useRobotContext } from 'src/pages/robot/robot.context';
-import TokenChange from 'src/components/TokenChange/TokenChange';
-import { routes } from 'src/routes';
 import Display from 'src/components/containerGradient/Display/Display';
-import { useAppSelector } from 'src/redux/hooks';
 import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
-import useCurrentPassport from 'src/features/passport/hooks/useCurrentPassport';
+import TokenChange from 'src/components/TokenChange/TokenChange';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
-import { SigmaContext } from './SigmaContext';
-
-import { CardPassport } from './components';
+import useCurrentPassport from 'src/features/passport/hooks/useCurrentPassport';
+import { useRobotContext } from 'src/pages/robot/robot.context';
+import { useAppSelector } from 'src/redux/hooks';
+import { routes } from 'src/routes';
 import ActionBarPortalGift from '../portal/gift/ActionBarPortalGift';
 import STEP_INFO from '../portal/gift/utils';
+import { CardPassport } from './components';
+import { SigmaContext } from './SigmaContext';
 
 const valueContext = {
   totalCap: 0,
@@ -72,20 +71,6 @@ function Sigma() {
     defaultText: 'current neurons capital valuation',
   });
 
-  useEffect(() => {
-    const { dataCap } = value;
-    if (Object.keys(dataCap).length > 0) {
-      let changeCap = new BigNumber(0);
-      let tempCap = new BigNumber(0);
-      Object.values(dataCap).forEach((item) => {
-        changeCap = changeCap.plus(item.change);
-        tempCap = tempCap.plus(item.currentCap);
-      });
-      updateChangeCap(changeCap);
-      updateTotalCap(tempCap);
-    }
-  }, [value.dataCap]);
-
   const updateTotalCap = (cap) => {
     setValue((item) => ({
       ...item,
@@ -99,6 +84,20 @@ function Sigma() {
       changeCap: new BigNumber(cap).dp(0, BigNumber.ROUND_FLOOR).toNumber(),
     }));
   };
+
+  useEffect(() => {
+    const { dataCap } = value;
+    if (Object.keys(dataCap).length > 0) {
+      let changeCap = new BigNumber(0);
+      let tempCap = new BigNumber(0);
+      Object.values(dataCap).forEach((item) => {
+        changeCap = changeCap.plus(item.change);
+        tempCap = tempCap.plus(item.currentCap);
+      });
+      updateChangeCap(changeCap);
+      updateTotalCap(tempCap);
+    }
+  }, [value.dataCap, updateTotalCap, value, updateChangeCap]);
 
   const updateDataCap = (newData) => {
     setValue((item) => ({
@@ -156,9 +155,7 @@ function Sigma() {
       {isCurrentOwner && currentPassport && (
         <ActionBarPortalGift
           setStepApp={(step) => {
-            if (
-              [STEP_INFO.STATE_INIT, STEP_INFO.STATE_PROVE_DONE].includes(step)
-            ) {
+            if ([STEP_INFO.STATE_INIT, STEP_INFO.STATE_PROVE_DONE].includes(step)) {
               setSelectedAddress(null);
               setStep(STEP_INFO.STATE_PROVE);
             } else {

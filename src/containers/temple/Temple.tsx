@@ -1,13 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import Carousel from 'src/components/Tabs/Carousel/Carousel';
+import { useAdviser } from 'src/features/adviser/context';
+import { ActionBar, ContainerGradientText } from '../../components';
 import { MainContainer } from '../portal/components';
 import { BOOT_ICON } from '../portal/utils';
-import { PlayContent, PlayBanerContent as PlayBannerContent } from './pages';
-import { ActionBar, ContainerGradientText } from '../../components';
-import styles from './Temple.module.scss';
 import Canvas from './components/canvasOne';
-import { useAdviser } from 'src/features/adviser/context';
+import { PlayBanerContent as PlayBannerContent, PlayContent } from './pages';
+import styles from './Temple.module.scss';
 
 const itemCarousel = [
   { title: 'compute' },
@@ -44,9 +44,7 @@ const itemCarousel1 = [
   {
     title: (
       <div className={styles.itemCarouselBostrom}>
-        <div className={styles.itemCarouselBostromText}>
-          {BOOT_ICON} bostrom
-        </div>
+        <div className={styles.itemCarouselBostromText}>{BOOT_ICON} bostrom</div>
         <div className={styles.itemCarouselBostromDSC}>collaborative ai</div>
       </div>
     ),

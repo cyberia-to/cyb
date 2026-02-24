@@ -1,28 +1,20 @@
 /* eslint-disable no-await-in-loop */
-import { useEffect, useState, useMemo } from 'react';
+
 import BigNumber from 'bignumber.js';
-import { v4 as uuidv4 } from 'uuid';
+import { useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useIbcDenom } from 'src/contexts/ibcDenom';
-import { useAppData } from 'src/contexts/appData';
 import TokenChange from 'src/components/TokenChange/TokenChange';
 import { DENOM_LIQUID } from 'src/constants/config';
+import { useAppData } from 'src/contexts/appData';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
-import {
-  DenomArr,
-  ContainerGradient,
-  MainContainer,
-  FormatNumberTokens,
-} from '../../components';
-import { replaceSlash, getDisplayAmount } from '../../utils/utils';
+import { v4 as uuidv4 } from 'uuid';
+import { ContainerGradient, DenomArr, FormatNumberTokens, MainContainer } from '../../components';
+import { getDisplayAmount, replaceSlash } from '../../utils/utils';
 // import { getMarketData } from './getMarketData';
-import { ColItem, RowItem, NebulaImg } from './components';
+import { ColItem, NebulaImg, RowItem } from './components';
 
-function Title({
-  capData,
-}: {
-  capData: { currentCap: number; change: number };
-}) {
+function Title({ capData }: { capData: { currentCap: number; change: number } }) {
   return (
     <div
       style={{
@@ -57,10 +49,7 @@ function Nebula() {
         const amount = dataTotalSupply[key];
         const [{ coinDecimals }] = tracesDenom(key);
         const reduceAmount = getDisplayAmount(amount, coinDecimals);
-        if (
-          Object.keys(marketData).length > 0 &&
-          Object.prototype.hasOwnProperty.call(marketData, key)
-        ) {
+        if (Object.keys(marketData).length > 0 && Object.hasOwn(marketData, key)) {
           const poolPrice = new BigNumber(marketData[key]);
           const tempCap = poolPrice
             .multipliedBy(Number(reduceAmount))
@@ -87,7 +76,7 @@ function Nebula() {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataTotalSupply, marketData]);
+  }, [dataTotalSupply, marketData, tracesDenom]);
 
   const dataRenderItems = useMemo(() => {
     let dataObj = {};
@@ -99,10 +88,7 @@ function Nebula() {
         const [{ coinDecimals }] = tracesDenom(key);
         const reduceAmount = getDisplayAmount(amount, coinDecimals);
 
-        if (
-          Object.keys(marketData).length > 0 &&
-          Object.prototype.hasOwnProperty.call(marketData, key)
-        ) {
+        if (Object.keys(marketData).length > 0 && Object.hasOwn(marketData, key)) {
           const poolPrice = new BigNumber(marketData[key]);
           cap = poolPrice
             .multipliedBy(Number(reduceAmount))
@@ -125,7 +111,7 @@ function Nebula() {
     }
     return dataObj;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataTotalSupply, marketData]);
+  }, [dataTotalSupply, marketData, tracesDenom]);
 
   const getTypeDenomKey = (key) => {
     const denom = tracesDenom(key);
@@ -135,9 +121,7 @@ function Nebula() {
     }
 
     if (key.includes('pool')) {
-      return `${getTypeDenomKey(denom[0].denom)}-${getTypeDenomKey(
-        denom[1].denom
-      )}`;
+      return `${getTypeDenomKey(denom[0].denom)}-${getTypeDenomKey(denom[1].denom)}`;
     }
 
     return denom[0].denom;
@@ -182,7 +166,7 @@ function Nebula() {
       );
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataRenderItems]);
+  }, [dataRenderItems, getLinktoSearch]);
 
   return (
     <MainContainer>

@@ -1,19 +1,4 @@
-import {
-  EmbeddinsDbEntity,
-  EntryType,
-  PinDbEntity,
-  SyncQueueKey,
-  SyncQueueStatus,
-} from 'src/services/CozoDb/types/entities';
-import { NeuronAddress, ParticleCid } from 'src/types/base';
-
-import { dbResultToDtoList, toListOfObjects } from 'src/services/CozoDb/utils';
-import {
-  removeUndefinedFields,
-  dtoListToEntity,
-  dtoToEntity,
-} from 'src/utils/dto';
-
+import { SenseListItem } from 'src/services/backend/types/sense';
 import { CozoDbWorker } from 'src/services/backend/workers/db/worker';
 import {
   CommunityDto,
@@ -24,14 +9,18 @@ import {
   SyncStatusDto,
   TransactionDto,
 } from 'src/services/CozoDb/types/dto';
-
-import { SenseListItem } from 'src/services/backend/types/sense';
+import {
+  EmbeddinsDbEntity,
+  EntryType,
+  PinDbEntity,
+  SyncQueueStatus,
+} from 'src/services/CozoDb/types/entities';
+import { dbResultToDtoList, toListOfObjects } from 'src/services/CozoDb/utils';
+import { NeuronAddress, ParticleCid } from 'src/types/base';
+import { dtoListToEntity, dtoToEntity, removeUndefinedFields } from 'src/utils/dto';
+import { MSG_MULTI_SEND_TRANSACTION_TYPE, MSG_SEND_TRANSACTION_TYPE } from '../indexer/types';
 import { SyncQueueItem } from '../sync/services/ParticlesResolverQueue/types';
 import { extractSenseChats } from '../sync/services/utils/sense';
-import {
-  MSG_MULTI_SEND_TRANSACTION_TYPE,
-  MSG_SEND_TRANSACTION_TYPE,
-} from '../indexer/types';
 
 const TIMESTAMP_INTITAL = 0;
 const DEFAULT_SYNC_STATUS = {
@@ -61,9 +50,7 @@ class DbApiWrapper {
       ['id', 'owner_id']
     );
 
-    return result.rows.length
-      ? dbResultToDtoList<SyncStatusDto>(result)[0]
-      : defaultSyncStatus;
+    return result.rows.length ? dbResultToDtoList<SyncStatusDto>(result)[0] : defaultSyncStatus;
   }
 
   public async putSyncStatus(item: SyncStatusDto[] | SyncStatusDto) {
@@ -97,9 +84,7 @@ class DbApiWrapper {
 
     entryType &&
       conditions.push(
-        `entry_type in [${
-          Array.isArray(entryType) ? entryType.join(', ') : entryType
-        }]`
+        `entry_type in [${Array.isArray(entryType) ? entryType.join(', ') : entryType}]`
       );
 
     id && conditions.push(`id = '${id}'`);
@@ -115,10 +100,7 @@ class DbApiWrapper {
   }
 
   public async putTransactions(transactions: TransactionDto[]) {
-    return this.db!.executePutCommand(
-      'transaction',
-      dtoListToEntity(transactions)
-    );
+    return this.db!.executePutCommand('transaction', dtoListToEntity(transactions));
   }
 
   public async putPins(pins: PinDbEntity[] | PinDbEntity) {
@@ -142,23 +124,19 @@ class DbApiWrapper {
   }
 
   public async putCommunity(community: CommunityDto[] | CommunityDto) {
-    const entitites = dtoListToEntity(
-      Array.isArray(community) ? community : [community]
-    );
+    const entitites = dtoListToEntity(Array.isArray(community) ? community : [community]);
     await this.db!.executePutCommand('community', entitites);
   }
 
   public async deletePins(pins: ParticleCid[]) {
     return this.db!.executeRmCommand(
       'pin',
-      pins.map((cid) => ({ cid } as Partial<PinDbEntity>))
+      pins.map((cid) => ({ cid }) as Partial<PinDbEntity>)
     );
   }
 
   public async putParticles(particles: ParticleDto[] | ParticleDto) {
-    const entitites = dtoListToEntity(
-      Array.isArray(particles) ? particles : [particles]
-    );
+    const entitites = dtoListToEntity(Array.isArray(particles) ? particles : [particles]);
     return this.db!.executePutCommand('particle', entitites);
   }
 
@@ -188,15 +166,9 @@ class DbApiWrapper {
 
   public async getTransactions(
     neuron: NeuronAddress,
-    {
-      timestampFrom = 0,
-      order = 'desc',
-    }: { order?: 'desc' | 'asc'; timestampFrom?: number } = {}
+    { timestampFrom = 0, order = 'desc' }: { order?: 'desc' | 'asc'; timestampFrom?: number } = {}
   ) {
-    const conditions = [
-      `neuron = '${neuron}'`,
-      `timestamp >= ${timestampFrom}`,
-    ];
+    const conditions = [`neuron = '${neuron}'`, `timestamp >= ${timestampFrom}`];
     const result = await this.db!.executeGetCommand(
       'transaction',
       ['hash', 'type', 'success', 'value', 'timestamp', 'memo', 'index'],
@@ -208,10 +180,7 @@ class DbApiWrapper {
     return dbResultToDtoList<TransactionDto>(result);
   }
 
-  public async getMyChats(
-    myAddress: NeuronAddress,
-    userAddress: NeuronAddress
-  ) {
+  public async getMyChats(myAddress: NeuronAddress, userAddress: NeuronAddress) {
     const result = await this.db!.executeGetCommand(
       'transaction',
       ['hash', 'type', 'success', 'value', 'timestamp', 'memo'],
@@ -225,9 +194,7 @@ class DbApiWrapper {
     const sendTransactions = dbResultToDtoList<TransactionDto>(result);
 
     const chats = extractSenseChats(myAddress, sendTransactions);
-    const userChats = [...chats.values()].find(
-      (c) => c.userAddress === userAddress
-    );
+    const userChats = [...chats.values()].find((c) => c.userAddress === userAddress);
 
     return userChats ? userChats.transactions : [];
   }
@@ -254,18 +221,12 @@ class DbApiWrapper {
   }
 
   public async existEmbedding(cid: ParticleCid) {
-    const result = await this.db!.executeGetCommand(
-      'embeddings',
-      ['cid'],
-      [`cid = '${cid}'`]
-    );
+    const result = await this.db!.executeGetCommand('embeddings', ['cid'], [`cid = '${cid}'`]);
 
     return result.rows.length > 0;
   }
 
-  public async updateSyncQueue(
-    item: Partial<SyncQueueDto>[] | Partial<SyncQueueDto>
-  ) {
+  public async updateSyncQueue(item: Partial<SyncQueueDto>[] | Partial<SyncQueueDto>) {
     const entitites = dtoListToEntity(Array.isArray(item) ? item : [item]);
     try {
       return this.db!.executeUpdateCommand('sync_queue', entitites);

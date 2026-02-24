@@ -14,30 +14,16 @@ export function ProgressBar({
       className={styles.containerProgressBar}
       style={{ ...styleContainer, transform: `rotate(${rotate}deg)` }}
     >
-      {coefficient && (
-        <span style={{ transform: `rotate(-${rotate}deg)` }}>
-          {coefficient.up}x
-        </span>
-      )}
-      <div
-        className={styles.containerProgressBarTrack}
-        style={styleContainerTrack}
-      >
-        <div
-          style={{ width: `${progress}%` }}
-          className={styles.containerProgressBarTrackProgress}
-        >
+      {coefficient && <span style={{ transform: `rotate(-${rotate}deg)` }}>{coefficient.up}x</span>}
+      <div className={styles.containerProgressBarTrack} style={styleContainerTrack}>
+        <div style={{ width: `${progress}%` }} className={styles.containerProgressBarTrackProgress}>
           <div className={styles.containerProgressBarTrackProgressValue}>
-            <span style={{ transform: `rotate(-${rotate}deg)` }}>
-              {amount || `${progress}%`}
-            </span>
+            <span style={{ transform: `rotate(-${rotate}deg)` }}>{amount || `${progress}%`}</span>
           </div>
         </div>
       </div>
       {coefficient && (
-        <span style={{ transform: `rotate(-${rotate}deg)` }}>
-          {coefficient.down}x
-        </span>
+        <span style={{ transform: `rotate(-${rotate}deg)` }}>{coefficient.down}x</span>
       )}
     </div>
   );
@@ -79,10 +65,7 @@ function ProgressCard({
       userStyleContent={{ height: '194px' }}
     >
       <div className={styles.containerBeforeActivation}>
-        <ProgressBar
-          progress={progress}
-          styleContainerTrack={styleContainerTrack}
-        />
+        <ProgressBar progress={progress} styleContainerTrack={styleContainerTrack} />
         <div className={styles.containerBeforeActivationFooter}>
           <div>0%</div>
           <div style={{ color: '#999999' }}> {footerText}</div>

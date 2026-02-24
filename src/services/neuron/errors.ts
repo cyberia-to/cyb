@@ -6,7 +6,7 @@ export class SigningCyberClientError extends Error {
   constructor(response: string[] | DeliverTxResponse) {
     let message = '';
     let code = -1;
-    if (response instanceof Array) {
+    if (Array.isArray(response)) {
       message = response.join('\r\n');
     } else if (response.rawLog) {
       message = response.rawLog.toString();
@@ -22,10 +22,8 @@ export class SigningCyberClientError extends Error {
   }
 }
 
-export const throwErrorOrResponse = (
-  response: string[] | DeliverTxResponse
-) => {
-  const isResponseError = response instanceof Array || response.code !== 0;
+export const throwErrorOrResponse = (response: string[] | DeliverTxResponse) => {
+  const isResponseError = Array.isArray(response) || response.code !== 0;
   if (isResponseError) {
     throw new SigningCyberClientError(response);
   }

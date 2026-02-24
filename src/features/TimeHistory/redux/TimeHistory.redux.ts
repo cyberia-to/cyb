@@ -1,4 +1,4 @@
-import { Dispatch, PayloadAction, createSlice } from '@reduxjs/toolkit';
+import { createSlice, Dispatch, PayloadAction } from '@reduxjs/toolkit';
 import { RouteItemT } from '../ui/type';
 
 type HistoryItem = {
@@ -35,10 +35,7 @@ const slice = createSlice({
   name: 'timeHistory',
   initialState,
   reducers: {
-    setTimeHistory: (
-      state,
-      { payload }: PayloadAction<HistoryItem['action']>
-    ) => {
+    setTimeHistory: (state, { payload }: PayloadAction<HistoryItem['action']>) => {
       const timePayload = new Date().toISOString();
 
       const stateItem: HistoryItem = {
@@ -49,9 +46,7 @@ const slice = createSlice({
       const newState = [...state[keyLS], stateItem];
 
       state[keyLS] =
-        newState.length > LIMIT_ARRAY
-          ? newState.slice(newState.length - LIMIT_ARRAY)
-          : newState;
+        newState.length > LIMIT_ARRAY ? newState.slice(newState.length - LIMIT_ARRAY) : newState;
 
       saveToLocalStorage(state);
     },

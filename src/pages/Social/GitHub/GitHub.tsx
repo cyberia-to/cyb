@@ -1,15 +1,12 @@
-import githubIcon from './github-white-icon.svg';
-import star from '../../../image/star-reg.svg';
-import share from '../../../image/share.svg';
-
-import useMediaQuery from '../../../hooks/useMediaQuery';
-import React from 'react';
-import axios from 'axios';
-import { formatNumber } from 'src/utils/utils';
 import { useQuery } from '@tanstack/react-query';
+import axios from 'axios';
 import { LinkWindow, Tooltip } from 'src/components';
+import { formatNumber } from 'src/utils/utils';
+import useMediaQuery from '../../../hooks/useMediaQuery';
+import share from '../../../image/share.svg';
+import star from '../../../image/star-reg.svg';
 import styles from './GitHub.module.scss';
-import { wrap } from 'comlink';
+import githubIcon from './github-white-icon.svg';
 
 const getStargazersGitHub = async () => {
   try {
@@ -19,7 +16,7 @@ const getStargazersGitHub = async () => {
     });
 
     return response.data;
-  } catch (e) {
+  } catch (_e) {
     return null;
   }
 };
@@ -38,15 +35,11 @@ export function StargazersCountGH() {
     },
   });
 
-  return (
-    <div>
-      {data !== undefined ? formatNumber(data.stargazers_count) : '...'}
-    </div>
-  );
+  return <div>{data !== undefined ? formatNumber(data.stargazers_count) : '...'}</div>;
 }
 
 export function GitHub() {
-  const mediaQuery = useMediaQuery('(min-width: 768px)');
+  const _mediaQuery = useMediaQuery('(min-width: 768px)');
 
   if (true) {
     return (
@@ -64,20 +57,12 @@ export function GitHub() {
         }}
       >
         <LinkWindow to="https://github.com/cybercongress/cyb-ts">
-          <img
-            alt="github"
-            style={{ width: 30, height: 30 }}
-            src={githubIcon}
-          />
+          <img alt="github" style={{ width: 30, height: 30 }} src={githubIcon} />
           <span>app</span>
         </LinkWindow>
 
         <LinkWindow to="https://github.com/cybercongress">
-          <img
-            alt="github"
-            style={{ width: 30, height: 30 }}
-            src={githubIcon}
-          />
+          <img alt="github" style={{ width: 30, height: 30 }} src={githubIcon} />
 
           <span>congress</span>
         </LinkWindow>
@@ -122,12 +107,7 @@ export function GitHub() {
                   whiteSpace: 'nowrap',
                 }}
               >
-                join devs{' '}
-                <img
-                  alt="share"
-                  style={{ width: 20, height: 20 }}
-                  src={share}
-                />
+                join devs <img alt="share" style={{ width: 20, height: 20 }} src={share} />
               </div>
             </LinkWindow>
             <LinkWindow to="https://github.com/cybercongress/cyb/issues/new">
@@ -139,12 +119,7 @@ export function GitHub() {
                   whiteSpace: 'nowrap',
                 }}
               >
-                submit issue{' '}
-                <img
-                  alt="share"
-                  style={{ width: 20, height: 20 }}
-                  src={share}
-                />
+                submit issue <img alt="share" style={{ width: 20, height: 20 }} src={share} />
               </div>
             </LinkWindow>
             <div

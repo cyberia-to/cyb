@@ -1,14 +1,12 @@
-import { Account } from 'src/components';
-import { MsgSend } from 'cosmjs-types/cosmos/bank/v1beta1/tx';
-import { routes } from 'src/routes';
-import { Link, useNavigate } from 'react-router-dom';
 import cx from 'classnames';
+import { MsgSend } from 'cosmjs-types/cosmos/bank/v1beta1/tx';
+import { Link, useNavigate } from 'react-router-dom';
+import { Account } from 'src/components';
 import { SenseItem } from 'src/features/sense/redux/sense.redux';
+import { routes } from 'src/routes';
+import CoinsAmount, { CoinAction } from '../../../components/CoinAmount/CoinAmount';
 import Date from '../../../components/Date/Date';
 import styles from './Message.module.scss';
-import CoinsAmount, {
-  CoinAction,
-} from '../../../components/CoinAmount/CoinAmount';
 
 type Props = {
   date: string | Date;
@@ -41,11 +39,7 @@ function Message({
   const navigate = useNavigate();
 
   function handleNavigate() {
-    navigate(
-      cid
-        ? routes.oracle.ask.getLink(cid)
-        : routes.txExplorer.getLink(transactionHash)
-    );
+    navigate(cid ? routes.oracle.ask.getLink(cid) : routes.txExplorer.getLink(transactionHash));
   }
 
   return (
@@ -66,18 +60,16 @@ function Message({
           <Date timestamp={date} timeOnly />
         </Link>
 
-        {fromLog && from && (
-          <>
-            {!myMessage && (
-              <Link to={routes.neuron.getLink(from)}>
-                <Account address={from} sizeAvatar="20px" avatar onlyAvatar />
-              </Link>
-            )}
-          </>
+        {
+          fromLog && from && !myMessage && (
+            <Link to={routes.neuron.getLink(from)}>
+              <Account address={from} sizeAvatar="20px" avatar onlyAvatar />
+            </Link>
+          )
           // <Tooltip tooltip="message from log">
           // <span className={styles.icon}>🍀</span>
           // </Tooltip>
-        )}
+        }
 
         {avatar}
       </div>
@@ -113,9 +105,7 @@ function Message({
             <CoinsAmount
               amount={amountData.amount}
               type={
-                amountData.isAmountSendToMyAddress === false
-                  ? CoinAction.send
-                  : CoinAction.receive
+                amountData.isAmountSendToMyAddress === false ? CoinAction.send : CoinAction.receive
               }
             />
           </div>

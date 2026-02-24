@@ -13,10 +13,7 @@ function BandwidthParam({ data }) {
         gridTemplateColumns="repeat(auto-fit, minmax(250px, 1fr))"
         gridGap="20px"
       >
-        <CardStatisics
-          title="base price"
-          value={formatNumber(parseFloat(data.base_price))}
-        />
+        <CardStatisics title="base price" value={formatNumber(parseFloat(data.base_price))} />
         <CardStatisics
           title="recovery period blocks"
           value={formatNumber(parseFloat(data.recovery_period))}
@@ -34,12 +31,7 @@ function BandwidthParam({ data }) {
   } catch (error) {
     console.warn('BandwidthParam', error);
     return (
-      <Pane
-        justifyContent="center"
-        flexDirection="column"
-        alignItems="center"
-        display="flex"
-      >
+      <Pane justifyContent="center" flexDirection="column" alignItems="center" display="flex">
         <Vitalik />
         Error !
       </Pane>

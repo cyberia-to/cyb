@@ -1,17 +1,10 @@
-import React from 'react';
 import cx from 'classnames';
+import React from 'react';
 import styles from './Pill.module.scss';
 
 export type Props = {
   text: string | React.ReactNode;
-  color?:
-    | 'white'
-    | 'black'
-    | 'blue'
-    | 'red'
-    | 'green'
-    | 'yellow'
-    | 'green-outline';
+  color?: 'white' | 'black' | 'blue' | 'red' | 'green' | 'yellow' | 'green-outline';
   image?: React.ReactNode;
   className?: string;
 };

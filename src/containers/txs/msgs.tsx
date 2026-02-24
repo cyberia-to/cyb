@@ -1,7 +1,7 @@
 import { Pane } from '@cybercongress/gravity';
-import Activites from './Activites';
 import Display from 'src/components/containerGradient/Display/Display';
 import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
+import Activites from './Activites';
 
 function Msgs({ data }) {
   return (

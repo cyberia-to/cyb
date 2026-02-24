@@ -26,9 +26,7 @@ function useGetStatisticsCyber() {
           cidsCount: particles,
         }));
 
-        const responseHeroesActive = await queryClient.validators(
-          'BOND_STATUS_BONDED'
-        );
+        const responseHeroesActive = await queryClient.validators('BOND_STATUS_BONDED');
         const { validators } = responseHeroesActive;
         setKnowledge((item) => ({
           ...item,

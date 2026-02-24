@@ -1,8 +1,8 @@
-import { formatNumber } from 'src/utils/utils';
 import cx from 'classnames';
-import styles from './TokenChange.module.scss';
-import FormatNumberTokens from '../FormatNumberTokens/FormatNumberTokens';
 import { DENOM_LIQUID } from 'src/constants/config';
+import { formatNumber } from 'src/utils/utils';
+import FormatNumberTokens from '../FormatNumberTokens/FormatNumberTokens';
+import styles from './TokenChange.module.scss';
 
 export type Props = {
   total: number;

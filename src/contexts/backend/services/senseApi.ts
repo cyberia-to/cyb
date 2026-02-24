@@ -1,12 +1,6 @@
 import { Coin } from 'cosmjs-types/cosmos/base/v1beta1/coin';
 import { CID_TWEET } from 'src/constants/app';
 import { isParticle } from 'src/features/particle/utils';
-import {
-  LinkDto,
-  SyncStatusDto,
-  TransactionDto,
-} from 'src/services/CozoDb/types/dto';
-import { EntryType } from 'src/services/CozoDb/types/entities';
 import BroadcastChannelSender from 'src/services/backend/channels/BroadcastChannelSender';
 import DbApiWrapper from 'src/services/backend/services/DbApi/DbApi';
 import {
@@ -15,9 +9,11 @@ import {
   MSG_SEND_TRANSACTION_TYPE,
   MsgSendValue,
 } from 'src/services/backend/services/indexer/types';
-import { syncMyChats } from 'src/services/backend/services/sync/services/SyncTransactionsLoop/services/chat';
 import { SENSE_FRIEND_PARTICLES } from 'src/services/backend/services/sync/services/consts';
+import { syncMyChats } from 'src/services/backend/services/sync/services/SyncTransactionsLoop/services/chat';
 import { changeParticleSyncStatus } from 'src/services/backend/services/sync/utils';
+import { LinkDto, SyncStatusDto, TransactionDto } from 'src/services/CozoDb/types/dto';
+import { EntryType } from 'src/services/CozoDb/types/entities';
 import { NeuronAddress, ParticleCid, TransactionHash } from 'src/types/base';
 import { EntityToDto } from 'src/types/dto';
 import { getNowUtcNumber } from 'src/utils/date';
@@ -93,10 +89,7 @@ export const createSenseApi = (
     // );
     return result;
   },
-  markAsRead: async (
-    id: NeuronAddress | ParticleCid,
-    lastTimestampRead?: number
-  ) => {
+  markAsRead: async (id: NeuronAddress | ParticleCid, lastTimestampRead?: number) => {
     console.time(`--- senseMarkAsRead done ${id}`);
     const syncItem = await dbApi.getSyncStatus(myAddress!, id);
 
@@ -185,12 +178,7 @@ export const createSenseApi = (
 
     const transaction = prepareSenseCyberlinkTransaction(link);
     await dbApi.putTransactions([transaction]);
-    const newItem = changeParticleSyncStatus(
-      syncItemLink,
-      [link],
-      myAddress!,
-      false
-    );
+    const newItem = changeParticleSyncStatus(syncItemLink, [link], myAddress!, false);
     await dbApi.putSyncStatus(newItem);
     new BroadcastChannelSender().postSenseUpdate([newItem]);
   },
@@ -209,9 +197,7 @@ export const createSenseApi = (
       : [];
 
     // merge 2 lists and reorder
-    const result = [...chats, ...links].sort((a, b) =>
-      a.timestamp > b.timestamp ? 1 : -1
-    );
+    const result = [...chats, ...links].sort((a, b) => (a.timestamp > b.timestamp ? 1 : -1));
 
     return result;
   },

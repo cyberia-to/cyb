@@ -1,6 +1,6 @@
-import { v4 as uuidv4 } from 'uuid';
-import { Link } from 'react-router-dom';
 import ReactJson from 'react-json-view';
+import { Link } from 'react-router-dom';
+import { v4 as uuidv4 } from 'uuid';
 import { CardCantainer } from '../ui/ui';
 import styles from './stylesHistoryInfo.scss';
 

@@ -1,9 +1,11 @@
 /* eslint-disable no-restricted-syntax */
-import { useEffect, useState } from 'react';
+
 import { Sha256 } from '@cosmjs/crypto';
-import { useIbcDenom } from 'src/contexts/ibcDenom';
 import { SigningStargateClient } from '@cosmjs/stargate';
+import { useEffect, useState } from 'react';
 import { CHAIN_ID } from 'src/constants/config';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
+import { toHex } from 'src/utils/encoding';
 import networkList from '../../../utils/networkListIbc';
 import useSubscribersBlokIbc from './useSubscribersBlokIbc';
 
@@ -20,9 +22,7 @@ const ibcDenom = (paths, coinMinimalDenom) => {
   const prefix = prefixes.join('/');
   const denom = `${prefix}/${coinMinimalDenom}`;
 
-  return `ibc/${Buffer.from(sha256(Buffer.from(denom)))
-    .toString('hex')
-    .toUpperCase()}`;
+  return `ibc/${toHex(sha256(denom)).toUpperCase()}`;
 };
 
 function useGetBalancesIbc(client: SigningStargateClient, denom) {
@@ -31,7 +31,7 @@ function useGetBalancesIbc(client: SigningStargateClient, denom) {
   const [denomIbc, setDenomIbc] = useState(null);
   const [error, setError] = useState(null);
   const { blockInfo } = useSubscribersBlokIbc(client);
-  const [update, setUpdate] = useState(0);
+  const [_update, setUpdate] = useState(0);
 
   const getBalanceIbc = async () => {
     if (client && denom) {
@@ -54,10 +54,7 @@ function useGetBalancesIbc(client: SigningStargateClient, denom) {
 
         try {
           const [{ address }] = await client.signer.getAccounts();
-          const responseBalance = await client.queryClient.bank.balance(
-            address,
-            coinMinimalDenom
-          );
+          const responseBalance = await client.queryClient.bank.balance(address, coinMinimalDenom);
 
           return {
             balance: { [coinMinimalDenom]: responseBalance.amount },
@@ -87,7 +84,7 @@ function useGetBalancesIbc(client: SigningStargateClient, denom) {
       }
     };
     getBalance();
-  }, [client, denom, ibcDataDenom]);
+  }, [getBalanceIbc]);
 
   useEffect(() => {
     const updateBalanceIbc = async () => {
@@ -95,16 +92,13 @@ function useGetBalancesIbc(client: SigningStargateClient, denom) {
       if (result && balanceIbc) {
         const { balance } = result;
         const key = Object.keys(balance)[0];
-        if (
-          balanceIbc[key] &&
-          Number(balance[key]) !== Number(balanceIbc[key])
-        ) {
+        if (balanceIbc[key] && Number(balance[key]) !== Number(balanceIbc[key])) {
           setBalanceIbc(balance);
         }
       }
     };
     updateBalanceIbc();
-  }, [update]);
+  }, [balanceIbc, getBalanceIbc]);
 
   useEffect(() => {
     if (client) {

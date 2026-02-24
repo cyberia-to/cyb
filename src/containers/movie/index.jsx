@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
 import Iframe from 'react-iframe';
+import { useNavigate } from 'react-router-dom';
 import { Loading } from '../../components';
 import styles from './Movie.module.scss';
 
@@ -29,7 +29,7 @@ function Movie() {
       window.removeEventListener('message', handlerEventListener);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [redirect]);
 
   useEffect(() => {
     const iframeTag = document.querySelector('iframe');
@@ -48,9 +48,7 @@ function Movie() {
       {loading && (
         <div className={styles.containerLoading}>
           <Loading />
-          <div style={{ color: '#fff', marginTop: 20, fontSize: 20 }}>
-            rendering story
-          </div>
+          <div style={{ color: '#fff', marginTop: 20, fontSize: 20 }}>rendering story</div>
         </div>
       )}
       <Iframe
@@ -59,6 +57,7 @@ function Movie() {
         id="iframeCid"
         className={styles.iframeCid}
         src={linkMovie}
+        sandbox="allow-scripts"
       />
     </div>
   );

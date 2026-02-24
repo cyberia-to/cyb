@@ -1,10 +1,10 @@
-import { useParams, useNavigate } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router-dom';
+import { PATTERN_CYBER } from 'src/constants/patterns';
 import usePassportByAddress from 'src/features/passport/hooks/usePassportByAddress';
 import usePassportContract from 'src/features/passport/usePassportContract';
-import { Citizenship } from 'src/types/citizenship';
-import { PATTERN_CYBER } from 'src/constants/patterns';
-import Sense from './Sense';
 import { useRobotContext } from 'src/pages/robot/robot.context';
+import { Citizenship } from 'src/types/citizenship';
+import Sense from './Sense';
 
 /**
     Complex logic, although code seems simple
@@ -21,9 +21,7 @@ const addressToNicknameMap: {
 } = {};
 
 function findAddressByNickname(nickname: string) {
-  return Object.entries(addressToNicknameMap).find(
-    ([, value]) => value === nickname
-  )?.[0];
+  return Object.entries(addressToNicknameMap).find(([, value]) => value === nickname)?.[0];
 }
 
 function handlePassport(passport: Citizenship | null) {
@@ -47,9 +45,7 @@ function SenseRoutingWrapper() {
 
   const address = paramSenseId?.match(PATTERN_CYBER) ? paramSenseId : undefined;
 
-  const nickname = paramSenseId?.includes('@')
-    ? paramSenseId.replace('@', '')
-    : undefined;
+  const nickname = paramSenseId?.includes('@') ? paramSenseId.replace('@', '') : undefined;
 
   const { data: passportByNickname } = usePassportContract<Citizenship | null>({
     query: {
@@ -80,8 +76,7 @@ function SenseRoutingWrapper() {
     });
   }
 
-  let senseId =
-    address || (nickname && findAddressByNickname(nickname)) || paramSenseId;
+  let senseId = address || (nickname && findAddressByNickname(nickname)) || paramSenseId;
 
   if (!isOwner) {
     senseId = robotAddress || undefined;

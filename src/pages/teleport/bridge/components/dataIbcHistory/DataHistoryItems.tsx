@@ -1,23 +1,20 @@
 import { Coin } from '@cosmjs/launchpad';
-import { useMemo } from 'react';
-import { useIbcDenom } from 'src/contexts/ibcDenom';
-import { PATTERN_CYBER } from 'src/constants/patterns';
-import { getDisplayAmount, trimString } from 'src/utils/utils';
-import ImgArrow from 'images/fromToIbc.svg';
-import { Account, DenomArr, FormatNumberTokens } from 'src/components';
-import upArrow from 'images/up-arrow.png';
+import cx from 'classnames';
 import downArrow from 'images/down-arrow.png';
+import ImgArrow from 'images/fromToIbc.svg';
 import complete from 'images/statusTx/complete.png';
 import pending from 'images/statusTx/pending.png';
-import timeout from 'images/statusTx/timeout.png';
 import refunded from 'images/statusTx/refunded.png';
-import { CssVariables } from 'src/style/variables';
-import cx from 'classnames';
-import {
-  HistoriesItem,
-  StatusTx,
-} from 'src/features/ibc-history/HistoriesItem';
+import timeout from 'images/statusTx/timeout.png';
+import upArrow from 'images/up-arrow.png';
+import { useMemo } from 'react';
+import { Account, DenomArr, FormatNumberTokens } from 'src/components';
 import { CHAIN_ID } from 'src/constants/config';
+import { PATTERN_CYBER } from 'src/constants/patterns';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
+import { HistoriesItem, StatusTx } from 'src/features/ibc-history/HistoriesItem';
+import { CssVariables } from 'src/style/variables';
+import { getDisplayAmount, trimString } from 'src/utils/utils';
 import { TxsType } from '../../../type';
 import styles from './DataHistoryItems.module.scss';
 
@@ -39,16 +36,9 @@ export function TypeTsx({ sourceChainId }: { sourceChainId: string }) {
   );
 }
 
-export function AmountSend({
-  coin,
-  sourceChainId,
-}: {
-  coin: Coin;
-  sourceChainId: string;
-}) {
+export function AmountSend({ coin, sourceChainId }: { coin: Coin; sourceChainId: string }) {
   const { tracesDenom } = useIbcDenom();
-  const typeTxs =
-    sourceChainId === CHAIN_ID ? TxsType.Withdraw : TxsType.Deposit;
+  const typeTxs = sourceChainId === CHAIN_ID ? TxsType.Withdraw : TxsType.Deposit;
   const amountDenom = useMemo(() => {
     if (tracesDenom) {
       const [{ coinDecimals }] = tracesDenom(coin.denom);
@@ -65,9 +55,7 @@ export function AmountSend({
       value={amountDenom}
       styleValue={{
         color:
-          typeTxs === TxsType.Deposit
-            ? CssVariables.GREEN_LIGHT_COLOR
-            : CssVariables.RED_COLOR,
+          typeTxs === TxsType.Deposit ? CssVariables.GREEN_LIGHT_COLOR : CssVariables.RED_COLOR,
         fontSize: '18px',
       }}
     />
@@ -104,12 +92,7 @@ export function RouteAddress({ item }: { item: HistoriesItem }) {
         <DenomArr type="network" onlyImg denomValue={sourceChainId} />
       </div>
       <img src={ImgArrow} alt="ImgArrow" className={styles.fromToIbcImg} />
-      <div
-        className={cx(
-          styles.containerAddressChainId,
-          styles.containerAddressChainIdMarginLeft
-        )}
-      >
+      <div className={cx(styles.containerAddressChainId, styles.containerAddressChainIdMarginLeft)}>
         {addressType(recipient)}
         <DenomArr type="network" onlyImg denomValue={destChainId} />
       </div>

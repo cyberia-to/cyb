@@ -4,9 +4,9 @@ import { isCID } from 'src/utils/ipfs/helpers';
 
 // import { Controlled as CodeMirror } from 'react-codemirror2';
 
-import ActionBarContainer from 'src/components/actionBar';
-import { Button, Input } from 'src/components';
 import { Pane } from '@cybercongress/gravity';
+import { Button, Input } from 'src/components';
+import ActionBarContainer from 'src/components/actionBar';
 
 // import { ScriptExecutionResult } from 'src/types/scripting';
 
@@ -14,9 +14,8 @@ import StepsBar from '../StepsBar/StepsBar';
 
 // import { highlightErrors, compileScript } from '../utils';
 
-import styles from '../Soul.module.scss';
-
 import { useBackend } from 'src/contexts/backend/backend';
+import styles from '../Soul.module.scss';
 
 function ScriptingActionBar({
   isChanged,
@@ -56,18 +55,13 @@ function ScriptingActionBar({
       addToLog([`🚫 '${testCid}' - is not correct CID.`]);
       return;
     }
-    addToLog([
-      '💡 prepare data....',
-      '',
-      `🚧 fetching particle '${testCid}'...`,
-    ]);
+    addToLog(['💡 prepare data....', '', `🚧 fetching particle '${testCid}'...`]);
 
     const result = await ipfsApi?.fetchWithDetails(testCid);
     if (result) {
       const { type, content } = result;
 
-      const preview =
-        content!.length > 144 ? `${content!.slice(1, 144)}....` : content;
+      const preview = content!.length > 144 ? `${content!.slice(1, 144)}....` : content;
 
       addToLog([
         `   ☑️ content-type: ${type}`,
@@ -97,18 +91,12 @@ function ScriptingActionBar({
             <Button onClick={onSaveClick}>cancel</Button>
           </>
         )}
-        {!isChanged && (
-          <Button onClick={resetToDefault}>reset to default</Button>
-        )}
+        {!isChanged && <Button onClick={resetToDefault}>reset to default</Button>}
       </div>
     </div>,
     <div key="step_1" className={styles.stepWrapper}>
-      <Button
-        onClick={onTestMoonDomainClick}
-      >{`test ${nickname}.moon resolver`}</Button>
-      <Button onClick={onTestPersonalProcessorClick}>
-        test personal processor
-      </Button>
+      <Button onClick={onTestMoonDomainClick}>{`test ${nickname}.moon resolver`}</Button>
+      <Button onClick={onTestPersonalProcessorClick}>test personal processor</Button>
     </div>,
     <div key="step_2" className={styles.stepWrapper}>
       <Input

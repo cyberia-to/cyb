@@ -1,9 +1,9 @@
 import { Decimal } from '@cosmjs/math';
 import { GasPrice } from '@cosmjs/stargate';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { useChannels } from 'src/hooks/useHub';
 import loadConnections from 'src/services/relayer/loadConnections';
 import relay from 'src/services/relayer/relay';
-import { useChannels } from 'src/hooks/useHub';
 import { ObjectKey } from 'src/types/data';
 import { Channel } from 'src/types/hub';
 import { getKeplr } from 'src/utils/keplrUtils';
@@ -74,8 +74,7 @@ function RelayerContextProvider({ children }: { children: React.ReactNode }) {
 
         const chainInfos = await keplrWindow.getChainInfosWithoutEndpoints();
 
-        const { source_chain_id: chainIdA, destination_chain_id: chainIdB } =
-          channels[selectChain];
+        const { source_chain_id: chainIdA, destination_chain_id: chainIdB } = channels[selectChain];
 
         const chainInfoA = chainInfos.find((item) => item.chainId === chainIdA);
         const chainInfoB = chainInfos.find((item) => item.chainId === chainIdB);
@@ -88,18 +87,12 @@ function RelayerContextProvider({ children }: { children: React.ReactNode }) {
         const feeCurrenciesB = chainInfoB.feeCurrencies[0];
 
         const GasPriceA = new GasPrice(
-          Decimal.fromUserInput(
-            feeCurrenciesA.gasPriceStep?.average.toString() || '0',
-            3
-          ),
+          Decimal.fromUserInput(feeCurrenciesA.gasPriceStep?.average.toString() || '0', 3),
           feeCurrenciesA?.coinMinimalDenom
         );
 
         const GasPriceB = new GasPrice(
-          Decimal.fromUserInput(
-            feeCurrenciesB.gasPriceStep?.average.toString() || '0',
-            3
-          ),
+          Decimal.fromUserInput(feeCurrenciesB.gasPriceStep?.average.toString() || '0', 3),
           feeCurrenciesB?.coinMinimalDenom
         );
 
@@ -155,7 +148,7 @@ function RelayerContextProvider({ children }: { children: React.ReactNode }) {
     return () => {
       stopFn.current?.();
     };
-  }, [selectChain, channels]);
+  }, [selectChain, channels, logger]);
 
   const stop = () => {
     stopFn.current?.();
@@ -170,14 +163,10 @@ function RelayerContextProvider({ children }: { children: React.ReactNode }) {
       setSelectChain,
       stop,
     }),
-    [channels, relayerLog, isRelaying, selectChain]
+    [channels, relayerLog, isRelaying, selectChain, stop]
   );
 
-  return (
-    <RelayerContext.Provider value={contextValue}>
-      {children}
-    </RelayerContext.Provider>
-  );
+  return <RelayerContext.Provider value={contextValue}>{children}</RelayerContext.Provider>;
 }
 
 export default RelayerContextProvider;

@@ -1,7 +1,7 @@
-import { useMemo } from 'react';
-import { v4 as uuidv4 } from 'uuid';
 import cx from 'classnames';
+import { useMemo } from 'react';
 import { useAppSelector } from 'src/redux/hooks';
+import { v4 as uuidv4 } from 'uuid';
 import styles from './TimeHistory.module.scss';
 import TimeHistoryItem from './ui/TimeHistoryItem/TimeHistoryItem';
 
@@ -13,13 +13,11 @@ function TimeHistory() {
       return null;
     }
 
-    return [...timeHistory]
-      .slice(timeHistory.length - 5)
-      .map(({ time, action }) => {
-        const key = uuidv4();
+    return [...timeHistory].slice(timeHistory.length - 5).map(({ time, action }) => {
+      const key = uuidv4();
 
-        return <TimeHistoryItem key={key} time={time} action={action} />;
-      });
+      return <TimeHistoryItem key={key} time={time} action={action} />;
+    });
   }, [timeHistory]);
 
   return <div className={cx(styles.wrapper, styles.rotate)}>{renderItem}</div>;

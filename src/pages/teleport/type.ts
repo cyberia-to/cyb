@@ -1,4 +1,3 @@
-
 export enum TypePages {
   send = 'send',
   bridge = 'bridge',
@@ -7,9 +6,8 @@ export enum TypePages {
 
 export type TypeTxsT = 'swap' | 'deposit' | 'withdraw';
 
-export const enum TxsType {
+export enum TxsType {
   Swap = 'swap',
   Deposit = 'deposit',
   Withdraw = 'withdraw',
 }
-

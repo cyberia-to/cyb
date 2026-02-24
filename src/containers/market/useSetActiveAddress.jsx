@@ -6,10 +6,7 @@ function useSetActiveAddress(defaultAccount) {
   useEffect(() => {
     const { account } = defaultAccount;
     let addressPocket = null;
-    if (
-      account !== null &&
-      Object.prototype.hasOwnProperty.call(account, 'cyber')
-    ) {
+    if (account !== null && Object.hasOwn(account, 'cyber')) {
       const { keys, bech32 } = account.cyber;
       addressPocket = {
         bech32,
@@ -18,7 +15,7 @@ function useSetActiveAddress(defaultAccount) {
     }
     setAddressActive(addressPocket);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultAccount.name]);
+  }, [defaultAccount.name, defaultAccount]);
 
   return { addressActive };
 }

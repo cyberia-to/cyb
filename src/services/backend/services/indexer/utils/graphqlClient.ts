@@ -4,12 +4,12 @@ import { GraphQLWsLink } from '@apollo/client/link/subscriptions';
 import { GraphQLClient } from 'graphql-request';
 import { createClient } from 'graphql-ws';
 import { Observable } from 'rxjs';
-import { INDEX_WEBSOCKET, INDEX_HTTPS } from 'src/constants/config';
+import { INDEX_HTTPS, INDEX_WEBSOCKET } from 'src/constants/config';
 
 const cyberGraphQLWsLink = new GraphQLWsLink(
   createClient({
     url: INDEX_WEBSOCKET,
-    shouldRetry: (errOrCloseEvent: unknown) => true,
+    shouldRetry: (_errOrCloseEvent: unknown) => true,
     retryAttempts: 10,
     retryWait: async (retries: number): Promise<void> => {
       setTimeout(() => Promise.resolve(), Math.min(1000 * 2 ** retries, 10000));
@@ -39,10 +39,7 @@ export const createIndexerClient = (abortSignal: AbortSignal) =>
   });
 
 // eslint-disable-next-line import/no-unused-modules
-export function createIndexerWebsocket<T>(
-  query: DocumentNode,
-  variables: object
-): Observable<T> {
+export function createIndexerWebsocket<T>(query: DocumentNode, variables: object): Observable<T> {
   const client = new ApolloClient({
     link: cyberGraphQLWsLink,
     cache: new InMemoryCache(),

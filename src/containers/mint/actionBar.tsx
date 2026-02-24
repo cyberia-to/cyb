@@ -1,28 +1,20 @@
-import { useState } from 'react';
 import { coin } from '@cosmjs/launchpad';
-import { useSigningClient } from 'src/contexts/signerClient';
-import { investmint } from 'src/services/neuron/neuronApi';
-import useWaitForTransaction, {
-  Props as PropsTx,
-} from 'src/hooks/useWaitForTransaction';
+import { useState } from 'react';
 import { DENOM_LIQUID } from 'src/constants/config';
+import { useSigningClient } from 'src/contexts/signerClient';
+import useWaitForTransaction, { Props as PropsTx } from 'src/hooks/useWaitForTransaction';
+import { investmint } from 'src/services/neuron/neuronApi';
 import {
-  Dots,
-  TransactionSubmitted,
-  Confirmed,
-  TransactionError,
   ActionBar as ActionBarContainer,
+  Confirmed,
+  Dots,
+  TransactionError,
+  TransactionSubmitted,
 } from '../../components';
 import { LEDGER } from '../../utils/config';
 import { SelectedState } from './types';
 
-const {
-  STAGE_INIT,
-  STAGE_ERROR,
-  STAGE_SUBMITTED,
-  STAGE_CONFIRMING,
-  STAGE_CONFIRMED,
-} = LEDGER;
+const { STAGE_INIT, STAGE_ERROR, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED } = LEDGER;
 
 const BASE_VESTING_TIME = 86401;
 
@@ -34,13 +26,7 @@ type Props = {
   updateFnc?: () => void;
 };
 
-function ActionBar({
-  amountH,
-  resource,
-  valueDays,
-  resourceAmount,
-  updateFnc,
-}: Props) {
+function ActionBar({ amountH, resource, valueDays, resourceAmount, updateFnc }: Props) {
   const { signer, signingClient } = useSigningClient();
   const [stage, setStage] = useState(STAGE_INIT);
   const [tx, setTx] = useState<PropsTx>();
@@ -69,7 +55,7 @@ function ActionBar({
         setTx({
           hash: txHash,
           onSuccess: () => {
-            updateFnc && updateFnc();
+            updateFnc?.();
             setStage(STAGE_CONFIRMED);
           },
         });
@@ -122,12 +108,7 @@ function ActionBar({
   }
 
   if (stage === STAGE_ERROR && errorMessage !== null) {
-    return (
-      <TransactionError
-        errorMessage={errorMessage}
-        onClickBtn={() => clearState()}
-      />
-    );
+    return <TransactionError errorMessage={errorMessage} onClickBtn={() => clearState()} />;
   }
 
   return <ActionBarContainer />;

@@ -1,16 +1,16 @@
+import { useQuery } from '@tanstack/react-query';
+import cx from 'classnames';
 import React, { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { useQuery } from '@tanstack/react-query';
-import { useQueryClient } from 'src/contexts/queryClient';
-import { routes } from 'src/routes';
-import usePassportByAddress from 'src/features/passport/hooks/usePassportByAddress';
-import cx from 'classnames';
 import { BECH32_PREFIX_VALOPER } from 'src/constants/config';
+import { useQueryClient } from 'src/contexts/queryClient';
+import usePassportByAddress from 'src/features/passport/hooks/usePassportByAddress';
 import useCurrentAddress from 'src/hooks/useCurrentAddress';
-import { trimString } from '../../utils/utils';
+import { routes } from 'src/routes';
 import { AvataImgIpfs } from '../../containers/portal/components/avataIpfs';
-import styles from './account.module.scss';
+import { trimString } from '../../utils/utils';
 import Tooltip from '../tooltip/tooltip';
+import styles from './account.module.scss';
 
 function useGetValidatorInfo(address: string) {
   const queryClient = useQueryClient();
@@ -22,9 +22,7 @@ function useGetValidatorInfo(address: string) {
       return response;
     },
     {
-      enabled: Boolean(
-        queryClient && address && address.includes(BECH32_PREFIX_VALOPER)
-      ),
+      enabled: Boolean(queryClient && address && address.includes(BECH32_PREFIX_VALOPER)),
     }
   );
 
@@ -69,8 +67,7 @@ function Account({
   const { data: dataValidInfo } = useGetValidatorInfo(address);
   const { passport: dataPassport } = usePassportByAddress(address);
   const moniker =
-    dataValidInfo?.validator?.description?.moniker ||
-    dataPassport?.extension.nickname;
+    dataValidInfo?.validator?.description?.moniker || dataPassport?.extension.nickname;
 
   const trimAddress = useMemo(() => {
     return trimString(address, trimAddressParam[0], trimAddressParam[1]);

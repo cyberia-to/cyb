@@ -1,12 +1,5 @@
 /* eslint-disable import/prefer-default-export */
-import {
-  distinctUntilChanged,
-  filter,
-  Observable,
-  share,
-  switchMap,
-  tap,
-} from 'rxjs';
+import { distinctUntilChanged, filter, Observable, share, switchMap, tap } from 'rxjs';
 
 export const switchWhenInitialized = (
   isInitialized$: Observable<boolean>,

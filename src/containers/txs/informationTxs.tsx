@@ -1,21 +1,21 @@
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { formatNumber } from '../../utils/search/utils';
-import { ValueInformation } from './type';
 import Display from 'src/components/containerGradient/Display/Display';
 import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
-import { useMemo } from 'react';
 import { Color } from 'src/components/LinearGradientContainer/LinearGradientContainer';
-import { trimString } from 'src/utils/utils';
 import StatusTxs from 'src/components/TableTxsInfinite/component/StatusTxs';
 import { routes } from 'src/routes';
+import { trimString } from 'src/utils/utils';
 import Raw, { RowsContainer } from '../../components/Row/Row';
+import { formatNumber } from '../../utils/search/utils';
+import { ValueInformation } from './type';
 
 type Props = {
   data: ValueInformation | undefined;
 };
 
 function InformationTxs({ data }: Props) {
-  let status = !data ? Color.Yellow : data.status ? Color.Green : Color.Red;
+  const status = !data ? Color.Yellow : data.status ? Color.Green : Color.Red;
 
   const value = useMemo(() => {
     if (!data) {
@@ -32,9 +32,7 @@ function InformationTxs({ data }: Props) {
 
         case 'height':
           valueRaw = (
-            <Link to={routes.blocks.idBlock.getLink(valueRaw)}>
-              {formatNumber(valueRaw)}
-            </Link>
+            <Link to={routes.blocks.idBlock.getLink(valueRaw)}>{formatNumber(valueRaw)}</Link>
           );
           break;
 

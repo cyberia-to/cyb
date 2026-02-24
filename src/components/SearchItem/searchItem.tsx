@@ -1,7 +1,7 @@
-import styles from './styles.module.scss';
-import Status, { StatusType } from './status';
-import Display from '../containerGradient/Display/Display';
 import { LinksType } from 'src/containers/Search/types';
+import Display from '../containerGradient/Display/Display';
+import Status, { StatusType } from './status';
+import styles from './styles.module.scss';
 
 const gradeColorRank = (grade) => {
   let classColor = 'grey';
@@ -42,16 +42,14 @@ type Props = {
 function SearchItem({ status, grade, children, linkType }: Props) {
   let colorRank = 'grey';
 
-  if (grade && grade.value) {
+  if (grade?.value) {
     colorRank = gradeColorRank(grade.value);
   }
 
   const item = (
     <Display
       color={colorRank === 'grey' ? 'white' : colorRank}
-      sideSaber={
-        linkType === 'to' ? 'left' : linkType === 'from' ? 'right' : undefined
-      }
+      sideSaber={linkType === 'to' ? 'left' : linkType === 'from' ? 'right' : undefined}
     >
       <div
         style={{

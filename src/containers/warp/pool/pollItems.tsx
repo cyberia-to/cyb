@@ -1,10 +1,10 @@
-import { useMemo } from 'react';
 import BigNumber from 'bignumber.js';
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { useIbcDenom } from 'src/contexts/ibcDenom';
-import { useAppData } from 'src/contexts/appData';
 import { DenomArr, FormatNumberTokens } from 'src/components';
 import { DENOM_LIQUID } from 'src/constants/config';
+import { useAppData } from 'src/contexts/appData';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
 import { replaceSlash } from '../../../utils/utils';
 
 function PoolItemsList({ assets, token }) {
@@ -12,7 +12,7 @@ function PoolItemsList({ assets, token }) {
   const { marketData } = useAppData();
 
   const amounToken = useMemo(() => {
-    if (assets && Object.prototype.hasOwnProperty.call(assets, token)) {
+    if (assets && Object.hasOwn(assets, token)) {
       const amount = assets[token];
       return amount;
     }
@@ -20,10 +20,7 @@ function PoolItemsList({ assets, token }) {
   }, [assets, token]);
 
   const usePrice = useMemo(() => {
-    if (
-      Object.keys(marketData).length > 0 &&
-      Object.prototype.hasOwnProperty.call(marketData, token)
-    ) {
+    if (Object.keys(marketData).length > 0 && Object.hasOwn(marketData, token)) {
       const price = new BigNumber(marketData[token]);
       return price.toNumber();
     }
@@ -67,21 +64,9 @@ function PoolItemsList({ assets, token }) {
       <Link to={getLinktoSearch(token)}>
         <DenomArr denomValue={token} onlyText />
       </Link>
-      <FormatNumberTokens
-        marginContainer="0px"
-        value={amounToken}
-        text={token}
-      />
-      <FormatNumberTokens
-        marginContainer="0px"
-        value={usePrice}
-        text={DENOM_LIQUID}
-      />
-      <FormatNumberTokens
-        marginContainer="0px"
-        value={useCap}
-        text={DENOM_LIQUID}
-      />
+      <FormatNumberTokens marginContainer="0px" value={amounToken} text={token} />
+      <FormatNumberTokens marginContainer="0px" value={usePrice} text={DENOM_LIQUID} />
+      <FormatNumberTokens marginContainer="0px" value={useCap} text={DENOM_LIQUID} />
     </div>
   );
 }

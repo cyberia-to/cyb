@@ -1,14 +1,14 @@
 import React, { useEffect } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { Color } from 'src/components/LinearGradientContainer/LinearGradientContainer';
-import { routes } from 'src/routes';
-import { getIpfsHash } from 'src/utils/ipfs/helpers';
 import { PATTERN_IPFS_HASH } from 'src/constants/patterns';
 import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
-import { setFocus, setValue } from './commander.redux';
-import styles from './Commander.module.scss';
+import { routes } from 'src/routes';
+import { getIpfsHash } from 'src/utils/ipfs/helpers';
 import { Input } from '../../../../components';
 import { encodeSlash, replaceSlash } from '../../../../utils/utils';
+import styles from './Commander.module.scss';
+import { setFocus, setValue } from './commander.redux';
 
 const fixedValue = '~';
 
@@ -76,7 +76,7 @@ function Commander() {
       commanderRef.current.removeEventListener('focus', onFocus);
       commanderRef.current.removeEventListener('blur', onBlur);
     };
-  }, [commanderRef, dispatch]);
+  }, [dispatch]);
 
   useEffect(() => {
     (async () => {

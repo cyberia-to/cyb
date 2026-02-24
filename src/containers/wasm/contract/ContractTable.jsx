@@ -1,9 +1,9 @@
 import { useCallback } from 'react';
-import { Link } from 'react-router-dom';
 import InfiniteScroll from 'react-infinite-scroll-component';
+import { Link } from 'react-router-dom';
+import { Dots, NoItems } from '../../../components';
+import { formatNumber, trimString } from '../../../utils/utils';
 import { LinkCreator } from '../ui/ui';
-import { NoItems, Dots } from '../../../components';
-import { trimString, formatNumber } from '../../../utils/utils';
 
 const styleLable = {
   textAlign: 'start',
@@ -19,7 +19,7 @@ function ContractTable({ contracts, count, setOffset }) {
       setOffset((itemsState) => itemsState + 1);
     }, 250);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [setOffset]);
 
   const itemTable = contracts.map((item) => {
     const { address, fees, gas, label, creator, tx } = item;
@@ -34,9 +34,7 @@ function ContractTable({ contracts, count, setOffset }) {
           <Link to={`/contracts/${address}`}>{trimString(address, 10, 8)}</Link>
         </td>
         <td>
-          <LinkCreator address={creator}>
-            {trimString(creator, 10, 8)}
-          </LinkCreator>
+          <LinkCreator address={creator}>{trimString(creator, 10, 8)}</LinkCreator>
         </td>
         <td style={{ textAlign: 'end' }}>{formatNumber(tx)}</td>
         <td style={{ textAlign: 'end' }}>{formatNumber(gas)}</td>

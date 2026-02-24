@@ -8,9 +8,7 @@ import renderColumns from './map';
 function Tokens() {
   const { tokens } = useHub();
 
-  const dataRow = tokens
-    ? Object.keys(tokens).map((key) => entityToDto(tokens[key]))
-    : [];
+  const dataRow = tokens ? Object.keys(tokens).map((key) => entityToDto(tokens[key])) : [];
 
   const columnsData = useMemo(() => renderColumns(), []);
 

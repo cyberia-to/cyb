@@ -1,28 +1,20 @@
-import { useState, useCallback } from 'react';
+import { Coin } from '@cosmjs/launchpad';
+import { MsgTransferEncodeObject, SigningStargateClient } from '@cosmjs/stargate';
+import BigNumber from 'bignumber.js';
 import { MsgTransfer } from 'cosmjs-types/ibc/applications/transfer/v1/tx';
 import Long from 'long';
-import BigNumber from 'bignumber.js';
+import { useCallback, useState } from 'react';
+import { DEFAULT_GAS_LIMITS } from 'src/constants/config';
 import { useSigningClient } from 'src/contexts/signerClient';
 import { Option } from 'src/types';
-import { Coin } from '@cosmjs/launchpad';
-import {
-  MsgTransferEncodeObject,
-  SigningStargateClient,
-} from '@cosmjs/stargate';
-import { DEFAULT_GAS_LIMITS } from 'src/constants/config';
 import { getNowUtcNumber } from 'src/utils/date';
-import { LinkWindow, ActionBar as ActionBarCenter } from '../../../components';
-import { LEDGER } from '../../../utils/config';
-import {
-  fromBech32,
-  trimString,
-  convertAmountReverce,
-} from '../../../utils/utils';
-import networks from '../../../utils/networkListIbc';
-
-import { TxsType, TypeTxsT } from '../type';
-import ActionBarPingTxs from '../components/actionBarPingTxs';
+import { ActionBar as ActionBarCenter, LinkWindow } from '../../../components';
 import { useIbcHistory } from '../../../features/ibc-history/historyContext';
+import { LEDGER } from '../../../utils/config';
+import networks from '../../../utils/networkListIbc';
+import { convertAmountReverce, fromBech32, trimString } from '../../../utils/utils';
+import ActionBarPingTxs from '../components/actionBarPingTxs';
+import { TxsType, TypeTxsT } from '../type';
 
 const { STAGE_INIT, STAGE_ERROR, STAGE_SUBMITTED } = LEDGER;
 
@@ -59,8 +51,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
   const [txHash, setTxHash] = useState<Option<string>>(undefined);
   const [txHashIbc, setTxHashIbc] = useState(null);
   const [linkIbcTxs, setLinkIbcTxs] = useState<Option<string>>(undefined);
-  const [errorMessage, setErrorMessage] =
-    useState<Option<string | JSX.Element>>(undefined);
+  const [errorMessage, setErrorMessage] = useState<Option<string | JSX.Element>>(undefined);
 
   const {
     tokenAmount,
@@ -96,9 +87,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
 
     const sourcePort = 'transfer';
 
-    const timeoutTimestamp = Long.fromString(
-      `${new Date().getTime() + TIMEOUT_TIMESTAMP}000000`
-    );
+    const timeoutTimestamp = Long.fromString(`${Date.now() + TIMEOUT_TIMESTAMP}000000`);
 
     const amount = convertAmountReverce(tokenAmount, coinDecimals);
 
@@ -116,12 +105,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
     };
 
     try {
-      const response = await ibcClient.signAndBroadcast(
-        address,
-        [msg],
-        1.5,
-        ''
-      );
+      const response = await ibcClient.signAndBroadcast(address, [msg], 1.5, '');
 
       console.log('response', response);
 
@@ -162,7 +146,17 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ibcClient, tokenAmount, denomIbc, signingClient, networkB]);
+  }, [
+    ibcClient,
+    tokenAmount,
+    denomIbc,
+    networkB,
+    coinDecimals,
+    pingTxsIbc,
+    signer,
+    sourceChannel,
+    tokenSelect,
+  ]);
 
   const withdrawOnClick = useCallback(async () => {
     if (!signer || !signingClient) {
@@ -177,9 +171,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
     const [{ address }] = await signer.getAccounts();
     const sourcePort = 'transfer';
     const counterpartyAccount = fromBech32(address, prefix);
-    const timeoutTimestamp = Long.fromString(
-      `${new Date().getTime() + TIMEOUT_TIMESTAMP}000000`
-    );
+    const timeoutTimestamp = Long.fromString(`${Date.now() + TIMEOUT_TIMESTAMP}000000`);
 
     const amount = convertAmountReverce(tokenAmount, coinDecimals);
     const transferAmount = coinFunc(amount, tokenSelect);
@@ -195,12 +187,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
       },
     };
     try {
-      const response = await signingClient.signAndBroadcast(
-        address,
-        [msg],
-        fee,
-        ''
-      );
+      const response = await signingClient.signAndBroadcast(address, [msg], fee, '');
       if (response.code === 0) {
         setTxHash(response.transactionHash);
         const ChainId = await signingClient.getChainId();
@@ -228,7 +215,16 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
     }
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [tokenSelect, signer, tokenAmount, sourceChannel, networkB]);
+  }, [
+    tokenSelect,
+    signer,
+    tokenAmount,
+    sourceChannel,
+    networkB,
+    coinDecimals,
+    pingTxsIbc,
+    signingClient,
+  ]);
 
   const buttonConfigs = {
     [TxsType.Deposit]: {

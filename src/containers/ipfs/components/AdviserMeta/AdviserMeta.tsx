@@ -1,12 +1,9 @@
-import { Account } from 'src/components';
-import { timeSince, formatCurrency } from 'src/utils/utils';
-import useRank from 'src/features/cyberlinks/rank/useRank';
 import { Link } from 'react-router-dom';
+import { Account } from 'src/components';
+import { LLMAvatar, useIsLLMPageParam } from 'src/containers/Search/LLMSpark/LLMSpark';
+import useRank from 'src/features/cyberlinks/rank/useRank';
 import { routes } from 'src/routes';
-import {
-  LLMAvatar,
-  useIsLLMPageParam,
-} from 'src/containers/Search/LLMSpark/LLMSpark';
+import { formatCurrency, timeSince } from 'src/utils/utils';
 import useGetCreator from '../../hooks/useGetCreator';
 import { PREFIXES } from '../metaInfo';
 import styles from './AdviserMeta.module.scss';
@@ -30,14 +27,8 @@ function AdviserMeta({ cid, type, size }: Props) {
 
         {!!rank && (
           <div className={styles.rank}>
-            <span className={styles.number}>
-              {rank.toLocaleString().replaceAll(',', ' ')}
-            </span>
-            <Link
-              to="https://docs.cyb.ai/#/page/cyberank"
-              replace
-              target="_blank"
-            >
+            <span className={styles.number}>{rank.toLocaleString().replaceAll(',', ' ')}</span>
+            <Link to="https://docs.cyb.ai/#/page/cyberank" replace target="_blank">
               🦠
             </Link>
             {/* <Rank hash={cid} rank={rank} /> */}
@@ -49,22 +40,18 @@ function AdviserMeta({ cid, type, size }: Props) {
         <LLMAvatar />
       ) : (
         // eslint-disable-next-line react/jsx-no-useless-fragment
-        <>
-          {creator && (
-            <div className={styles.center}>
-              <span className={styles.date}>
-                {timeSince(Date.now() - Date.parse(creator.timestamp))} ago
-              </span>
-              <Account sizeAvatar="20px" address={creator.address} avatar />
-            </div>
-          )}
-        </>
+        creator && (
+          <div className={styles.center}>
+            <span className={styles.date}>
+              {timeSince(Date.now() - Date.parse(creator.timestamp))} ago
+            </span>
+            <Account sizeAvatar="20px" address={creator.address} avatar />
+          </div>
+        )
       )}
 
       <div className={styles.right}>
-        <span>
-          🟥 {size ? formatCurrency(size, 'B', 0, PREFIXES) : 'unknown'}
-        </span>
+        <span>🟥 {size ? formatCurrency(size, 'B', 0, PREFIXES) : 'unknown'}</span>
         <Link to={routes.robot.routes.soul.path}>🌓</Link>
       </div>
     </div>

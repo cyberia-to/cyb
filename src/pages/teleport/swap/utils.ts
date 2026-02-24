@@ -1,5 +1,4 @@
 import BigNumber from 'bignumber.js';
-import { getDisplayAmount } from 'src/utils/utils';
 
 export function sortReserveCoinDenoms(x, y) {
   return [x, y].sort();
@@ -25,16 +24,10 @@ export function calculatePairAmount(inputAmount: string | number, state) {
   const poolAmountA = new BigNumber(tokenAPoolAmount);
   const poolAmountB = new BigNumber(tokenBPoolAmount);
 
-  const powA = new BigNumber(1).multipliedBy(
-    new BigNumber(10).pow(coinDecimalsA)
-  );
-  const powB = new BigNumber(1).multipliedBy(
-    new BigNumber(10).pow(coinDecimalsB)
-  );
+  const powA = new BigNumber(1).multipliedBy(new BigNumber(10).pow(coinDecimalsA));
+  const powB = new BigNumber(1).multipliedBy(new BigNumber(10).pow(coinDecimalsB));
 
-  const amount = new BigNumber(inputAmount).multipliedBy(
-    isReverse ? powB : powA
-  );
+  const amount = new BigNumber(inputAmount).multipliedBy(isReverse ? powB : powA);
 
   const amount2 = amount.multipliedBy(2);
 

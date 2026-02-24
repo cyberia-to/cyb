@@ -1,13 +1,7 @@
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { Dispatch } from 'redux';
 import { localStorageKeys } from 'src/constants/localStorageKeys';
-
-import { PayloadAction, createSlice } from '@reduxjs/toolkit';
-import {
-  Account,
-  AccountValue,
-  Accounts,
-  DefaultAccount,
-} from 'src/types/defaultAccount';
+import { Account, Accounts, AccountValue, DefaultAccount } from 'src/types/defaultAccount';
 import { POCKET } from '../../utils/config';
 import type { RootState } from '../store';
 
@@ -50,10 +44,7 @@ function saveToLocalStorage(state: SliceState) {
       })
     );
   accounts &&
-    localStorage.setItem(
-      localStorageKeys.pocket.POCKET_ACCOUNT,
-      JSON.stringify(accounts)
-    );
+    localStorage.setItem(localStorageKeys.pocket.POCKET_ACCOUNT, JSON.stringify(accounts));
 }
 
 const slice = createSlice({
@@ -62,9 +53,7 @@ const slice = createSlice({
   reducers: {
     setDefaultAccount: (
       state,
-      {
-        payload: { name, account },
-      }: PayloadAction<{ name: string; account?: Account }>
+      { payload: { name, account } }: PayloadAction<{ name: string; account?: Account }>
     ) => {
       state.defaultAccount = {
         name,
@@ -100,9 +89,7 @@ const slice = createSlice({
               if (state.defaultAccount?.account?.cyber?.bech32 === payload) {
                 const entries = Object.entries(state.accounts);
 
-                const entryCyber = entries.find(
-                  ([, value]) => value.cyber?.bech32
-                );
+                const entryCyber = entries.find(([, value]) => value.cyber?.bech32);
 
                 if (entryCyber) {
                   state.defaultAccount = {
@@ -129,12 +116,8 @@ const slice = createSlice({
 export const selectCurrentAddress = (store: RootState) =>
   store.pocket.defaultAccount.account?.cyber?.bech32;
 
-export const {
-  setDefaultAccount,
-  setAccounts,
-  setStageTweetActionBar,
-  deleteAddress,
-} = slice.actions;
+export const { setDefaultAccount, setAccounts, setStageTweetActionBar, deleteAddress } =
+  slice.actions;
 
 export default slice.reducer;
 
@@ -144,12 +127,8 @@ export const initPocket = () => (dispatch: Dispatch) => {
   let defaultAccountsKeys = null;
   let accountsTemp: Accounts | null = null;
 
-  const localStoragePocketAccount = localStorage.getItem(
-    localStorageKeys.pocket.POCKET_ACCOUNT
-  );
-  const localStoragePocket = localStorage.getItem(
-    localStorageKeys.pocket.POCKET
-  );
+  const localStoragePocketAccount = localStorage.getItem(localStorageKeys.pocket.POCKET_ACCOUNT);
+  const localStoragePocket = localStorage.getItem(localStorageKeys.pocket.POCKET);
   if (localStoragePocket !== null) {
     const localStoragePocketData = JSON.parse(localStoragePocket);
     const keyPocket = Object.keys(localStoragePocketData)[0];
@@ -169,8 +148,7 @@ export const initPocket = () => (dispatch: Dispatch) => {
       defaultAccountsKeys = keys0;
     } else if (defaultAccountsKeys !== null) {
       accountsTemp = {
-        [defaultAccountsKeys]:
-          localStoragePocketAccountData[defaultAccountsKeys] || undefined,
+        [defaultAccountsKeys]: localStoragePocketAccountData[defaultAccountsKeys] || undefined,
         ...localStoragePocketAccountData,
       };
     }
@@ -217,43 +195,40 @@ const defaultNameAccount = () => {
   return key;
 };
 
-export const addAddressPocket =
-  (accounts: AccountValue) => (dispatch: Dispatch) => {
-    const key = accounts.name || defaultNameAccount();
+export const addAddressPocket = (accounts: AccountValue) => (dispatch: Dispatch) => {
+  const key = accounts.name || defaultNameAccount();
 
-    let dataPocketAccount = null;
-    let valueObj = {};
-    let pocketAccount: Accounts = {};
+  let dataPocketAccount = null;
+  let valueObj = {};
+  let pocketAccount: Accounts = {};
 
-    const localStorageStory = localStorage.getItem(
-      localStorageKeys.pocket.POCKET_ACCOUNT
-    );
+  const localStorageStory = localStorage.getItem(localStorageKeys.pocket.POCKET_ACCOUNT);
 
-    if (localStorageStory !== null) {
-      dataPocketAccount = JSON.parse(localStorageStory);
-      valueObj = Object.values(dataPocketAccount);
-    }
+  if (localStorageStory !== null) {
+    dataPocketAccount = JSON.parse(localStorageStory);
+    valueObj = Object.values(dataPocketAccount);
+  }
 
-    const isAdded = !checkAddress(valueObj, 'cyber', accounts.bech32);
+  const isAdded = !checkAddress(valueObj, 'cyber', accounts.bech32);
 
-    if (!isAdded) {
-      return;
-    }
+  if (!isAdded) {
+    return;
+  }
 
-    const cyberAccounts: Account = {
-      cyber: accounts,
-    };
-
-    if (localStorageStory !== null) {
-      pocketAccount = { [key]: cyberAccounts, ...dataPocketAccount };
-    } else {
-      pocketAccount = { [key]: cyberAccounts };
-    }
-
-    if (Object.keys(pocketAccount).length > 0) {
-      dispatch(setAccounts(pocketAccount));
-      if (accounts.keys !== 'read-only') {
-        dispatch(setDefaultAccount({ name: key, account: cyberAccounts }));
-      }
-    }
+  const cyberAccounts: Account = {
+    cyber: accounts,
   };
+
+  if (localStorageStory !== null) {
+    pocketAccount = { [key]: cyberAccounts, ...dataPocketAccount };
+  } else {
+    pocketAccount = { [key]: cyberAccounts };
+  }
+
+  if (Object.keys(pocketAccount).length > 0) {
+    dispatch(setAccounts(pocketAccount));
+    if (accounts.keys !== 'read-only') {
+      dispatch(setDefaultAccount({ name: key, account: cyberAccounts }));
+    }
+  }
+};

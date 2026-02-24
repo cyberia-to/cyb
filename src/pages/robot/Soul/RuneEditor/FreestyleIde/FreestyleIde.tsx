@@ -1,7 +1,5 @@
-import { useRef, useState, useCallback } from 'react';
-import { useBackend } from 'src/contexts/backend/backend';
-import RuneCode, { RuneCodeHandle } from '../RuneCode/RuneCode';
-import RuneOutput, { RuneOutputHandle } from '../RuneOutput/RuneOutput';
+import { proxy } from 'comlink';
+import { useRef, useState } from 'react';
 import {
   ActionBar,
   Button,
@@ -9,10 +7,12 @@ import {
   DisplayTitle,
   MainContainer,
 } from 'src/components';
+import { useBackend } from 'src/contexts/backend/backend';
 import defaultAiScript from 'src/services/scripting/rune/default/ai.rn';
 import defaultPlaygroundScript from 'src/services/scripting/rune/default/playground.rn';
+import RuneCode, { RuneCodeHandle } from '../RuneCode/RuneCode';
+import RuneOutput, { RuneOutputHandle } from '../RuneOutput/RuneOutput';
 import styles from './Freestyle.module.scss';
-import { proxy } from 'comlink';
 
 function FreestyleIde() {
   const libCodeRef = useRef<RuneCodeHandle | null>(null);
@@ -53,10 +53,7 @@ function FreestyleIde() {
         }
 
         if (!isOk) {
-          outputLog?.put([
-            '⚠️ errors:',
-            `   ${result.diagnosticsOutput || result.error}`,
-          ]);
+          outputLog?.put(['⚠️ errors:', `   ${result.diagnosticsOutput || result.error}`]);
         } else {
           outputLog?.put(
             [
@@ -73,7 +70,7 @@ function FreestyleIde() {
       });
   };
 
-  const save = async () => {
+  const _save = async () => {
     outputRef.current?.put([`saving not implemented yet.`]);
   };
 

@@ -1,7 +1,7 @@
-import { Pane, Icon } from '@cybercongress/gravity';
+import { Icon, Pane } from '@cybercongress/gravity';
+import { ContainerGradientText } from '../containerGradient/ContainerGradient';
 import Tooltip from '../tooltip/tooltip';
 import styles from './styles.module.scss';
-import { ContainerGradientText } from '../containerGradient/ContainerGradient';
 
 // const iconHelp = require('../../image/_ionicons_svg_ios-help-circle-outline.svg');
 
@@ -16,13 +16,7 @@ export function ContainerCard({ children, col }) {
   );
 }
 
-export function Card({
-  title,
-  value,
-  tooltipValue,
-  positionTooltip,
-  stylesContainer,
-}) {
+export function Card({ title, value, tooltipValue, positionTooltip, stylesContainer }) {
   return (
     <div style={{ ...stylesContainer }} className={styles.card}>
       <span className="card-title">{value}</span>

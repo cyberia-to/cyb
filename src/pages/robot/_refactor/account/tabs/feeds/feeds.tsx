@@ -1,20 +1,19 @@
 import { Fragment, useEffect, useMemo } from 'react';
-import { useRobotContext } from 'src/pages/robot/robot.context';
-import { useAdviser } from 'src/features/adviser/context';
-import Loader2 from 'src/components/ui/Loader2';
 import InfiniteScroll from 'react-infinite-scroll-component';
+import Loader2 from 'src/components/ui/Loader2';
+import { useAdviser } from 'src/features/adviser/context';
 import DateTitle from 'src/features/sense/ui/SenseViewer/Messages/DateTitle/DateTitle';
+import { useRobotContext } from 'src/pages/robot/robot.context';
 import { Display, NoItems } from '../../../../../../components';
 import useGetLog from '../../hooks/useGetLog';
 import styles from './feeds.module.scss';
-import { mapLogData, reduceByDate } from './utils';
 import LogItemContent from './ui/LogItemContent';
+import { mapLogData, reduceByDate } from './utils';
 
 function FeedsTab() {
   const { address, addRefetch } = useRobotContext();
   const { setAdviser } = useAdviser();
-  const { data, fetchNextPage, hasNextPage, refetch, error, isInitialLoading } =
-    useGetLog(address);
+  const { data, fetchNextPage, hasNextPage, refetch, error, isInitialLoading } = useGetLog(address);
 
   useEffect(() => {
     if (error) {
@@ -40,7 +39,7 @@ function FeedsTab() {
 
   useEffect(() => {
     addRefetch(refetch);
-  }, [address]);
+  }, [addRefetch, refetch]);
 
   // eslint-disable-next-line @typescript-eslint/no-empty-function
   let content;
@@ -62,9 +61,7 @@ function FeedsTab() {
           return (
             <Fragment key={date}>
               {items.map((itemLog) => {
-                return (
-                  <LogItemContent key={itemLog.txhash} logItem={itemLog} />
-                );
+                return <LogItemContent key={itemLog.txhash} logItem={itemLog} />;
               })}
               <DateTitle date={new Date(date)} />
             </Fragment>

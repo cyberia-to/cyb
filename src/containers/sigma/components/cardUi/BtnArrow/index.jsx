@@ -1,5 +1,5 @@
-import styles from './styles.scss';
 import line22 from '../../../../../image/Line22.svg';
+import styles from './styles.scss';
 
 const cx = require('classnames');
 

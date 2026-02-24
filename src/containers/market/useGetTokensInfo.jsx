@@ -1,15 +1,9 @@
+import { ChainId, Fetcher, Route as RouteUniswap, Token, WETH } from '@uniswap/sdk';
 import { useEffect, useState } from 'react';
-import {
-  ChainId,
-  Token,
-  WETH,
-  Fetcher,
-  Route as RouteUniswap,
-} from '@uniswap/sdk';
+import { DIVISOR_CYBER_G } from 'src/constants/config';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { TOTAL_GOL_GENESIS_SUPPLY } from '../../utils/config';
 import { convertResources } from '../../utils/utils';
-import { DIVISOR_CYBER_G } from 'src/constants/config';
 
 const initValue = {
   supply: 0,
@@ -48,16 +42,8 @@ function useGetCybernomics() {
   const [poolsData, setPoolsData] = useState([]);
   const [totalSupplyData, setTotalSupplyData] = useState({});
 
-  useEffect(() => {
-    getGOL();
-  }, []);
-
   const getGOL = async () => {
-    const GOL = new Token(
-      ChainId.MAINNET,
-      '0xF4ecdBa8ba4144Ff3a2d8792Cad9051431Aa4F64',
-      0
-    );
+    const GOL = new Token(ChainId.MAINNET, '0xF4ecdBa8ba4144Ff3a2d8792Cad9051431Aa4F64', 0);
     const pair = await Fetcher.fetchPairData(GOL, WETH[GOL.chainId]);
 
     const route = new RouteUniswap([pair], WETH[GOL.chainId]);
@@ -73,6 +59,10 @@ function useGetCybernomics() {
       gol,
     }));
   };
+
+  useEffect(() => {
+    getGOL();
+  }, [getGOL]);
 
   // useEffect(() => {
   //   if (!marketData.loading) {
@@ -176,7 +166,7 @@ function useGetCybernomics() {
         }
       };
       getPools();
-    } catch (error) {
+    } catch (_error) {
       setPoolsData([]);
     }
   }, [queryClient]);

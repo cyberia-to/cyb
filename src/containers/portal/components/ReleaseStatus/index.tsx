@@ -1,11 +1,11 @@
 import { useMemo } from 'react';
 import { FormatNumberTokens } from 'src/components';
-import DonutChart from '../../../../components/DonutChart';
+import { BASE_DENOM } from 'src/constants/config';
 import ContainerGradient from '../../../../components/containerGradient/ContainerGradient';
+import DonutChart from '../../../../components/DonutChart';
 import { GIFT_ICON } from '../../utils';
 import { ProgressBar } from '../progressCard';
 import styles from './ReleaseStatus.module.scss';
-import { BASE_DENOM } from 'src/constants/config';
 
 type DataReleaseStatus = {
   availableRelease: number;
@@ -86,10 +86,7 @@ function ReleaseStatus({
     </div>
   );
 
-  const renderDataDonutChart = useMemo(
-    () => dataReleaseStatusMap(data),
-    [data]
-  );
+  const renderDataDonutChart = useMemo(() => dataReleaseStatusMap(data), [data]);
 
   return (
     <ContainerGradient
@@ -110,17 +107,15 @@ function ReleaseStatus({
       </div>
 
       <div className={styles.descriptionRules}>
-        Only the most dexterous will be lucky. The early birds get a higher
-        bonus gift release in every 1000 new addresses registered.
+        Only the most dexterous will be lucky. The early birds get a higher bonus gift release in
+        every 1000 new addresses registered.
       </div>
 
       <div>
         {nextRelease > 0 && (
           <div className={styles.nextRelease}>
             <span>next release after</span>
-            <span className={styles.nextReleaseValue}>
-              {nextRelease} addresses
-            </span>
+            <span className={styles.nextReleaseValue}>{nextRelease} addresses</span>
           </div>
         )}
 

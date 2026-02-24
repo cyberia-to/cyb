@@ -9,18 +9,19 @@ jobs:
   build_cyb:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        node-version: [18.14.x]
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Set up Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v2
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
         with:
-          node-version: ${{ matrix.node-version }}
+          deno-version: v2.x
+
+      - name: Set up Node.js (rspack runtime)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
       - name: Set environment variable with commit SHA
         run: |
@@ -28,15 +29,15 @@ jobs:
           echo "BRANCH=${{ github.ref_name }}" >> $GITHUB_ENV
 
       - name: Install dependencies
-        run: yarn install
+        run: deno install
 
       - name: Build cyb
-        run: yarn build
+        run: deno task build
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
           CHAIN_ID: 'bostrom'
 
-      - name: Deploy 🚀
+      - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
         with:
           token: ${{ secrets.ACTIONS_DEPLOY_ACCESS_TOKEN }}

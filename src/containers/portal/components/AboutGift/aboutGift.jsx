@@ -1,19 +1,14 @@
-import { useMemo } from 'react';
 import BigNumber from 'bignumber.js';
+import { useMemo } from 'react';
 import ContainerGradient from '../../../../components/containerGradient/ContainerGradient';
+import { formatNumber } from '../../../../utils/utils';
 import { ProgressBar } from '../progressCard';
 import styles from './styles.scss';
-import { formatNumber } from '../../../../utils/utils';
 
 const linkMovie =
   'https://gateway.ipfs.cybernode.ai/ipfs/QmX138nJEXWjf37M85HjWwBzY88H3ULpJZNHgFPwfCQycA';
 
-function AboutGift({
-  coefficient,
-  stateOpen,
-  initStateCard,
-  addressesClaimed,
-}) {
+function AboutGift({ coefficient, stateOpen, initStateCard, addressesClaimed }) {
   const useProgress = useMemo(() => {
     if (coefficient && coefficient !== null) {
       const maxValue = coefficient.up - coefficient.down;
@@ -31,9 +26,7 @@ function AboutGift({
     return 0;
   }, [coefficient]);
 
-  const current = new BigNumber(coefficient.current)
-    .dp(1, BigNumber.ROUND_FLOOR)
-    .toNumber();
+  const current = new BigNumber(coefficient.current).dp(1, BigNumber.ROUND_FLOOR).toNumber();
 
   return (
     <ContainerGradient
@@ -56,18 +49,15 @@ function AboutGift({
         </video>
       </div>
       <div style={{ marginBottom: '10px' }}>
-        Hurry up! {formatNumber(parseFloat(addressesClaimed))} addresses already
-        claimed a gift. Only the most dexterous will be lucky. The early birds
-        get a higher bonus.
+        Hurry up! {formatNumber(parseFloat(addressesClaimed))} addresses already claimed a gift.
+        Only the most dexterous will be lucky. The early birds get a higher bonus.
       </div>
       <div>
-        70% of BOOT in the genesis of the Bostrom bootloader is allocated to ~4
-        million addresses in Ethereum, Cosmos, Osmosis and Terra.
+        70% of BOOT in the genesis of the Bostrom bootloader is allocated to ~4 million addresses in
+        Ethereum, Cosmos, Osmosis and Terra.
       </div>
       <div className={styles.containerAboutGiftProgressBar}>
-        <div className={styles.containerAboutGiftProgressBarTitle}>
-          Current bonus
-        </div>
+        <div className={styles.containerAboutGiftProgressBarTitle}>Current bonus</div>
         <ProgressBar
           progress={useProgress}
           styleContainer={{ margin: '0', gridGap: '10px' }}

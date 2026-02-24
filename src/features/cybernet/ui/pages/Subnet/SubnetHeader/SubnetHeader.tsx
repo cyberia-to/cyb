@@ -1,13 +1,10 @@
-import React from 'react';
-import { AmountDenom, Cid } from 'src/components';
+import { Cid } from 'src/components';
 import Display from 'src/components/containerGradient/Display/Display';
-import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
-import { trimString } from 'src/utils/utils';
+import IconsNumber from 'src/components/IconsNumber/IconsNumber';
+import { AvataImgIpfs } from 'src/containers/portal/components/avataIpfs';
+import useCybernetTexts from '../../../useCybernetTexts';
 import { useSubnet } from '../subnet.context';
 import styles from './SubnetHeader.module.scss';
-import useCybernetTexts from '../../../useCybernetTexts';
-import { AvataImgIpfs } from 'src/containers/portal/components/avataIpfs';
-import IconsNumber from 'src/components/IconsNumber/IconsNumber';
 
 function Item({ title, content }) {
   return (
@@ -56,10 +53,7 @@ function SubnetHeader() {
           title={`${getText('subnetwork')} №${netuid}`}
           content={<span className={styles.name}>{name}</span>}
         />
-        <Item
-          title={`max ${getText('validator', true)}`}
-          content={maxAllowedValidators}
-        />
+        <Item title={`max ${getText('validator', true)}`} content={maxAllowedValidators} />
         <Item title="difficulty" content={difficulty} />
         <Item title="tempo" content={tempo} />
         <div className={styles.logo}>

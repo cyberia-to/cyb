@@ -1,18 +1,12 @@
 import { BECH32_PREFIX, BECH32_PREFIX_VALOPER } from './config';
 
-export const PATTERN_CYBER = new RegExp(
-  `^${BECH32_PREFIX}[a-zA-Z0-9]{39}$`,
-  'g'
-);
+export const PATTERN_CYBER = new RegExp(`^${BECH32_PREFIX}[a-zA-Z0-9]{39}$`, 'g');
 
 export const PATTERN_SPACE_PUSSY = /^pussy[a-zA-Z0-9]{39}$/g;
 
 export const PATTERN_IPFS_HASH = /^Qm[a-zA-Z0-9]{44}$/g;
 
-export const PATTERN_CYBER_CONTRACT = new RegExp(
-  `^${BECH32_PREFIX}[a-zA-Z0-9]{59}$`,
-  'g'
-);
+export const PATTERN_CYBER_CONTRACT = new RegExp(`^${BECH32_PREFIX}[a-zA-Z0-9]{59}$`, 'g');
 
 export const PATTERN_CYBER_VALOPER = new RegExp(
   `^${BECH32_PREFIX_VALOPER}valoper[a-zA-Z0-9]{39}$`,

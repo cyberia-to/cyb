@@ -1,9 +1,10 @@
-import { useState } from 'react';
 import { Tab, Tablist } from '@cybercongress/gravity';
-import RenderAbiQuery from './RenderAbiQuery';
+import { useState } from 'react';
 import RenderAbiExecute from './RenderAbiExecute';
+import RenderAbiQuery from './RenderAbiQuery';
 import SelectFile from './SelectFile';
 import useParseJsonSchema from './useParseJsonSchema';
+
 // import testJson from '../query_msg.json';
 // import testJsonTx from '../cw20_execute_msg.json';
 
@@ -40,23 +41,13 @@ function RenderAbi({ contractAddress, updateFnc }) {
     if (fileAbiQuery === null) {
       content = <SelectFile stateCallback={setFileAbiQuery} />;
     } else {
-      content = (
-        <RenderAbiQuery
-          schema={schemaQuery}
-          contractAddress={contractAddress}
-        />
-      );
+      content = <RenderAbiQuery schema={schemaQuery} contractAddress={contractAddress} />;
     }
   }
 
   if (selected === 'execute') {
     if (fileAbiExecute === null) {
-      content = (
-        <SelectFile
-          text="Upload execute schema"
-          stateCallback={setFileAbiExecute}
-        />
-      );
+      content = <SelectFile text="Upload execute schema" stateCallback={setFileAbiExecute} />;
     } else {
       content = (
         <RenderAbiExecute

@@ -1,5 +1,5 @@
 import { Pane } from '@cybercongress/gravity';
-import { ObjectInspector, chromeDark } from '@tableflip/react-inspector';
+import { chromeDark, ObjectInspector } from '@tableflip/react-inspector';
 import { NoItems } from '../../../components';
 import { formatCurrency } from '../../../utils/utils';
 import styles from './metaInfo.module.scss';
@@ -49,13 +49,8 @@ function MetaInfo({ data, cid }) {
     return (
       <>
         <RowItem text="CID" value={cid} />
-        <RowItem
-          text="SIZE"
-          value={formatCurrency(data.size, 'B', 3, PREFIXES)}
-        />
-        {data.blockSizes && (
-          <RowItem text="LINKS" value={data.blockSizes.length} />
-        )}
+        <RowItem text="SIZE" value={formatCurrency(data.size, 'B', 3, PREFIXES)} />
+        {data.blockSizes && <RowItem text="LINKS" value={data.blockSizes.length} />}
         <RowItem text="DATA" value="" />
 
         <div className={styles.objectInspector}>
@@ -68,7 +63,7 @@ function MetaInfo({ data, cid }) {
         </div>
       </>
     );
-  } catch (error) {
+  } catch (_error) {
     return <NoItems text="oops..." />;
   }
 }

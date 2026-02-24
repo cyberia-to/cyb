@@ -1,15 +1,15 @@
 /* eslint-disable */
-import React from 'react';
-import { connect } from 'react-redux';
+
 // import Room from 'ipfs-pubsub-room';
-import { Pane, Text, ActionBar } from '@cybercongress/gravity';
+import { ActionBar, Pane, Text } from '@cybercongress/gravity';
+import React from 'react';
 import TextareaAutosize from 'react-textarea-autosize';
-import { trimString } from '../../utils/utils';
 import { ActionBarContentText, NoItems } from '../../components';
+import { trimString } from '../../utils/utils';
 
 const imgSend = require('../../image/paper-plane-outline.svg');
 
-const test = [
+const _test = [
   { name: 'anonymous coward', text: 'cvcvx1' },
   {
     name: 'anonymous1',
@@ -20,12 +20,11 @@ const test = [
   { name: 'anonymou4', text: 'skdfksdk fl123klxd' },
 ];
 
-const TOPIC = 'cyberChat';
+const _TOPIC = 'cyberChat';
 
-const addr =
-  '/ip4/159.89.24.179/tcp/4001/p2p/QmZBfqaL2L92rrTWR2Cdmor3R3EBLaoYzeVLEEwE3AJmWe';
+const _addr = '/ip4/159.89.24.179/tcp/4001/p2p/QmZBfqaL2L92rrTWR2Cdmor3R3EBLaoYzeVLEEwE3AJmWe';
 
-function repo() {
+function _repo() {
   // returns random repo path to have different ID's
   // random ID's generated each reload
   return `ipfs/pubsub/${Math.random()}`;
@@ -221,11 +220,7 @@ class TrollBoxx extends React.PureComponent {
   handleKeyDown = (event) => {
     const { valueInputMassage, room } = this.state;
 
-    if (
-      event.keyCode === 13 &&
-      !event.shiftKey &&
-      !/^\s*$/.test(valueInputMassage)
-    ) {
+    if (event.keyCode === 13 && !event.shiftKey && !/^\s*$/.test(valueInputMassage)) {
       try {
         // JSON.stringify(
         room.broadcast(valueInputMassage);
@@ -241,27 +236,14 @@ class TrollBoxx extends React.PureComponent {
 
   render() {
     const { name, valueInputName, valueInputMassage, messages } = this.state;
-    console.log(
-      'valueInputMassage',
-      valueInputMassage,
-      valueInputMassage.length
-    );
+    console.log('valueInputMassage', valueInputMassage, valueInputMassage.length);
 
     console.log('messages', messages);
 
     return (
       <>
-        <main
-          className="block-body"
-          style={{ paddingTop: 30, alignItems: 'center' }}
-        >
-          <Pane
-            width="90%"
-            marginX="auto"
-            marginY={0}
-            display="flex"
-            flexDirection="column"
-          >
+        <main className="block-body" style={{ paddingTop: 30, alignItems: 'center' }}>
+          <Pane width="90%" marginX="auto" marginY={0} display="flex" flexDirection="column">
             <div className="container-contentItem" style={{ width: '100%' }}>
               {/* <Pane height="500px" overflowY="scroll" paddingRight={5}> */}
               {messages.length > 0 ? (

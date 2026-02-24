@@ -1,20 +1,18 @@
-import { useAppSelector } from 'src/redux/hooks';
 import { selectCurrentAddress } from 'src/redux/features/pocket';
+import { useAppSelector } from 'src/redux/hooks';
 import useQueryClientMethod from '../../../hooks/useQueryClientMethod';
 
 const methodName = 'delegation';
 
-type MethodParams = NonNullable<
-  Parameters<typeof useQueryClientMethod<typeof methodName>>[1]
->;
+type MethodParams = NonNullable<Parameters<typeof useQueryClientMethod<typeof methodName>>[1]>;
 
 type Params = MethodParams;
 
 function useDelegationFunc(...[delegatorAddress, validatorAddress]: Params) {
-  const { data, ...rest } = useQueryClientMethod<typeof methodName>(
-    methodName,
-    [delegatorAddress, validatorAddress]
-  );
+  const { data, ...rest } = useQueryClientMethod<typeof methodName>(methodName, [
+    delegatorAddress,
+    validatorAddress,
+  ]);
 
   const { delegationResponse } = data || {};
 

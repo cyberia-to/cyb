@@ -23,23 +23,20 @@ const getLocation = (url: string) => {
   return epubMap[url] ?? null;
 };
 
-const getSetEPubLocation =
-  (url: string) => (location: EpubView['location']) => {
-    const epubMap = getEPubMap();
+const getSetEPubLocation = (url: string) => (location: EpubView['location']) => {
+  const epubMap = getEPubMap();
 
-    try {
-      epubMap[url] = location;
-      localStorage.setItem(epubKey, JSON.stringify(epubMap));
-    } catch (error) {
-      console.error('Failed to save EPub location:', error);
-    }
-  };
+  try {
+    epubMap[url] = location;
+    localStorage.setItem(epubKey, JSON.stringify(epubMap));
+  } catch (error) {
+    console.error('Failed to save EPub location:', error);
+  }
+};
 
-const useEPubLocation = (
-  url: string
-): [EpubView['location'], (url: string) => void] => {
+const useEPubLocation = (url: string): [EpubView['location'], (url: string) => void] => {
   const currentLocation = getLocation(url);
-  const setEPubLocation = useCallback(getSetEPubLocation(url), [url]);
+  const setEPubLocation = useCallback(getSetEPubLocation(url), []);
 
   return [currentLocation, setEPubLocation];
 };

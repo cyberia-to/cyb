@@ -1,5 +1,5 @@
-import styles from './Triangle.module.scss';
 import cx from 'classnames';
+import styles from './Triangle.module.scss';
 
 type Props = {
   direction?: 'up' | 'down';

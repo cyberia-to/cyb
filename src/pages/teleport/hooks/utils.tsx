@@ -16,13 +16,11 @@ export const parseEventsEndBlockEvents = (events: readonly Event[]) => {
         // );
 
         const exchangedDemandCoinAmountAttr = attributes.find(
-          (attr) =>
-            uint8ArrayToAsciiString(attr.key) === 'exchanged_demand_coin_amount'
+          (attr) => uint8ArrayToAsciiString(attr.key) === 'exchanged_demand_coin_amount'
         );
 
         const exchangedOfferCoinAmountAttr = attributes.find(
-          (attr) =>
-            uint8ArrayToAsciiString(attr.key) === 'exchanged_offer_coin_amount'
+          (attr) => uint8ArrayToAsciiString(attr.key) === 'exchanged_offer_coin_amount'
         );
 
         const exchangedDemandCoinAmountValue = exchangedDemandCoinAmountAttr
@@ -41,9 +39,7 @@ export const parseEventsEndBlockEvents = (events: readonly Event[]) => {
           (attr) => uint8ArrayToAsciiString(attr.key) === 'success'
         );
 
-        const successValue = successAttr
-          ? uint8ArrayToAsciiString(successAttr.value)
-          : undefined;
+        const successValue = successAttr ? uint8ArrayToAsciiString(successAttr.value) : undefined;
 
         const msgIndexValue = msgIndexAttr
           ? uint8ArrayToAsciiString(msgIndexAttr.value)
@@ -58,7 +54,7 @@ export const parseEventsEndBlockEvents = (events: readonly Event[]) => {
       }
     }
     return data;
-  } catch (error) {
+  } catch (_error) {
     return undefined;
   }
 };
@@ -75,25 +71,17 @@ export const parseEventsTxsSwap = (log: Log[]) => {
             const { attributes } = event;
 
             // REFACTOR: CREATE HELPER <<<<
-            const demandCoinDenomAttr = attributes.find(
-              (attr) => attr.key === 'demand_coin_denom'
-            );
+            const demandCoinDenomAttr = attributes.find((attr) => attr.key === 'demand_coin_denom');
             const demandCoinDenomValue = demandCoinDenomAttr
               ? demandCoinDenomAttr.value
               : undefined;
 
             // >>>>> REFACTOR: CREATE HELPER
 
-            const offerCoinDenomAttr = attributes.find(
-              (attr) => attr.key === 'offer_coin_denom'
-            );
-            const offerCoinDenomValue = offerCoinDenomAttr
-              ? offerCoinDenomAttr.value
-              : undefined;
+            const offerCoinDenomAttr = attributes.find((attr) => attr.key === 'offer_coin_denom');
+            const offerCoinDenomValue = offerCoinDenomAttr ? offerCoinDenomAttr.value : undefined;
 
-            const msgIndexAttr = attributes.find(
-              (attr) => attr.key === 'msg_index'
-            );
+            const msgIndexAttr = attributes.find((attr) => attr.key === 'msg_index');
             const msgIndexValue = msgIndexAttr ? msgIndexAttr.value : undefined;
 
             if (demandCoinDenomValue && msgIndexValue && offerCoinDenomValue) {
@@ -108,7 +96,7 @@ export const parseEventsTxsSwap = (log: Log[]) => {
       }
     }
     return undefined;
-  } catch (error) {
+  } catch (_error) {
     return undefined;
   }
 };

@@ -1,14 +1,8 @@
 import { useState } from 'react';
-import {
-  Button,
-  Display,
-  DisplayTitle,
-  Input,
-  MainContainer,
-} from 'src/components';
+import { Button, Display, DisplayTitle, Input, MainContainer } from 'src/components';
 import { FILTERING_CONTRACT } from 'src/contexts/appData';
-import useQueryContract from 'src/hooks/contract/useQueryContract';
 import useExecuteContractWithWaitAndAdviser from 'src/hooks/contract/useExecuteContractWithWaitAndAdviser';
+import useQueryContract from 'src/hooks/contract/useQueryContract';
 
 function Filtering() {
   const [value, setValue] = useState('');

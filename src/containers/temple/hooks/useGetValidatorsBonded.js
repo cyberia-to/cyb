@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
-
 import { useQuery } from '@tanstack/react-query';
 import BigNumber from 'bignumber.js';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from 'src/contexts/queryClient';
 
 const keyQuery = 'validatorsBONDED';
@@ -22,9 +21,7 @@ function useGetValidatorsBonded() {
         timestamp: '',
       };
 
-      const responseHeroesActive = await queryClient.validators(
-        'BOND_STATUS_BONDED'
-      );
+      const responseHeroesActive = await queryClient.validators('BOND_STATUS_BONDED');
       if (responseHeroesActive && responseHeroesActive !== null) {
         const { validators } = responseHeroesActive;
         const d = new Date();
@@ -45,11 +42,8 @@ function useGetValidatorsBonded() {
       const lastgraphStatsLs = localStorage.getItem(keyQuery);
       if (lastgraphStatsLs !== null) {
         const oldData = JSON.parse(lastgraphStatsLs);
-        const timeChange =
-          Date.parse(data.timestamp) - Date.parse(oldData.timestamp);
-        const amountChange = new BigNumber(data.validators)
-          .minus(oldData.validators)
-          .toNumber();
+        const timeChange = Date.parse(data.timestamp) - Date.parse(oldData.timestamp);
+        const amountChange = new BigNumber(data.validators).minus(oldData.validators).toNumber();
         if (timeChange > 0 && amountChange > 0) {
           setChangeTimeAmount({
             time: timeChange,

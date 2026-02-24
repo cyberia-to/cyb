@@ -18,12 +18,7 @@ function GridParam({ data }) {
   } catch (error) {
     console.warn('ParamGrid', error);
     return (
-      <Pane
-        justifyContent="center"
-        flexDirection="column"
-        alignItems="center"
-        display="flex"
-      >
+      <Pane justifyContent="center" flexDirection="column" alignItems="center" display="flex">
         <Vitalik />
         Error !
       </Pane>

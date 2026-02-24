@@ -4,11 +4,7 @@ import styles from './TableDataTxs.module.scss';
 
 function StatusTxs({ success }: { success: boolean }) {
   return (
-    <img
-      className={styles.imgStatus}
-      src={success ? statusTrueImg : statusFalseImg}
-      alt="status"
-    />
+    <img className={styles.imgStatus} src={success ? statusTrueImg : statusFalseImg} alt="status" />
   );
 }
 

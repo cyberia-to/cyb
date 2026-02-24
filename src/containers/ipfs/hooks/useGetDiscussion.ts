@@ -1,10 +1,7 @@
-import useCyberlinksCount from 'src/features/cyberlinks/hooks/useCyberlinksCount';
-import {
-  Order_By as OrderBy,
-  useCyberlinksByParticleQuery,
-} from 'src/generated/graphql';
 import { useEffect, useState } from 'react';
 import { LinksType, LinksTypeFilter } from 'src/containers/Search/types';
+import useCyberlinksCount from 'src/features/cyberlinks/hooks/useCyberlinksCount';
+import { Order_By as OrderBy, useCyberlinksByParticleQuery } from 'src/generated/graphql';
 
 const limit = 15;
 
@@ -14,10 +11,7 @@ type Props = {
   neuron: string | null;
 };
 
-function useGetLinks(
-  { hash, type = LinksTypeFilter.from, neuron }: Props,
-  { skip = false } = {}
-) {
+function useGetLinks({ hash, type = LinksTypeFilter.from, neuron }: Props, { skip = false } = {}) {
   const where = {
     [`particle_${type}`]: { _eq: hash },
   };
@@ -53,7 +47,7 @@ function useGetLinks(
 
   useEffect(() => {
     isInitialLoading && setIsInitialLoading(false);
-  }, [isFetching, isInitialLoading]);
+  }, [isInitialLoading]);
 
   const fetchNextPage = () => {
     fetchMore({

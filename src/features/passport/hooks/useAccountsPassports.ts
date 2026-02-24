@@ -1,10 +1,7 @@
 import { useEffect } from 'react';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
-import {
-  getAccountsPassports,
-  selectAccountsPassports,
-} from '../passports.redux';
+import { getAccountsPassports, selectAccountsPassports } from '../passports.redux';
 
 function useAccountsPassports() {
   const queryClient = useQueryClient();
@@ -19,7 +16,7 @@ function useAccountsPassports() {
     }
 
     dispatch(getAccountsPassports(queryClient));
-  }, [queryClient, dispatch, accounts]);
+  }, [queryClient, dispatch]);
 
   return accountsPassports;
 }

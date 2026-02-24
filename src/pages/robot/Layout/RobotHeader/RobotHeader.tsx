@@ -1,12 +1,12 @@
 import { Display } from 'src/components';
 import MusicalAddress from 'src/components/MusicalAddress/MusicalAddress';
 import { AvataImgIpfs } from 'src/containers/portal/components/avataIpfs';
-import styles from './RobotHeader.module.scss';
+import AdviserHoverWrapper from 'src/features/adviser/AdviserHoverWrapper/AdviserHoverWrapper';
 import { useRobotContext } from '../../robot.context';
+import styles from './RobotHeader.module.scss';
 import FirstTx from './ui/FirstTx/FirstTx';
 import Level from './ui/Level/Level';
 import TabsNotOwner from './ui/TabsNotOwner/TabsNotOwner';
-import AdviserHoverWrapper from 'src/features/adviser/AdviserHoverWrapper/AdviserHoverWrapper';
 
 function RobotHeader({ menuCounts }) {
   const { address, passport, isOwner } = useRobotContext();

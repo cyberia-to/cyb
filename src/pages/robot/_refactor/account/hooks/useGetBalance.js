@@ -1,15 +1,10 @@
 import { useEffect, useState } from 'react';
+import { BASE_DENOM, BECH32_PREFIX_VALOPER, DENOM_LIQUID } from 'src/constants/config';
 import { useQueryClient } from 'src/contexts/queryClient';
-import {
-  BECH32_PREFIX_VALOPER,
-  BASE_DENOM,
-  DENOM_LIQUID,
-} from 'src/constants/config';
-
-import { getDelegatorDelegations } from 'src/features/staking/delegation/getDelegatorDelegations';
 import { useCyberClient } from 'src/contexts/queryCyberClient';
-import { coinDecimals, fromBech32 } from '../../../../../utils/utils';
+import { getDelegatorDelegations } from 'src/features/staking/delegation/getDelegatorDelegations';
 import useGetSlots from '../../../../../containers/mint/useGetSlots';
+import { coinDecimals, fromBech32 } from '../../../../../utils/utils';
 
 const initValue = {
   available: 0,
@@ -60,20 +55,14 @@ function useGetBalance(address, updateAddress) {
         if (queryClient && addressActive !== null && rpc) {
           setBalance(initValue);
           setLoadingBalanceInfo(true);
-          const availablePromise = await queryClient.getBalance(
-            addressActive,
-            BASE_DENOM
-          );
+          const availablePromise = await queryClient.getBalance(addressActive, BASE_DENOM);
           setBalance((item) => ({
             ...item,
             available: parseFloat(availablePromise.amount),
             total: item.total + parseFloat(availablePromise.amount),
           }));
 
-          const delegationResponses = await getDelegatorDelegations(
-            rpc,
-            addressActive
-          );
+          const delegationResponses = await getDelegatorDelegations(rpc, addressActive);
           let delegationsAmount = 0;
 
           if (delegationResponses.length) {
@@ -87,57 +76,41 @@ function useGetBalance(address, updateAddress) {
             total: item.total + parseFloat(delegationsAmount),
           }));
 
-          const unbondingPromise =
-            await queryClient.delegatorUnbondingDelegations(addressActive);
+          const unbondingPromise = await queryClient.delegatorUnbondingDelegations(addressActive);
           if (
             unbondingPromise.unbondingResponses &&
             unbondingPromise.unbondingResponses.length > 0
           ) {
             const { unbondingResponses } = unbondingPromise;
-            unbondingResponses.forEach((unbond, i) => {
-              unbond.entries.forEach((entry, j) => {
+            unbondingResponses.forEach((unbond, _i) => {
+              unbond.entries.forEach((entry, _j) => {
                 setBalance((item) => ({
                   ...item,
-                  unbonding: Math.floor(
-                    item.unbonding + parseFloat(entry.balance)
-                  ),
+                  unbonding: Math.floor(item.unbonding + parseFloat(entry.balance)),
                   total: Math.floor(item.total + parseFloat(entry.balance)),
                 }));
               });
             });
           }
-          const rewardsPropsise = await queryClient.delegationTotalRewards(
-            addressActive
-          );
+          const rewardsPropsise = await queryClient.delegationTotalRewards(addressActive);
           if (rewardsPropsise.total && rewardsPropsise.total.length > 0) {
             setBalance((item) => ({
               ...item,
-              rewards: Math.floor(
-                coinDecimals(parseFloat(rewardsPropsise.total[0].amount))
-              ),
+              rewards: Math.floor(coinDecimals(parseFloat(rewardsPropsise.total[0].amount))),
               total: Math.floor(
-                item.total +
-                  coinDecimals(parseFloat(rewardsPropsise.total[0].amount))
+                item.total + coinDecimals(parseFloat(rewardsPropsise.total[0].amount))
               ),
             }));
           }
-          const dataValidatorAddress = fromBech32(
-            addressActive,
-            BECH32_PREFIX_VALOPER
-          );
-          const resultGetDistribution = await queryClient.validatorCommission(
-            dataValidatorAddress
-          );
+          const dataValidatorAddress = fromBech32(addressActive, BECH32_PREFIX_VALOPER);
+          const resultGetDistribution = await queryClient.validatorCommission(dataValidatorAddress);
           if (resultGetDistribution.commission.commission.length > 0) {
             const { commission } = resultGetDistribution;
             setBalance((item) => ({
               ...item,
-              commission: Math.floor(
-                coinDecimals(parseFloat(commission.commission[0].amount))
-              ),
+              commission: Math.floor(coinDecimals(parseFloat(commission.commission[0].amount))),
               total: Math.floor(
-                item.total +
-                  coinDecimals(parseFloat(commission.commission[0].amount))
+                item.total + coinDecimals(parseFloat(commission.commission[0].amount))
               ),
             }));
           }
@@ -152,7 +125,18 @@ function useGetBalance(address, updateAddress) {
       }
     };
     getBalance();
-  }, [queryClient, rpc, addressActive, updateAddress]);
+  }, [queryClient, rpc, addressActive]);
+
+  const getCalculationBalance = (data) => {
+    const balances = {};
+    if (Object.keys(data).length > 0) {
+      data.forEach((item) => {
+        balances[item.denom] = parseFloat(item.amount);
+      });
+    }
+
+    return balances;
+  };
 
   useEffect(() => {
     const getBalance = async () => {
@@ -170,42 +154,36 @@ function useGetBalance(address, updateAddress) {
       };
 
       if (queryClient && addressActive !== null && !loadingAuthAccounts) {
-        setBalanceToken(initValueToken);
-        setLoadingBalanceToken(true);
-        const getAllBalancesPromise = await queryClient.getAllBalances(
-          addressActive
-        );
-        const balancesToken = getCalculationBalance(getAllBalancesPromise);
-        if (Object.keys(balancesToken).length > 0) {
-          Object.keys(balancesToken).forEach((key) => {
-            if (
-              Object.hasOwnProperty.call(balancesToken, key) &&
-              key !== BASE_DENOM
-            ) {
-              const elementBalancesToken = balancesToken[key];
+        try {
+          setBalanceToken(initValueToken);
+          setLoadingBalanceToken(true);
+          const getAllBalancesPromise = await queryClient.getAllBalances(addressActive);
+          const balancesToken = getCalculationBalance(getAllBalancesPromise);
+          if (Object.keys(balancesToken).length > 0) {
+            Object.keys(balancesToken).forEach((key) => {
+              if (Object.hasOwn(balancesToken, key) && key !== BASE_DENOM) {
+                const elementBalancesToken = balancesToken[key];
 
-              if (
-                Object.hasOwnProperty.call(initValueTokenAmount, key) &&
-                Object.hasOwnProperty.call(initValueTokenAmount[key], 'total')
-              ) {
-                initValueTokenAmount[key].total = elementBalancesToken;
-                initValueTokenAmount[key].liquid = elementBalancesToken;
-              } else {
-                initValueTokenAmount[key] = elementBalancesToken;
+                if (
+                  Object.hasOwn(initValueTokenAmount, key) &&
+                  Object.hasOwn(initValueTokenAmount[key], 'total')
+                ) {
+                  initValueTokenAmount[key].total = elementBalancesToken;
+                  initValueTokenAmount[key].liquid = elementBalancesToken;
+                } else {
+                  initValueTokenAmount[key] = elementBalancesToken;
+                }
+                if (Object.hasOwn(originalVesting, key) && Object.hasOwn(vested, key)) {
+                  const vestedTokens = parseFloat(originalVesting[key]) - parseFloat(vested[key]);
+                  const liquidAmount = elementBalancesToken - vestedTokens;
+                  initValueTokenAmount[key].liquid = liquidAmount > 0 ? liquidAmount : 0;
+                  initValueTokenAmount[key].vested = vestedTokens;
+                }
               }
-              if (
-                Object.hasOwnProperty.call(originalVesting, key) &&
-                Object.hasOwnProperty.call(vested, key)
-              ) {
-                const vestedTokens =
-                  parseFloat(originalVesting[key]) - parseFloat(vested[key]);
-                const liquidAmount = elementBalancesToken - vestedTokens;
-                initValueTokenAmount[key].liquid =
-                  liquidAmount > 0 ? liquidAmount : 0;
-                initValueTokenAmount[key].vested = vestedTokens;
-              }
-            }
-          });
+            });
+          }
+        } catch (e) {
+          console.error('getBalance tokens error:', e);
         }
       }
       // console.log(`initValueTokenAmount`, initValueTokenAmount);
@@ -219,18 +197,8 @@ function useGetBalance(address, updateAddress) {
     vested,
     originalVesting,
     loadingAuthAccounts,
+    getCalculationBalance,
   ]);
-
-  const getCalculationBalance = (data) => {
-    const balances = {};
-    if (Object.keys(data).length > 0) {
-      data.forEach((item) => {
-        balances[item.denom] = parseFloat(item.amount);
-      });
-    }
-
-    return balances;
-  };
 
   return { balance, loadingBalanceInfo, balanceToken, loadingBalanceToken };
 }

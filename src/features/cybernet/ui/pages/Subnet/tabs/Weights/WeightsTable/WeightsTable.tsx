@@ -1,20 +1,16 @@
 /* eslint-disable react/no-unstable-nested-components */
 import { createColumnHelper } from '@tanstack/react-table';
+import { useMemo } from 'react';
+import { Account } from 'src/components';
 import Table from 'src/components/Table/Table';
 import { SubnetNeuron } from 'src/features/cybernet/types';
-import { Account } from 'src/components';
-
-import useCurrentAddress from 'src/hooks/useCurrentAddress';
-import { useMemo } from 'react';
-import {
-  useCurrentContract,
-  useCybernet,
-} from 'src/features/cybernet/ui/cybernet.context';
 import SubnetPreview from 'src/features/cybernet/ui/components/SubnetPreview/SubnetPreview';
+import { useCurrentContract, useCybernet } from 'src/features/cybernet/ui/cybernet.context';
+import useCurrentAddress from 'src/hooks/useCurrentAddress';
+import { cybernetRoutes } from '../../../../../routes';
 import { useSubnet } from '../../../subnet.context';
 import colorStyles from './temp.module.scss';
 import styles from './WeightsTable.module.scss';
-import { cybernetRoutes } from '../../../../../routes';
 
 type Props = {};
 
@@ -55,9 +51,7 @@ function WeightsTable({}: Props) {
   }
 
   const columns = isRootSubnet
-    ? subnetsQuery.data
-        ?.map((subnet) => subnet.netuid)
-        .filter((subnet) => subnet !== 0)
+    ? subnetsQuery.data?.map((subnet) => subnet.netuid).filter((subnet) => subnet !== 0)
     : neurons.map((neuron) => neuron.uid);
 
   const { data } = grades.all;
@@ -73,7 +67,7 @@ function WeightsTable({}: Props) {
           enableSorting={false}
           data={neurons}
           columns={[
-            // @ts-ignore
+            // @ts-expect-error
             columnHelper.accessor('hotkey', {
               id: 'uid',
               header: '',
@@ -148,9 +142,7 @@ function WeightsTable({}: Props) {
 
                   const color = getColor(val);
 
-                  return (
-                    <div className={colorStyles[`color_${color}`]}>{val}</div>
-                  );
+                  return <div className={colorStyles[`color_${color}`]}>{val}</div>;
                 },
               });
             })

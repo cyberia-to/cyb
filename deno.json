@@ -1,0 +1,16 @@
+{
+  "tasks": {
+    "start": "DENO_NO_PACKAGE_JSON=1 ./node_modules/.bin/rspack serve --config=rspack.config.dev.js",
+    "build": "DENO_NO_PACKAGE_JSON=1 ./node_modules/.bin/rspack build --config=rspack.config.prod.js && cp -r public/* build/",
+    "build-ipfs": "DENO_NO_PACKAGE_JSON=1 IPFS_DEPLOY=1 ./node_modules/.bin/rspack build --config=rspack.config.prod.js --mode production",
+    "build-report": "DENO_NO_PACKAGE_JSON=1 ./node_modules/.bin/rspack build --config=rspack.config.prod.js --profile --json > stats.json",
+    "lint": "DENO_NO_PACKAGE_JSON=1 ./node_modules/.bin/biome check src/",
+    "lint:fix": "DENO_NO_PACKAGE_JSON=1 ./node_modules/.bin/biome check --write src/",
+    "format": "DENO_NO_PACKAGE_JSON=1 ./node_modules/.bin/biome format --write src/",
+    "serve": "deno run --allow-net --allow-read jsr:@std/http/file-server build",
+    "generate-graphql-types": "DENO_NO_PACKAGE_JSON=1 ./node_modules/.bin/graphql-codegen --config ./codegen.ts"
+  },
+  "imports": {
+    "worker-rspack-loader": "npm:worker-rspack-loader@^3.1.2"
+  }
+}

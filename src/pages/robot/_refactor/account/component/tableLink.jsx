@@ -1,9 +1,9 @@
-import { useState, useMemo, useCallback } from 'react';
 import { TableEv as Table } from '@cybercongress/gravity';
-import { Link } from 'react-router-dom';
+import { useCallback, useMemo, useState } from 'react';
 import InfiniteScroll from 'react-infinite-scroll-component';
+import { Link } from 'react-router-dom';
+import { Cid, Dots, NoItems, TextTable } from '../../../../../components';
 import { trimString } from '../../../../../utils/utils';
-import { NoItems, Cid, Dots, TextTable } from '../../../../../components';
 
 const dateFormat = require('dateformat');
 
@@ -14,20 +14,16 @@ function TableLink({ data }) {
     setTimeout(() => {
       setItemsToShow(itemsToShow + 5);
     }, 250);
-  }, [itemsToShow, setItemsToShow]);
+  }, [itemsToShow]);
 
   const displayedPalettes = useMemo(
     () => data.slice(0, itemsToShow),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [itemsToShow]
+    [itemsToShow, data.slice]
   );
 
   const validatorRows = displayedPalettes.map((item, i) => (
-    <Table.Row
-      borderBottom="none"
-      display="flex"
-      key={`${item.transaction_hash}_${i}`}
-    >
+    <Table.Row borderBottom="none" display="flex" key={`${item.transaction_hash}_${i}`}>
       <Table.TextCell textAlign="center">
         <TextTable>
           <Link to={`/network/bostrom/tx/${item.transaction_hash}`}>
@@ -36,15 +32,11 @@ function TableLink({ data }) {
         </TextTable>
       </Table.TextCell>
       <Table.TextCell flex={1.5} textAlign="center">
-        <TextTable>
-          {dateFormat(item.timestamp, 'dd/mm/yyyy, HH:MM:ss')}
-        </TextTable>
+        <TextTable>{dateFormat(item.timestamp, 'dd/mm/yyyy, HH:MM:ss')}</TextTable>
       </Table.TextCell>
       <Table.TextCell textAlign="center">
         <TextTable>
-          <Cid cid={item.particle_from}>
-            {trimString(item.particle_from, 6, 6)}
-          </Cid>
+          <Cid cid={item.particle_from}>{trimString(item.particle_from, 6, 6)}</Cid>
         </TextTable>
       </Table.TextCell>
       <Table.TextCell textAlign="center">
@@ -98,14 +90,10 @@ function TableLink({ data }) {
             }
             pullDownToRefresh
             pullDownToRefreshContent={
-              <h3 style={{ textAlign: 'center' }}>
-                &#8595; Pull down to refresh
-              </h3>
+              <h3 style={{ textAlign: 'center' }}>&#8595; Pull down to refresh</h3>
             }
             releaseToRefreshContent={
-              <h3 style={{ textAlign: 'center' }}>
-                &#8593; Release to refresh
-              </h3>
+              <h3 style={{ textAlign: 'center' }}>&#8593; Release to refresh</h3>
             }
             refreshFunction={setNextDisplayedPalettes}
           >

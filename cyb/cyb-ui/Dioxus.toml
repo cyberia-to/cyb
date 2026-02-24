@@ -1,0 +1,12 @@
+[application]
+name = "cyb-ui"
+
+[web.app]
+title = "cyb UI"
+
+[web.watcher]
+watch_path = ["src"]
+
+[web.resource]
+style = []
+script = []

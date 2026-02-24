@@ -2,10 +2,7 @@ import React, { useCallback, useContext, useMemo, useState } from 'react';
 import { Props as AdviserProps } from './Adviser/Adviser';
 
 type ContextType = {
-  setAdviser: (
-    content: AdviserProps['children'],
-    color?: AdviserProps['color']
-  ) => void;
+  setAdviser: (content: AdviserProps['children'], color?: AdviserProps['color']) => void;
   setAdviserNew: (
     id: string,
     content: AdviserProps['children'],
@@ -65,29 +62,26 @@ function AdviserProvider({ children }: { children: React.ReactNode }) {
 
   const [state, setState] = useState<State>([]);
 
-  const handleSetAdviser = useCallback(
-    (id: string, content, color, priority) => {
-      setState((prev) => {
-        const newState = prev.filter((item) => item.id !== id);
+  const handleSetAdviser = useCallback((id: string, content, color, priority) => {
+    setState((prev) => {
+      const newState = prev.filter((item) => item.id !== id);
 
-        const n = [...newState];
+      const n = [...newState];
 
-        if (content) {
-          n.push({
-            id,
-            content,
-            color,
-            isPriority: priority,
-          });
-        }
+      if (content) {
+        n.push({
+          id,
+          content,
+          color,
+          isPriority: priority,
+        });
+      }
 
-        return n;
-      });
+      return n;
+    });
 
-      setIsOpen(true);
-    },
-    []
-  );
+    setIsOpen(true);
+  }, []);
 
   const handleSetAdviserLegacy = useCallback(
     (content, color) => {
@@ -116,9 +110,7 @@ function AdviserProvider({ children }: { children: React.ReactNode }) {
   return (
     <AdviserContext.Provider value={value}>
       {/* second context to prevent rerenders */}
-      <AdviserContext2.Provider value={handleSetAdviser}>
-        {children}
-      </AdviserContext2.Provider>
+      <AdviserContext2.Provider value={handleSetAdviser}>{children}</AdviserContext2.Provider>
     </AdviserContext.Provider>
   );
 }

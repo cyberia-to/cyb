@@ -1,19 +1,18 @@
+import { useEffect, useMemo, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import ContentIpfs from 'src/components/contentIpfs/contentIpfs';
-import { useEffect, useMemo, useState } from 'react';
-import { useAdviser } from 'src/features/adviser/context';
-import { encodeSlash } from 'src/utils/utils';
 import { PATTERN_IPFS_HASH } from 'src/constants/patterns';
-import { getIpfsHash } from 'src/utils/ipfs/helpers';
 import { useBackend } from 'src/contexts/backend/backend';
-
+import { useAdviser } from 'src/features/adviser/context';
 import useParticle from 'src/hooks/useParticle';
+import { getIpfsHash } from 'src/utils/ipfs/helpers';
+import { encodeSlash } from 'src/utils/utils';
 
 import { Dots, MainContainer } from '../../components';
-import ContentIpfsCid from './components/ContentIpfsCid';
-import styles from './IPFS.module.scss';
 import SearchResults from '../Search/SearchResults';
 import AdviserMeta from './components/AdviserMeta/AdviserMeta';
+import ContentIpfsCid from './components/ContentIpfsCid';
+import styles from './IPFS.module.scss';
 
 function Ipfs() {
   const { query = '' } = useParams();
@@ -88,11 +87,7 @@ function Ipfs() {
             cid={cid}
           />
         ) : (
-          <ContentIpfsCid
-            loading={status === 'executing'}
-            status={status}
-            cid={cid}
-          />
+          <ContentIpfsCid loading={status === 'executing'} status={status} cid={cid} />
         )}
 
         {/* {details && (

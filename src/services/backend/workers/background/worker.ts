@@ -1,18 +1,13 @@
 import { proxy } from 'comlink';
-
-import { QueuePriority } from 'src/services/QueueManager/types';
-import { ParticleCid } from 'src/types/base';
 import { BehaviorSubject, Subject } from 'rxjs';
+import { QueuePriority } from 'src/services/QueueManager/types';
 import { RuneInnerDeps } from 'src/services/scripting/runeDeps';
-
-import { exposeWorkerApi } from '../factoryMethods';
-
+import { ParticleCid } from 'src/types/base';
+import BroadcastChannelSender from '../../channels/BroadcastChannelSender';
+import DbApi from '../../services/DbApi/DbApi';
 import { SyncService } from '../../services/sync/sync';
 import { SyncServiceParams } from '../../services/sync/types';
-
-import DbApi from '../../services/DbApi/DbApi';
-
-import BroadcastChannelSender from '../../channels/BroadcastChannelSender';
+import { exposeWorkerApi } from '../factoryMethods';
 import { createIpfsApi } from './api/ipfsApi';
 import { createMlApi } from './api/mlApi';
 import { createRuneApi } from './api/runeApi';
@@ -32,17 +27,9 @@ const createBackgroundWorkerApi = () => {
 
   const { embeddingApi$ } = createMlApi(dbInstance$, broadcastApi);
 
-  const { setInnerDeps, rune } = createRuneApi(
-    embeddingApi$,
-    dbInstance$,
-    broadcastApi
-  );
+  const { setInnerDeps, rune } = createRuneApi(embeddingApi$, dbInstance$, broadcastApi);
 
-  const {
-    ipfsQueue,
-    ipfsInstance$,
-    api: ipfsApi,
-  } = createIpfsApi(rune, broadcastApi);
+  const { ipfsQueue, ipfsInstance$, api: ipfsApi } = createIpfsApi(rune, broadcastApi);
 
   const waitForParticleResolve = (
     cid: ParticleCid,
@@ -58,7 +45,7 @@ const createBackgroundWorkerApi = () => {
   };
 
   // service to sync updates about cyberlinks, transactions, swarm etc.
-  const syncService = new SyncService(serviceDeps);
+  const _syncService = new SyncService(serviceDeps);
 
   // INITIALIZATION
   setInnerDeps({ ipfsApi });
@@ -72,9 +59,8 @@ const createBackgroundWorkerApi = () => {
     embeddingApi$,
     // ipfsInstance$,
     ipfsQueue: proxy(ipfsQueue),
-    setRuneDeps: (
-      deps: Partial<Omit<RuneInnerDeps, 'embeddingApi' | 'dbApi'>>
-    ) => setInnerDeps(deps),
+    setRuneDeps: (deps: Partial<Omit<RuneInnerDeps, 'embeddingApi' | 'dbApi'>>) =>
+      setInnerDeps(deps),
     // restartSync: (name: SyncEntryName) => syncService.restart(name),
     setParams: (params: Partial<SyncServiceParams>) =>
       params$.next({ ...params$.value, ...params }),

@@ -1,16 +1,17 @@
 /* eslint-disable jsx-a11y/control-has-associated-label */
-import { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
 import { connect } from 'react-redux';
-import { useSigningClient } from 'src/contexts/signerClient';
-import { setDefaultAccount, setAccounts } from '../../../redux/features/pocket';
-import { Dots, BtnGrd } from '../../../components';
-import { LEDGER } from '../../../utils/config';
-import { steps } from './utils';
-import { ActionBarSteps } from '../components';
-import { useBackend } from 'src/contexts/backend/backend';
+import { useNavigate } from 'react-router-dom';
 import NodeIsLoadingButton from 'src/components/btnGrd/NodeIsLoadingButton/NodeIsLoadingButton';
 import { CHAIN_ID } from 'src/constants/config';
+import { useBackend } from 'src/contexts/backend/backend';
+import { useSigningClient } from 'src/contexts/signerClient';
+import { toHex } from 'src/utils/encoding';
+import { BtnGrd, Dots } from '../../../components';
+import { setAccounts, setDefaultAccount } from '../../../redux/features/pocket';
+import { LEDGER } from '../../../utils/config';
+import { ActionBarSteps } from '../components';
+import { steps } from './utils';
 
 const {
   STEP_INIT,
@@ -51,15 +52,12 @@ function ActionBar({
 }) {
   const { signer } = useSigningClient();
   const navigate = useNavigate();
-  const [checkAddressNetworkState, setCheckAddressNetworkState] =
-    useState(false);
+  const [checkAddressNetworkState, setCheckAddressNetworkState] = useState(false);
 
   const { isIpfsInitialized } = useBackend();
 
-  const checkAddress = (obj: any, network: string, address: string) =>
-    Object.keys(obj).filter(
-      (k) => obj[k][network] && obj[k][network].bech32 === address
-    );
+  const checkAddress = (obj, network, address) =>
+    Object.keys(obj).filter((k) => obj[k][network] && obj[k][network].bech32 === address);
 
   const connectAccToCyber = async () => {
     let accounts = {};
@@ -73,10 +71,8 @@ function ActionBar({
 
     let count = 1;
     if (signer) {
-      const { bech32Address, pubKey, name } = await signer.keplr.getKey(
-        chainId
-      );
-      const pk = Buffer.from(pubKey).toString('hex');
+      const { bech32Address, pubKey, name } = await signer.keplr.getKey(chainId);
+      const pk = toHex(new Uint8Array(pubKey));
 
       const localStoragePocketAccount = localStorage.getItem('pocketAccount');
       const localStorageCount = localStorage.getItem('count');
@@ -118,10 +114,7 @@ function ActionBar({
       if (Object.keys(pocketAccount).length > 0) {
         localStorage.setItem('pocketAccount', JSON.stringify(pocketAccount));
         const keys0 = Object.keys(pocketAccount)[0];
-        localStorage.setItem(
-          'pocket',
-          JSON.stringify({ [keys0]: pocketAccount[keys0] })
-        );
+        localStorage.setItem('pocket', JSON.stringify({ [keys0]: pocketAccount[keys0] }));
         defaultAccounts = pocketAccount[keys0];
         defaultAccountsKeys = keys0;
 
@@ -155,7 +148,7 @@ function ActionBar({
       setStep(STEP_KEPLR_SETUP);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signer]);
+  }, [signer, openInNewTab, setStep]);
 
   useEffect(() => {
     if (step === STEP_KEPLR_REGISTER || step === STEP_ACTIVE_ADD) {
@@ -170,7 +163,7 @@ function ActionBar({
       onClickSignMoonCode();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signedMessage]);
+  }, [signedMessage, onClickSignMoonCode, setStep]);
 
   if (step === STEP_INIT) {
     return (
@@ -233,10 +226,7 @@ function ActionBar({
   if (step === STEP_KEPLR_INIT_INSTALLED) {
     return (
       <ActionBarSteps onClickBack={() => setStep(STEP_AVATAR_UPLOAD)}>
-        <BtnGrd
-          onClick={() => setStep(STEP_KEPLR_SETUP)}
-          text="I installed Keplr"
-        />
+        <BtnGrd onClick={() => setStep(STEP_KEPLR_SETUP)} text="I installed Keplr" />
         {/* <Button onClick={() => setStep(STEP_KEPLR_SETUP)}>install Keplr</Button> */}
       </ActionBarSteps>
     );
@@ -245,10 +235,7 @@ function ActionBar({
   if (step === STEP_KEPLR_SETUP) {
     return (
       <ActionBarSteps onClickBack={() => setStep(STEP_KEPLR_INIT)}>
-        <BtnGrd
-          onClick={() => setStep(STEP_KEPLR_CONNECT)}
-          text="I created account"
-        />
+        <BtnGrd onClick={() => setStep(STEP_KEPLR_CONNECT)} text="I created account" />
         {/* <Button onClick={() => setStep(STEP_KEPLR_CONNECT)}>
           I created account
         </Button> */}
@@ -260,10 +247,7 @@ function ActionBar({
     return (
       <ActionBarSteps onClickBack={() => setStep(STEP_KEPLR_SETUP)}>
         {!signer ? (
-          <BtnGrd
-            onClick={() => document.location.reload(true)}
-            text="update page"
-          />
+          <BtnGrd onClick={() => document.location.reload(true)} text="update page" />
         ) : (
           <BtnGrd onClick={connectAccToCyber} text="connect" />
           // <Button onClick={() => connectAccToCyber()}>connect</Button>
@@ -276,10 +260,7 @@ function ActionBar({
     return (
       <ActionBarSteps onClickBack={() => setStep(STEP_KEPLR_CONNECT)}>
         {/* check your bostrom address <Dots /> */}
-        <BtnGrd
-          onClick={() => setStep(STEP_CHECK_ADDRESS_CHECK_FNC)}
-          text="check address"
-        />
+        <BtnGrd onClick={() => setStep(STEP_CHECK_ADDRESS_CHECK_FNC)} text="check address" />
       </ActionBarSteps>
     );
   }
@@ -335,11 +316,7 @@ function ActionBar({
   if (step === STEP_KEPLR_REGISTER) {
     return (
       <ActionBarSteps onClickBack={() => setStep(STEP_RULES)}>
-        <BtnGrd
-          disabled={!registerDisabled}
-          onClick={() => onClickRegister()}
-          text="register"
-        />
+        <BtnGrd disabled={!registerDisabled} onClick={() => onClickRegister()} text="register" />
         {/* <Button onClick={() => onClickRegister()}>register</Button> */}
       </ActionBarSteps>
     );

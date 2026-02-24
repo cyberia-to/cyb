@@ -1,7 +1,5 @@
-const CYBERVER_CONTRACT_GRAPH =
-  'pussy1j9qku20ssfjdzgl3y5hl0vfxzsjwzwn7d7us2t2n4ejgc6pesqcqhnxsz0';
-const CYBERVER_CONTRACT_ML =
-  'pussy1guj27rm0uj2mhwnnsr8j7cz6uvsz2d759kpalgqs60jahfzwgjcs4l28cw';
+const CYBERVER_CONTRACT_GRAPH = 'pussy1j9qku20ssfjdzgl3y5hl0vfxzsjwzwn7d7us2t2n4ejgc6pesqcqhnxsz0';
+const CYBERVER_CONTRACT_ML = 'pussy1guj27rm0uj2mhwnnsr8j7cz6uvsz2d759kpalgqs60jahfzwgjcs4l28cw';
 
 const CYBERVER_CONTRACT_GRAPH_LEGACY =
   'pussy155k695hqnzl05lx79kg9754k8cguw7wled38u2qacpxl62mrkfasy3k6x5';

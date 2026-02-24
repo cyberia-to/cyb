@@ -1,6 +1,6 @@
-import { formatNumber } from 'src/utils/utils';
 import { Link } from 'react-router-dom';
 import { routes } from 'src/routes';
+import { formatNumber } from 'src/utils/utils';
 import { BOOT_ICON } from '../utils';
 import STEP_INFO from './utils';
 
@@ -74,8 +74,8 @@ function Info({ stepCurrent, useReleasedStage, nextRelease }) {
     case STATE_PROVE:
       content = (
         <span>
-          Prove ethereum, cosmos, osmosis, <br /> terra signatures by selecting
-          signer to check for the gift
+          Prove ethereum, cosmos, osmosis, <br /> terra signatures by selecting signer to check for
+          the gift
         </span>
       );
       break;
@@ -101,26 +101,20 @@ function Info({ stepCurrent, useReleasedStage, nextRelease }) {
       break;
 
     case STATE_PROVE_YOU_ADDED_ADDR:
-      content = (
-        <span>you have already added this address. Сhoose another address</span>
-      );
+      content = <span>you have already added this address. Сhoose another address</span>;
       break;
 
     case STATE_CLAIME_TO_PROVE:
       content = (
         <span>
-          You did not work hard to get gift. No wories ! You have a citizenship,
-          just go and buy BOOT
+          You did not work hard to get gift. No wories ! You have a citizenship, just go and buy
+          BOOT
         </span>
       );
       break;
 
     case STATE_GIFT_NULL_ALL:
-      content = (
-        <span>
-          You have nothing to claim. Prove another address for the gift.
-        </span>
-      );
+      content = <span>You have nothing to claim. Prove another address for the gift.</span>;
       break;
 
     case STATE_CLAIME:
@@ -153,8 +147,8 @@ function Info({ stepCurrent, useReleasedStage, nextRelease }) {
     case STATE_RELEASE_INIT:
       content = (
         <span>
-          release {formatNumber(useReleasedStage.availableRelease) || ''}{' '}
-          {BOOT_ICON} right now! <br />
+          release {formatNumber(useReleasedStage.availableRelease) || ''} {BOOT_ICON} right now!{' '}
+          <br />
         </span>
       );
       break;
@@ -163,8 +157,7 @@ function Info({ stepCurrent, useReleasedStage, nextRelease }) {
       content = (
         <span>
           Next release will be available in {nextRelease} new addresses. <br />
-          <Link to={routes.sphere.path}>Hire hero</Link> and get H token for
-          free
+          <Link to={routes.sphere.path}>Hire hero</Link> and get H token for free
           <br />
           invite your friends to release faster
         </span>

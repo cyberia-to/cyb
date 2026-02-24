@@ -1,12 +1,12 @@
 import { Pane } from '@cybercongress/gravity';
+import { useMemo } from 'react';
 import { Option } from 'src/types';
 import { ObjKeyValue } from 'src/types/data';
 import { $TsFixMeFunc } from 'src/types/tsfix';
-import { useMemo } from 'react';
 import { DenomArr, InputNumber, OptionSelect } from '../../../components';
+import { MyPoolsT } from '../../../pages/teleport/type';
 import BalanceToken from './balanceToken';
 import Select from './Select';
-import { MyPoolsT } from '../../../pages/teleport/type';
 
 type TypeMyPoolListObj = { [key: string]: MyPoolsT };
 
@@ -15,20 +15,8 @@ const renderOptions = (data: TypeMyPoolListObj) => {
     <OptionSelect
       key={key}
       value={key}
-      text={
-        <DenomArr
-          denomValue={data[key].poolCoinDenom}
-          onlyText
-          tooltipStatusText={false}
-        />
-      }
-      img={
-        <DenomArr
-          denomValue={data[key].poolCoinDenom}
-          onlyImg
-          tooltipStatusImg={false}
-        />
-      }
+      text={<DenomArr denomValue={data[key].poolCoinDenom} onlyText tooltipStatusText={false} />}
+      img={<DenomArr denomValue={data[key].poolCoinDenom} onlyImg tooltipStatusImg={false} />}
     />
   ));
 };
@@ -64,13 +52,7 @@ function Withdraw({ stateProps }: WithdrawProps) {
   }, [myPools, selectMyPool]);
 
   return (
-    <Pane
-      maxWidth="390px"
-      width="375px"
-      display="flex"
-      alignItems="center"
-      flexDirection="column"
-    >
+    <Pane maxWidth="390px" width="375px" display="flex" alignItems="center" flexDirection="column">
       <BalanceToken data={accountBalances} token={selectMyPool} />
 
       {/* <Pane fontSize="18px">{textLeft}</Pane> */}
@@ -93,10 +75,7 @@ function Withdraw({ stateProps }: WithdrawProps) {
           {myPools && renderOptions(myPools)}
         </Select>
       </Pane>
-      <InputNumber
-        value={amountPoolCoin}
-        onValueChange={onChangeInputWithdraw}
-      />
+      <InputNumber value={amountPoolCoin} onValueChange={onChangeInputWithdraw} />
     </Pane>
   );
 }

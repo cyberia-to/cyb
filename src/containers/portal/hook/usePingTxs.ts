@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import { useQueryClient } from 'src/contexts/queryClient';
 import portalConfirmed from 'sounds/portalConfirmed112.mp3';
+import { useQueryClient } from 'src/contexts/queryClient';
 
 const portalConfirmedObg = new Audio(portalConfirmed);
 

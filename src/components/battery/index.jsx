@@ -1,12 +1,7 @@
-import { useState, useEffect } from 'react';
 import { Pane } from '@cybercongress/gravity';
+import { useEffect, useState } from 'react';
 
-function Battery({
-  percent = 0,
-  widthBat = 60,
-  borderSize = 2,
-  heightBat = 20,
-}) {
+function Battery({ percent = 0, widthBat = 60, borderSize = 2, heightBat = 20 }) {
   const [colorBar, setColorBar] = useState('#3ab793');
 
   useEffect(() => {

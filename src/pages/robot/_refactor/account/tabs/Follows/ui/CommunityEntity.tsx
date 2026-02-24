@@ -1,5 +1,5 @@
-import Loader2 from 'src/components/ui/Loader2';
 import { Account, DisplayTitle, NoItems } from 'src/components';
+import Loader2 from 'src/components/ui/Loader2';
 import styles from './CommunityEntity.module.scss';
 
 type CommunityEntityProps = {
@@ -9,12 +9,7 @@ type CommunityEntityProps = {
   noItemsTitle: string;
 };
 
-function CommunityEntity({
-  items,
-  title,
-  noItemsTitle,
-  loading,
-}: CommunityEntityProps) {
+function CommunityEntity({ items, title, noItemsTitle, loading }: CommunityEntityProps) {
   let content;
 
   if (loading) {

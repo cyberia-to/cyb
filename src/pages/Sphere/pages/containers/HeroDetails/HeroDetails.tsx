@@ -1,22 +1,22 @@
-import { useAppSelector } from 'src/redux/hooks';
-import { selectCurrentAddress } from 'src/redux/features/pocket';
+import { useCallback } from 'react';
 import { useParams } from 'react-router-dom';
+import { Tabs } from 'src/components';
 
 import { useSphereContext } from 'src/pages/Sphere/Sphere.context';
-import { Tabs } from 'src/components';
-import { useCallback } from 'react';
+import { selectCurrentAddress } from 'src/redux/features/pocket';
+import { useAppSelector } from 'src/redux/hooks';
 import { routes } from 'src/routes';
-import Statistics from './components/Statistics/Statistics';
-import Details from './components/Details/Details';
-import reduceDetails from './utils/reduceDetails';
 import useSelfDelegation from '../../../../../features/staking/delegation/useSelfDelegation';
-import useDelegationRewards from '../../../../../features/staking/rewards/useDelegationRewards';
-import useValidatorByContext from './hooks/useValidatorByContext';
 import useValidatorDelegations from '../../../../../features/staking/delegation/useValidatorDelegations';
+import useDelegationRewards from '../../../../../features/staking/rewards/useDelegationRewards';
 import ActionBarContainer from '../../components/ActionBarContainer/ActionBarContainer';
+import Details from './components/Details/Details';
 import Leadership from './components/Leadership/Leadership';
 import Rumors from './components/Rumors/Rumors';
 import SearchResultsTab from './components/SearchResultsTab/SearchResultsTab';
+import Statistics from './components/Statistics/Statistics';
+import useValidatorByContext from './hooks/useValidatorByContext';
+import reduceDetails from './utils/reduceDetails';
 
 enum TabsKey {
   main = 'main',
@@ -28,15 +28,11 @@ enum TabsKey {
 function HeroDetails() {
   const addressActive = useAppSelector(selectCurrentAddress);
   const { address: operatorAddress, tab = TabsKey.main } = useParams();
-  const { delegationsData, bondedTokens, stakingProvisions, refetchFunc } =
-    useSphereContext();
+  const { delegationsData, bondedTokens, stakingProvisions, refetchFunc } = useSphereContext();
 
   const { validatorInfo } = useValidatorByContext(operatorAddress);
 
-  const { reward, refetch: refetchReward } = useDelegationRewards(
-    addressActive,
-    operatorAddress
-  );
+  const { reward, refetch: refetchReward } = useDelegationRewards(addressActive, operatorAddress);
 
   const { delegations } = useValidatorDelegations(operatorAddress);
 
@@ -84,26 +80,15 @@ function HeroDetails() {
         <Details
           data={validatorInfo}
           options={{
-            ...reduceDetails(
-              validatorInfo,
-              bondedTokens,
-              selfDelegationCoin,
-              stakingProvisions
-            ),
+            ...reduceDetails(validatorInfo, bondedTokens, selfDelegationCoin, stakingProvisions),
             delegations,
           }}
         />
       )}
-      {tab === TabsKey.rumors && (
-        <Rumors accountUser={validatorInfo.operatorAddress} />
-      )}
-      {tab === TabsKey.leadership && (
-        <Leadership accountUser={validatorInfo.operatorAddress} />
-      )}
+      {tab === TabsKey.rumors && <Rumors accountUser={validatorInfo.operatorAddress} />}
+      {tab === TabsKey.leadership && <Leadership accountUser={validatorInfo.operatorAddress} />}
 
-      {tab === TabsKey.search && (
-        <SearchResultsTab moniker={validatorInfo.description.moniker} />
-      )}
+      {tab === TabsKey.search && <SearchResultsTab moniker={validatorInfo.description.moniker} />}
 
       {tab !== TabsKey.search && (
         <ActionBarContainer validators={validatorInfo} updateFnc={updateFnc} />

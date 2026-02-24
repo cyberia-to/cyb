@@ -1,13 +1,9 @@
 import React, { useCallback, useContext, useMemo } from 'react';
+import useAllDenomTraces from 'src/hooks/useAllDenomTraces';
 import usePoolListInterval from 'src/hooks/usePoolListInterval';
 import { Option } from 'src/types';
-import {
-  IbcDenomsArr,
-  TracesDenomFuncResponse,
-  TracesDenomFuncType,
-} from 'src/types/ibc';
+import { IbcDenomsArr, TracesDenomFuncResponse, TracesDenomFuncType } from 'src/types/ibc';
 import { findPoolDenomInArr, isNative } from 'src/utils/utils';
-import useAllDenomTraces from 'src/hooks/useAllDenomTraces';
 import { useHub } from './hub';
 
 type IbcDenomContextContextType = {
@@ -20,8 +16,7 @@ const valueContext = {
   tracesDenom: () => [],
 };
 
-const IbcDenomContext =
-  React.createContext<IbcDenomContextContextType>(valueContext);
+const IbcDenomContext = React.createContext<IbcDenomContextContextType>(valueContext);
 
 export function useIbcDenom() {
   return useContext(IbcDenomContext);
@@ -54,14 +49,8 @@ function IbcDenomProvider({ children }: { children: React.ReactNode }) {
       }
 
       // check hub contracts
-      if (tokens && tokens[denomTraces]) {
-        const {
-          decimals,
-          ticker,
-          logo,
-          channel_id: channelId,
-          contract,
-        } = tokens[denomTraces];
+      if (tokens?.[denomTraces]) {
+        const { decimals, ticker, logo, channel_id: channelId, contract } = tokens[denomTraces];
 
         infoDenomTemp.denom = ticker;
         infoDenomTemp.coinDecimals = parseFloat(decimals);
@@ -73,8 +62,7 @@ function IbcDenomProvider({ children }: { children: React.ReactNode }) {
         allDenomTraces &&
         allDenomTraces[denomTraces]
       ) {
-        const { baseDenom, sourceChannelId: sourceChannelIFromPath } =
-          allDenomTraces[denomTraces];
+        const { baseDenom, sourceChannelId: sourceChannelIFromPath } = allDenomTraces[denomTraces];
         infoDenomTemp.native = false;
         infoDenomTemp.denom = baseDenom;
         infoDenomTemp.path = sourceChannelIFromPath;
@@ -93,11 +81,7 @@ function IbcDenomProvider({ children }: { children: React.ReactNode }) {
     [allDenomTraces, tracesDenom]
   );
 
-  return (
-    <IbcDenomContext.Provider value={value}>
-      {children}
-    </IbcDenomContext.Provider>
-  );
+  return <IbcDenomContext.Provider value={value}>{children}</IbcDenomContext.Provider>;
 }
 
 export default IbcDenomProvider;

@@ -1,19 +1,19 @@
-import { useState, useEffect, useMemo } from 'react';
 import { coin } from '@cosmjs/launchpad';
-import { useNavigate } from 'react-router-dom';
+import { Validator } from '@cybercongress/cyber-ts/cosmos/staking/v1beta1/staking';
 import BigNumber from 'bignumber.js';
-import { useQueryClient } from 'src/contexts/queryClient';
-import { useSigningClient } from 'src/contexts/signerClient';
+import { useEffect, useMemo, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Button from 'src/components/btnGrd';
 import { BASE_DENOM, MEMO_KEPLR } from 'src/constants/config';
+import { useQueryClient } from 'src/contexts/queryClient';
+import { useSigningClient } from 'src/contexts/signerClient';
 import { useSphereContext } from 'src/pages/Sphere/Sphere.context';
-import { Validator } from '@cybercongress/cyber-ts/cosmos/staking/v1beta1/staking';
 import {
-  Confirmed,
-  TransactionSubmitted,
-  TransactionError,
-  Dots,
   ActionBar,
+  Confirmed,
+  Dots,
+  TransactionError,
+  TransactionSubmitted,
 } from '../../../../../components';
 
 import { LEDGER } from '../../../../../utils/config';
@@ -61,19 +61,11 @@ function StatusTx({ stage, clearState, errorMessage, txHash, txHeight }) {
   }
 
   if (stage === STAGE_CONFIRMED) {
-    return (
-      <Confirmed
-        txHash={txHash}
-        txHeight={txHeight}
-        onClickBtnClose={clearState}
-      />
-    );
+    return <Confirmed txHash={txHash} txHeight={txHeight} onClickBtnClose={clearState} />;
   }
 
   if (stage === STAGE_ERROR && errorMessage !== null) {
-    return (
-      <TransactionError errorMessage={errorMessage} onClickBtn={clearState} />
-    );
+    return <TransactionError errorMessage={errorMessage} onClickBtn={clearState} />;
   }
 
   return null;
@@ -137,7 +129,7 @@ const useCheckStatusTx = (txHash, setStage, setErrorMessage, updateFnc) => {
     };
     confirmTx();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryClient, txHash]);
+  }, [queryClient, txHash, setErrorMessage, setStage, updateFnc]);
 
   return { txHeight };
 };
@@ -162,12 +154,7 @@ function ActionBarContainer({ validators, updateFnc }: Props) {
   const [txHash, setTxHash] = useState(null);
   const [amount, setAmount] = useState<string>('');
   const [valueSelect, setValueSelect] = useState('');
-  const { txHeight } = useCheckStatusTx(
-    txHash,
-    setStage,
-    setErrorMessage,
-    updateFnc
-  );
+  const { txHeight } = useCheckStatusTx(txHash, setStage, setErrorMessage, updateFnc);
 
   const validatorSelected = validators?.operatorAddress;
 
@@ -182,10 +169,6 @@ function ActionBarContainer({ validators, updateFnc }: Props) {
     setErrorMessage(error.toString());
   };
 
-  useEffect(() => {
-    clearFunc();
-  }, [validatorSelected]);
-
   const clearFunc = () => {
     setTxHash(null);
     setAmount('');
@@ -194,6 +177,10 @@ function ActionBarContainer({ validators, updateFnc }: Props) {
     setTxType(null);
     setStage(STAGE_INIT);
   };
+
+  useEffect(() => {
+    clearFunc();
+  }, [clearFunc]);
 
   const delegateTokens = async () => {
     if (signer && signingClient) {
@@ -267,10 +254,8 @@ function ActionBarContainer({ validators, updateFnc }: Props) {
         const validatorAddress: string[] = [];
 
         setStage(LEDGER_GENERATION);
-        const delegationTotalRewards = await queryClient.delegationTotalRewards(
-          addressKeplr
-        );
-        if (delegationTotalRewards !== null && delegationTotalRewards.rewards) {
+        const delegationTotalRewards = await queryClient.delegationTotalRewards(addressKeplr);
+        if (delegationTotalRewards?.rewards) {
           const { rewards } = delegationTotalRewards;
           Object.keys(rewards).forEach((key) => {
             if (rewards[key].reward !== null) {
@@ -301,18 +286,14 @@ function ActionBarContainer({ validators, updateFnc }: Props) {
 
   const validRewards = useMemo(() => {
     if (
-      balance &&
-      balance.frozen &&
+      balance?.frozen &&
       balance.frozen.amount !== 0 &&
       balance.growth &&
       balance.growth.amount !== 0
     ) {
       const delegation = new BigNumber(balance.frozen.amount);
       const rewards = new BigNumber(balance.growth.amount);
-      const procentRewards = rewards
-        .div(delegation)
-        .multipliedBy(100)
-        .toNumber();
+      const procentRewards = rewards.div(delegation).multipliedBy(100).toNumber();
 
       if (procentRewards > 0.01) {
         return true;
@@ -374,26 +355,20 @@ function ActionBarContainer({ validators, updateFnc }: Props) {
             >
               Unstake
             </Button>
-            <Button onClick={() => funcSetTxType(TXTYPE_REDELEGATE)}>
-              Restake
-            </Button>
+            <Button onClick={() => funcSetTxType(TXTYPE_REDELEGATE)}>Restake</Button>
           </div>
         )}
       </ActionBar>
     );
   }
 
-  if (
-    stage === STAGE_READY &&
-    (txType === TXTYPE_DELEGATE || txType === TXTYPE_UNDELEGATE)
-  ) {
+  if (stage === STAGE_READY && (txType === TXTYPE_DELEGATE || txType === TXTYPE_UNDELEGATE)) {
     return (
       <ActionBar
         onClickBack={onClickBackToChoseHandler}
         button={{
           text: 'Generate Tx',
-          onClick:
-            txType === TXTYPE_DELEGATE ? delegateTokens : undelegateTokens,
+          onClick: txType === TXTYPE_DELEGATE ? delegateTokens : undelegateTokens,
           disabled: !amount,
         }}
       >
@@ -401,9 +376,7 @@ function ActionBarContainer({ validators, updateFnc }: Props) {
           moniker={validators ? validators.description.moniker : ''}
           onChangeInputAmount={amountChangeHandler}
           value={amount}
-          maxValue={
-            txType === TXTYPE_DELEGATE ? balance?.liquid.amount : staked
-          }
+          maxValue={txType === TXTYPE_DELEGATE ? balance?.liquid.amount : staked}
           delegate={txType === TXTYPE_DELEGATE}
         />
       </ActionBar>

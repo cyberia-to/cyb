@@ -1,9 +1,9 @@
-import { ValidatorTableData } from 'src/pages/Sphere/types/tableData';
 import { Link } from 'react-router-dom';
-import { routes } from 'src/routes';
 import KeybaseAvatar from 'src/pages/Sphere/pages/components/KeybaseAvatar/keybaseAvatar';
-import styles from './Moniker.module.scss';
+import { ValidatorTableData } from 'src/pages/Sphere/types/tableData';
+import { routes } from 'src/routes';
 import { StatusTooltip } from '../../../ui';
+import styles from './Moniker.module.scss';
 
 function Moniker({
   data,
@@ -19,10 +19,7 @@ function Moniker({
     <div className={styles.monikerContainer}>
       <StatusTooltip status={status} />
       <KeybaseAvatar identity={identity} />
-      <Link
-        to={routes.hero.getLink(operatorAddress)}
-        className={styles.moniker}
-      >
+      <Link to={routes.hero.getLink(operatorAddress)} className={styles.moniker}>
         {moniker}
       </Link>
     </div>

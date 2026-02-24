@@ -13,4 +13,3 @@ export enum SelectedState {
   millivolt = 'millivolt',
   milliampere = 'milliampere',
 }
-

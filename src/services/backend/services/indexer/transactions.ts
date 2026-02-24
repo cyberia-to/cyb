@@ -1,6 +1,3 @@
-import { NeuronAddress } from 'src/types/base';
-import { numberToUtcDate } from 'src/utils/date';
-import { fetchIterableByOffset } from 'src/utils/async/iterable';
 import {
   MessagesByAddressCountDocument,
   MessagesByAddressCountQuery,
@@ -9,9 +6,11 @@ import {
   MessagesByAddressSenseQuery,
   MessagesByAddressSenseQueryVariables,
 } from 'src/generated/graphql';
-
-import { createIndexerClient } from './utils/graphqlClient';
+import { NeuronAddress } from 'src/types/base';
+import { fetchIterableByOffset } from 'src/utils/async/iterable';
+import { numberToUtcDate } from 'src/utils/date';
 import { Transaction } from './types';
+import { createIndexerClient } from './utils/graphqlClient';
 
 type OrderDirection = 'desc' | 'asc';
 type Abortable = { abortSignal: AbortSignal };
@@ -50,23 +49,28 @@ const fetchTransactions = async ({
   limit,
   abortSignal,
 }: MessagesByAddressVariables) => {
-  const res = await createIndexerClient(abortSignal).request<
-    MessagesByAddressSenseQuery,
-    MessagesByAddressSenseQueryVariables
-  >(
-    MessagesByAddressSenseDocument,
-    mapMessagesByAddressVariables({
-      neuron,
-      timestampFrom,
-      offset,
-      types,
-      orderDirection,
-      limit,
-      abortSignal,
-    }) as MessagesByAddressSenseQueryVariables
-  );
+  try {
+    const res = await createIndexerClient(abortSignal).request<
+      MessagesByAddressSenseQuery,
+      MessagesByAddressSenseQueryVariables
+    >(
+      MessagesByAddressSenseDocument,
+      mapMessagesByAddressVariables({
+        neuron,
+        timestampFrom,
+        offset,
+        types,
+        orderDirection,
+        limit,
+        abortSignal,
+      }) as MessagesByAddressSenseQueryVariables
+    );
 
-  return res?.messages_by_address as Transaction[];
+    return res?.messages_by_address as Transaction[];
+  } catch (e) {
+    console.error('fetchTransactions failed:', e);
+    return [];
+  }
 };
 
 export const fetchTransactionMessagesCount = async (
@@ -74,15 +78,20 @@ export const fetchTransactionMessagesCount = async (
   timestampFrom: number,
   abortSignal: AbortSignal
 ) => {
-  const res = await createIndexerClient(abortSignal).request<
-    MessagesByAddressCountQuery,
-    MessagesByAddressCountQueryVariables
-  >(MessagesByAddressCountDocument, {
-    address: `{${address}}`,
-    timestamp: numberToUtcDate(timestampFrom),
-  });
+  try {
+    const res = await createIndexerClient(abortSignal).request<
+      MessagesByAddressCountQuery,
+      MessagesByAddressCountQueryVariables
+    >(MessagesByAddressCountDocument, {
+      address: `{${address}}`,
+      timestamp: numberToUtcDate(timestampFrom),
+    });
 
-  return res?.messages_by_address_aggregate.aggregate?.count;
+    return res?.messages_by_address_aggregate.aggregate?.count;
+  } catch (e) {
+    console.error('fetchTransactionMessagesCount failed:', e);
+    return 0;
+  }
 };
 
 export const fetchTransactionsIterable = ({

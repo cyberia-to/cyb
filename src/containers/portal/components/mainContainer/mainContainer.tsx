@@ -7,12 +7,7 @@ type Props = {
   [key: string]: any;
 };
 
-function MainContainer({
-  children,
-  minHeight,
-  width = '62%',
-  ...props
-}: Props) {
+function MainContainer({ children, minHeight, width = '62%', ...props }: Props) {
   return (
     <main
       style={{

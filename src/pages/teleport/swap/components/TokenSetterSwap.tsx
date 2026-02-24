@@ -1,14 +1,14 @@
 import React, { useMemo } from 'react';
-import { DenomArr, AvailableAmount } from 'src/components';
-import { ObjKeyValue } from 'src/types/data';
+import { AvailableAmount, DenomArr } from 'src/components';
 import Select, { SelectOption } from 'src/components/Select/index';
-import { Nullable } from 'src/types';
 import { CHAIN_ID } from 'src/constants/config';
+import { Nullable } from 'src/types';
+import { ObjKeyValue } from 'src/types/data';
 import { Col, GridContainer } from '../../components/containers/Containers';
 import InputNumberDecimalScale from '../../components/Inputs/InputNumberDecimalScale/InputNumberDecimalScale';
 import styles from './TokenSetterSwap.module.scss';
 
-export const enum TokenSetterId {
+export enum TokenSetterId {
   tokenAAmount = 'tokenAAmount',
   tokenBAmount = 'tokenBAmount',
 }
@@ -50,9 +50,7 @@ function TokenSetterSwap({
         if (selected !== key) {
           tempList.push({
             value: key,
-            text: (
-              <DenomArr denomValue={key} onlyText tooltipStatusText={false} />
-            ),
+            text: <DenomArr denomValue={key} onlyText tooltipStatusText={false} />,
             img: <DenomArr denomValue={key} onlyImg tooltipStatusImg={false} />,
           });
         }
@@ -105,12 +103,7 @@ function TokenSetterSwap({
                 value: 'warp',
                 text: <span className={styles.defaultOptions}>warp</span>,
                 img: (
-                  <DenomArr
-                    denomValue={CHAIN_ID}
-                    onlyImg
-                    type="network"
-                    tooltipStatusImg={false}
-                  />
+                  <DenomArr denomValue={CHAIN_ID} onlyImg type="network" tooltipStatusImg={false} />
                 ),
               },
             ]}

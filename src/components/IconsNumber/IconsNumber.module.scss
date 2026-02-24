@@ -1,13 +1,18 @@
 .wrapper {
-  display: flex;
+  display: grid;
+  grid-template-columns: 50px 1fr;
   align-items: center;
+  gap: 2px;
   white-space: nowrap;
+}
+
+.number {
+  text-align: right;
 }
 
 .icon {
   display: flex;
   flex-direction: row;
-  margin-left: 3px;
 
   .vertical {
     flex-direction: column;

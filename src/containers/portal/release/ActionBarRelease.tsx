@@ -1,21 +1,22 @@
 /* eslint-disable jsx-a11y/control-has-associated-label */
-import { useMemo, useCallback, useState, useEffect } from 'react';
+
+import BigNumber from 'bignumber.js';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import { CHAIN_ID } from 'src/constants/config';
+import { PATTERN_CYBER } from 'src/constants/patterns';
+import { useQueryClient } from 'src/contexts/queryClient';
 import { useSigningClient } from 'src/contexts/signerClient';
+import { useAdviser } from 'src/features/adviser/context';
+import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 import { Nullable } from 'src/types';
 import { AccountValue } from 'src/types/defaultAccount';
-import { useQueryClient } from 'src/contexts/queryClient';
-import BigNumber from 'bignumber.js';
-import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
-import { PATTERN_CYBER } from 'src/constants/patterns';
-import { useAdviser } from 'src/features/adviser/context';
-import { CHAIN_ID } from 'src/constants/config';
-import { GIFT_ICON } from '../utils';
-import { Dots, BtnGrd, ActionBar, Account } from '../../../components';
+import { Account, ActionBar, BtnGrd, Dots } from '../../../components';
 import { trimString } from '../../../utils/utils';
 import { TxHash } from '../hook/usePingTxs';
-import { CurrentRelease } from './type';
+import { GIFT_ICON } from '../utils';
 import mssgsClaim from '../utilsMsgs';
+import { CurrentRelease } from './type';
 
 const releaseMsg = (giftAddress: string) => {
   return {
@@ -66,19 +67,16 @@ function ActionBarRelease({
   const getRelease = useCallback(async () => {
     try {
       if (signer && signingClient && currentRelease) {
-        const { isNanoLedger, bech32Address: addressKeplr } =
-          await signer.keplr.getKey(CHAIN_ID);
+        const { isNanoLedger, bech32Address: addressKeplr } = await signer.keplr.getKey(CHAIN_ID);
 
         const msgs = [];
 
         if (currentRelease.length > 0) {
-          currentRelease
-            .slice(0, isNanoLedger ? 1 : currentRelease.length)
-            .forEach((item) => {
-              const { address } = item;
-              const msgObject = releaseMsg(address);
-              msgs.push(msgObject);
-            });
+          currentRelease.slice(0, isNanoLedger ? 1 : currentRelease.length).forEach((item) => {
+            const { address } = item;
+            const msgObject = releaseMsg(address);
+            msgs.push(msgObject);
+          });
         }
 
         if (msgs.length === 0) {
@@ -146,7 +144,9 @@ function ActionBarRelease({
     currentRelease,
     queryClient,
     availableRelease,
-    setAdviser,
+    setAdviser, // FIXME: not clear how to handle error codes
+    callback,
+    updateTxHash,
   ]);
 
   useEffect(() => {
@@ -166,7 +166,7 @@ function ActionBarRelease({
     };
     checkAddress();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, signer, addressActive]);
+  }, [step, signer, addressActive, getRelease]);
 
   const useAddressOwner = useMemo(() => {
     if (addressActive) {
@@ -182,9 +182,7 @@ function ActionBarRelease({
       return (
         <>
           address
-          <span style={{ color: '#36d6ae', padding: '0 5px' }}>
-            {trimString(bech32, 10, 4)}
-          </span>
+          <span style={{ color: '#36d6ae', padding: '0 5px' }}>{trimString(bech32, 10, 4)}</span>
         </>
       );
     }
@@ -207,12 +205,7 @@ function ActionBarRelease({
   }, [addressActive, currentRelease, selectedAddress]);
 
   const isValidClaime = useMemo(() => {
-    if (
-      selectedAddress &&
-      selectedAddress.match(PATTERN_CYBER) &&
-      totalGift !== null &&
-      totalRelease === null
-    ) {
+    if (selectedAddress?.match(PATTERN_CYBER) && totalGift !== null && totalRelease === null) {
       return true;
     }
 
@@ -224,8 +217,8 @@ function ActionBarRelease({
 
     if (
       validFields &&
-      Object.prototype.hasOwnProperty.call(totalGift, selectedAddress) &&
-      !Object.prototype.hasOwnProperty.call(totalRelease, selectedAddress)
+      Object.hasOwn(totalGift, selectedAddress) &&
+      !Object.hasOwn(totalRelease, selectedAddress)
     ) {
       return true;
     }
@@ -234,11 +227,7 @@ function ActionBarRelease({
   }, [selectedAddress, totalGift, totalRelease]);
 
   const isValidProve = useMemo(() => {
-    if (
-      selectedAddress &&
-      selectedAddress.match(PATTERN_CYBER) &&
-      totalGift === null
-    ) {
+    if (selectedAddress?.match(PATTERN_CYBER) && totalGift === null) {
       return true;
     }
 
@@ -246,7 +235,7 @@ function ActionBarRelease({
       selectedAddress &&
       totalGift !== null &&
       !selectedAddress.match(PATTERN_CYBER) &&
-      !Object.prototype.hasOwnProperty.call(totalGift, selectedAddress)
+      !Object.hasOwn(totalGift, selectedAddress)
     ) {
       return true;
     }
@@ -255,7 +244,7 @@ function ActionBarRelease({
   }, [selectedAddress, totalGift]);
 
   const useSelectCyber = useMemo(() => {
-    return selectedAddress && selectedAddress.match(PATTERN_CYBER);
+    return selectedAddress?.match(PATTERN_CYBER);
   }, [selectedAddress]);
 
   const redirectToGift = useCallback(
@@ -278,11 +267,8 @@ function ActionBarRelease({
           }}
         >
           already claimed by
-          <Account
-            styleUser={{ marginLeft: '5px' }}
-            address={currentRelease[0].addressOwner}
-          />
-          . switch account to release
+          <Account styleUser={{ marginLeft: '5px' }} address={currentRelease[0].addressOwner} />.
+          switch account to release
         </div>
       </ActionBar>
     );
@@ -307,10 +293,7 @@ function ActionBarRelease({
   if (isValidProve) {
     return (
       <ActionBar>
-        <BtnGrd
-          onClick={() => redirectToGift('prove')}
-          text="go to prove address"
-        />
+        <BtnGrd onClick={() => redirectToGift('prove')} text="go to prove address" />
       </ActionBar>
     );
   }
@@ -329,14 +312,8 @@ function ActionBarRelease({
         <BtnGrd
           disabled={isRelease === false || isRelease === null}
           onClick={() => setStep(STEP_CHECK_ACC)}
-          text={
-            useSelectCyber ? `release all ${GIFT_ICON}` : `release ${GIFT_ICON}`
-          }
-          pending={
-            step === STEP_RELEASE ||
-            step === STEP_CHECK_ACC ||
-            txHash?.status === 'pending'
-          }
+          text={useSelectCyber ? `release all ${GIFT_ICON}` : `release ${GIFT_ICON}`}
+          pending={step === STEP_RELEASE || step === STEP_CHECK_ACC || txHash?.status === 'pending'}
         />
       </ActionBar>
     );

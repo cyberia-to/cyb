@@ -1,8 +1,7 @@
 import { Tablist } from '@cybercongress/gravity';
 import { useNavigate } from 'react-router-dom';
-
-import ButtonTeleport from './buttonGroup/indexBtn';
 import { TypeTab } from '../type';
+import ButtonTeleport from './buttonGroup/indexBtn';
 
 type TabListProps = {
   selected: TypeTab;

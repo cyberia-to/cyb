@@ -1,0 +1,15 @@
+[package]
+name = "cyb-shell"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bevy = { workspace = true }
+global-hotkey = "0.7.0"
+wry = "0.53"
+teletypewriter = "2.0.1"
+alacritty_terminal = "0.25.1"
+sugarloaf = { path = "../vendor/sugarloaf" }
+tray-icon = "0.21"
+libc = "0.2"
+futures = "0.3"

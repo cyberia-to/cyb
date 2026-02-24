@@ -21,7 +21,7 @@ const fetchFunc = async (hash, func) => {
   try {
     const responseSearchResults = await func(hash, offset, limit);
     return responseSearchResults.txs || [];
-  } catch (error) {
+  } catch (_error) {
     return [];
   }
 };

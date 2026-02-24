@@ -1,8 +1,5 @@
 import { useCallback, useState } from 'react';
-import {
-  TransitionGroup as ReactCSSTransitionGroup,
-  CSSTransition,
-} from 'react-transition-group';
+import { CSSTransition, TransitionGroup as ReactCSSTransitionGroup } from 'react-transition-group';
 import styles from './ScrollableTabs.scss';
 
 const cx = require('classnames');
@@ -20,7 +17,7 @@ function Item({ level, id, ...props }) {
 function ScrollableTabs({ items, active, setStep }) {
   const [direction, setDirection] = useState('');
   // eslint-disable-next-line unused-imports/no-unused-vars
-  const [activeItem, setActiveItem] = useState(active);
+  const [_activeItem, setActiveItem] = useState(active);
 
   // useEffect(() => {
   //   setActiveItem(active);
@@ -61,12 +58,7 @@ function ScrollableTabs({ items, active, setStep }) {
             appearActive: styles[`${direction}-appear-active`],
           }}
         >
-          <Item
-            key={index}
-            id={items[index]}
-            level={level}
-            onClick={funcOnClick}
-          />
+          <Item key={index} id={items[index]} level={level} onClick={funcOnClick} />
         </CSSTransition>
       );
     }

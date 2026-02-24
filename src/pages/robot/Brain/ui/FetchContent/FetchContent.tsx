@@ -20,9 +20,7 @@ function FetchContent({ cid, parentId }: { cid: string; parentId: string }) {
       </span>
     );
   } else {
-    content = (
-      <ContentIpfs details={data} cid={cid} content={data?.content} search />
-    );
+    content = <ContentIpfs details={data} cid={cid} content={data?.content} search />;
   }
 
   return <Cid cid={cid}>{content}</Cid>;

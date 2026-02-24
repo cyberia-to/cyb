@@ -1,16 +1,14 @@
+import BigNumber from 'bignumber.js';
 import { useMemo, useState } from 'react';
-
 import { DenomArr } from 'src/components';
 import { BASE_DENOM, DENOM_LIQUID } from 'src/constants/config';
-
-import BigNumber from 'bignumber.js';
-import { useSphereContext } from 'src/pages/Sphere/Sphere.context';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
+import { useSphereContext } from 'src/pages/Sphere/Sphere.context';
+import { ValidatorTableData } from '../../../types/tableData';
+import ActionBarContainer from '../../components/ActionBarContainer/ActionBarContainer';
 import { InfoBalance, ValidatorTable } from './components';
 import styles from './Heroes.module.scss';
 import reduceValidatorData from './utils/reduceValidatorData';
-import { ValidatorTableData } from '../../../types/tableData';
-import ActionBarContainer from '../../components/ActionBarContainer/ActionBarContainer';
 
 function Heroes() {
   // const { status = 'active' } = useParams();
@@ -32,13 +30,12 @@ function Heroes() {
       <div className={styles.info}>
         {unbondingDays && (
           <>
-            the current undelegation period is{' '}
-            <strong>{unbondingDays} days</strong>
+            the current undelegation period is <strong>{unbondingDays} days</strong>
             <br />
           </>
         )}
-        you need to burn 1 <DenomArr denomValue={DENOM_LIQUID} onlyImg /> to
-        unstake 1 <DenomArr denomValue={BASE_DENOM} onlyImg />
+        you need to burn 1 <DenomArr denomValue={DENOM_LIQUID} onlyImg /> to unstake 1{' '}
+        <DenomArr denomValue={BASE_DENOM} onlyImg />
       </div>
     ),
   });
@@ -61,11 +58,7 @@ function Heroes() {
 
   return (
     <>
-      <InfoBalance
-        balance={balance}
-        apr={estimatedApr}
-        isFetchingBalance={isFetchingBalance}
-      />
+      <InfoBalance balance={balance} apr={estimatedApr} isFetchingBalance={isFetchingBalance} />
       <ValidatorTable
         data={reduceValidatorData(validators, {
           bondedTokens,

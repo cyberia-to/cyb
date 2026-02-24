@@ -16,11 +16,8 @@ function useAccountCount() {
       const lastgraphStatsLs = localStorage.getItem(keyQuery);
       if (lastgraphStatsLs !== null) {
         const oldData = JSON.parse(lastgraphStatsLs);
-        const timeChange =
-          Date.parse(timestamp) - Date.parse(oldData.timestamp);
-        const amountChange = new BigNumber(
-          data.account_aggregate.aggregate?.count || 0
-        )
+        const timeChange = Date.parse(timestamp) - Date.parse(oldData.timestamp);
+        const amountChange = new BigNumber(data.account_aggregate.aggregate?.count || 0)
           .minus(oldData.accountCount)
           .toNumber();
         if (timeChange > 0 && amountChange > 0) {

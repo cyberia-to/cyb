@@ -1,6 +1,6 @@
+import { ApolloError } from '@apollo/client';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import { MessagesByAddressQuery } from 'src/generated/graphql';
-import { ApolloError } from '@apollo/client';
 import Display from '../containerGradient/Display/Display';
 import TableDataTxs from './component/TableDataTxs';
 import styles from './TableTxsInfinite.module.scss';
@@ -16,12 +16,7 @@ type Props = {
   };
 };
 
-function TableTxsInfinite({
-  hasMore,
-  fetchMoreData,
-  response,
-  accountUser,
-}: Props) {
+function TableTxsInfinite({ hasMore, fetchMoreData, response, accountUser }: Props) {
   const { data, loading, error } = response;
 
   return (

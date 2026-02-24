@@ -1,33 +1,26 @@
-import { useEffect, useState } from 'react';
-import BigNumber from 'bignumber.js';
-import { NumericFormat } from 'react-number-format';
-import { Pane } from '@cybercongress/gravity';
 import { coins } from '@cosmjs/launchpad';
+import { Pane } from '@cybercongress/gravity';
+import BigNumber from 'bignumber.js';
+import { ProposalStatus, VoteOption } from 'cosmjs-types/cosmos/gov/v1beta1/gov';
+import { useEffect, useState } from 'react';
+import { NumericFormat } from 'react-number-format';
+import { BASE_DENOM, DEFAULT_GAS_LIMITS, MEMO_KEPLR } from 'src/constants/config';
 import { useSigningClient } from 'src/contexts/signerClient';
-import {
-  VoteOption,
-  ProposalStatus,
-} from 'cosmjs-types/cosmos/gov/v1beta1/gov';
-import {
-  DEFAULT_GAS_LIMITS,
-  BASE_DENOM,
-  MEMO_KEPLR,
-} from 'src/constants/config';
 import useCurrentAddress from 'src/hooks/useCurrentAddress';
 import { getTxs } from 'src/services/transactions/lcd';
 import {
-  TransactionSubmitted,
-  Confirmed,
-  TransactionError,
-  ActionBarContentText,
-  Dots,
-  ButtonImgText,
   Account,
-  Input,
-  BtnGrd,
-  DenomArr,
-  Select,
   ActionBar,
+  ActionBarContentText,
+  BtnGrd,
+  ButtonImgText,
+  Confirmed,
+  DenomArr,
+  Dots,
+  Input,
+  Select,
+  TransactionError,
+  TransactionSubmitted,
 } from '../../components';
 
 // import styles from './ActionBarDetail.module.scss';
@@ -37,13 +30,7 @@ import { LEDGER } from '../../utils/config';
 const imgKeplr = require('../../image/keplr-icon.svg');
 const imgCyber = require('../../image/blue-circle.png');
 
-const {
-  STAGE_INIT,
-  STAGE_SUBMITTED,
-  STAGE_CONFIRMING,
-  STAGE_CONFIRMED,
-  STAGE_ERROR,
-} = LEDGER;
+const { STAGE_INIT, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED, STAGE_ERROR } = LEDGER;
 
 type Props = {
   proposals: any;
@@ -89,7 +76,7 @@ function ActionBarDetail({ proposals, id, update }: Props) {
     };
     confirmTx();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [txHash]);
+  }, [txHash, update]);
 
   const clearState = () => {
     setStage(STAGE_INIT);
@@ -113,29 +100,13 @@ function ActionBarDetail({ proposals, id, update }: Props) {
 
           setStage(STAGE_SUBMITTED);
 
-          if (
-            proposals.status === ProposalStatus.PROPOSAL_STATUS_VOTING_PERIOD
-          ) {
-            response = await signingClient.voteProposal(
-              address,
-              id,
-              valueSelect,
-              fee,
-              MEMO_KEPLR
-            );
+          if (proposals.status === ProposalStatus.PROPOSAL_STATUS_VOTING_PERIOD) {
+            response = await signingClient.voteProposal(address, id, valueSelect, fee, MEMO_KEPLR);
           }
 
-          if (
-            proposals.status === ProposalStatus.PROPOSAL_STATUS_DEPOSIT_PERIOD
-          ) {
+          if (proposals.status === ProposalStatus.PROPOSAL_STATUS_DEPOSIT_PERIOD) {
             const amount = coins(parseFloat(valueDeposit), BASE_DENOM);
-            response = await signingClient.depositProposal(
-              address,
-              id,
-              amount,
-              fee,
-              MEMO_KEPLR
-            );
+            response = await signingClient.depositProposal(address, id, amount, fee, MEMO_KEPLR);
           }
 
           if (response.code === 0) {
@@ -148,8 +119,7 @@ function ActionBarDetail({ proposals, id, update }: Props) {
         } else {
           setErrorMessage(
             <span>
-              Add address <Account margin="0 5px" address={address} /> to your
-              pocket or make active{' '}
+              Add address <Account margin="0 5px" address={address} /> to your pocket or make active{' '}
             </span>
           );
           setStage(STAGE_ERROR);
@@ -177,10 +147,7 @@ function ActionBarDetail({ proposals, id, update }: Props) {
     );
   }
 
-  if (
-    stage === STAGE_INIT &&
-    proposals.status === ProposalStatus.PROPOSAL_STATUS_DEPOSIT_PERIOD
-  ) {
+  if (stage === STAGE_INIT && proposals.status === ProposalStatus.PROPOSAL_STATUS_DEPOSIT_PERIOD) {
     return (
       <ActionBar>
         <ActionBarContentText>
@@ -208,10 +175,7 @@ function ActionBarDetail({ proposals, id, update }: Props) {
     );
   }
 
-  if (
-    stage === STAGE_INIT &&
-    proposals.status === ProposalStatus.PROPOSAL_STATUS_VOTING_PERIOD
-  ) {
+  if (stage === STAGE_INIT && proposals.status === ProposalStatus.PROPOSAL_STATUS_VOTING_PERIOD) {
     return (
       <ActionBar>
         <ActionBarContentText>
@@ -273,22 +237,11 @@ function ActionBarDetail({ proposals, id, update }: Props) {
   }
 
   if (stage === STAGE_CONFIRMED) {
-    return (
-      <Confirmed
-        txHash={txHash}
-        txHeight={txHeight}
-        onClickBtnClose={() => clearState()}
-      />
-    );
+    return <Confirmed txHash={txHash} txHeight={txHeight} onClickBtnClose={() => clearState()} />;
   }
 
   if (stage === STAGE_ERROR && errorMessage !== null) {
-    return (
-      <TransactionError
-        errorMessage={errorMessage}
-        onClickBtn={() => clearState()}
-      />
-    );
+    return <TransactionError errorMessage={errorMessage} onClickBtn={() => clearState()} />;
   }
 
   return null;

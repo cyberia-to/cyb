@@ -1,7 +1,7 @@
-import { SyncQueueJobType } from 'src/services/CozoDb/types/entities';
-import { QueuePriority } from 'src/services/QueueManager/types';
-import { IPFSContent } from 'src/services/ipfs/types';
 import { LinkDto } from 'src/services/CozoDb/types/dto';
+import { SyncQueueJobType } from 'src/services/CozoDb/types/entities';
+import { IPFSContent } from 'src/services/ipfs/types';
+import { QueuePriority } from 'src/services/QueueManager/types';
 
 import { getTextContentIfShouldEmbed } from '../../services/sync/services/ParticlesResolverQueue/ParticlesResolverQueue';
 import { CYB_QUEUE_CHANNEL } from '../consts';

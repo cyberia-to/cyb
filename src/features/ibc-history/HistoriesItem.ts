@@ -1,6 +1,6 @@
 import { Coin } from '@cosmjs/launchpad';
 
-export const enum StatusTx {
+export enum StatusTx {
   PENDING = 'pending',
   TIMEOUT = 'timeout',
   COMPLETE = 'complete',

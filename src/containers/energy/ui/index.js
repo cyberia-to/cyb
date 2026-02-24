@@ -1,5 +1,5 @@
 import Card from './card';
-import ValueImg from './valueImg';
 import TableSlots from './tableSlots';
+import ValueImg from './valueImg';
 
 export { Card, ValueImg, TableSlots };

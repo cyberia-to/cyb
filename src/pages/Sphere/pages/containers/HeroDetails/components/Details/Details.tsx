@@ -1,12 +1,11 @@
-import Display from 'src/components/containerGradient/Display/Display';
-import { Account, LinkWindow, Row, RowsContainer } from 'src/components';
-import { formatNumber, fromBech32, trimString } from 'src/utils/utils';
 import { Validator } from '@cybercongress/cyber-ts/cosmos/staking/v1beta1/staking';
-import Pill, { Props as PropsPill } from 'src/components/Pill/Pill';
 import React from 'react';
-
-import styles from './Details.module.scss';
+import { Account, LinkWindow, Row, RowsContainer } from 'src/components';
+import Display from 'src/components/containerGradient/Display/Display';
+import Pill, { Props as PropsPill } from 'src/components/Pill/Pill';
+import { formatNumber, fromBech32, trimString } from 'src/utils/utils';
 import big from '../../utils/big';
+import styles from './Details.module.scss';
 
 const dateFormat = require('dateformat');
 
@@ -49,10 +48,7 @@ function Details({ data, options }: { data: Validator; options: Options }) {
     <Display>
       <div className={styles.wrapperDisplay}>
         <RowsContainer>
-          <Row
-            title="Operator Address"
-            value={trimString(data.operatorAddress, 16, 4)}
-          />
+          <Row title="Operator Address" value={trimString(data.operatorAddress, 16, 4)} />
           <Row
             title="Address"
             value={<Account avatar sizeAvatar={30} address={delegateAddress} />}
@@ -61,15 +57,11 @@ function Details({ data, options }: { data: Validator; options: Options }) {
             <Row
               title="website"
               value={
-                <LinkWindow to={data.description.website}>
-                  {data.description.website}
-                </LinkWindow>
+                <LinkWindow to={data.description.website}>{data.description.website}</LinkWindow>
               }
             />
           )}
-          {data.description.details && (
-            <Row title="Details" value={data.description.details} />
-          )}
+          {data.description.details && <Row title="Details" value={data.description.details} />}
 
           {data.jailed && (
             <>
@@ -88,27 +80,13 @@ function Details({ data, options }: { data: Validator; options: Options }) {
           <Col value={`${options.apr || 0} %`} title="APR" color="red" />
           <Col value={`${options.power || 0} %`} title="Power" color="green" />
           <Col
-            value={`${big(data.commission.commissionRates.rate)
-              .multipliedBy(100)
-              .toNumber()} %`}
+            value={`${big(data.commission.commissionRates.rate).multipliedBy(100).toNumber()} %`}
             title="Commission"
             color="green"
           />
-          <Col
-            value={`${options.selfStake || 0} %`}
-            title="Self Stake"
-            color="blue"
-          />
-          <Col
-            value={`${options.delegatorStake || 0} %`}
-            title="Delegator Shares"
-            color="blue"
-          />
-          <Col
-            value={options.delegations || 0}
-            title="Delegators"
-            color="blue"
-          />
+          <Col value={`${options.selfStake || 0} %`} title="Self Stake" color="blue" />
+          <Col value={`${options.delegatorStake || 0} %`} title="Delegator Shares" color="blue" />
+          <Col value={options.delegations || 0} title="Delegators" color="blue" />
         </div>
       </div>
     </Display>

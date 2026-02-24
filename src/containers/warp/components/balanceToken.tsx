@@ -1,7 +1,7 @@
 import { Pane } from '@cybercongress/gravity';
-import { ObjKeyValue } from 'src/types/data';
-import { useIbcDenom } from 'src/contexts/ibcDenom';
 import { useMemo } from 'react';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
+import { ObjKeyValue } from 'src/types/data';
 import { Dots } from '../../../components';
 import { formatNumber, getDisplayAmount } from '../../../utils/utils';
 

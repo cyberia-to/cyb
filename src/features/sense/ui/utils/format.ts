@@ -1,12 +1,11 @@
 import { Coin } from 'cosmjs-types/cosmos/base/v1beta1/coin';
+import { CID_FOLLOW } from 'src/constants/app';
+import { isParticle } from 'src/features/particle/utils';
 import {
   MsgMultiSendTransaction,
   MsgSendTransaction,
 } from 'src/services/backend/services/indexer/types';
-
-import { isParticle } from 'src/features/particle/utils';
 import { EntityToDto } from 'src/types/dto';
-import { CID_FOLLOW } from 'src/constants/app';
 import { SenseItem } from '../../redux/sense.redux';
 
 // eslint-disable-next-line import/prefer-default-export, import/no-unused-modules
@@ -31,9 +30,7 @@ export function formatSenseItemDataToUI(
   switch (type) {
     case 'cosmos.bank.v1beta1.MsgSend': {
       // TODO: create meta types for particular transactions
-      const { amount: a, toAddress } = meta as unknown as EntityToDto<
-        MsgSendTransaction['value']
-      >;
+      const { amount: a, toAddress } = meta as unknown as EntityToDto<MsgSendTransaction['value']>;
       amount = a;
       isAmountSendToMyAddress = toAddress === currentAddress;
 
@@ -43,9 +40,7 @@ export function formatSenseItemDataToUI(
     case 'cosmos.bank.v1beta1.MsgMultiSend': {
       const v = meta as unknown as MsgMultiSendTransaction['value'];
 
-      const a = v.outputs.find(
-        (output) => output.address === currentAddress
-      )?.coins;
+      const a = v.outputs.find((output) => output.address === currentAddress)?.coins;
 
       if (a) {
         amount = a;

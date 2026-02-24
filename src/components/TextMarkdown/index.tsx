@@ -1,20 +1,14 @@
-import { ReactMarkdown } from 'react-markdown/lib/react-markdown';
-import rehypeStringify from 'rehype-stringify';
-import rehypeSanitize from 'rehype-sanitize';
-import { shortenString } from 'src/utils/string';
-import remarkGfm from 'remark-gfm';
-import remarkBreaks from 'remark-breaks';
 import cx from 'classnames';
+import { ReactMarkdown } from 'react-markdown/lib/react-markdown';
+import rehypeSanitize from 'rehype-sanitize';
+import rehypeStringify from 'rehype-stringify';
+import remarkBreaks from 'remark-breaks';
+import remarkGfm from 'remark-gfm';
+import { shortenString } from 'src/utils/string';
 import { LinkWindow } from '../link/link';
 import styles from './styles.module.scss';
 
-function TextMarkdown({
-  children,
-  preview,
-}: {
-  children: string;
-  preview?: boolean;
-}) {
+function TextMarkdown({ children, preview }: { children: string; preview?: boolean }) {
   const { length } = children;
 
   return (
@@ -32,7 +26,7 @@ function TextMarkdown({
         components={{
           // eslint-disable-next-line react/no-unstable-nested-components
           a: ({ node, ...props }) => {
-            if (node.properties && node.properties.href) {
+            if (node.properties?.href) {
               const { href } = node.properties;
               return <LinkWindow to={href} {...props} />;
             }

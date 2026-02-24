@@ -1,11 +1,11 @@
 import { Pane } from '@cybercongress/gravity';
-import { LinkWindow, Account, ValueImg } from '../../../components';
-import { formatNumber, convertResources } from '../../../utils/utils';
-import Table from 'src/components/Table/Table';
-import { DestinationRoute } from '../hooks/useSourceRouted';
 import { createColumnHelper } from '@tanstack/react-table';
 import { Link } from 'react-router-dom';
+import Table from 'src/components/Table/Table';
 import { routes } from 'src/routes';
+import { Account, ValueImg } from '../../../components';
+import { convertResources, formatNumber } from '../../../utils/utils';
+import { DestinationRoute } from '../hooks/useSourceRouted';
 
 export function renderTableRows({
   address,
@@ -19,20 +19,12 @@ export function renderTableRows({
   return {
     address: <Account address={address} />,
     alias,
-    milliampere: resource.milliampere
-      ? formatNumber(convertResources(resource.milliampere))
-      : 0,
-    millivolt: resource.millivolt
-      ? formatNumber(convertResources(resource.millivolt))
-      : 0,
+    milliampere: resource.milliampere ? formatNumber(convertResources(resource.milliampere)) : 0,
+    millivolt: resource.millivolt ? formatNumber(convertResources(resource.millivolt)) : 0,
   };
 }
 
-function Income({
-  destinationRoutes,
-}: {
-  destinationRoutes: DestinationRoute[];
-}) {
+function Income({ destinationRoutes }: { destinationRoutes: DestinationRoute[] }) {
   const data = destinationRoutes.map(({ source, alias, resource }) =>
     renderTableRows({ address: source, alias, resource })
   );
@@ -42,8 +34,7 @@ function Income({
   return (
     <div>
       <Pane marginY={30} textAlign="center">
-        These <Link to={routes.oracle.ask.getLink('energy')}>energy</Link> (W)
-        was route to you
+        These <Link to={routes.oracle.ask.getLink('energy')}>energy</Link> (W) was route to you
       </Pane>
 
       <Table

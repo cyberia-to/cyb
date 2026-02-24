@@ -1,5 +1,5 @@
-import { Outlet } from 'react-router-dom';
 import { Helmet } from 'react-helmet';
+import { Outlet } from 'react-router-dom';
 import { MainContainer } from 'src/components';
 
 function SphereLayout() {

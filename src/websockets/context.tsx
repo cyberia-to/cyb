@@ -20,11 +20,7 @@ function WebsocketsProvider({ children }: { children: React.ReactNode }) {
     };
   }, [cyberWebsocket]);
 
-  return (
-    <WebsocketsContext.Provider value={value}>
-      {children}
-    </WebsocketsContext.Provider>
-  );
+  return <WebsocketsContext.Provider value={value}>{children}</WebsocketsContext.Provider>;
 }
 
 export default WebsocketsProvider;

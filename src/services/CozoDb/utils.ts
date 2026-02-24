@@ -1,11 +1,10 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 /* eslint-disable import/no-unused-modules */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-import { entityToDto, snakeToCamel } from 'src/utils/dto';
-
-import { Column, IDBResult } from './types/types';
-import { DbEntity } from './types/entities';
+import { entityToDto } from 'src/utils/dto';
 import { serializeString } from 'src/utils/string';
+import { DbEntity } from './types/entities';
+import { Column, IDBResult } from './types/types';
 
 export function dbResultToDtoList<T>(dbResult: IDBResult): T[] {
   const { headers, rows } = dbResult;
@@ -29,19 +28,16 @@ export function dbResultToDtoList<T>(dbResult: IDBResult): T[] {
   });
 }
 
-export async function clearIndexedDBStore(
-  dbName: string,
-  storeName: string
-): Promise<void> {
+export async function clearIndexedDBStore(dbName: string, storeName: string): Promise<void> {
   return new Promise((resolve, reject) => {
     // Open a connection to the database
     const request = indexedDB.open(dbName);
 
-    request.onerror = (event) => {
+    request.onerror = (_event) => {
       reject(new Error(`Database error: ${request.error?.message}`));
     };
 
-    request.onsuccess = (event) => {
+    request.onsuccess = (_event) => {
       const db = request.result;
 
       // Start a transaction and get the store
@@ -57,9 +53,7 @@ export async function clearIndexedDBStore(
       };
 
       clearRequest.onerror = () => {
-        reject(
-          new Error(`Error clearing the store: ${clearRequest.error?.message}`)
-        );
+        reject(new Error(`Error clearing the store: ${clearRequest.error?.message}`));
       };
 
       // Close the database when the transaction is complete
@@ -82,10 +76,7 @@ export const toListOfObjects = <T extends Record<string, any>>({
     return obj as T;
   });
 };
-export const entityToArray = (
-  obj: Partial<DbEntity>,
-  columns: Column[]
-): string => {
+export const entityToArray = (obj: Partial<DbEntity>, columns: Column[]): string => {
   return `[${columns
     .map((col) => {
       const key = col.column as keyof DbEntity;
@@ -97,8 +88,8 @@ export const entityToArray = (
       return col.type === 'Json'
         ? `parse_json('${JSON.stringify(value)}')`
         : col.type === 'String'
-        ? `"${serializeString(value)}"`
-        : value;
+          ? `"${serializeString(value)}"`
+          : value;
     })
     .join(', ')}]`;
 };

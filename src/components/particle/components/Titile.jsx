@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { ContainerGradientText } from '../../containerGradient/ContainerGradient';
 import { timeSince, trimString } from '../../../utils/utils';
 import Account from '../../account/account';
+import { ContainerGradientText } from '../../containerGradient/ContainerGradient';
 
 function Titile({ cid, creator, status }) {
   const timeAgo = useMemo(() => {
@@ -50,9 +50,7 @@ function Titile({ cid, creator, status }) {
             </>
           )}
         </div>
-        {timeAgo !== null && (
-          <span style={{ color: '#777777' }}>{timeSince(timeAgo)}</span>
-        )}
+        {timeAgo !== null && <span style={{ color: '#777777' }}>{timeSince(timeAgo)}</span>}
       </div>
     </ContainerGradientText>
   );

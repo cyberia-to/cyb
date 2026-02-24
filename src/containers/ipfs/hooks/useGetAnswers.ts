@@ -1,23 +1,15 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
-import { useQueryClient } from 'src/contexts/queryClient';
 import { useState } from 'react';
-import { reduceParticleArr } from './useGetBackLink';
-import { searchByHash } from 'src/utils/search/utils';
-import { mapLinkToLinkDto } from 'src/services/CozoDb/mapping';
+import { useQueryClient } from 'src/contexts/queryClient';
 import { enqueueLinksSave } from 'src/services/backend/channels/BackendQueueChannel/backendQueueSenders';
+import { mapLinkToLinkDto } from 'src/services/CozoDb/mapping';
+import { searchByHash } from 'src/utils/search/utils';
+import { reduceParticleArr } from './useGetBackLink';
 
 function useGetAnswers(hash) {
   const queryClient = useQueryClient();
   const [total, setTotal] = useState(0);
-  const {
-    status,
-    data,
-    error,
-    isFetching,
-    fetchNextPage,
-    hasNextPage,
-    refetch,
-  } = useInfiniteQuery(
+  const { status, data, error, isFetching, fetchNextPage, hasNextPage, refetch } = useInfiniteQuery(
     ['useGetAnswers', hash],
     async ({ pageParam = 0 }) => {
       const response = await searchByHash(queryClient, hash, pageParam);

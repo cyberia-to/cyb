@@ -1,6 +1,6 @@
 import { Pane } from '@cybercongress/gravity';
 import { CardStatisics, Vitalik } from '../../../components';
-import { formatCurrency, dhm } from '../../../utils/utils';
+import { dhm, formatCurrency } from '../../../utils/utils';
 
 // Parse duration string like "604800s" to milliseconds for dhm()
 function parseDurationToMs(duration) {
@@ -18,18 +18,9 @@ function GovParam({ data }) {
         gridTemplateColumns="repeat(auto-fit, minmax(250px, 1fr))"
         gridGap="20px"
       >
-        <CardStatisics
-          title="quorum"
-          value={`${parseFloat(data.tally.quorum) * 100} %`}
-        />
-        <CardStatisics
-          title="threshold"
-          value={`${parseFloat(data.tally.threshold) * 100} %`}
-        />
-        <CardStatisics
-          title="veto"
-          value={`${parseFloat(data.tally.veto_threshold) * 100} %`}
-        />
+        <CardStatisics title="quorum" value={`${parseFloat(data.tally.quorum) * 100} %`} />
+        <CardStatisics title="threshold" value={`${parseFloat(data.tally.threshold) * 100} %`} />
+        <CardStatisics title="veto" value={`${parseFloat(data.tally.veto_threshold) * 100} %`} />
         <CardStatisics
           title="min deposit"
           value={
@@ -54,12 +45,7 @@ function GovParam({ data }) {
   } catch (error) {
     console.warn('GovParam', error);
     return (
-      <Pane
-        justifyContent="center"
-        flexDirection="column"
-        alignItems="center"
-        display="flex"
-      >
+      <Pane justifyContent="center" flexDirection="column" alignItems="center" display="flex">
         <Vitalik />
         Error !
       </Pane>

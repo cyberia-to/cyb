@@ -1,5 +1,5 @@
-import { MenuItem } from 'src/types/menu';
 import { useLocation } from 'react-router-dom';
+import { MenuItem } from 'src/types/menu';
 
 // eslint-disable-next-line import/prefer-default-export
 export const useActiveMenuItem = (menuItems: MenuItem[]) => {

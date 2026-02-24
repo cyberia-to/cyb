@@ -5,14 +5,7 @@ import 'codemirror/lib/codemirror.css';
 import 'codemirror/theme/tomorrow-night-eighties.css';
 
 import './formatting/codeMirror.css';
-import {
-  useCallback,
-  useRef,
-  useState,
-  forwardRef,
-  useImperativeHandle,
-  useEffect,
-} from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import styles from './RuneCode.module.scss';
 
 // const highlightErrors = (
@@ -95,9 +88,9 @@ const RuneCode = forwardRef<RuneCodeHandle, RuneCodeProps>(
           theme: 'tomorrow-night-eighties',
           lineNumbers: true,
         }}
-        onBeforeChange={(editor, data, value) => {
+        onBeforeChange={(_editor, _data, value) => {
           setRuneCode(value);
-          onChange && onChange(value);
+          onChange?.(value);
         }}
       />
     );

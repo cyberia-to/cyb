@@ -18,14 +18,13 @@ function useEventListener(
   useEffect(() => {
     // Make sure element supports addEventListener
     // On
-    const isSupported = element && element.addEventListener;
+    const isSupported = element?.addEventListener;
     if (!isSupported) {
       return;
     }
 
     // Create event listener that calls handler function stored in ref
-    const eventListener = (event: Event) =>
-      savedHandler.current && savedHandler.current(event);
+    const eventListener = (event: Event) => savedHandler.current?.(event);
 
     // Add event listener
     element.addEventListener(eventName, eventListener);

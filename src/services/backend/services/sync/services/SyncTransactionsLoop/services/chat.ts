@@ -1,10 +1,7 @@
-import { EntryType } from 'src/services/CozoDb/types/entities';
 import DbApiWrapper from 'src/services/backend/services/DbApi/DbApi';
+import { SenseListItem, SenseTransactionMeta } from 'src/services/backend/types/sense';
+import { EntryType } from 'src/services/CozoDb/types/entities';
 import { NeuronAddress } from 'src/types/base';
-import {
-  SenseListItem,
-  SenseTransactionMeta,
-} from 'src/services/backend/types/sense';
 import { throwIfAborted } from 'src/utils/async/promise';
 import { extractSenseChats } from '../../utils/sense';
 
@@ -68,27 +65,13 @@ export const syncMyChats = async (
 
       results.push({ ...newItem, meta: lastTransaction });
     } else {
-      const {
-        id,
-        timestampRead,
-        timestampUpdate,
-        meta,
-        unreadCount: prevUnreadCount,
-      } = syncItem;
+      const { id, timestampRead, timestampUpdate, meta, unreadCount: prevUnreadCount } = syncItem;
 
-      const lastTimestampRead = Math.max(
-        timestampRead!,
-        chat.lastSendTimestamp
-      );
+      const lastTimestampRead = Math.max(timestampRead!, chat.lastSendTimestamp);
       const { timestampUpdateContent = 0, timestampUpdateChat = 0 } = meta;
-      const timestampUnreadFrom = Math.max(
-        chat.lastSendTimestamp,
-        timestampUpdateChat
-      );
+      const timestampUnreadFrom = Math.max(chat.lastSendTimestamp, timestampUpdateChat);
       const unreadCount =
-        prevUnreadCount +
-        chat.transactions.filter((t) => t.timestamp > timestampUnreadFrom) // + new messages count
-          .length;
+        prevUnreadCount + chat.transactions.filter((t) => t.timestamp > timestampUnreadFrom).length; // + new messages count
 
       if (timestampUpdate < transactionTimestamp) {
         // if message source is 'fast' then no update till 'slow' reupdate
@@ -117,10 +100,7 @@ export const syncMyChats = async (
         };
 
         // eslint-disable-next-line no-await-in-loop
-        await throwIfAborted(
-          db.updateSyncStatus.bind(db),
-          signal
-        )(syncStatusChanges);
+        await throwIfAborted(db.updateSyncStatus.bind(db), signal)(syncStatusChanges);
 
         results.push({
           ...syncItem,

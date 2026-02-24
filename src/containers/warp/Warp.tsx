@@ -1,37 +1,29 @@
-import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { useSelector } from 'react-redux';
-import {
-  useParams,
-  createSearchParams,
-  useSearchParams,
-} from 'react-router-dom';
+import { Pool } from '@cybercongress/cyber-js/build/codec/tendermint/liquidity/v1beta1/liquidity';
 import { Pane } from '@cybercongress/gravity';
 import BigNumber from 'bignumber.js';
-import useGetTotalSupply from 'src/hooks/useGetTotalSupply';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useSelector } from 'react-redux';
+import { createSearchParams, useParams, useSearchParams } from 'react-router-dom';
 import { MainContainer } from 'src/components';
-import { useQueryClient } from 'src/contexts/queryClient';
-import { Pool } from '@cybercongress/cyber-js/build/codec/tendermint/liquidity/v1beta1/liquidity';
-import { Option } from 'src/types';
-import usePoolListInterval from 'src/hooks/usePoolListInterval';
-import { useIbcDenom } from 'src/contexts/ibcDenom';
-import { RootState } from 'src/redux/store';
-import useGetBalances from 'src/hooks/getBalances';
-import { useAdviser } from 'src/features/adviser/context';
 import { BASE_DENOM, DENOM_LIQUID } from 'src/constants/config';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
+import { useQueryClient } from 'src/contexts/queryClient';
+import { useAdviser } from 'src/features/adviser/context';
+import useGetBalances from 'src/hooks/getBalances';
+import useGetTotalSupply from 'src/hooks/useGetTotalSupply';
+import usePoolListInterval from 'src/hooks/usePoolListInterval';
+import { RootState } from 'src/redux/store';
+import { Option } from 'src/types';
 import useSetActiveAddress from '../../hooks/useSetActiveAddress';
-import { reduceBalances, getDisplayAmountReverce } from '../../utils/utils';
-import TabList from './components/tabList';
 import { useGetSwapPrice } from '../../pages/teleport/hooks';
 import { sortReserveCoinDenoms } from '../../pages/teleport/swap/utils';
-import DepositCreatePool from './components/DepositCreatePool';
-import Withdraw from './components/withdraw';
+import { getDisplayAmountReverce, reduceBalances } from '../../utils/utils';
 import ActionBar from './ActionBar';
-import { TypeTab, MyPoolsT } from './type';
-import {
-  getPoolToken,
-  getMyTokenBalanceNumber,
-  calculateCounterPairAmount,
-} from './utils';
+import DepositCreatePool from './components/DepositCreatePool';
+import TabList from './components/tabList';
+import Withdraw from './components/withdraw';
+import { MyPoolsT, TypeTab } from './type';
+import { calculateCounterPairAmount, getMyTokenBalanceNumber, getPoolToken } from './utils';
 
 const tokenADefaultValue = BASE_DENOM;
 const tokenBDefaultValue = DENOM_LIQUID;
@@ -43,10 +35,8 @@ function Warp() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { tab = 'add-liquidity' } = useParams<{ tab: TypeTab }>();
   const { addressActive } = useSetActiveAddress(defaultAccount);
-  const [update, setUpdate] = useState(0);
-  const { liquidBalances: accountBalances, refresh } = useGetBalances(
-    addressActive?.bech32
-  );
+  const [_update, setUpdate] = useState(0);
+  const { liquidBalances: accountBalances, refresh } = useGetBalances(addressActive?.bech32);
   const { totalSupplyProofList: totalSupply } = useGetTotalSupply();
   const poolsData = usePoolListInterval({ refetchInterval: 50000 });
 
@@ -62,16 +52,10 @@ function Warp() {
   const [isExceeded, setIsExceeded] = useState<boolean>(false);
   const [isEmptyPool, setIsEmptyPool] = useState<boolean>(false);
   const [amountPoolCoin, setAmountPoolCoin] = useState<string | number>('');
-  const [myPools, setMyPools] =
-    useState<Option<{ [key: string]: MyPoolsT }>>(undefined);
+  const [myPools, setMyPools] = useState<Option<{ [key: string]: MyPoolsT }>>(undefined);
   const [selectMyPool, setSelectMyPool] = useState('');
 
-  const swapPrice = useGetSwapPrice(
-    tokenA,
-    tokenB,
-    tokenAPoolAmount,
-    tokenBPoolAmount
-  );
+  const swapPrice = useGetSwapPrice(tokenA, tokenB, tokenAPoolAmount, tokenBPoolAmount);
   const firstEffectOccured = useRef(false);
 
   const { setAdviser } = useAdviser();
@@ -86,8 +70,8 @@ function Warp() {
       case 'create-pool':
         text = (
           <>
-            the unlimited number of variations. combine your favorite tokens{' '}
-            <br /> cultivate your values. place of cyber alchemists
+            the unlimited number of variations. combine your favorite tokens <br /> cultivate your
+            values. place of cyber alchemists
           </>
         );
 
@@ -148,10 +132,8 @@ function Warp() {
     if (tokenA.length > 0 && tokenB.length > 0) {
       const findPool = poolsData.find(
         (item) =>
-          sortReserveCoinDenoms(
-            item.reserveCoinDenoms[0],
-            item.reserveCoinDenoms[1]
-          ).join() === sortReserveCoinDenoms(tokenA, tokenB).join()
+          sortReserveCoinDenoms(item.reserveCoinDenoms[0], item.reserveCoinDenoms[1]).join() ===
+          sortReserveCoinDenoms(tokenA, tokenB).join()
       );
       setSelectedPool(findPool);
     }
@@ -178,7 +160,7 @@ function Warp() {
       setTokenAPoolAmount(dataReduceBalances[tokenA] || 0);
       setTokenBPoolAmount(dataReduceBalances[tokenB] || 0);
     })();
-  }, [queryClient, tokenA, tokenB, selectedPool, update]);
+  }, [queryClient, tokenA, tokenB, selectedPool]);
 
   useEffect(() => {
     if (accountBalances !== null && poolsData && poolsData !== null) {
@@ -203,36 +185,25 @@ function Warp() {
 
     if (accountBalances !== null) {
       const validTokensAB =
-        Object.prototype.hasOwnProperty.call(accountBalances, tokenA) &&
-        Object.prototype.hasOwnProperty.call(accountBalances, tokenB) &&
+        Object.hasOwn(accountBalances, tokenA) &&
+        Object.hasOwn(accountBalances, tokenB) &&
         accountBalances[tokenA] > 0 &&
         accountBalances[tokenB] > 0;
 
       const validTokenAmountAB =
-        parseFloat(getDisplayAmountReverce(tokenAAmount, tokenACoinDecimals)) <=
-          myATokenBalance &&
+        parseFloat(getDisplayAmountReverce(tokenAAmount, tokenACoinDecimals)) <= myATokenBalance &&
         Number(tokenAAmount) > 0 &&
-        parseFloat(getDisplayAmountReverce(tokenBAmount, tokenBCoinDecimals)) <=
-          myATokenBalanceB &&
+        parseFloat(getDisplayAmountReverce(tokenBAmount, tokenBCoinDecimals)) <= myATokenBalanceB &&
         Number(tokenBAmount) > 0;
 
       const resultValidSelectTokens = validTokensAB && validTokenAmountAB;
 
-      if (
-        tab === 'add-liquidity' &&
-        resultValidSelectTokens &&
-        swapPrice !== 0
-      ) {
+      if (tab === 'add-liquidity' && resultValidSelectTokens && swapPrice !== 0) {
         exceeded = false;
       }
 
       // valid add-liquidity in empty pool
-      if (
-        tab === 'add-liquidity' &&
-        isEmptyPool &&
-        resultValidSelectTokens &&
-        swapPrice === 0
-      ) {
+      if (tab === 'add-liquidity' && isEmptyPool && resultValidSelectTokens && swapPrice === 0) {
         exceeded = false;
       }
 
@@ -270,10 +241,7 @@ function Warp() {
           isReverse,
         };
 
-        const { counterPairAmount } = calculateCounterPairAmount(
-          inputAmount,
-          state
-        );
+        const { counterPairAmount } = calculateCounterPairAmount(inputAmount, state);
 
         counterPairValue = counterPairAmount;
       }
@@ -286,43 +254,27 @@ function Warp() {
         setTokenBAmount(counterPairValue.toString(10));
       }
     },
-    [
-      tokenAPoolAmount,
-      tokenBPoolAmount,
-      tokenB,
-      tokenA,
-      tokenACoinDecimals,
-      tokenBCoinDecimals,
-    ]
+    [tokenAPoolAmount, tokenBPoolAmount, tokenB, tokenA, tokenACoinDecimals, tokenBCoinDecimals]
   );
 
-  const amountChangeHandlerCreatePool = useCallback(
-    (values: string, e: React.ChangeEvent) => {
-      const inputAmount = values;
+  const amountChangeHandlerCreatePool = useCallback((values: string, e: React.ChangeEvent) => {
+    const inputAmount = values;
 
-      const isReverse = e.target.id !== 'tokenAAmount';
+    const isReverse = e.target.id !== 'tokenAAmount';
 
-      if (isReverse) {
-        setTokenBAmount(new BigNumber(inputAmount).toNumber());
-      } else {
-        setTokenAAmount(new BigNumber(inputAmount).toNumber());
-      }
-    },
-    []
-  );
+    if (isReverse) {
+      setTokenBAmount(new BigNumber(inputAmount).toNumber());
+    } else {
+      setTokenAAmount(new BigNumber(inputAmount).toNumber());
+    }
+  }, []);
 
   const onChangeInputWithdraw = (values: string) => {
     const inputAmount = values;
 
-    const myATokenBalance = getMyTokenBalanceNumber(
-      selectMyPool,
-      accountBalances
-    );
+    const myATokenBalance = getMyTokenBalanceNumber(selectMyPool, accountBalances);
     let exceeded = true;
-    if (
-      parseFloat(inputAmount) <= myATokenBalance &&
-      parseFloat(inputAmount) > 0
-    ) {
+    if (parseFloat(inputAmount) <= myATokenBalance && parseFloat(inputAmount) > 0) {
       exceeded = false;
     }
     setIsExceeded(exceeded);
@@ -394,19 +346,12 @@ function Warp() {
           flexDirection="column"
           marginX="auto"
         >
-          <Pane
-            width="100%"
-            display="flex"
-            alignItems="center"
-            flexDirection="column"
-          >
+          <Pane width="100%" display="flex" alignItems="center" flexDirection="column">
             {tab === 'add-liquidity' && (
               <DepositCreatePool
                 stateProps={stateProps}
                 amountChangeHandler={
-                  isEmptyPool
-                    ? amountChangeHandlerCreatePool
-                    : amountChangeHandler
+                  isEmptyPool ? amountChangeHandlerCreatePool : amountChangeHandler
                 }
               />
             )}

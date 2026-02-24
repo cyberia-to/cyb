@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useQueryClient } from 'src/contexts/queryClient';
+import { useEffect, useState } from 'react';
 import { BASE_DENOM, DENOM_LIQUID } from 'src/constants/config';
+import { useQueryClient } from 'src/contexts/queryClient';
 import useGetSlots from '../../mint/useGetSlots';
 
 const initValueResponseFunc = (denom = '', amount = 0) => {
@@ -96,8 +96,8 @@ function useBalanceToken(address, updateAddress) {
               const elementBalancesToken = amount;
 
               if (
-                Object.hasOwnProperty.call(initValueTokenAmount, denom) &&
-                Object.hasOwnProperty.call(initValueTokenAmount[denom], 'total')
+                Object.hasOwn(initValueTokenAmount, denom) &&
+                Object.hasOwn(initValueTokenAmount[denom], 'total')
               ) {
                 initValueTokenAmount[denom].total = {
                   denom,
@@ -112,13 +112,8 @@ function useBalanceToken(address, updateAddress) {
                   total: { denom, amount: parseFloat(elementBalancesToken) },
                 };
               }
-              if (
-                Object.hasOwnProperty.call(originalVesting, denom) &&
-                Object.hasOwnProperty.call(vested, denom)
-              ) {
-                const vestedTokens =
-                  parseFloat(originalVesting[denom]) -
-                  parseFloat(vested[denom]);
+              if (Object.hasOwn(originalVesting, denom) && Object.hasOwn(vested, denom)) {
+                const vestedTokens = parseFloat(originalVesting[denom]) - parseFloat(vested[denom]);
                 const liquidAmount = elementBalancesToken - vestedTokens;
 
                 initValueTokenAmount[denom].liquid = {
@@ -139,7 +134,7 @@ function useBalanceToken(address, updateAddress) {
       setBalanceToken(initValueTokenAmount);
     };
     getBalance();
-  }, [data, address, vested, originalVesting, loadingAuthAccounts]);
+  }, [data, vested, originalVesting, loadingAuthAccounts]);
 
   return { balanceToken, loading };
 }

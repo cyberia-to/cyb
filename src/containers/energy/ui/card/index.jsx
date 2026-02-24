@@ -4,9 +4,7 @@ function Card({ title, value, stylesContainer, active, ...props }) {
   return (
     <div
       style={{ ...stylesContainer }}
-      className={`${styles.containerCard} ${
-        active ? styles.containerCardActive : ''
-      }`}
+      className={`${styles.containerCard} ${active ? styles.containerCardActive : ''}`}
       {...props}
     >
       <span className={styles.cardTitle}>{value}</span>

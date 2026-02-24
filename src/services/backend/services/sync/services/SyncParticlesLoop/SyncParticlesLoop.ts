@@ -1,29 +1,23 @@
-import { map, combineLatest, distinctUntilChanged } from 'rxjs';
-import { EntryType } from 'src/services/CozoDb/types/entities';
+import { combineLatest, distinctUntilChanged, map } from 'rxjs';
+import { CID_TWEET } from 'src/constants/app';
+import { SenseListItem } from 'src/services/backend/types/sense';
+import { mapLinkFromIndexerToDto } from 'src/services/CozoDb/mapping';
 import { SyncStatusDto } from 'src/services/CozoDb/types/dto';
+import { EntryType } from 'src/services/CozoDb/types/entities';
 import { QueuePriority } from 'src/services/QueueManager/types';
 import { NeuronAddress } from 'src/types/base';
-
-import { mapLinkFromIndexerToDto } from 'src/services/CozoDb/mapping';
-import { CID_TWEET } from 'src/constants/app';
-import { dateToUtcNumber } from 'src/utils/date';
-import { SenseListItem } from 'src/services/backend/types/sense';
 import { asyncIterableBatchProcessor } from 'src/utils/async/iterable';
 import { throwIfAborted } from 'src/utils/async/promise';
+import { dateToUtcNumber } from 'src/utils/date';
 import { entityToDto } from 'src/utils/dto';
-
-import { ServiceDeps } from '../types';
-import { fetchCyberlinksAndResolveParticles } from '../utils/links';
-
-import { changeParticleSyncStatus } from '../../utils';
-import {
-  fetchCyberlinksByNerounIterable,
-  fetchCyberlinksCount,
-} from '../../../indexer/cyberlinks';
 import { CYBERLINKS_BATCH_LIMIT } from '../../../indexer/consts';
+import { fetchCyberlinksByNerounIterable, fetchCyberlinksCount } from '../../../indexer/cyberlinks';
+import { SyncServiceParams } from '../../types';
+import { changeParticleSyncStatus } from '../../utils';
 import BaseSyncLoop from '../BaseSyncLoop/BaseSyncLoop';
 import { MAX_DATABASE_PUT_SIZE } from '../consts';
-import { SyncServiceParams } from '../../types';
+import { ServiceDeps } from '../types';
+import { fetchCyberlinksAndResolveParticles } from '../utils/links';
 
 class SyncParticlesLoop extends BaseSyncLoop {
   protected createIsInitializedObserver(deps: ServiceDeps) {
@@ -38,10 +32,7 @@ class SyncParticlesLoop extends BaseSyncLoop {
     ]).pipe(
       map(
         ([dbInstance, ipfsInstance, myAddress, particleResolverInitialized]) =>
-          !!ipfsInstance &&
-          !!dbInstance &&
-          !!particleResolverInitialized &&
-          !!myAddress
+          !!ipfsInstance && !!dbInstance && !!particleResolverInitialized && !!myAddress
       )
     );
 
@@ -68,23 +59,13 @@ class SyncParticlesLoop extends BaseSyncLoop {
       signal
     );
 
-    this.cyblogCh.info(
-      `>>> syncMyParticles ${myAddress} count ${newLinkCount}`
-    );
+    this.cyblogCh.info(`>>> syncMyParticles ${myAddress} count ${newLinkCount}`);
     this.progressTracker.start(newLinkCount + syncItemParticles.length);
-    this.statusApi.sendStatus(
-      'in-progress',
-      'preparing...',
-      this.progressTracker.progress
-    );
+    this.statusApi.sendStatus('in-progress', 'preparing...', this.progressTracker.progress);
 
     if (newLinkCount > 0) {
       // fetch and save new particles
-      const newSyncItemParticles = await this.fetchNewTweets(
-        myAddress!,
-        timestampUpdate,
-        signal
-      );
+      const newSyncItemParticles = await this.fetchNewTweets(myAddress!, timestampUpdate, signal);
 
       // add to fetch-sync linked particles
       syncItemParticles.push(...newSyncItemParticles);
@@ -110,9 +91,7 @@ class SyncParticlesLoop extends BaseSyncLoop {
       ownerId: myAddress,
       entryType: EntryType.particle,
     });
-    const existingParticlesMap = new Map(
-      existingParticles.map((i) => [i.id, i])
-    );
+    const existingParticlesMap = new Map(existingParticles.map((i) => [i.id, i]));
     // eslint-disable-next-line no-await-in-loop, no-restricted-syntax
     for await (const tweetsBatch of tweetsAsyncIterable) {
       this.statusApi.sendStatus(
@@ -125,9 +104,7 @@ class SyncParticlesLoop extends BaseSyncLoop {
         const timestampUpdate = dateToUtcNumber(timestamp);
 
         // In case my tweet already linked from other neuron, resync from beginning
-        const timestampSyncFrom = existingParticlesMap.get(to)
-          ? dateToUtcNumber(timestamp)
-          : 0;
+        const timestampSyncFrom = existingParticlesMap.get(to) ? dateToUtcNumber(timestamp) : 0;
 
         // Initial state
         return {
@@ -143,10 +120,7 @@ class SyncParticlesLoop extends BaseSyncLoop {
       });
 
       if (syncStatusEntities.length > 0) {
-        await throwIfAborted(
-          this.db!.putSyncStatus,
-          signal
-        )(syncStatusEntities);
+        await throwIfAborted(this.db!.putSyncStatus, signal)(syncStatusEntities);
         newTweets.push(...syncStatusEntities);
       }
     }

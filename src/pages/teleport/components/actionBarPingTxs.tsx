@@ -1,24 +1,22 @@
 import { ActionBar as ActionBarContainer } from '@cybercongress/gravity';
-import { useQueryClient } from 'src/contexts/queryClient';
 import { useEffect, useState } from 'react';
+import { useQueryClient } from 'src/contexts/queryClient';
 import { Option } from 'src/types';
 import {
-  Dots,
   ActionBarContentText,
-  TransactionSubmitted,
   Confirmed,
+  Dots,
   TransactionError,
+  TransactionSubmitted,
 } from '../../../components';
 import { LEDGER } from '../../../utils/config';
 
-const { STAGE_ERROR, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED } =
-  LEDGER;
+const { STAGE_ERROR, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED } = LEDGER;
 
 function ActionBarPingTxs({ stageActionBarStaps }) {
   const queryClient = useQueryClient();
   const [txHeight, setTxHeight] = useState<Option<number>>(undefined);
-  const [errorMessage, setErrorMessage] =
-    useState<Option<string | JSX.Element>>(undefined);
+  const [errorMessage, setErrorMessage] = useState<Option<string | JSX.Element>>(undefined);
 
   const { stage, setStage, clearState, txHash, errorMessageProps, updateFunc } =
     stageActionBarStaps;
@@ -49,7 +47,7 @@ function ActionBarPingTxs({ stageActionBarStaps }) {
     };
     confirmTx();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryClient, txHash]);
+  }, [queryClient, txHash, setStage, updateFunc]);
 
   if (stage === STAGE_SUBMITTED) {
     return (
@@ -66,13 +64,7 @@ function ActionBarPingTxs({ stageActionBarStaps }) {
   }
 
   if (stage === STAGE_CONFIRMED) {
-    return (
-      <Confirmed
-        txHash={txHash}
-        txHeight={txHeight}
-        onClickBtnClose={() => clearState()}
-      />
-    );
+    return <Confirmed txHash={txHash} txHeight={txHeight} onClickBtnClose={() => clearState()} />;
   }
 
   if ((stage === STAGE_ERROR && errorMessage !== null) || errorMessageProps) {

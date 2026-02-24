@@ -1,8 +1,4 @@
-query CyberlinksCountByNeuron(
-  $address: String
-  $particles_from: [String!]
-  $timestamp: timestamp
-) {
+query CyberlinksCountByNeuron($address: String, $particles_from: [String!], $timestamp: timestamp) {
   cyberlinks_aggregate(
     where: {
       _and: [

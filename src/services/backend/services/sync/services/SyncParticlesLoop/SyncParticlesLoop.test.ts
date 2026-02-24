@@ -1,18 +1,15 @@
 import { of } from 'rxjs';
-import { CybIpfsNode } from 'src/services/ipfs/types';
-
 import { fetchCyberlinksIterable } from 'src/services/backend/services/indexer/cyberlinks';
-import { numberToUtcDate } from 'src/utils/date';
+import { CybIpfsNode } from 'src/services/ipfs/types';
 import { createAsyncIterable } from 'src/utils/async/iterable';
-
-import ParticlesResolverQueue from '../ParticlesResolverQueue/ParticlesResolverQueue';
-import { ServiceDeps } from '../types';
-import SyncParticlesLoop from './SyncParticlesLoop';
-
+import { numberToUtcDate } from 'src/utils/date';
 import DbApi, {
   mockFindSyncStatus,
   mockPutSyncStatus,
 } from '../../../dataSource/indexedDb/__mocks__/dbApiWrapperMock';
+import ParticlesResolverQueue from '../ParticlesResolverQueue/ParticlesResolverQueue';
+import { ServiceDeps } from '../types';
+import SyncParticlesLoop from './SyncParticlesLoop';
 
 jest.mock('src/services/backend/services/dataSource/blockchain/requests');
 jest.mock('src/services/backend/services/dataSource/indexedDb/dbApiWrapper');
@@ -43,9 +40,7 @@ describe('SyncParticlesLoop', () => {
 
   it('should call updateSyncState and putSyncStatus correctly', (done) => {
     (fetchCyberlinksIterable as jest.Mock).mockReturnValueOnce(
-      createAsyncIterable([
-        [{ from: 'cid', to: 'cid1', timestamp: numberToUtcDate(333) }],
-      ])
+      createAsyncIterable([[{ from: 'cid', to: 'cid1', timestamp: numberToUtcDate(333) }]])
     );
 
     mockFindSyncStatus.mockResolvedValueOnce([

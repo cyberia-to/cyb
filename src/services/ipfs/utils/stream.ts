@@ -50,7 +50,7 @@ export async function toAsyncIterableWithMime(
       while (true) {
         const { done, value } = await restReader.read();
         if (done) {
-          flush && flush(chunks, mime);
+          flush?.(chunks, mime);
           return; // Exit the loop when done
         }
         flush && chunks.push(value);
@@ -80,7 +80,7 @@ export async function toReadableStreamWithMime(
       const { done, value } = await restReader.read();
       if (done) {
         controller.close();
-        flush && flush(chunks, mime);
+        flush?.(chunks, mime);
       } else {
         controller.enqueue(value);
         flush && chunks.push(value);
@@ -105,7 +105,7 @@ export const getResponseResult = async (
   let bytesDownloaded = 0;
   try {
     if (response instanceof Uint8Array) {
-      onProgress && onProgress(response.byteLength);
+      onProgress?.(response.byteLength);
       return response;
     }
     const chunks: Array<Uint8Array> = [];
@@ -123,7 +123,7 @@ export const getResponseResult = async (
 
         chunks.push(value!);
         bytesDownloaded += value!.byteLength;
-        onProgress && onProgress(bytesDownloaded);
+        onProgress?.(bytesDownloaded);
         return reader.read().then(readStream);
       };
 
@@ -143,7 +143,7 @@ export const getResponseResult = async (
         if (chunk instanceof Uint8Array) {
           chunks.push(chunk);
           bytesDownloaded += chunk.byteLength;
-          onProgress && onProgress(bytesDownloaded);
+          onProgress?.(bytesDownloaded);
         }
       }
       const result = uint8ArrayConcat(chunks);
@@ -151,10 +151,7 @@ export const getResponseResult = async (
     }
     return undefined;
   } catch (error) {
-    console.error(
-      `Error reading stream/iterable.\r\n Probably Hot reload error!`,
-      error
-    );
+    console.error(`Error reading stream/iterable.\r\n Probably Hot reload error!`, error);
 
     // throw error;
 

@@ -1,8 +1,10 @@
-import React from 'react';
-import { useAppSelector } from 'src/redux/hooks';
-import { Colors } from 'src/components/containerGradient/types';
+import { isObject } from 'lodash';
+import { Button } from 'src/components';
 
 import Display from 'src/components/containerGradient/Display/Display';
+import { Colors } from 'src/components/containerGradient/types';
+import { useAppSelector } from 'src/redux/hooks';
+import { syncEntryNameToReadable } from 'src/services/backend/services/sync/utils';
 // import { ServiceStatus, SyncEntryStatus } from 'src/services/backend/types';
 import {
   ProgressTracking,
@@ -11,26 +13,16 @@ import {
   SyncProgress,
 } from 'src/services/backend/types/services';
 import { convertTimestampToString } from 'src/utils/date';
-
-import styles from './drive.scss';
-import { syncEntryNameToReadable } from 'src/services/backend/services/sync/utils';
-import { Button } from 'src/components';
 import { downloadJson } from 'src/utils/json';
-import { useBackend } from 'src/contexts/backend/backend';
-import { EmbeddinsDbEntity } from 'src/services/CozoDb/types/entities';
-import { isObject } from 'lodash';
-import { openAICompletion } from 'src/services/scripting/services/llmRequests/openai';
+import styles from './drive.scss';
 
 const getProgressTrackingInfo = (progress?: ProgressTracking) => {
   if (!progress) {
     return '';
   }
   const { totalCount, completeCount, estimatedTime } = progress;
-  const estimatedTimeStr =
-    estimatedTime > -1 ? convertTimestampToString(estimatedTime) : '???';
-  return ` ${Math.round(
-    (completeCount / totalCount) * 100
-  )}% (${estimatedTimeStr})`;
+  const estimatedTimeStr = estimatedTime > -1 ? convertTimestampToString(estimatedTime) : '???';
+  return ` ${Math.round((completeCount / totalCount) * 100)}% (${estimatedTimeStr})`;
 };
 
 function ServiceStatusInfo({
@@ -47,13 +39,7 @@ function ServiceStatusInfo({
   return <div>{`${icon} ${name} ${status} ${msg}`}</div>;
 }
 
-function EntrySatus({
-  name,
-  progress,
-}: {
-  name: SyncEntryName;
-  progress: SyncProgress;
-}) {
+function EntrySatus({ name, progress }: { name: SyncEntryName; progress: SyncProgress }) {
   const msg = progress.error || progress.message ? `- ${progress.message}` : '';
   const text = `${syncEntryNameToReadable(name)}: ${progress.status} ${msg}
   ${
@@ -102,11 +88,7 @@ function BackendStatus() {
         />
 
         {Object.keys(mlState.entryStatus).map((name) => (
-          <EntrySatus
-            key={`ml_log_${name}`}
-            name={name}
-            progress={mlState.entryStatus[name]}
-          />
+          <EntrySatus key={`ml_log_${name}`} name={name} progress={mlState.entryStatus[name]} />
         ))}
         <ServiceStatusInfo
           name="sync"
@@ -114,11 +96,7 @@ function BackendStatus() {
           message={services.sync.error || services.sync.message}
         />
         {Object.keys(syncState.entryStatus).map((name) => (
-          <EntrySatus
-            key={`log_${name}`}
-            name={name}
-            progress={syncState.entryStatus[name]}
-          />
+          <EntrySatus key={`log_${name}`} name={name} progress={syncState.entryStatus[name]} />
         ))}
         <div className={styles.buttonPanel}>
           <Button small onClick={downloadLogsOnClick}>

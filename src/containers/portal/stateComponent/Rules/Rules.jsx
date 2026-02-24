@@ -1,8 +1,8 @@
 import ReactMarkdown from 'react-markdown';
-import remarkGfm from 'remark-gfm';
 import rehypeSanitize from 'rehype-sanitize';
+import remarkGfm from 'remark-gfm';
+import { ContainerGradient, LinkWindow } from '../../../../components';
 import MoonCode from '../MoonCode';
-import { LinkWindow, ContainerGradient } from '../../../../components';
 import styles from './Rules.module.scss';
 
 const linkMovie =
@@ -42,7 +42,7 @@ function Rules() {
           components={{
             // eslint-disable-next-line react/no-unstable-nested-components
             a: ({ node, ...props }) => {
-              if (node.properties && node.properties.href) {
+              if (node.properties?.href) {
                 const { href } = node.properties;
                 return <LinkWindow to={href} {...props} />;
               }

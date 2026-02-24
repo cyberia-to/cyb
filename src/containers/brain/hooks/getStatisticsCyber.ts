@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
 import BigNumber from 'bignumber.js';
-import { useQueryClient } from 'src/contexts/queryClient';
+import { useEffect, useMemo, useState } from 'react';
 import { BASE_DENOM, DENOM_LIQUID } from 'src/constants/config';
+import { useQueryClient } from 'src/contexts/queryClient';
 import { useCyberClient } from 'src/contexts/queryCyberClient';
 
 import { getProposals } from '../../../utils/governance';
@@ -64,9 +64,7 @@ function useGetStatisticsCyber() {
           cidsCount: particles,
         }));
 
-        const responseHeroesActive = await queryClient.validators(
-          'BOND_STATUS_BONDED'
-        );
+        const responseHeroesActive = await queryClient.validators('BOND_STATUS_BONDED');
         const { validators } = responseHeroesActive;
         setKnowledge((item) => ({
           ...item,

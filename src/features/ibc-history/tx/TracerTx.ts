@@ -1,4 +1,4 @@
-import { Buffer } from 'buffer';
+import { toBase64, toHex } from 'src/utils/encoding';
 
 import { TxEventMap, WsReadyState } from './types';
 
@@ -56,9 +56,7 @@ class TxTracer {
       url = url.replace('http', 'ws');
     }
     if (!url.endsWith(this.wsEndpoint)) {
-      const wsEndpoint = this.wsEndpoint.startsWith('/')
-        ? this.wsEndpoint
-        : `/${this.wsEndpoint}`;
+      const wsEndpoint = this.wsEndpoint.startsWith('/') ? this.wsEndpoint : `/${this.wsEndpoint}`;
 
       url = url.endsWith('/') ? url + wsEndpoint.slice(1) : url + wsEndpoint;
     }
@@ -81,11 +79,7 @@ class TxTracer {
   }
 
   get numberOfSubscriberOrPendingQuery(): number {
-    return (
-      this.newBlockSubscribes.length +
-      this.txSubscribes.size +
-      this.pendingQueries.size
-    );
+    return this.newBlockSubscribes.length + this.txSubscribes.size + this.pendingQueries.size;
   }
 
   get readyState(): WsReadyState {
@@ -103,16 +97,13 @@ class TxTracer {
     }
   }
 
-  addEventListener<T extends keyof TxEventMap>(
-    type: T,
-    listener: TxEventMap[T]
-  ) {
+  addEventListener<T extends keyof TxEventMap>(type: T, listener: TxEventMap[T]) {
     if (!this.listeners[type]) {
       this.listeners[type] = [];
     }
 
     // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-    // @ts-ignore
+    // @ts-expect-error
     // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
     this.listeners[type]!.push(listener);
   }
@@ -176,9 +167,7 @@ class TxTracer {
                   .rejector(new Error(obj.error.data || obj.error.message));
               } else {
                 // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-                this.txSubscribes
-                  .get(obj.id)!
-                  .resolver(obj.result.data.value.TxResult.result);
+                this.txSubscribes.get(obj.id)!.resolver(obj.result.data.value.TxResult.result);
               }
 
               this.txSubscribes.delete(obj.id);
@@ -187,9 +176,7 @@ class TxTracer {
         }
       } catch (e: any) {
         console.error(
-          `Tendermint websocket jsonrpc response is not JSON: ${
-            e.message || e.toString()
-          }`
+          `Tendermint websocket jsonrpc response is not JSON: ${e.message || e.toString()}`
         );
       }
     }
@@ -199,12 +186,12 @@ class TxTracer {
     // Reject all pending queries and subscriptions when WebSocket closes
     const error = new Error(`WebSocket closed: ${e.reason || 'connection lost'}`);
 
-    for (const [id, query] of this.pendingQueries) {
+    for (const [_id, query] of this.pendingQueries) {
       query.rejector(error);
     }
     this.pendingQueries.clear();
 
-    for (const [id, sub] of this.txSubscribes) {
+    for (const [_id, sub] of this.txSubscribes) {
       sub.rejector(error);
     }
     this.txSubscribes.clear();
@@ -214,16 +201,16 @@ class TxTracer {
     }
   };
 
-  protected readonly onError = (e: Event) => {
+  protected readonly onError = (_e: Event) => {
     // Reject all pending queries and subscriptions on WebSocket error
     const error = new Error('WebSocket error');
 
-    for (const [id, query] of this.pendingQueries) {
+    for (const [_id, query] of this.pendingQueries) {
       query.rejector(error);
     }
     this.pendingQueries.clear();
 
-    for (const [id, sub] of this.txSubscribes) {
+    for (const [_id, sub] of this.txSubscribes) {
       sub.rejector(error);
     }
     this.txSubscribes.clear();
@@ -245,9 +232,7 @@ class TxTracer {
     }
 
     return () => {
-      this.newBlockSubscribes = this.newBlockSubscribes.filter(
-        (s) => s.handler !== handler
-      );
+      this.newBlockSubscribes = this.newBlockSubscribes.filter((s) => s.handler !== handler);
     };
   }
 
@@ -273,21 +258,14 @@ class TxTracer {
     }: { timeoutMs?: number; connectionTimeoutMs?: number } = {}
   ): Promise<any> {
     const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(
-        () => reject(new Error(`traceTx timed out after ${timeoutMs}ms`)),
-        timeoutMs
-      );
+      setTimeout(() => reject(new Error(`traceTx timed out after ${timeoutMs}ms`)), timeoutMs);
     });
 
     const connectionPromise =
       this.readyState !== WsReadyState.OPEN
         ? new Promise<void>((resolve, reject) => {
             const connectionTimer = setTimeout(() => {
-              reject(
-                new Error(
-                  `WebSocket connection timed out after ${connectionTimeoutMs}ms`
-                )
-              );
+              reject(new Error(`WebSocket connection timed out after ${connectionTimeoutMs}ms`));
             }, connectionTimeoutMs);
 
             this.addEventListener('open', () => {
@@ -322,16 +300,12 @@ class TxTracer {
     return Promise.race([tracePromise, timeoutPromise]);
   }
 
-  subscribeTx(
-    query: Uint8Array | Record<string, string | number | boolean>
-  ): Promise<any> {
+  subscribeTx(query: Uint8Array | Record<string, string | number | boolean>): Promise<any> {
     if (query instanceof Uint8Array) {
       const id = this.createRandomId();
 
       const params = {
-        query: `tm.event='Tx' AND tx.hash='${Buffer.from(query)
-          .toString('hex')
-          .toUpperCase()}'`,
+        query: `tm.event='Tx' AND tx.hash='${toHex(query).toUpperCase()}'`,
       };
 
       return new Promise<unknown>((resolve, reject) => {
@@ -355,9 +329,7 @@ class TxTracer {
           };
         })
         .map((obj) => {
-          return `${obj.key}=${
-            typeof obj.value === 'string' ? `'${obj.value}'` : obj.value
-          }`;
+          return `${obj.key}=${typeof obj.value === 'string' ? `'${obj.value}'` : obj.value}`;
         })
         .join(' AND ')}`,
       page: '1',
@@ -392,12 +364,10 @@ class TxTracer {
     }
   }
 
-  queryTx(
-    query: Uint8Array | Record<string, string | number | boolean>
-  ): Promise<any> {
+  queryTx(query: Uint8Array | Record<string, string | number | boolean>): Promise<any> {
     if (query instanceof Uint8Array) {
       return this.query('tx', {
-        hash: Buffer.from(query).toString('base64'),
+        hash: toBase64(query),
         prove: false,
       });
     }
@@ -410,9 +380,7 @@ class TxTracer {
           };
         })
         .map((obj) => {
-          return `${obj.key}=${
-            typeof obj.value === 'string' ? `'${obj.value}'` : obj.value
-          }`;
+          return `${obj.key}=${typeof obj.value === 'string' ? `'${obj.value}'` : obj.value}`;
         })
         .join(' AND '),
       page: '1',
@@ -423,10 +391,7 @@ class TxTracer {
     return this.query('tx_search', params);
   }
 
-  protected query(
-    method: string,
-    params: Record<string, string | number | boolean>
-  ): Promise<any> {
+  protected query(method: string, params: Record<string, string | number | boolean>): Promise<any> {
     const id = this.createRandomId();
 
     return new Promise<unknown>((resolve, reject) => {
@@ -462,7 +427,8 @@ class TxTracer {
     return parseInt(
       Array.from({ length: 6 })
         .map(() => Math.floor(Math.random() * 100))
-        .join('')
+        .join(''),
+      10
     );
   }
 }

@@ -1,12 +1,12 @@
 @font-face {
-  font-family: 'Play';
-  src: url('../fonts/Play-Regular.ttf');
+  font-family: "Play";
+  src: url("../fonts/Play-Regular.ttf");
   font-weight: 400;
   font-style: normal;
 }
 
 html {
-  font-family: 'Play';
+  font-family: "Play";
   font-size: 16px;
 }
 
@@ -14,10 +14,6 @@ html {
   html {
     font-size: 14px;
   }
-}
-
-*:not(input):not(textarea) {
-  text-transform: lowercase;
 }
 
 body {
@@ -216,7 +212,7 @@ input:active {
   width: 0;
   height: 0;
   border: 7px solid transparent;
-  content: '';
+  content: "";
   display: block;
   position: absolute;
   border-bottom-color: #3ab793;
@@ -240,7 +236,7 @@ input:active {
 
 .search-input:focus {
   -webkit-app-region: no-drag;
-  box-shadow: 0 0 8px 2px #3ab793 !important;
+  box-shadow: 0 0 8px 2px #3ab793;
 }
 
 input::-webkit-input-placeholder {
@@ -288,7 +284,7 @@ input:focus:-ms-input-placeholder {
 }
 
 .minHeightTextarea {
-  min-height: 42px !important;
+  min-height: 42px;
 }
 
 .padded-text {

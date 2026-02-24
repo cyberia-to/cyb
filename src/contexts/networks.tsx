@@ -47,13 +47,9 @@ function NetworksProvider({ children }: { children: React.ReactNode }) {
     }));
   };
 
-  const value = useMemo(() => ({ networks, updateNetworks }), [networks]);
+  const value = useMemo(() => ({ networks, updateNetworks }), [networks, updateNetworks]);
 
-  return (
-    <NetworksContext.Provider value={value}>
-      {children}
-    </NetworksContext.Provider>
-  );
+  return <NetworksContext.Provider value={value}>{children}</NetworksContext.Provider>;
 }
 
 export default NetworksProvider;

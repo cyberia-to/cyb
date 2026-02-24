@@ -1,7 +1,7 @@
 import { connect } from 'react-redux';
+import { MainContainer } from 'src/components';
 import useSetActiveAddress from '../../hooks/useSetActiveAddress';
 import BannerHelp from './BannerHelp';
-import { MainContainer } from 'src/components';
 
 function Help({ defaultAccount }) {
   const { addressActive } = useSetActiveAddress(defaultAccount);

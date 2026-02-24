@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
-import useQueueIpfsContent from 'src/hooks/useQueueIpfsContent';
-
-import { getIpfsHash } from 'src/utils/ipfs/helpers';
 import { PATTERN_CYBER } from 'src/constants/patterns';
 import { useBackend } from 'src/contexts/backend/backend';
+import useQueueIpfsContent from 'src/hooks/useQueueIpfsContent';
+import { getIpfsHash } from 'src/utils/ipfs/helpers';
 
 function useGetCommunity(address: string | null, skip?: boolean) {
   const { fetchParticleAsync } = useQueueIpfsContent();
@@ -62,7 +61,7 @@ function useGetCommunity(address: string | null, skip?: boolean) {
         responseFollows = await getFollows(address);
       }
 
-      if (responseFollows !== null && responseFollows.txs) {
+      if (responseFollows?.txs) {
         responseFollows.txs.forEach(async (item) => {
           const cid = item.tx.value.msg[0].value.links[0].to;
 
@@ -87,7 +86,7 @@ function useGetCommunity(address: string | null, skip?: boolean) {
     }
 
     getFollowersAddress();
-  }, [address, skip]);
+  }, [address, skip, fetchParticleAsync]);
 
   useEffect(() => {
     setCommunity({

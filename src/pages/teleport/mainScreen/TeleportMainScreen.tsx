@@ -1,9 +1,4 @@
-import {
-  SwapAction,
-  SendAction,
-  BridgeAction,
-  AboutTeleport,
-} from './components';
+import { AboutTeleport, BridgeAction, SendAction, SwapAction } from './components';
 import styles from './TeleportMainScreen.module.scss';
 
 function TeleportMainScreen() {

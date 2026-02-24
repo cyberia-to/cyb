@@ -1,16 +1,8 @@
-import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
 import { Link } from 'react-router-dom';
+import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
 import styles from './TitleAction.module.scss';
 
-function TitleAction({
-  title,
-  subTitle,
-  to,
-}: {
-  title: string;
-  subTitle: string;
-  to: string;
-}) {
+function TitleAction({ title, subTitle, to }: { title: string; subTitle: string; to: string }) {
   return (
     <DisplayTitle
       inDisplay

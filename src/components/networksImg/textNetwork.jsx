@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import Tooltip from '../tooltip/tooltip';
 import { useTracesNetworks } from '../../hooks/useTracesNetworks';
+import Tooltip from '../tooltip/tooltip';
 
 function TextNetwork({ network, tooltipStatus }) {
   const { chainInfo } = useTracesNetworks(network);
@@ -8,7 +8,7 @@ function TextNetwork({ network, tooltipStatus }) {
   const [tooltipText, setTooltipText] = useState(network);
 
   useEffect(() => {
-    if (Object.prototype.hasOwnProperty.call(chainInfo, 'chainName')) {
+    if (Object.hasOwn(chainInfo, 'chainName')) {
       const { chainName } = chainInfo;
       setTextNetwork(chainName);
       setTooltipText(chainName);

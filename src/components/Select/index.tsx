@@ -1,17 +1,14 @@
 /* eslint-disable no-nested-ternary */
 /* eslint-disable jsx-a11y/click-events-have-key-events */
 /* eslint-disable jsx-a11y/no-static-element-interactions */
-import React, { useState, useRef, useMemo } from 'react';
 
-import { $TsFixMe, $TsFixMeFunc } from 'src/types/tsfix';
 import classNames from 'classnames';
+import React, { useMemo, useRef, useState } from 'react';
+import { $TsFixMe, $TsFixMeFunc } from 'src/types/tsfix';
+import useOnClickOutside from '../../hooks/useOnClickOutside';
+import LinearGradientContainer, { Color } from '../LinearGradientContainer/LinearGradientContainer';
 import styles from './Select.module.scss';
 import { SelectContext, useSelectContext } from './selectContext';
-
-import useOnClickOutside from '../../hooks/useOnClickOutside';
-import LinearGradientContainer, {
-  Color,
-} from '../LinearGradientContainer/LinearGradientContainer';
 
 type OptionSelectProps = {
   text: React.ReactNode;
@@ -23,10 +20,7 @@ type OptionSelectProps = {
 export function OptionSelect({ text, img, bgrImg, value }: OptionSelectProps) {
   const { changeSelectedOption } = useSelectContext();
   return (
-    <div
-      className={styles.listItem}
-      onClick={() => changeSelectedOption(value)}
-    >
+    <div className={styles.listItem} onClick={() => changeSelectedOption(value)}>
       {(bgrImg || img) && (
         <div
           className={styles.bgrImg}
@@ -86,7 +80,7 @@ function Select({
       return;
     }
 
-    onChangeSelect && onChangeSelect(value);
+    onChangeSelect?.(value);
     setIsOpen(false);
   };
 
@@ -137,11 +131,7 @@ function Select({
         ref={selectContainerRef}
       >
         <div className={styles.dropDownContainer}>
-          <button
-            type="button"
-            onClick={toggling}
-            className={styles.dropDownContainerHeader}
-          >
+          <button type="button" onClick={toggling} className={styles.dropDownContainerHeader}>
             <LinearGradientContainer
               active={isOpen}
               color={disabled ? Color.Black : color}
@@ -163,24 +153,12 @@ function Select({
                 {options
                   ? options.map((option) => {
                       const { value, text, img } = option;
-                      return (
-                        <OptionSelect
-                          key={value}
-                          text={text}
-                          value={value}
-                          img={img}
-                        />
-                      );
+                      return <OptionSelect key={value} text={text} value={value} img={img} />;
                     })
                   : children}
               </div>
 
-              <div
-                className={classNames(
-                  styles.ListContainer,
-                  styles.dropDownBottomLine
-                )}
-              />
+              <div className={classNames(styles.ListContainer, styles.dropDownBottomLine)} />
             </div>
           )}
         </div>

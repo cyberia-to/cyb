@@ -1,6 +1,6 @@
-import { useAppSelector } from 'src/redux/hooks';
 import useCybernetContract from 'src/features/cybernet/ui/useQueryCybernetContract.refactor';
 import { selectCurrentAddress } from 'src/redux/features/pocket';
+import { useAppSelector } from 'src/redux/hooks';
 import { StakeInfo } from '../../types';
 
 type Props = {

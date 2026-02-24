@@ -1,7 +1,7 @@
 import { Link } from 'react-router-dom';
-import styles from './styles.scss';
-import { CardItem } from '../code/index';
 import { trimString } from '../../../../utils/utils';
+import { CardItem } from '../code/index';
+import styles from './styles.scss';
 
 function CodeInfo({ uploadTxHash, details }) {
   const { creator, checksum } = details;
@@ -10,18 +10,12 @@ function CodeInfo({ uploadTxHash, details }) {
       <CardItem
         title="Upload tx"
         value={
-          <Link to={`/network/bostrom/tx/${uploadTxHash}`}>
-            {trimString(uploadTxHash, 6, 6)}
-          </Link>
+          <Link to={`/network/bostrom/tx/${uploadTxHash}`}>{trimString(uploadTxHash, 6, 6)}</Link>
         }
       />
       <CardItem
         title="Creator"
-        value={
-          <Link to={`/network/bostrom/contract/${creator}`}>
-            {trimString(creator, 10)}
-          </Link>
-        }
+        value={<Link to={`/network/bostrom/contract/${creator}`}>{trimString(creator, 10)}</Link>}
       />
       <CardItem title="Checksum" value={trimString(checksum, 8, 8)} />
     </div>

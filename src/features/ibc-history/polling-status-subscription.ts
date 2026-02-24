@@ -79,9 +79,7 @@ class PollingStatusSubscription {
         consecutiveErrors += 1;
         // Exponential backoff: double interval up to max
         currentInterval = Math.min(currentInterval * 2, MAX_INTERVAL);
-        console.error(
-          `Failed to fetch /status (attempt ${consecutiveErrors}): ${e?.toString()}`
-        );
+        console.error(`Failed to fetch /status (attempt ${consecutiveErrors}): ${e?.toString()}`);
       }
     }
   }

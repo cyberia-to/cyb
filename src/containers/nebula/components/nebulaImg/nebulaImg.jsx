@@ -12,12 +12,7 @@ function NebulaImg() {
           />
         </stop>
         <stop offset=".2" stopColor="#00b8d4">
-          <animate
-            attributeName="offset"
-            values=".2; .15; .2"
-            dur="5s"
-            repeatCount="indefinite"
-          />
+          <animate attributeName="offset" values=".2; .15; .2" dur="5s" repeatCount="indefinite" />
           <animate
             attributeName="stop-color"
             values="#00b8d4; #00e5ff; #00b8d4"
@@ -41,12 +36,7 @@ function NebulaImg() {
         </stop>
 
         <stop offset=".6" stopColor="transparent">
-          <animate
-            attributeName="offset"
-            values=".6; .7; .6"
-            dur="5s"
-            repeatCount="indefinite"
-          />
+          <animate attributeName="offset" values=".6; .7; .6" dur="5s" repeatCount="indefinite" />
         </stop>
       </radialGradient>
       <filter id="b">

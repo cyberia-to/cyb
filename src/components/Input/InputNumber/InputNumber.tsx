@@ -1,5 +1,5 @@
-import { NumericFormat } from 'react-number-format';
 import { useState } from 'react';
+import { NumericFormat } from 'react-number-format';
 import { Color } from 'src/components/LinearGradientContainer/LinearGradientContainer';
 import Input from '../Input';
 
@@ -34,8 +34,8 @@ function InputNumber({
     <NumericFormat
       value={Number(value)}
       onValueChange={(values, sourceInfo) => {
-        onValueChange && onValueChange(values.value, sourceInfo.event);
-        onChange && onChange(values.value, sourceInfo.event);
+        onValueChange?.(values.value, sourceInfo.event);
+        onChange?.(values.value, sourceInfo.event);
       }}
       valueIsNumericString
       allowLeadingZeros

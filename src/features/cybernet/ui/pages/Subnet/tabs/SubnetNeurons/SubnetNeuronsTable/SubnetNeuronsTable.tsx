@@ -1,29 +1,27 @@
 /* eslint-disable react/no-unstable-nested-components */
-import { Link } from 'react-router-dom';
-import { Delegator, SubnetNeuron } from 'src/features/cybernet/types';
-import Table from 'src/components/Table/Table';
+
 import { createColumnHelper } from '@tanstack/react-table';
-import { routes } from 'src/routes';
-import { Account, Tooltip } from 'src/components';
-import useCurrentAddress from 'src/hooks/useCurrentAddress';
-import { useAppData } from 'src/contexts/appData';
 import { useMemo } from 'react';
-import useCybernetTexts from 'src/features/cybernet/ui/useCybernetTexts';
-import {
-  useCurrentContract,
-  useCybernet,
-} from 'src/features/cybernet/ui/cybernet.context';
-import { checkIsMLVerse } from 'src/features/cybernet/ui/utils/verses';
+import { Link } from 'react-router-dom';
+import { Account, Tooltip } from 'src/components';
 import IconsNumber from 'src/components/IconsNumber/IconsNumber';
-import AdviserHoverWrapper from 'src/features/adviser/AdviserHoverWrapper/AdviserHoverWrapper';
+import Table from 'src/components/Table/Table';
 import { tableIDs } from 'src/components/Table/tableIDs';
-import { useDelegates } from 'src/features/cybernet/ui/hooks/useDelegate';
+import { useAppData } from 'src/contexts/appData';
+import AdviserHoverWrapper from 'src/features/adviser/AdviserHoverWrapper/AdviserHoverWrapper';
+import { Delegator, SubnetNeuron } from 'src/features/cybernet/types';
 import { SubnetPreviewGroup } from 'src/features/cybernet/ui/components/SubnetPreview/SubnetPreview';
-import colorStyles from '../../Weights/WeightsTable/temp.module.scss';
-import { getColor } from '../../Weights/WeightsTable/WeightsTable';
+import { useCurrentContract, useCybernet } from 'src/features/cybernet/ui/cybernet.context';
+import { useDelegates } from 'src/features/cybernet/ui/hooks/useDelegate';
+import useCybernetTexts from 'src/features/cybernet/ui/useCybernetTexts';
+import { checkIsMLVerse } from 'src/features/cybernet/ui/utils/verses';
+import useCurrentAddress from 'src/hooks/useCurrentAddress';
+import { routes } from 'src/routes';
+import { cybernetRoutes } from '../../../../../routes';
 import GradeSetterInput from '../../../GradeSetterInput/GradeSetterInput';
 import { useCurrentSubnet } from '../../../subnet.context';
-import { cybernetRoutes } from '../../../../../routes';
+import colorStyles from '../../Weights/WeightsTable/temp.module.scss';
+import { getColor } from '../../Weights/WeightsTable/WeightsTable';
 
 type Props = {};
 
@@ -69,12 +67,7 @@ function save(data: LSType, address: string) {
   localStorage.setItem(getKey(address), JSON.stringify(data));
 }
 
-function handleSave(
-  neuron: string,
-  subnetId: number,
-  block: number,
-  currentAddress: string
-) {
+function handleSave(neuron: string, subnetId: number, block: number, currentAddress: string) {
   let data = getData(currentAddress);
 
   if (!data) {
@@ -142,15 +135,16 @@ function SubnetNeuronsTable({}: Props) {
   }, [neurons]);
 
   const registrationsByNeuron = useMemo(() => {
-    return delegatesData?.reduce<
-      Record<Delegator['delegate'], Delegator['registrations']>
-    >((acc, delegator) => {
-      const { registrations, delegate } = delegator;
+    return delegatesData?.reduce<Record<Delegator['delegate'], Delegator['registrations']>>(
+      (acc, delegator) => {
+        const { registrations, delegate } = delegator;
 
-      acc[delegate] = registrations;
+        acc[delegate] = registrations;
 
-      return acc;
-    }, {});
+        return acc;
+      },
+      {}
+    );
   }, [delegatesData]);
 
   const viewedBlocks = getData(address);
@@ -226,7 +220,7 @@ function SubnetNeuronsTable({}: Props) {
 
     if (!isRootSubnet) {
       cols.push(
-        // @ts-ignore
+        // @ts-expect-error
         columnHelper.accessor('hotkey', {
           header: 'job done',
           id: TableColumnIDs.jobDone,
@@ -254,11 +248,7 @@ function SubnetNeuronsTable({}: Props) {
                     metadata.particle
                   )}?neuron=${hotkey}&subnet=${netuid}`}
                 >
-                  <Tooltip
-                    tooltip={`check what job have been done by this ${getText(
-                      'delegate'
-                    )}`}
-                  >
+                  <Tooltip tooltip={`check what job have been done by this ${getText('delegate')}`}>
                     🔍
                   </Tooltip>
                 </Link>
@@ -324,7 +314,7 @@ function SubnetNeuronsTable({}: Props) {
 
       if (addressRegisteredInSubnet && !isMLVerse) {
         cols.push(
-          // @ts-ignore
+          // @ts-expect-error
           columnHelper.accessor('uid', {
             header: 'Set grade',
             id: TableColumnIDs.setGrade,
@@ -341,7 +331,7 @@ function SubnetNeuronsTable({}: Props) {
       // eslint-disable-next-line no-lonely-if
       if (registrationsByNeuron) {
         cols.push(
-          // @ts-ignore
+          // @ts-expect-error
           columnHelper.accessor('hotkey', {
             header: 'Registrations',
             id: TableColumnIDs.registrations,
@@ -390,6 +380,8 @@ function SubnetNeuronsTable({}: Props) {
     addressRegisteredInSubnet,
     isRootSubnet,
     address,
+    block,
+    cur,
     // block,
     // cur,
   ]);

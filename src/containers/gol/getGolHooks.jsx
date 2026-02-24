@@ -7,7 +7,7 @@ function useGetGol(address) {
 
   useEffect(() => {
     if (address && address !== 0) {
-      if (Object.prototype.hasOwnProperty.call(finalResultGoL, address)) {
+      if (Object.hasOwn(finalResultGoL, address)) {
         const resultGolData = finalResultGoL[address];
         setResultGol((item) => ({ ...item, ...resultGolData }));
         if (resultGolData.sum) {

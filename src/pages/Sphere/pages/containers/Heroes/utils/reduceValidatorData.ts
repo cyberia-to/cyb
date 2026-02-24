@@ -1,9 +1,6 @@
-import {
-  BondStatus,
-  Validator,
-} from '@cybercongress/cyber-ts/cosmos/staking/v1beta1/staking';
-import BigNumber from 'bignumber.js';
 import { Coin } from '@cosmjs/stargate';
+import { BondStatus, Validator } from '@cybercongress/cyber-ts/cosmos/staking/v1beta1/staking';
+import BigNumber from 'bignumber.js';
 import { RankHeroes, ValidatorTableData } from '../../../../types/tableData';
 
 type Options = {
@@ -52,12 +49,9 @@ function reduceValidatorData(data: Validator[], options: Options) {
   const { bondedTokens, delegationsData, stakingProvisions } = options;
   return data.reduce<{ total: number; list: ValidatorTableData[] }>(
     (acc, item, id) => {
-      const { jailed, operatorAddress, tokens, delegatorShares, commission } =
-        item;
+      const { jailed, operatorAddress, tokens, delegatorShares, commission } = item;
 
-      acc.total = jailed
-        ? acc.total
-        : new BigNumber(acc.total).plus(delegatorShares).toNumber();
+      acc.total = jailed ? acc.total : new BigNumber(acc.total).plus(delegatorShares).toNumber();
 
       const percent = new BigNumber(acc.total)
         .dividedBy(bondedTokens)
@@ -79,9 +73,7 @@ function reduceValidatorData(data: Validator[], options: Options) {
         : undefined;
 
       const estimatedApr = stakingProvisionsByItem
-        ? new BigNumber(stakingProvisionsByItem)
-            .dividedBy(bondedTokens)
-            .toNumber()
+        ? new BigNumber(stakingProvisionsByItem).dividedBy(bondedTokens).toNumber()
         : 0;
 
       acc.list.push({

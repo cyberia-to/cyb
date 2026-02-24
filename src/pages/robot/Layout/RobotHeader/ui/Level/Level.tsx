@@ -1,5 +1,5 @@
-import { useMemo } from 'react';
 import BigNumber from 'bignumber.js';
+import { useMemo } from 'react';
 import { Dots } from 'src/components';
 import getPrefixNumber from 'src/utils/getPrefixNumber';
 import styles from './Level.module.scss';
@@ -25,10 +25,7 @@ function Level({ value }: { value: Props }) {
     }
 
     return Object.keys(LevelValue).reduce((acc: number, item) => {
-      const prefix = getPrefixNumber(
-        POWER,
-        new BigNumber(value[item] || 0).toNumber()
-      );
+      const prefix = getPrefixNumber(POWER, new BigNumber(value[item] || 0).toNumber());
 
       return new BigNumber(acc).plus(prefix).toNumber();
     }, 0);

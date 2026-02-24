@@ -5,10 +5,7 @@ const linkMovie =
 
 function ConnectKeplr() {
   return (
-    <ContainerGradient
-      userStyleContent={{ height: '350px' }}
-      title="How to connect Keplr"
-    >
+    <ContainerGradient userStyleContent={{ height: '350px' }} title="How to connect Keplr">
       <div
         style={{
           width: '100%',

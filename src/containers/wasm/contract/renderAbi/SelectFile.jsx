@@ -1,5 +1,5 @@
 /* eslint-disable jsx-a11y/control-has-associated-label */
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import AddFileButton from 'src/components/buttons/AddFile/AddFile';
 import { toString as uint8ArrayToAsciiString } from 'uint8arrays/to-string';
 
@@ -20,7 +20,7 @@ function SelectFile({ stateCallback, text = 'Upload query schema' }) {
     };
     updateState();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [file]);
+  }, [file, stateCallback]);
 
   const showOpenFileDlg = () => {
     inputOpenFileRef.current.click();
@@ -44,7 +44,7 @@ function SelectFile({ stateCallback, text = 'Upload query schema' }) {
         fontSize: '18px',
       }}
     >
-      <div>{file !== null && file.name ? file.name : text}</div>
+      <div>{file?.name ? file.name : text}</div>
       <input
         ref={inputOpenFileRef}
         onChange={(e) => onFilePickerChange(inputOpenFileRef, e)}
@@ -52,10 +52,7 @@ function SelectFile({ stateCallback, text = 'Upload query schema' }) {
         accept=".json"
         style={{ display: 'none' }}
       />
-      <AddFileButton
-        isRemove={file}
-        onClick={file ? onClickClear : showOpenFileDlg}
-      />
+      <AddFileButton isRemove={file} onClick={file ? onClickClear : showOpenFileDlg} />
     </div>
   );
 }

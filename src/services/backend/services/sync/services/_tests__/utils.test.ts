@@ -17,10 +17,7 @@ describe('createSenseChats', () => {
           },
         },
         value: {
-          inputs: [
-            { address: 'addressMultiIn1' },
-            { address: 'addressMultiIn2' },
-          ],
+          inputs: [{ address: 'addressMultiIn1' }, { address: 'addressMultiIn2' }],
           outputs: [{ address: 'address3' }, { address: 'myAddress' }],
         },
       },
@@ -34,10 +31,7 @@ describe('createSenseChats', () => {
         },
         value: {
           inputs: [{ address: 'myAddress' }, { address: 'addressN' }],
-          outputs: [
-            { address: 'addressMultiOut1' },
-            { address: 'addressMultiOut2' },
-          ],
+          outputs: [{ address: 'addressMultiOut1' }, { address: 'addressMultiOut2' }],
         },
       },
       {
@@ -76,9 +70,9 @@ describe('createSenseChats', () => {
       'addressMultiOut2',
       'address4',
     ]).toEqual(Array.from(result.keys()));
-    expect(
-      result.get('addressMultiIn1')?.transactions[0].transaction.memo
-    ).toEqual(transactions[0].transaction.memo);
+    expect(result.get('addressMultiIn1')?.transactions[0].transaction.memo).toEqual(
+      transactions[0].transaction.memo
+    );
     expect(result.get('address4')?.transactions.length).toEqual(2);
   });
 });

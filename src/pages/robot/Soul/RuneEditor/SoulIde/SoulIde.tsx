@@ -1,16 +1,9 @@
-import {
-  useRef,
-  useState,
-  forwardRef,
-  useImperativeHandle,
-  useEffect,
-  useCallback,
-} from 'react';
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import { useBackend } from 'src/contexts/backend/backend';
 import { Option } from 'src/types';
-import styles from './SoulIde.module.scss';
 import RuneCode, { RuneCodeHandle } from '../RuneCode/RuneCode';
 import RuneOutput, { RuneOutputHandle } from '../RuneOutput/RuneOutput';
+import styles from './SoulIde.module.scss';
 
 type SoulIdeProps = {
   mainCode: string;
@@ -54,10 +47,7 @@ const SoulIde = forwardRef<SoulIdeHandle, SoulIdeProps>(
           const isOk = !result.diagnosticsOutput && !result.error;
           mainCodeRef.current?.highlightErrors(result.diagnostics);
           if (!isOk) {
-            outputRef.current?.put([
-              '⚠️ Errors:',
-              `   ${result.diagnosticsOutput}`,
-            ]);
+            outputRef.current?.put(['⚠️ Errors:', `   ${result.diagnosticsOutput}`]);
           } else {
             outputRef.current?.put(
               [
@@ -87,10 +77,7 @@ const SoulIde = forwardRef<SoulIdeHandle, SoulIdeProps>(
         })
         .then((result) => {
           if (result.diagnosticsOutput || result.error) {
-            outputRef.current?.put([
-              '⚠️ Errors:',
-              `   ${result.diagnosticsOutput}`,
-            ]);
+            outputRef.current?.put(['⚠️ Errors:', `   ${result.diagnosticsOutput}`]);
             mainCodeRef.current?.highlightErrors(result.diagnostics);
             return undefined;
           }
@@ -106,10 +93,13 @@ const SoulIde = forwardRef<SoulIdeHandle, SoulIdeProps>(
       clearLog,
     }));
 
-    const setRuneCode = useCallback((code: string) => {
-      setCode(code);
-      onChange && onChange(code);
-    }, []);
+    const setRuneCode = useCallback(
+      (code: string) => {
+        setCode(code);
+        onChange?.(code);
+      },
+      [onChange]
+    );
 
     return (
       <div className={styles.wrapper}>

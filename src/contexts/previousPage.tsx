@@ -1,4 +1,4 @@
-import React, { createContext, useState, useEffect, useMemo } from 'react';
+import React, { createContext, useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 
 /*
@@ -14,9 +14,7 @@ interface IPreviousPageContextData {
   previousPageIsShallower: boolean;
 }
 
-const PreviousPageContext = createContext<IPreviousPageContextData | undefined>(
-  undefined
-);
+const PreviousPageContext = createContext<IPreviousPageContextData | undefined>(undefined);
 
 export function usePreviousPage() {
   //   if (context === undefined) {
@@ -33,12 +31,8 @@ interface IPreviousPageProps {
 }
 
 function PreviousPageProvider({ children }: IPreviousPageProps) {
-  const [currentPathname, setCurrentPathname] = useState<string | undefined>(
-    undefined
-  );
-  const [previousPathname, setPreviousPathname] = useState<string | undefined>(
-    undefined
-  );
+  const [currentPathname, setCurrentPathname] = useState<string | undefined>(undefined);
+  const [previousPathname, setPreviousPathname] = useState<string | undefined>(undefined);
   const { pathname: pathnameState } = useLocation();
 
   useEffect(() => {
@@ -52,14 +46,13 @@ function PreviousPageProvider({ children }: IPreviousPageProps) {
       setCurrentPathname(window.location.pathname + window.location.search);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pathnameState]);
+  }, [currentPathname]);
 
   const providerValue = useMemo(
     () => ({
       previousPageIsAppPage: previousPathname !== undefined,
       previousPageIsShallower:
-        previousPathname !== undefined &&
-        previousPathname.length < window.location.pathname.length,
+        previousPathname !== undefined && previousPathname.length < window.location.pathname.length,
       previousPathname,
     }),
     [previousPathname]
@@ -68,9 +61,7 @@ function PreviousPageProvider({ children }: IPreviousPageProps) {
   return (
     // This component will be used to encapsulate the whole App,
     // so all components will have access to the Context
-    <PreviousPageContext.Provider value={providerValue}>
-      {children}
-    </PreviousPageContext.Provider>
+    <PreviousPageContext.Provider value={providerValue}>{children}</PreviousPageContext.Provider>
   );
 }
 export { PreviousPageContext, PreviousPageProvider };

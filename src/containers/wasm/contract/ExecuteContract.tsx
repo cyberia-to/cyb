@@ -1,15 +1,14 @@
-import { useEffect, useState } from 'react';
 import { GasPrice } from '@cosmjs/launchpad';
+import { useEffect, useState } from 'react';
+import { Input } from 'src/components';
+import Button from 'src/components/btnGrd';
+import { BASE_DENOM } from 'src/constants/config';
 import { useSigningClient } from 'src/contexts/signerClient';
+import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 import { trimString } from 'src/utils/utils';
-import txs from '../../../utils/txs';
 import { JsonView, LinkTx } from '../ui/ui';
 import { JSONInputCard } from './InstantiationContract';
 import styles from './stylesExecuteContract.scss';
-import { Input } from 'src/components';
-import Button from 'src/components/btnGrd';
-import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
-import { BASE_DENOM } from 'src/constants/config';
 
 const executePlaceholder = {
   transfer: {
@@ -20,7 +19,7 @@ const executePlaceholder = {
 
 const coinsPlaceholder = [{ denom: BASE_DENOM, amount: '1' }];
 
-const gasPrice = GasPrice.fromString('0.001boot');
+const _gasPrice = GasPrice.fromString('0.001boot');
 
 function ExecuteContract({ contractAddress }: { contractAddress: string }) {
   const { signer, signingClient } = useSigningClient();
@@ -106,10 +105,7 @@ function ExecuteContract({ contractAddress }: { contractAddress: string }) {
       <div className={styles.containerExecuteContractInputContainer}>
         <div className={styles.containerExecuteContractInputContainerItem}>
           <span>Memo</span>
-          <Input
-            value={memo}
-            onChange={(event) => setMemo(event.target.value)}
-          />
+          <Input value={memo} onChange={(event) => setMemo(event.target.value)} />
         </div>
       </div>
 

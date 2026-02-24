@@ -1,18 +1,16 @@
 /* eslint-disable import/no-unused-modules */
-import { NeuronAddress, ParticleCid, TransactionHash } from 'src/types/base';
+
 import { EntryType } from 'src/services/CozoDb/types/entities';
+import { NeuronAddress, ParticleCid, TransactionHash } from 'src/types/base';
 
 import {
-  MsgSendTransaction,
   CyberLinkTransaction,
   MsgMultiSendTransaction,
+  MsgSendTransaction,
   Transaction,
 } from '../services/indexer/types';
 
-export type SenseTransaction =
-  | MsgSendTransaction
-  | MsgMultiSendTransaction
-  | CyberLinkTransaction;
+export type SenseTransaction = MsgSendTransaction | MsgMultiSendTransaction | CyberLinkTransaction;
 
 export type SenseUnread = {
   entryType: EntryType;
@@ -50,12 +48,9 @@ export type SenseChatExtension = {
 };
 
 export type SenseItemLinkMeta = SenseLinkMeta & SenseChatExtension;
-export type SenseItemTransactionMeta = SenseTransactionMeta &
-  SenseChatExtension;
+export type SenseItemTransactionMeta = SenseTransactionMeta & SenseChatExtension;
 
-export type SenseListItemtMeta =
-  | SenseListItemLinkMeta
-  | SenseListItemTransactionMeta;
+export type SenseListItemtMeta = SenseListItemLinkMeta | SenseListItemTransactionMeta;
 
 export type SenseListChatItem = {
   entryType: EntryType;

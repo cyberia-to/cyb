@@ -1,15 +1,6 @@
-import {
-  $command,
-  $inputRule,
-  $markSchema,
-  $remark,
-} from '@milkdown/kit/utils';
 import { markRule } from '@milkdown/kit/prose';
-import {
-  CYBERLINK_REGEX,
-  NEURON_REGEX,
-  remarkCybSyntax,
-} from './remarkCybSyntax';
+import { $command, $inputRule, $markSchema, $remark } from '@milkdown/kit/utils';
+import { CYBERLINK_REGEX, NEURON_REGEX, remarkCybSyntax } from './remarkCybSyntax';
 
 const remarkCybSyntaxPlugin = $remark('cybSyntaxPlugin', () => remarkCybSyntax);
 const markSchemaCybSyntax = $markSchema('link-cyber', () => ({
@@ -51,7 +42,7 @@ const markSchemaCybSyntax = $markSchema('link-cyber', () => ({
   },
 }));
 
-const toggleLinkCommand = $command('UpdateLink', (ctx) => (payload) => {
+const toggleLinkCommand = $command('UpdateLink', (_ctx) => (payload) => {
   console.log('payload', payload);
   // return toggleMark(directiveNode.type(ctx), payload);
 });

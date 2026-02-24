@@ -1,7 +1,7 @@
 import { Nullable } from 'src/types';
 import { v4 as uuidv4 } from 'uuid';
 
-export async function getScriptFromParticle(cid?: Nullable<string>) {
+export async function getScriptFromParticle(_cid?: Nullable<string>) {
   throw new Error('Not implemented');
   // if (!cid || !isCID(cid)) {
   //   // throw new Error('cid is not valid');
@@ -32,7 +32,7 @@ export function extractRuneContent(markdown: string) {
   while ((match = runeRegex.exec(markdown)) !== null) {
     hasRune = true;
     // Append the matched content between ```rune``` tags to runeContent variable
-    runeScript += match[1] + '\n';
+    runeScript += `${match[1]}\n`;
 
     // Replace the entire matched block, including the tags, with an empty string
     modifiedMarkdown = modifiedMarkdown.replace(match[0], '');

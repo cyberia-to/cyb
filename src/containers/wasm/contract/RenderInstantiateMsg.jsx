@@ -1,12 +1,11 @@
-import { useState, useEffect } from 'react';
 import { GasPrice } from '@cosmjs/launchpad';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { useSigningClient } from 'src/contexts/signerClient';
-import txs from '../../../utils/txs';
-import JsonSchemaParse from './renderAbi/JsonSchemaParse';
 import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
+import JsonSchemaParse from './renderAbi/JsonSchemaParse';
 
-const gasPrice = GasPrice.fromString('0.001boot');
+const _gasPrice = GasPrice.fromString('0.001boot');
 
 function RenderInstantiateMsg({ label, codeId, memo, schema, updateFnc }) {
   const queryClient = useQueryClient();
@@ -59,7 +58,7 @@ function RenderInstantiateMsg({ label, codeId, memo, schema, updateFnc }) {
     };
     confirmTx();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryClient, txHash, activeKey]);
+  }, [queryClient, txHash, activeKey, updateFnc]);
 
   const runExecute = async ({ formData }, key) => {
     if (!signer || !formData) {

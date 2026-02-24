@@ -1,11 +1,12 @@
 /* eslint-disable camelcase */
 /* eslint-disable no-restricted-syntax */
-import { useState, useEffect } from 'react';
+
+import { Decimal } from '@cosmjs/math';
 import { GasPrice, SigningStargateClient } from '@cosmjs/stargate';
+import { useEffect, useState } from 'react';
+import { CHAIN_ID } from 'src/constants/config';
 import { useSigningClient } from 'src/contexts/signerClient';
 import { getKeplr } from 'src/utils/keplrUtils';
-import { Decimal } from '@cosmjs/math';
-import { CHAIN_ID } from 'src/constants/config';
 import { CybOfflineSigner, getOfflineSigner } from 'src/utils/offlineSigner';
 import { OfflineAminoSigner } from '@keplr-wallet/types';
 import { chains, assets } from 'chain-registry';
@@ -14,9 +15,9 @@ import {
   getChainByChainName,
 } from '@chain-registry/utils';
 import { getMnemonic } from 'src/utils/utils';
-import useGetBalancesIbc from './useGetBalancesIbc';
 
 import networks from '../../../utils/networkListIbc';
+import useGetBalancesIbc from './useGetBalancesIbc';
 
 function useSetupIbcClient(denom, network) {
   const { signingClient } = useSigningClient();

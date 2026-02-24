@@ -31,18 +31,12 @@ const saveJsonToLocalStorage = (storageKey: JsonTypeKeys, data: JsonRecord) => {
   localStorage.setItem(jsonKeyMap[storageKey], JSON.stringify(data));
 };
 
-const loadJsonFromLocalStorage = (
-  storageKey: JsonTypeKeys,
-  defaultData: JsonRecord = {}
-) => {
+const loadJsonFromLocalStorage = (storageKey: JsonTypeKeys, defaultData: JsonRecord = {}) => {
   const raw = localStorage.getItem(jsonKeyMap[storageKey]);
   return raw ? JSON.parse(raw) : defaultData;
 };
 
-const loadStringFromLocalStorage = (
-  name: StringTypeKeys,
-  defaultValue?: string
-) => {
+const loadStringFromLocalStorage = (name: StringTypeKeys, defaultValue?: string) => {
   const keyName = stringKeyMap[name] || name;
   const result = localStorage.getItem(keyName) || defaultValue;
   return result;
@@ -53,10 +47,8 @@ const saveStringToLocalStorage = (name: StringTypeKeys, value: string) => {
   localStorage.setItem(keyName, value);
 };
 
-const getEntrypointKeyName = (
-  name: ScriptEntrypointNames,
-  prefix: 'enabled'
-): StringTypeKeys => `${name}_${prefix}`;
+const getEntrypointKeyName = (name: ScriptEntrypointNames, prefix: 'enabled'): StringTypeKeys =>
+  `${name}_${prefix}`;
 
 export {
   saveJsonToLocalStorage,

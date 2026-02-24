@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
+import { useIpfs } from 'src/contexts/ipfs';
 import { Dots } from '../../../../components';
 import { formatCurrency, trimString } from '../../../../utils/utils';
 import { ContainerKeyValue } from './utilsComponents';
-import { useIpfs } from 'src/contexts/ipfs';
 
 const PREFIXES = [
   {
@@ -34,12 +34,7 @@ export function useGetIpfsInfo() {
       setLoading(true);
       if (ipfs !== null) {
         const response = await ipfs.stats.repo();
-        const repoSize = formatCurrency(
-          Number(response.repoSize),
-          'B',
-          2,
-          PREFIXES
-        );
+        const repoSize = formatCurrency(Number(response.repoSize), 'B', 2, PREFIXES);
         setRepoSizeValue(repoSize);
 
         const responseId = await ipfs.id();
@@ -65,11 +60,7 @@ function InfoIpfsNode() {
     <>
       <ContainerKeyValue>
         <div>id</div>
-        {loading ? (
-          <Dots />
-        ) : (
-          <div>{idIpfs.id.length > 0 ? trimString(idIpfs.id, 8, 8) : ''}</div>
-        )}
+        {loading ? <Dots /> : <div>{idIpfs.id.length > 0 ? trimString(idIpfs.id, 8, 8) : ''}</div>}
       </ContainerKeyValue>
       <ContainerKeyValue>
         <div>agent version</div>

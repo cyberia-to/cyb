@@ -1,5 +1,4 @@
-import { BASE_DENOM } from "src/constants/config";
-
+import { BASE_DENOM } from 'src/constants/config';
 
 const i18n = {
   en: {
@@ -119,8 +118,7 @@ const i18n = {
         connect: 'Connect your Ledger Nano to the computer and enter your PIN',
         openApp: 'Open the Cosmos Ledger application.',
         version: 'At least version v1.1.1 of Cosmos Ledger app installed.',
-        getDetails:
-          'We are just checking the blockchain for your account details',
+        getDetails: 'We are just checking the blockchain for your account details',
       },
       startSearch: {
         cyberlink: 'Cyberlink using Ledger',

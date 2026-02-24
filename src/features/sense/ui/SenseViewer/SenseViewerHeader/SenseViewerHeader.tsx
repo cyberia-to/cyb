@@ -1,3 +1,4 @@
+import cx from 'classnames';
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Account } from 'src/components';
@@ -5,14 +6,13 @@ import ContentIpfs from 'src/components/contentIpfs/contentIpfs';
 import HydrogenBalance from 'src/components/HydrogenBalance/HydrogenBalance';
 import Karma from 'src/containers/application/Karma/Karma';
 import AdviserMeta from 'src/containers/ipfs/components/AdviserMeta/AdviserMeta';
-import useParticleDetails from 'src/features/particle/useParticleDetails';
-import { routes } from 'src/routes';
-import { isParticle as isParticleFunc } from 'src/features/particle/utils';
-import cx from 'classnames';
 import { LLMAvatar } from 'src/containers/Search/LLMSpark/LLMSpark';
-import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
-import { deleteLLMThread } from 'src/features/sense/redux/sense.redux';
 import AdviserHoverWrapper from 'src/features/adviser/AdviserHoverWrapper/AdviserHoverWrapper';
+import useParticleDetails from 'src/features/particle/useParticleDetails';
+import { isParticle as isParticleFunc } from 'src/features/particle/utils';
+import { deleteLLMThread } from 'src/features/sense/redux/sense.redux';
+import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
+import { routes } from 'src/routes';
 import styles from './SenseViewerHeader.module.scss';
 
 function SenseViewerHeader({ selected }: { selected: string }) {
@@ -22,7 +22,7 @@ function SenseViewerHeader({ selected }: { selected: string }) {
     skip: !isParticle && !selected,
   });
 
-  const [particleContentOpen, setParticleContentOpen] = useState(false);
+  const [particleContentOpen, _setParticleContentOpen] = useState(false);
 
   const text = particleData?.text;
   const largeContent = text?.length > 200;

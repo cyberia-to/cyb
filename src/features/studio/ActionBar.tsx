@@ -1,17 +1,17 @@
-import { ActionBar } from 'src/components';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useSigningClient } from 'src/contexts/signerClient';
-import { useBackend } from 'src/contexts/backend/backend';
-import useWaitForTransaction from 'src/hooks/useWaitForTransaction';
-import { addIfpsMessageOrCid } from 'src/utils/ipfs/helpers';
-import { InputMemo } from 'src/pages/teleport/components/Inputs';
-import { PATTERN_IPFS_HASH } from 'src/constants/patterns';
-import { sendCyberlinkArray } from 'src/services/neuron/neuronApi';
-import { routes } from 'src/routes';
 import { useNavigate } from 'react-router-dom';
+import { ActionBar } from 'src/components';
+import { PATTERN_IPFS_HASH } from 'src/constants/patterns';
+import { useBackend } from 'src/contexts/backend/backend';
+import { useSigningClient } from 'src/contexts/signerClient';
+import useWaitForTransaction from 'src/hooks/useWaitForTransaction';
+import { InputMemo } from 'src/pages/teleport/components/Inputs';
+import { routes } from 'src/routes';
+import { sendCyberlinkArray } from 'src/services/neuron/neuronApi';
+import { addIfpsMessageOrCid } from 'src/utils/ipfs/helpers';
+import useAdviserTexts from '../adviser/useAdviserTexts';
 import { KeywordsItem, useStudioContext } from './studio.context';
 import { checkLoopLinks, mapLinks, reduceLoopKeywords } from './utils/utils';
-import useAdviserTexts from '../adviser/useAdviserTexts';
 
 // function execute (content: any[]) {
 
@@ -44,8 +44,7 @@ import useAdviserTexts from '../adviser/useAdviserTexts';
 
 function ActionBarContainer() {
   const { signer, signingClient } = useSigningClient();
-  const { isIpfsInitialized, ipfsApi, senseApi, isDbInitialized } =
-    useBackend();
+  const { isIpfsInitialized, ipfsApi, senseApi, isDbInitialized } = useBackend();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(false);
@@ -115,7 +114,7 @@ function ActionBarContainer() {
 
   useEffect(() => {
     setError(undefined);
-  }, [currentMarkdown]);
+  }, []);
 
   const createCyberlinkTx = async () => {
     if (!signer || !signingClient || !senseApi || !isDbInitialized) {
@@ -139,9 +138,7 @@ function ActionBarContainer() {
       setAdviser(
         <>
           Links with these keywords have already been created: <br />
-          {reduceLoopKeywords(loopLink, [...keywordsFrom, ...keywordsTo]).join(
-            ', '
-          )}
+          {reduceLoopKeywords(loopLink, [...keywordsFrom, ...keywordsTo]).join(', ')}
         </>,
         'yellow'
       );
@@ -197,9 +194,7 @@ function ActionBarContainer() {
   }
 
   if (stateActionBar === 'keywords-from' || stateActionBar === 'keywords-to') {
-    const textBtn = `add ${
-      stateActionBar === 'keywords-from' ? 'incoming' : 'outcoming'
-    } link(s)`;
+    const textBtn = `add ${stateActionBar === 'keywords-from' ? 'incoming' : 'outcoming'} link(s)`;
     return (
       <ActionBar
         button={{
@@ -212,9 +207,7 @@ function ActionBarContainer() {
         <InputMemo
           title="type keywords"
           value={newKeywords?.value || ''}
-          onChangeValue={(value, fileName) =>
-            setNewKeywords({ value, fileName })
-          }
+          onChangeValue={(value, fileName) => setNewKeywords({ value, fileName })}
         />
       </ActionBar>
     );

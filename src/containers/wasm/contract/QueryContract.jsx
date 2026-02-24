@@ -1,9 +1,9 @@
 import { useEffect, useState } from 'react';
+import Button from 'src/components/btnGrd';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { JsonView } from '../ui/ui';
-import styles from './stylesQueryContract.scss';
 import { JSONInputCard } from './InstantiationContract';
-import Button from 'src/components/btnGrd';
+import styles from './stylesQueryContract.scss';
 
 const queryPlaceholder = {
   balance: { address: 'bostrom180tz4ahtyfhwnqwkpdqj3jelyxff4wlx2ymsv3' },
@@ -60,10 +60,7 @@ function QueryContract({ contractAddress }) {
         height="200px"
       />
 
-      <Button
-        onClick={runQuery}
-        disabled={!queryClient || !queryObject?.result}
-      >
+      <Button onClick={runQuery} disabled={!queryClient || !queryObject?.result}>
         Run query
       </Button>
 

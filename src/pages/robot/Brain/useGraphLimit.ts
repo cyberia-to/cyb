@@ -7,8 +7,7 @@ const DEFAULT_LIMIT = 10000;
 function useGraphLimit(initialLimit?: number) {
   const [searchParams, setSearchParams] = useSearchParams();
 
-  const limit =
-    Number(searchParams.get('limit')) || initialLimit || DEFAULT_LIMIT;
+  const limit = Number(searchParams.get('limit')) || initialLimit || DEFAULT_LIMIT;
 
   const style = searchParams.get('style');
 

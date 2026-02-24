@@ -1,8 +1,8 @@
 import { createColumnHelper } from '@tanstack/react-table';
 import BigNumber from 'bignumber.js';
+import cx from 'classnames';
 import { FormatNumber } from 'src/components';
 import IconsNumber from 'src/components/IconsNumber/IconsNumber';
-import cx from 'classnames';
 import { ValidatorTableData } from '../../../../../../types/tableData';
 import Moniker from '../ui/Moniker/Moniker';
 import VotingPower from '../ui/VotingPower/VoitingPower';
@@ -58,30 +58,21 @@ const renderColumnsData = () => [
       return (
         <FormatNumber
           currency="%"
-          number={new BigNumber(val)
-            .multipliedBy(100)
-            .dp(2, BigNumber.ROUND_FLOOR)
-            .toFixed(2)}
+          number={new BigNumber(val).multipliedBy(100).dp(2, BigNumber.ROUND_FLOOR).toFixed(2)}
         />
       );
     },
     aggregationFn: 'mean',
     aggregatedCell: ({ getValue }) => {
-      return new BigNumber(getValue())
-        .multipliedBy(100)
-        .dp(2, BigNumber.ROUND_FLOOR)
-        .toFixed(2);
+      return new BigNumber(getValue()).multipliedBy(100).dp(2, BigNumber.ROUND_FLOOR).toFixed(2);
     },
   }),
   columnHelper.accessor('delegation', {
     header: 'Your bond',
+    size: 150,
     sortingFn: (rowA, rowB) => {
-      const a = rowA.original.delegation?.amount
-        ? parseFloat(rowA.original.delegation.amount)
-        : 0;
-      const b = rowB.original.delegation?.amount
-        ? parseFloat(rowB.original.delegation.amount)
-        : 0;
+      const a = rowA.original.delegation?.amount ? parseFloat(rowA.original.delegation.amount) : 0;
+      const b = rowB.original.delegation?.amount ? parseFloat(rowB.original.delegation.amount) : 0;
       return a - b;
     },
     cell: (info) => {

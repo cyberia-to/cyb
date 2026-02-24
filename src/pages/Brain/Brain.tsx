@@ -1,7 +1,7 @@
-import CyberlinksGraphContainer from 'src/features/cyberlinks/CyberlinksGraph/CyberlinksGraphContainer';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
-import styles from './Brain.module.scss';
+import CyberlinksGraphContainer from 'src/features/cyberlinks/CyberlinksGraph/CyberlinksGraphContainer';
 import useGraphLimit from '../robot/Brain/useGraphLimit';
+import styles from './Brain.module.scss';
 
 function Brain() {
   const { limit } = useGraphLimit();

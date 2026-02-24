@@ -1,15 +1,15 @@
-import { useMemo, useState, useEffect } from 'react';
-import { v4 as uuidv4 } from 'uuid';
-import { Option } from 'src/types';
-import { ObjKeyValue } from 'src/types/data';
 import { Coin } from '@cosmjs/launchpad';
+import { useEffect, useMemo, useState } from 'react';
 import { Display, DisplayTitle, FormatNumberTokens } from 'src/components';
 import { useHub } from 'src/contexts/hub';
+import { Option } from 'src/types';
+import { ObjKeyValue } from 'src/types/data';
+import { v4 as uuidv4 } from 'uuid';
 import { exponentialToDecimal } from '../../../utils/utils';
-import PoolItemsList from './pollItems';
-import TitlePool from './TitlePoolCard';
-import styles from './styles.module.scss';
 import { PoolsWithAssetsCapType } from '../type';
+import PoolItemsList from './pollItems';
+import styles from './styles.module.scss';
+import TitlePool from './TitlePoolCard';
 
 type PoolCardProps = {
   pool: PoolsWithAssetsCapType;
@@ -18,12 +18,7 @@ type PoolCardProps = {
   vol24: Option<Coin>;
 };
 
-function PoolCard({
-  pool,
-  totalSupplyData,
-  accountBalances,
-  vol24,
-}: PoolCardProps) {
+function PoolCard({ pool, totalSupplyData, accountBalances, vol24 }: PoolCardProps) {
   const { tokens } = useHub();
 
   const [sharesToken, setSharesToken] = useState(null);
@@ -32,12 +27,9 @@ function PoolCard({
     setSharesToken(null);
     if (
       totalSupplyData &&
-      Object.prototype.hasOwnProperty.call(
-        totalSupplyData,
-        pool.poolCoinDenom
-      ) &&
+      Object.hasOwn(totalSupplyData, pool.poolCoinDenom) &&
       accountBalances &&
-      Object.prototype.hasOwnProperty.call(accountBalances, pool.poolCoinDenom)
+      Object.hasOwn(accountBalances, pool.poolCoinDenom)
     ) {
       const amountTotal = totalSupplyData[pool.poolCoinDenom];
       const amountAccountBalances = accountBalances[pool.poolCoinDenom];
@@ -54,7 +46,7 @@ function PoolCard({
       if (reserveCoinDenoms && Object.keys(reserveCoinDenoms).length > 0) {
         reserveCoinDenoms.forEach((itemCoin) => {
           if (itemCoin.includes('ibc')) {
-            status = !Boolean(tokens && tokens[itemCoin]);
+            status = !tokens?.[itemCoin];
           }
         });
       }
@@ -70,13 +62,7 @@ function PoolCard({
     <Display
       title={
         <DisplayTitle
-          title={
-            <TitlePool
-              useInactive={useInactive}
-              pool={pool}
-              totalCap={pool.cap}
-            />
-          }
+          title={<TitlePool useInactive={useInactive} pool={pool} totalCap={pool.cap} />}
         />
       }
     >
@@ -84,9 +70,7 @@ function PoolCard({
         {pool.reserveCoinDenoms.map((items) => {
           const keyItem = uuidv4();
 
-          return (
-            <PoolItemsList key={keyItem} assets={pool.assets} token={items} />
-          );
+          return <PoolItemsList key={keyItem} assets={pool.assets} token={items} />;
         })}
       </div>
 

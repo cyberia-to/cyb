@@ -1,26 +1,23 @@
 /* eslint-disable react/no-unstable-nested-components */
-import { useMemo } from 'react';
+
 import { createColumnHelper } from '@tanstack/react-table';
-import Table from 'src/components/Table/Table';
+import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { routes } from 'src/routes';
-
 import { Account, Cid, Tooltip } from 'src/components';
-
 import CIDResolver from 'src/components/CIDResolver/CIDResolver';
-import { trimString } from 'src/utils/utils';
-import useCurrentAddress from 'src/hooks/useCurrentAddress';
+import Table from 'src/components/Table/Table';
 import { tableIDs } from 'src/components/Table/tableIDs';
+import useCurrentAddress from 'src/hooks/useCurrentAddress';
+import { routes } from 'src/routes';
+import { trimString } from 'src/utils/utils';
+import { SubnetInfo } from '../../../../types';
+import SubnetPreview from '../../../components/SubnetPreview/SubnetPreview';
+import { useCurrentContract, useCybernet } from '../../../cybernet.context';
 import useDelegate from '../../../hooks/useDelegate';
-
+import { routes as subnetRoutes } from '../../../routes';
+import useCybernetTexts from '../../../useCybernetTexts';
 import GradeSetterInput from '../../Subnet/GradeSetterInput/GradeSetterInput';
 import { useSubnet } from '../../Subnet/subnet.context';
-
-import useCybernetTexts from '../../../useCybernetTexts';
-import { routes as subnetRoutes } from '../../../routes';
-import { useCurrentContract, useCybernet } from '../../../cybernet.context';
-import SubnetPreview from '../../../components/SubnetPreview/SubnetPreview';
-import { SubnetInfo } from '../../../../types';
 
 type Props = {
   data: SubnetInfo[];
@@ -29,13 +26,7 @@ type Props = {
 const columnHelper = createColumnHelper<SubnetInfo>();
 
 // don't know good name
-function CurrentToMax({
-  value,
-  maxValue,
-}: {
-  value: number;
-  maxValue: number;
-}) {
+function CurrentToMax({ value, maxValue }: { value: number; maxValue: number }) {
   return (
     <div>
       {value}{' '}
@@ -79,7 +70,7 @@ function SubnetsTable({ data }: Props) {
         header: 'name',
         id: 'subnetName',
         cell: (info) => {
-          const value = info.getValue();
+          const _value = info.getValue();
 
           const { netuid } = info.row.original;
 
@@ -95,9 +86,7 @@ function SubnetsTable({ data }: Props) {
             >
               <SubnetPreview subnetUID={netuid} withName />
               {isMySubnet && (
-                <Tooltip tooltip={`you joined this ${getText('subnetwork')}`}>
-                  ✅
-                </Tooltip>
+                <Tooltip tooltip={`you joined this ${getText('subnetwork')}`}>✅</Tooltip>
               )}
             </div>
           );
@@ -148,7 +137,7 @@ function SubnetsTable({ data }: Props) {
 
     if (!rootSubnet) {
       col.push(
-        // @ts-ignore
+        // @ts-expect-error
         columnHelper.accessor('max_allowed_validators', {
           header: getText('validator', true),
           sortingFn: (rowA, rowB) => {
@@ -162,12 +151,7 @@ function SubnetsTable({ data }: Props) {
 
             const current = info.row.original.subnetwork_n;
 
-            return (
-              <CurrentToMax
-                value={current >= max ? max : current}
-                maxValue={max}
-              />
-            );
+            return <CurrentToMax value={current >= max ? max : current} maxValue={max} />;
           },
         }),
         columnHelper.accessor('max_allowed_uids', {
@@ -182,16 +166,12 @@ function SubnetsTable({ data }: Props) {
             const max = info.getValue();
 
             const current = info.row.original.subnetwork_n;
-            const maxAllowedValidators =
-              info.row.original.max_allowed_validators;
+            const maxAllowedValidators = info.row.original.max_allowed_validators;
 
             const diff = current - maxAllowedValidators;
 
             return (
-              <CurrentToMax
-                value={diff >= 0 ? diff : 0}
-                maxValue={max - maxAllowedValidators}
-              />
+              <CurrentToMax value={diff >= 0 ? diff : 0} maxValue={max - maxAllowedValidators} />
             );
           },
         })
@@ -200,7 +180,7 @@ function SubnetsTable({ data }: Props) {
 
     if (rootSubnet) {
       col.push(
-        // @ts-ignore
+        // @ts-expect-error
         columnHelper.accessor('netuid', {
           header: 'Grade (average)',
           id: 'grade',
@@ -227,7 +207,7 @@ function SubnetsTable({ data }: Props) {
 
       if (myAddressJoinedRootSubnet) {
         col.push(
-          // @ts-ignore
+          // @ts-expect-error
           columnHelper.accessor('netuid', {
             header: 'Set grade',
             id: 'setGrade',
@@ -242,13 +222,7 @@ function SubnetsTable({ data }: Props) {
     }
 
     return col;
-  }, [
-    myCurrentSubnetsJoined,
-    myAddressJoinedRootSubnet,
-    averageGrades,
-    rootSubnet,
-    getText,
-  ]);
+  }, [myCurrentSubnetsJoined, myAddressJoinedRootSubnet, averageGrades, rootSubnet, getText]);
 
   return (
     <Table

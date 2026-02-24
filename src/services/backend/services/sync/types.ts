@@ -1,7 +1,4 @@
-import {
-  QueueItemAsyncResult,
-  QueuePriority,
-} from 'src/services/QueueManager/types';
+import { QueueItemAsyncResult, QueuePriority } from 'src/services/QueueManager/types';
 import { NeuronAddress, ParticleCid } from 'src/types/base';
 
 export type SyncServiceParams = {

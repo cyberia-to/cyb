@@ -19,7 +19,7 @@ function UnclaimedGift({ unClaimedGiftAmount = '' }) {
         </div>
       </ContainerGradientText>
     );
-  } catch (error) {
+  } catch (_error) {
     return (
       <ContainerGradientText status="green">
         <div className={styles.containerUnclaimedGift}>

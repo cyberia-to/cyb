@@ -1,0 +1,34 @@
+[net]
+git-fetch-with-cli = true
+
+# Performance flags for uhash-core hardware crypto intrinsics
+# Desktop: target-cpu=native enables all host CPU features (AES-NI, SHA, AVX2)
+# Mobile: explicit target-feature since target-cpu=native is wrong for cross-compilation
+
+# === Desktop (native builds) ===
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "target-cpu=native"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "target-cpu=native", "-C", "target-feature=+aes,+avx2"]
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "target-cpu=native", "-C", "target-feature=+aes,+avx2"]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "target-cpu=native"]
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-cpu=native", "-C", "target-feature=+aes,+avx2"]
+
+# === Mobile (cross-compilation — ARMv8 crypto extensions) ===
+
+[target.aarch64-linux-android]
+rustflags = ["-C", "target-feature=+aes,+sha2"]
+
+[target.aarch64-apple-ios]
+rustflags = ["-C", "target-feature=+aes,+sha2"]
+
+[target.aarch64-apple-ios-sim]
+rustflags = ["-C", "target-feature=+aes,+sha2"]

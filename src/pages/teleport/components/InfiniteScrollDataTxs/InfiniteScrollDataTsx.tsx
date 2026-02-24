@@ -1,6 +1,6 @@
 import InfiniteScroll from 'react-infinite-scroll-component';
-import styles from './InfiniteScrollDataTsx.module.scss';
 import Loader2 from 'src/components/ui/Loader2';
+import styles from './InfiniteScrollDataTsx.module.scss';
 
 type Props = {
   dataLength: number;

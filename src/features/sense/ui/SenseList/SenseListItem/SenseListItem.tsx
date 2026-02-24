@@ -1,18 +1,16 @@
+import cx from 'classnames';
+import { MsgSend } from 'cosmjs-types/cosmos/bank/v1beta1/tx';
 import { Account, Tooltip } from 'src/components';
 import Pill from 'src/components/Pill/Pill';
-import cx from 'classnames';
+import { LLMAvatar } from 'src/containers/Search/LLMSpark/LLMSpark';
 import { isParticle as isParticleFunc } from 'src/features/particle/utils';
 import { SenseItem } from 'src/features/sense/redux/sense.redux';
-import { MsgSend } from 'cosmjs-types/cosmos/bank/v1beta1/tx';
-import { LLMAvatar } from 'src/containers/Search/LLMSpark/LLMSpark';
-import styles from './SenseListItem.module.scss';
+import CoinsAmount, { CoinAction } from '../../components/CoinAmount/CoinAmount';
 
 import Date from '../../components/Date/Date';
-import { cutSenseItem } from '../../utils';
 import ParticleAvatar from '../../components/ParticleAvatar/ParticleAvatar';
-import CoinsAmount, {
-  CoinAction,
-} from '../../components/CoinAmount/CoinAmount';
+import { cutSenseItem } from '../../utils';
+import styles from './SenseListItem.module.scss';
 
 type Props = {
   address: string;
@@ -96,7 +94,7 @@ function SenseListItem({
   if (isLLM) {
     titleJSX = title;
   } else if (isParticle) {
-    titleJSX = <>{title || `#${cutSenseItem(address)}`}</>;
+    titleJSX = title || `#${cutSenseItem(address)}`;
   } else {
     titleJSX = (
       <>
@@ -135,9 +133,7 @@ function SenseListItem({
             <CoinsAmount
               amount={amountData!.amount!.slice(0, 1)}
               type={
-                amountData!.isAmountSendToMyAddress === false
-                  ? CoinAction.send
-                  : CoinAction.receive
+                amountData!.isAmountSendToMyAddress === false ? CoinAction.send : CoinAction.receive
               }
             />
           </div>
@@ -147,10 +143,7 @@ function SenseListItem({
       {date && <Date timestamp={date} className={styles.date} />}
 
       {unreadCount > 0 && (
-        <Pill
-          className={styles.unread}
-          text={unreadCount > 99 ? '99+' : unreadCount.toString()}
-        />
+        <Pill className={styles.unread} text={unreadCount > 99 ? '99+' : unreadCount.toString()} />
       )}
     </div>
   );
@@ -158,7 +151,7 @@ function SenseListItem({
 
 export default SenseListItem;
 
-function SenseListItemSimple({ date, title, content, avatarContent }: Props) {
+function _SenseListItemSimple({ date, title, content, avatarContent }: Props) {
   return (
     <div className={styles.wrapper}>
       <div className={styles.avatar}>{avatarContent}</div>

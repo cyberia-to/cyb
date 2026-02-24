@@ -12,10 +12,7 @@ function DistributionParam({ data }) {
         gridTemplateColumns="repeat(auto-fit, minmax(250px, 1fr))"
         gridGap="20px"
       >
-        <CardStatisics
-          title="community tax"
-          value={`${parseFloat(data.community_tax) * 100} %`}
-        />
+        <CardStatisics title="community tax" value={`${parseFloat(data.community_tax) * 100} %`} />
         <CardStatisics
           title="base proposer reward"
           value={`${parseFloat(data.base_proposer_reward) * 100} %`}
@@ -29,12 +26,7 @@ function DistributionParam({ data }) {
   } catch (error) {
     console.warn('BandwidthParam', error);
     return (
-      <Pane
-        justifyContent="center"
-        flexDirection="column"
-        alignItems="center"
-        display="flex"
-      >
+      <Pane justifyContent="center" flexDirection="column" alignItems="center" display="flex">
         <Vitalik />
         Error !
       </Pane>

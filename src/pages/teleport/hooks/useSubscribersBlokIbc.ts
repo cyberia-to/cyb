@@ -10,9 +10,7 @@ type ChainHeight = {
 };
 
 function useSubscribersBlokIbc(client) {
-  const [blockInfo, setBlockInfo] = useState<ChainHeight | undefined>(
-    undefined
-  );
+  const [blockInfo, setBlockInfo] = useState<ChainHeight | undefined>(undefined);
 
   useEffect(() => {
     const url = client?.tmClient?.client?.url;

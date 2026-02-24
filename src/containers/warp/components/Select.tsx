@@ -2,7 +2,7 @@
 /* eslint-disable jsx-a11y/click-events-have-key-events */
 /* eslint-disable jsx-a11y/no-static-element-interactions */
 import React from 'react';
-import { DenomArr, Select, OptionSelect } from 'src/components';
+import { DenomArr, OptionSelect, Select } from 'src/components';
 import { $TsFixMeFunc } from 'src/types/tsfix';
 
 type SelectTeleportProps = {
@@ -36,11 +36,7 @@ function SelectTeleport({
         custom ? (
           <OptionSelect text={textSelectValue} value={valueSelect} />
         ) : valueSelect === '' ? (
-          <OptionSelect
-            text="choose"
-            img={<DenomArr denomValue="choose" onlyImg />}
-            value=""
-          />
+          <OptionSelect text="choose" img={<DenomArr denomValue="choose" onlyImg />} value="" />
         ) : (
           <OptionSelect
             text={
@@ -53,12 +49,7 @@ function SelectTeleport({
             }
             bgrImg={textSelectValue.includes('pool')}
             img={
-              <DenomArr
-                type={type}
-                denomValue={textSelectValue}
-                onlyImg
-                tooltipStatusImg={false}
-              />
+              <DenomArr type={type} denomValue={textSelectValue} onlyImg tooltipStatusImg={false} />
             }
             value={valueSelect}
           />

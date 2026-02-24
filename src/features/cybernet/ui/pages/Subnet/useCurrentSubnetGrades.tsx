@@ -1,15 +1,12 @@
-import { useCallback, useEffect, useState, useMemo } from 'react';
-import { useAdviser } from 'src/features/adviser/context';
 import { isEqual } from 'lodash';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useAdviser } from 'src/features/adviser/context';
 import useCurrentAddress from 'src/hooks/useCurrentAddress';
-import {
-  formatGradeToWeight,
-  formatWeightToGrade,
-} from '../../utils/formatWeight';
-import useExecuteCybernetContract from '../../useExecuteCybernetContract';
 import { useAppData } from '../../../../../contexts/appData';
-import useCybernetContract from '../../useQueryCybernetContract.refactor';
 import { SubnetNeuron, Weights } from '../../../types';
+import useExecuteCybernetContract from '../../useExecuteCybernetContract';
+import useCybernetContract from '../../useQueryCybernetContract.refactor';
+import { formatGradeToWeight, formatWeightToGrade } from '../../utils/formatWeight';
 
 const LS_KEY = 'setGrades';
 const LS_KEY2 = 'gradesUpdated';
@@ -90,11 +87,7 @@ type Props = {
 /*
   @deprecated
 */
-function useCurrentSubnetGrades({
-  netuid,
-  neuronsQuery,
-  hyperparamsQuery,
-}: Props) {
+function useCurrentSubnetGrades({ netuid, neuronsQuery, hyperparamsQuery }: Props) {
   const currentAddress = useCurrentAddress();
 
   const getLastGrades = useCallback(() => {
@@ -108,9 +101,7 @@ function useCurrentSubnetGrades({
 
   const { block } = useAppData();
 
-  const myUid = neuronsQuery.data?.find(
-    (n) => n.hotkey === currentAddress
-  )?.uid;
+  const myUid = neuronsQuery.data?.find((n) => n.hotkey === currentAddress)?.uid;
 
   const weightsQuery = useCybernetContract<Weights[]>({
     query: {
@@ -130,7 +121,7 @@ function useCurrentSubnetGrades({
     if (lastGrades) {
       setNewGrades(lastGrades);
     }
-  }, [currentAddress, netuid, getLastGrades]);
+  }, [currentAddress, getLastGrades]);
 
   const [newGrades, setNewGrades] = useState<{
     [uid: string]: number;

@@ -1,14 +1,13 @@
 /* eslint-disable no-restricted-syntax */
-import * as Tone from 'tone';
 
 import {
-  PATTERN_CYBER,
-  PATTERN_ETH,
   PATTERN_COSMOS,
-  PATTERN_OSMOS,
-  PATTERN_TERRA,
+  PATTERN_CYBER,
   PATTERN_CYBER_VALOPER,
+  PATTERN_ETH,
+  PATTERN_OSMOS,
   PATTERN_SPACE_PUSSY,
+  PATTERN_TERRA,
 } from 'src/constants/patterns';
 
 const DICTIONARY_ABC = {
@@ -55,12 +54,13 @@ const getHeight = (value) => {
   return number * (100 - 2) + 2;
 };
 
-const lead10pads = new Tone.Sampler({
-  urls: {
-    E3: 'pads.mp3',
-  },
-  baseUrl: 'https://el-nivvo.github.io/files/lead10/',
-}).toDestination();
+let toneModule = null;
+const getTone = () => {
+  if (!toneModule) {
+    toneModule = import('tone');
+  }
+  return toneModule;
+};
 
 const getNoteFromAdd = (addrr) => {
   if (addrr === null) {
@@ -86,31 +86,39 @@ const getNoteFromAdd = (addrr) => {
   return arrNote;
 };
 
-const makeSound = (arrNote) => {
+const makeSound = async (arrNote) => {
   try {
+    const Tone = await getTone();
     const lead = new Tone.Sampler({
       urls: {
         E3: 'E3.mp3',
       },
       baseUrl: 'https://el-nivvo.github.io/files/lead10/',
     }).toDestination();
-    Tone.loaded().then(() => {
-      let cout = 0;
-      const now = Tone.now();
 
-      arrNote.forEach((item) => {
-        if (item.note !== 'sustein') {
-          const time = now + cout;
-          lead.triggerAttackRelease([item.note], 1, time);
-          cout += 0.2;
-        } else {
-          cout += 0.2;
-        }
-      });
+    const pads = new Tone.Sampler({
+      urls: {
+        E3: 'pads.mp3',
+      },
+      baseUrl: 'https://el-nivvo.github.io/files/lead10/',
+    }).toDestination();
 
-      // pads
-      lead10pads.triggerAttackRelease('E3', 7);
+    await Tone.loaded();
+    let cout = 0;
+    const now = Tone.now();
+
+    arrNote.forEach((item) => {
+      if (item.note !== 'sustein') {
+        const time = now + cout;
+        lead.triggerAttackRelease([item.note], 1, time);
+        cout += 0.2;
+      } else {
+        cout += 0.2;
+      }
     });
+
+    // pads
+    pads.triggerAttackRelease('E3', 7);
   } catch (error) {
     console.log('error', error);
   }

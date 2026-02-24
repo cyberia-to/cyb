@@ -1,24 +1,24 @@
-import { useEffect, useState } from 'react';
 import { Pane } from '@cybercongress/gravity';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useAdviser } from 'src/features/adviser/context';
 
 import { Loading, MainContainer, Tabs } from '../../components';
+import getParamNetwork from './getParams';
 import {
   BandwidthParam,
-  SlashingParam,
-  GovParam,
   DistributionParam,
-  StakingParam,
-  RankParam,
-  InlfationParam,
-  ResourcesParam,
-  WasmParam,
-  LiquidityParam,
-  GridParam,
   DmnParam,
+  GovParam,
+  GridParam,
+  InlfationParam,
+  LiquidityParam,
+  RankParam,
+  ResourcesParam,
+  SlashingParam,
+  StakingParam,
+  WasmParam,
 } from './tabs';
-import getParamNetwork from './getParams';
 
 const paramsTabs = {
   staking: { text: 'Staking', to: '/network/bostrom/parameters/staking' },
@@ -72,11 +72,11 @@ function ParamNetwork() {
   useEffect(() => {
     setAdviser(
       <span>
-        Parametrs are adjastable by the consensus. <br /> Everybody can propose
-        change the parametrs to different value.
+        Parametrs are adjastable by the consensus. <br /> Everybody can propose change the parametrs
+        to different value.
       </span>
     );
-  }, [setAdviser, param]);
+  }, [setAdviser]);
 
   if (loading) {
     return (
@@ -114,9 +114,7 @@ function ParamNetwork() {
         {param === 'bandwidth' && <BandwidthParam data={dataParam.bandwidth} />}
         {param === 'slashing' && <SlashingParam data={dataParam.slashing} />}
         {param === 'staking' && <StakingParam data={dataParam.staking} />}
-        {param === 'distribution' && (
-          <DistributionParam data={dataParam.distribution} />
-        )}
+        {param === 'distribution' && <DistributionParam data={dataParam.distribution} />}
         {param === 'gov' && <GovParam data={dataParam.gov} />}
         {param === 'rank' && <RankParam data={dataParam.rank} />}
         {param === 'mint' && <InlfationParam data={dataParam.mint} />}

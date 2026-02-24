@@ -1,23 +1,11 @@
 import { ReactNode } from 'react';
 import { Link } from 'react-router-dom';
-import {
-  Account,
-  Cid,
-  DenomArr,
-  FormatNumberTokens,
-  AmountDenom,
-} from 'src/components';
+import { Account, AmountDenom, Cid, DenomArr, FormatNumberTokens } from 'src/components';
 import { formatNumber, timeSince, trimString } from 'src/utils/utils';
 
 const S_TO_MS = 1 * 10 ** 3;
 
-function ContainerMsgsType({
-  children,
-  alignItems,
-}: {
-  children: ReactNode;
-  alignItems?: string;
-}) {
+function ContainerMsgsType({ children, alignItems }: { children: ReactNode; alignItems?: string }) {
   return (
     <div
       style={{
@@ -54,10 +42,7 @@ function MsgCreateRoute({ value }) {
     <ContainerMsgsType>
       <Row title="source" value={<Account address={value.source} />} />
       <Row title="name" value={value.name} />
-      <Row
-        title="destination"
-        value={<Account address={value.destination} />}
-      />
+      <Row title="destination" value={<Account address={value.destination} />} />
     </ContainerMsgsType>
   );
 }
@@ -72,10 +57,7 @@ function MsgEditRoute({ value }) {
           value={<AmountDenom amountValue={value.amount} denom={value.denom} />}
         />
       )}
-      <Row
-        title="destination"
-        value={<Account address={value.destination} />}
-      />
+      <Row title="destination" value={<Account address={value.destination} />} />
     </ContainerMsgsType>
   );
 }
@@ -84,10 +66,7 @@ function MsgDeleteRoute({ value }) {
   return (
     <ContainerMsgsType>
       <Row title="source" value={<Account address={value.source} />} />
-      <Row
-        title="destination"
-        value={<Account address={value.destination} />}
-      />
+      <Row title="destination" value={<Account address={value.destination} />} />
     </ContainerMsgsType>
   );
 }
@@ -100,19 +79,11 @@ function RenderValue({ value, type, accountUser }) {
         {value.links.length === 1 &&
           value.links.map((item) => (
             <>
-              <Row
-                title="from"
-                value={<Cid cid={item.from}>{trimString(item.from, 6, 6)}</Cid>}
-              />
-              <Row
-                title="to"
-                value={<Cid cid={item.to}>{trimString(item.to, 6, 6)}</Cid>}
-              />
+              <Row title="from" value={<Cid cid={item.from}>{trimString(item.from, 6, 6)}</Cid>} />
+              <Row title="to" value={<Cid cid={item.to}>{trimString(item.to, 6, 6)}</Cid>} />
             </>
           ))}
-        {value.links.length > 1 && (
-          <Row title="links" value={formatNumber(value.links.length)} />
-        )}
+        {value.links.length > 1 && <Row title="links" value={formatNumber(value.links.length)} />}
       </ContainerMsgsType>
     );
   }
@@ -127,13 +98,7 @@ function RenderValue({ value, type, accountUser }) {
           value={
             <ContainerMsgsType>
               {value.amount.map((item, i) => {
-                return (
-                  <AmountDenom
-                    denom={item.denom}
-                    amountValue={item.amount}
-                    key={i}
-                  />
-                );
+                return <AmountDenom denom={item.denom} amountValue={item.amount} key={i} />;
               })}
             </ContainerMsgsType>
           }
@@ -147,21 +112,14 @@ function RenderValue({ value, type, accountUser }) {
       <ContainerMsgsType>
         {value.inputs.map((itemInputs) => (
           <>
-            <Row
-              title="from"
-              value={<Account address={itemInputs.address} />}
-            />
+            <Row title="from" value={<Account address={itemInputs.address} />} />
             <Row
               title="inputs coins"
               value={
                 <ContainerMsgsType>
                   {itemInputs.coins.map((itemCoins, i) => {
                     return (
-                      <AmountDenom
-                        denom={itemCoins.denom}
-                        amountValue={itemCoins.amount}
-                        key={i}
-                      />
+                      <AmountDenom denom={itemCoins.denom} amountValue={itemCoins.amount} key={i} />
                     );
                   })}
                 </ContainerMsgsType>
@@ -173,10 +131,7 @@ function RenderValue({ value, type, accountUser }) {
           if (itemOutputs.address === accountUser) {
             return (
               <>
-                <Row
-                  title="to"
-                  value={<Account address={itemOutputs.address} />}
-                />
+                <Row title="to" value={<Account address={itemOutputs.address} />} />
                 <Row
                   title="outputs coins"
                   value={
@@ -208,17 +163,9 @@ function RenderValue({ value, type, accountUser }) {
         <Row title="neuron" value={<Account address={value.neuron} />} />
         <Row
           title="amount"
-          value={
-            <AmountDenom
-              denom={value.amount.denom}
-              amountValue={value.amount.amount}
-            />
-          }
+          value={<AmountDenom denom={value.amount.denom} amountValue={value.amount.amount} />}
         />
-        <Row
-          title="resource"
-          value={<DenomArr gap={8} denomValue={value.resource} />}
-        />
+        <Row title="resource" value={<DenomArr gap={8} denomValue={value.resource} />} />
         <Row title="length" value={timeSince(value.length * S_TO_MS)} />
       </ContainerMsgsType>
     );
@@ -228,27 +175,15 @@ function RenderValue({ value, type, accountUser }) {
   if (type.includes('MsgSwapWithinBatch')) {
     return (
       <ContainerMsgsType>
-        <Row
-          title="requester"
-          value={<Account address={value.swap_requester_address} />}
-        />
-        <Row
-          title="demand"
-          value={<DenomArr gap={8} denomValue={value.demand_coin_denom} />}
-        />
+        <Row title="requester" value={<Account address={value.swap_requester_address} />} />
+        <Row title="demand" value={<DenomArr gap={8} denomValue={value.demand_coin_denom} />} />
         <Row
           title="offer coin"
           value={
-            <AmountDenom
-              amountValue={value.offer_coin.amount}
-              denom={value.offer_coin.denom}
-            />
+            <AmountDenom amountValue={value.offer_coin.amount} denom={value.offer_coin.denom} />
           }
         />
-        <Row
-          title="Order price"
-          value={<FormatNumberTokens value={value.order_price} />}
-        />
+        <Row title="Order price" value={<FormatNumberTokens value={value.order_price} />} />
       </ContainerMsgsType>
     );
   }
@@ -256,23 +191,14 @@ function RenderValue({ value, type, accountUser }) {
   if (type.includes('MsgDepositWithinBatch')) {
     return (
       <ContainerMsgsType>
-        <Row
-          title="from"
-          value={<Account address={value.depositor_address} />}
-        />
+        <Row title="from" value={<Account address={value.depositor_address} />} />
         <Row title="pool id" value={value.pool_id} />
         <Row
           title="deposit"
           value={
             <ContainerMsgsType alignItems="flex-end">
               {value.deposit_coins.map((data, i) => {
-                return (
-                  <AmountDenom
-                    amountValue={data.amount}
-                    denom={data.denom}
-                    key={i}
-                  />
-                );
+                return <AmountDenom amountValue={data.amount} denom={data.denom} key={i} />;
               })}
             </ContainerMsgsType>
           }
@@ -284,19 +210,11 @@ function RenderValue({ value, type, accountUser }) {
   if (type.includes('MsgWithdrawWithinBatch')) {
     return (
       <ContainerMsgsType>
-        <Row
-          title="withdrawer"
-          value={<Account address={value.withdrawer_address} />}
-        />
+        <Row title="withdrawer" value={<Account address={value.withdrawer_address} />} />
         <Row title="pool id" value={value.pool_id} />
         <Row
           title="pool coin"
-          value={
-            <AmountDenom
-              amountValue={value.pool_coin.amount}
-              denom={value.pool_coin.denom}
-            />
-          }
+          value={<AmountDenom amountValue={value.pool_coin.amount} denom={value.pool_coin.denom} />}
         />
       </ContainerMsgsType>
     );
@@ -306,22 +224,11 @@ function RenderValue({ value, type, accountUser }) {
   if (type.includes('MsgDelegate')) {
     return (
       <ContainerMsgsType>
-        <Row
-          title="delegator"
-          value={<Account address={value.delegator_address} />}
-        />
-        <Row
-          title="validator"
-          value={<Account address={value.validator_address} />}
-        />
+        <Row title="delegator" value={<Account address={value.delegator_address} />} />
+        <Row title="validator" value={<Account address={value.validator_address} />} />
         <Row
           title="amount"
-          value={
-            <AmountDenom
-              amountValue={value.amount.amount}
-              denom={value.amount.denom}
-            />
-          }
+          value={<AmountDenom amountValue={value.amount.amount} denom={value.amount.denom} />}
         />
       </ContainerMsgsType>
     );
@@ -330,22 +237,11 @@ function RenderValue({ value, type, accountUser }) {
   if (type.includes('MsgCreateValidator')) {
     return (
       <ContainerMsgsType>
-        <Row
-          title="delegator"
-          value={<Account address={value.delegator_address} />}
-        />
-        <Row
-          title="validator"
-          value={<Account address={value.validator_address} />}
-        />
+        <Row title="delegator" value={<Account address={value.delegator_address} />} />
+        <Row title="validator" value={<Account address={value.validator_address} />} />
         <Row
           title="self delegation"
-          value={
-            <AmountDenom
-              amountValue={value.min_self_delegation}
-              denom={BASE_DENOM}
-            />
-          }
+          value={<AmountDenom amountValue={value.min_self_delegation} denom={BASE_DENOM} />}
         />
         <Row title="commission" value={value.commission.rate} />
         <Row title="description" value={value.description.moniker} />
@@ -363,22 +259,11 @@ function RenderValue({ value, type, accountUser }) {
   if (type.includes('MsgUndelegate')) {
     return (
       <ContainerMsgsType>
-        <Row
-          title="delegator"
-          value={<Account address={value.delegator_address} />}
-        />
-        <Row
-          title="validator"
-          value={<Account address={value.validator_address} />}
-        />
+        <Row title="delegator" value={<Account address={value.delegator_address} />} />
+        <Row title="validator" value={<Account address={value.validator_address} />} />
         <Row
           title="amount"
-          value={
-            <AmountDenom
-              amountValue={value.amount.amount}
-              denom={value.amount.denom}
-            />
-          }
+          value={<AmountDenom amountValue={value.amount.amount} denom={value.amount.denom} />}
         />
       </ContainerMsgsType>
     );
@@ -386,26 +271,12 @@ function RenderValue({ value, type, accountUser }) {
   if (type.includes('MsgBeginRedelegate')) {
     return (
       <ContainerMsgsType>
-        <Row
-          title="delegator"
-          value={<Account address={value.delegator_address} />}
-        />
-        <Row
-          title="from"
-          value={<Account address={value.validator_src_address} />}
-        />
-        <Row
-          title="to"
-          value={<Account address={value.validator_dst_address} />}
-        />
+        <Row title="delegator" value={<Account address={value.delegator_address} />} />
+        <Row title="from" value={<Account address={value.validator_src_address} />} />
+        <Row title="to" value={<Account address={value.validator_dst_address} />} />
         <Row
           title="amount"
-          value={
-            <AmountDenom
-              amountValue={value.amount.amount}
-              denom={value.amount.denom}
-            />
-          }
+          value={<AmountDenom amountValue={value.amount.amount} denom={value.amount.denom} />}
         />
       </ContainerMsgsType>
     );
@@ -414,14 +285,8 @@ function RenderValue({ value, type, accountUser }) {
   if (type.includes('MsgWithdrawDelegatorReward')) {
     return (
       <ContainerMsgsType>
-        <Row
-          title="delegator"
-          value={<Account address={value.delegator_address} />}
-        />
-        <Row
-          title="validator"
-          value={<Account address={value.validator_address} />}
-        />
+        <Row title="delegator" value={<Account address={value.delegator_address} />} />
+        <Row title="validator" value={<Account address={value.validator_address} />} />
       </ContainerMsgsType>
     );
   }
@@ -429,10 +294,7 @@ function RenderValue({ value, type, accountUser }) {
   if (type.includes('MsgWithdrawValidatorCommission')) {
     return (
       <ContainerMsgsType>
-        <Row
-          title="address"
-          value={<Account address={value.validator_address} />}
-        />
+        <Row title="address" value={<Account address={value.validator_address} />} />
       </ContainerMsgsType>
     );
   }
@@ -440,10 +302,7 @@ function RenderValue({ value, type, accountUser }) {
   if (type.includes('MsgModifyWithdrawAddress')) {
     return (
       <ContainerMsgsType>
-        <Row
-          title="delegator"
-          value={<Account address={value.delegator_address} />}
-        />
+        <Row title="delegator" value={<Account address={value.delegator_address} />} />
       </ContainerMsgsType>
     );
   }
@@ -471,20 +330,11 @@ function RenderValue({ value, type, accountUser }) {
                     <>
                       {' '}
                       ,
-                      <AmountDenom
-                        amountValue={amount.amount}
-                        denom={amount.denom}
-                      />
+                      <AmountDenom amountValue={amount.amount} denom={amount.denom} />
                     </>
                   );
                 }
-                return (
-                  <AmountDenom
-                    key={i}
-                    amountValue={amount.amount}
-                    denom={amount.denom}
-                  />
-                );
+                return <AmountDenom key={i} amountValue={amount.amount} denom={amount.denom} />;
               })
             ) : (
               <AmountDenom amountValue={0} denom={BASE_DENOM} />
@@ -500,9 +350,7 @@ function RenderValue({ value, type, accountUser }) {
       <ContainerMsgsType>
         <Row
           title="proposal"
-          value={
-            <Link to={`/senate/${value.proposal_id}`}>{value.proposal_id}</Link>
-          }
+          value={<Link to={`/senate/${value.proposal_id}`}>{value.proposal_id}</Link>}
         />
         <Row title="depositor" value={<Account address={value.depositor} />} />
         <Row
@@ -513,20 +361,11 @@ function RenderValue({ value, type, accountUser }) {
                 <>
                   {' '}
                   ,
-                  <AmountDenom
-                    amountValue={amount.amount}
-                    denom={amount.denom}
-                  />
+                  <AmountDenom amountValue={amount.amount} denom={amount.denom} />
                 </>
               );
             }
-            return (
-              <AmountDenom
-                amountValue={amount.amount}
-                denom={amount.denom}
-                key={i}
-              />
-            );
+            return <AmountDenom amountValue={amount.amount} denom={amount.denom} key={i} />;
           })}
         />
       </ContainerMsgsType>
@@ -538,9 +377,7 @@ function RenderValue({ value, type, accountUser }) {
       <ContainerMsgsType>
         <Row
           title="proposal"
-          value={
-            <Link to={`/senate/${value.proposal_id}`}>{value.proposal_id}</Link>
-          }
+          value={<Link to={`/senate/${value.proposal_id}`}>{value.proposal_id}</Link>}
         />
         <Row title="voter" value={<Account address={value.voter} />} />
         <Row title="vote" value={value.option} />
@@ -574,12 +411,7 @@ function RenderValue({ value, type, accountUser }) {
         <Row title="src channel" value={value.source_channel} />
         <Row
           title="token"
-          value={
-            <AmountDenom
-              amountValue={value.token.amount}
-              denom={value.token.denom}
-            />
-          }
+          value={<AmountDenom amountValue={value.token.amount} denom={value.token.denom} />}
         />
         <Row
           title="timeout"

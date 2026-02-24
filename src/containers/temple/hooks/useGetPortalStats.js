@@ -1,7 +1,6 @@
-import { useEffect, useState } from 'react';
-
 import { useQuery } from '@tanstack/react-query';
 import BigNumber from 'bignumber.js';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { getConfigGift, getNumTokens, getStateGift } from '../../portal/utils';
 
@@ -23,15 +22,10 @@ function useGetPortalStats() {
       const queryResponseConfigGift = await getConfigGift(queryClient);
       const respnseNumTokens = await getNumTokens(queryClient);
 
-      if (
-        queryResponseConfigGift !== null &&
-        queryResponseResultState !== null
-      ) {
+      if (queryResponseConfigGift !== null && queryResponseResultState !== null) {
         const { current_balance: currentBalance } = queryResponseResultState;
         const { initial_balance: initialBalance } = queryResponseConfigGift;
-        const claimAmount = new BigNumber(currentBalance).dividedBy(
-          initialBalance
-        );
+        const claimAmount = new BigNumber(currentBalance).dividedBy(initialBalance);
         const procentClaim = new BigNumber(1)
           .minus(claimAmount)
           .multipliedBy(100)
@@ -39,7 +33,7 @@ function useGetPortalStats() {
           .toNumber();
         response = { ...response, procentClaim };
       }
-      if (respnseNumTokens !== null && respnseNumTokens.count) {
+      if (respnseNumTokens?.count) {
         const countCitizens = parseFloat(respnseNumTokens.count);
         response = { ...response, citizens: countCitizens };
       }
@@ -60,11 +54,8 @@ function useGetPortalStats() {
       if (lastgraphStatsLs !== null) {
         const oldData = JSON.parse(lastgraphStatsLs);
 
-        const timeChange =
-          Date.parse(data.timestamp) - Date.parse(oldData.timestamp);
-        const citizensAmount = new BigNumber(data.citizens)
-          .minus(oldData.citizens)
-          .toNumber();
+        const timeChange = Date.parse(data.timestamp) - Date.parse(oldData.timestamp);
+        const citizensAmount = new BigNumber(data.citizens).minus(oldData.citizens).toNumber();
         const procentClaimAmount = new BigNumber(data.procentClaim)
           .minus(oldData.procentClaim)
           .toNumber();

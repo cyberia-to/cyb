@@ -1,9 +1,7 @@
-import { IpfsNode, IPFSContent } from 'src/services/ipfs/types';
-import { asyncIterableBatchProcessor } from 'src/utils/async/iterable';
-
+import { LsResult } from 'ipfs-core-types/src/pin';
 import { mapParticleToEntity } from 'src/services/CozoDb/mapping';
-
-import { LsResult } from 'src/services/ipfs/types';
+import { IPFSContent, IpfsNode } from 'src/services/ipfs/types';
+import { asyncIterableBatchProcessor } from 'src/utils/async/iterable';
 
 import DbApi from '../../../DbApi/DbApi';
 
@@ -13,11 +11,7 @@ const fetchPins = async (node: IpfsNode) => {
     node.ls(),
     async (pinsBatch) => {
       // filter only root pins
-      pins.push(
-        ...pinsBatch.filter(
-          (p) => p.type === 'direct' || p.type === 'recursive'
-        )
-      );
+      pins.push(...pinsBatch.filter((p) => p.type === 'direct' || p.type === 'recursive'));
     },
     10
   );

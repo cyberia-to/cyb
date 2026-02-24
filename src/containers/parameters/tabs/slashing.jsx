@@ -13,10 +13,7 @@ function SlashingParam({ data }) {
         gridTemplateColumns="repeat(auto-fit, minmax(250px, 1fr))"
         gridGap="20px"
       >
-        <CardStatisics
-          title="signed blocks window"
-          value={parseFloat(data.signed_blocks_window)}
-        />
+        <CardStatisics title="signed blocks window" value={parseFloat(data.signed_blocks_window)} />
         <CardStatisics
           title="min signed per window"
           value={`${parseFloat(data.min_signed_per_window) * 100} %`}
@@ -38,12 +35,7 @@ function SlashingParam({ data }) {
   } catch (error) {
     console.warn('SlashingParam', error);
     return (
-      <Pane
-        justifyContent="center"
-        flexDirection="column"
-        alignItems="center"
-        display="flex"
-      >
+      <Pane justifyContent="center" flexDirection="column" alignItems="center" display="flex">
         <Vitalik />
         Error !
       </Pane>

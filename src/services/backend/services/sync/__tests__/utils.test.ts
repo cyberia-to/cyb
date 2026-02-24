@@ -1,8 +1,7 @@
 import { CID_TWEET } from 'src/constants/app';
-
-import { extractLinkData, changeParticleSyncStatus } from '../utils';
-import { extractCybelinksFromTransaction } from '../services/utils/links';
 import { CYBER_LINK_TRANSACTION_TYPE } from '../../indexer/types';
+import { extractCybelinksFromTransaction } from '../services/utils/links';
+import { changeParticleSyncStatus, extractLinkData } from '../utils';
 
 jest.mock('../../dataSource/blockchain/requests', () => ({
   fetchCyberlinksIterable: jest.fn(),
@@ -162,10 +161,7 @@ test('updateSyncState should return the expected result', () => {
     unreadCount: 5,
     timestampRead: 1641753000000,
   };
-  const result = changeParticleSyncStatus(
-    mockStatusEntity,
-    mockCyberlinks.cyberlinks
-  );
+  const result = changeParticleSyncStatus(mockStatusEntity, mockCyberlinks.cyberlinks);
   console.log(result);
 
   expect(result.lastId).toEqual('from_cid_1');

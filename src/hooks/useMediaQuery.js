@@ -36,7 +36,10 @@ function useMediaQuery(query) {
       }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
+  }, [
+    query, // Triggered at the first client-side load and if query changes
+    handleChange,
+  ]);
 
   return matches;
 }

@@ -1,18 +1,10 @@
-import { ContainerGradientText } from 'src/components';
 import { Link } from 'react-router-dom';
+import { ContainerGradientText } from 'src/components';
 import { ColorLamp } from 'src/components/containerGradient/ContainerGradient';
 import { ProgressCard } from '../components';
 import { BOOT_ICON } from '../utils';
 
-function InfoBaner({
-  title,
-  text,
-  status,
-}: {
-  title: string;
-  text: string;
-  status?: ColorLamp;
-}) {
+function InfoBaner({ title, text, status }: { title: string; text: string; status?: ColorLamp }) {
   return (
     <ContainerGradientText status={status}>
       <div
@@ -25,9 +17,7 @@ function InfoBaner({
         }}
       >
         <div style={{ color: '#36D6AE', fontSize: '22px' }}>{title}</div>
-        <div style={{ fontSize: '18px', color: '#fff', textAlign: 'center' }}>
-          {text}
-        </div>
+        <div style={{ fontSize: '18px', color: '#fff', textAlign: 'center' }}>{text}</div>
       </div>
     </ContainerGradientText>
   );

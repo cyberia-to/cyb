@@ -3,15 +3,15 @@ import { useQuery } from '@tanstack/react-query';
 import { generateText } from 'ai';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 import { Display } from 'src/components';
-import useAddToIPFS from 'src/features/ipfs/hooks/useAddToIPFS';
-import { routes } from 'src/routes';
 import TextMarkdown from 'src/components/TextMarkdown';
-import { useHover } from 'src/hooks/useHover';
 import Loader2 from 'src/components/ui/Loader2';
-import useGetIPFSHash from 'src/features/ipfs/hooks/useGetIPFSHash';
-import { isCID } from 'src/utils/ipfs/helpers';
-import { isDevEnv } from 'src/utils/dev';
 import AdviserHoverWrapper from 'src/features/adviser/AdviserHoverWrapper/AdviserHoverWrapper';
+import useAddToIPFS from 'src/features/ipfs/hooks/useAddToIPFS';
+import useGetIPFSHash from 'src/features/ipfs/hooks/useGetIPFSHash';
+import { useHover } from 'src/hooks/useHover';
+import { routes } from 'src/routes';
+import { isDevEnv } from 'src/utils/dev';
+import { isCID } from 'src/utils/ipfs/helpers';
 import { testVar } from '.';
 import styles from './LLMSpark.module.scss';
 
@@ -21,9 +21,7 @@ export const provider = createOpenRouter({
   ['a' + 'piK' + 'ey']: `sk-or-v1-${atob(testVar)}`,
 });
 
-export const modelName = isDevEnv()
-  ? 'meta-llama/llama-3-8b-instruct:free'
-  : 'openai/gpt-4o-mini';
+export const modelName = isDevEnv() ? 'meta-llama/llama-3-8b-instruct:free' : 'openai/gpt-4o-mini';
 
 const model = provider.chat(modelName);
 

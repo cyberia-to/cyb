@@ -1,5 +1,5 @@
-import Display from 'src/components/containerGradient/Display/Display';
 import { CreatedAt } from 'src/components';
+import Display from 'src/components/containerGradient/Display/Display';
 import { HistoriesItem } from '../../../../../features/ibc-history/HistoriesItem';
 import useGetStatus from '../../../../../features/ibc-history/useGetStatus';
 import { AmountSend, RouteAddress, Status, TypeTsx } from './DataHistoryItems';

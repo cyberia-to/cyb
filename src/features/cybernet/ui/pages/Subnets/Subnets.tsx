@@ -1,13 +1,12 @@
+import { Helmet } from 'react-helmet';
 import { Loading } from 'src/components';
 import Display from 'src/components/containerGradient/Display/Display';
 import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
-import SubnetsTable from './SubnetsTable/SubnetsTable';
-import styles from './Subnets.module.scss';
-import { Helmet } from 'react-helmet';
-import useCybernetTexts from '../../useCybernetTexts';
-import { useCybernet } from '../../cybernet.context';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
-import AdviserHoverWrapper from 'src/features/adviser/AdviserHoverWrapper/AdviserHoverWrapper';
+import { useCybernet } from '../../cybernet.context';
+import useCybernetTexts from '../../useCybernetTexts';
+import styles from './Subnets.module.scss';
+import SubnetsTable from './SubnetsTable/SubnetsTable';
 
 function Subnets() {
   const {

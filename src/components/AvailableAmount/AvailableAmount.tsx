@@ -1,8 +1,6 @@
 import { formatNumber } from 'src/utils/utils';
+import LinearGradientContainer, { Color } from '../LinearGradientContainer/LinearGradientContainer';
 import styles from './AvailableAmount.module.scss';
-import LinearGradientContainer, {
-  Color,
-} from '../LinearGradientContainer/LinearGradientContainer';
 
 type Props = {
   amountToken: number | string;

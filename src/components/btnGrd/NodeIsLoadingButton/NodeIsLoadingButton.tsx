@@ -1,8 +1,8 @@
+import { Link } from 'react-router-dom';
 import Tooltip from 'src/components/tooltip/tooltip';
-import Button from '..';
 import { Dots } from 'src/components/ui/Dots';
 import { routes } from 'src/routes';
-import { Link } from 'react-router-dom';
+import Button from '..';
 
 function NodeIsLoadingButton() {
   return (

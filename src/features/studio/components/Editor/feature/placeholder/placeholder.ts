@@ -1,11 +1,11 @@
-import { $ctx, $prose } from '@milkdown/kit/utils';
+import { findParent } from '@milkdown/kit/prose';
+import type { Node } from '@milkdown/kit/prose/model';
 import type { EditorState } from '@milkdown/kit/prose/state';
 import { Plugin, PluginKey } from '@milkdown/kit/prose/state';
-import type { Node } from '@milkdown/kit/prose/model';
 import { Decoration, DecorationSet } from '@milkdown/kit/prose/view';
-import { findParent } from '@milkdown/kit/prose';
-import type { DefineFeature } from '../shared';
+import { $ctx, $prose } from '@milkdown/kit/utils';
 import { isInCodeBlock, isInList } from '../../utils/utils';
+import type { DefineFeature } from '../shared';
 
 function isDocEmpty(doc: Node) {
   return doc.childCount <= 1 && !doc.firstChild?.content.size;
@@ -80,10 +80,7 @@ export const placeholderPlugin = $prose((ctx) => {
   });
 });
 
-export const defineFeature: DefineFeature<PlaceHolderFeatureConfig> = (
-  editor,
-  config
-) => {
+export const defineFeature: DefineFeature<PlaceHolderFeatureConfig> = (editor, config) => {
   editor
     .config((ctx) => {
       if (config) {

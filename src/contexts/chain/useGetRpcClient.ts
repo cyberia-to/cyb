@@ -1,8 +1,4 @@
-import {
-  cyber,
-  createRpcQueryHooks,
-  useRpcClient,
-} from '@cybercongress/cyber-ts';
+import { createRpcQueryHooks, cyber, useRpcClient } from '@cybercongress/cyber-ts';
 
 import { useQuery } from '@tanstack/react-query';
 import defaultNetworks from 'src/constants/defaultNetworks';

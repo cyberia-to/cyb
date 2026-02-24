@@ -1,34 +1,26 @@
-import { useEffect, useMemo, useRef } from 'react';
-import { Link, Outlet, matchPath, useLocation } from 'react-router-dom';
-
-import MainLayout from 'src/layouts/Main';
-import { initPocket } from 'src/redux/features/pocket';
-
-import { useBackend } from 'src/contexts/backend/backend';
-import { AdviserColors } from 'src/features/adviser/Adviser/Adviser';
-import { useAdviser } from 'src/features/adviser/context';
-import { getPassport } from 'src/features/passport/passports.redux';
-import { routes } from 'src/routes';
-
-import AdviserContainer from 'src/features/adviser/AdviserContainer';
-import useSenseManager from 'src/features/sense/ui/useSenseManager';
-import { useAppDispatch } from 'src/redux/hooks';
-import { initCyblog } from 'src/utils/logging/bootstrap';
-
-// eslint-disable-next-line unused-imports/no-unused-imports, @typescript-eslint/no-unused-vars
-
+import { useEffect, useRef } from 'react';
+import { Link, matchPath, Outlet, useLocation } from 'react-router-dom';
 import { MainContainer } from 'src/components';
-import NewVersionChecker from 'src/components/NewVersionChecker/NewVersionChecker';
 import SignerModal, {
   SignerModalRef,
 } from 'src/components/signer-modal/signer-modal';
+import { useBackend } from 'src/contexts/backend/backend';
 import { useDevice } from 'src/contexts/device';
 import { PreviousPageProvider } from 'src/contexts/previousPage';
-import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
+import { AdviserColors } from 'src/features/adviser/Adviser/Adviser';
+import { useAdviser } from 'src/features/adviser/context';
 import { cybernetRoutes } from 'src/features/cybernet/ui/routes';
+import { getPassport } from 'src/features/passport/passports.redux';
+import useSenseManager from 'src/features/sense/ui/useSenseManager';
 import { setTimeHistoryRoute } from 'src/features/TimeHistory/redux/TimeHistory.redux';
 import useCurrentAddress from 'src/hooks/useCurrentAddress';
+import MainLayout from 'src/layouts/Main';
+import { initPocket } from 'src/redux/features/pocket';
+import { useAppDispatch } from 'src/redux/hooks';
+import { routes } from 'src/routes';
 import { signerModalHandler } from 'src/services/signer/signer-modal-handler';
+import { initCyblog } from 'src/utils/logging/bootstrap';
+import AdviserContainer from '../../features/adviser/AdviserContainer';
 import { setFocus } from './Header/Commander/commander.redux';
 import { mobileAllowedRoutes } from './mobileAllowedRoutes';
 import styles from './styles.scss';
@@ -52,7 +44,7 @@ function App() {
 
   useEffect(() => {
     dispatch(initPocket());
-  }, []);
+  }, [dispatch]);
 
   useEffect(() => {
     if (signerModalRef?.current) {
@@ -79,28 +71,13 @@ function App() {
   //   }
   // }, [communityLoaded, community, dispatch]);
 
-  useAdviserTexts({
-    defaultText: useMemo(() => {
-      return (
-        <div>
-          There are network issues 😔, part of functionality is currently
-          disabled
-          <br />
-          <Link to={routes.social.path}>check socials</Link> for more info
-        </div>
-      );
-      // 'indexer is in sync now, some data may be not fully available'
-    }, []),
-  });
 
   useEffect(() => {
     // tabs
     if (
-      [cybernetRoutes.verse.path, routes.senate.routes.proposal.path].some(
-        (path) => {
-          return matchPath(path, location.pathname);
-        }
-      )
+      [cybernetRoutes.verse.path, routes.senate.routes.proposal.path].some((path) => {
+        return matchPath(path, location.pathname);
+      })
     ) {
       return;
     }
@@ -128,7 +105,7 @@ function App() {
 
       adviserContext.setIsOpen(true);
     }
-  }, [ipfsError, location.pathname]);
+  }, [ipfsError, location.pathname, adviserContext.setAdviser, adviserContext.setIsOpen]);
 
   // chekEvangelism = () => {
   //   const { location } = this.props;
@@ -160,26 +137,21 @@ function App() {
 
   return (
     <PreviousPageProvider>
-      <NewVersionChecker />
       <MainLayout>
-        <>
-          {/* not move portal order */}
-          {(location.pathname.includes('/brain') ||
-            location.pathname.includes('/oracle2') ||
-            location.pathname.includes('/graph')) && (
-            <div id={PORTAL_ID} className={styles.portal} />
-          )}
+        {/* not move portal order */}
+        {(location.pathname.includes('/brain') ||
+          location.pathname.includes('/oracle2') ||
+          location.pathname.includes('/graph')) && <div id={PORTAL_ID} className={styles.portal} />}
 
-          <AdviserContainer />
+        <AdviserContainer />
 
-          {isMobile && !mobileAllowed ? (
-            <MainContainer>
-              <UseDesktopVersionBlock />
-            </MainContainer>
-          ) : (
-            <Outlet />
-          )}
-        </>
+        {isMobile && !mobileAllowed ? (
+          <MainContainer>
+            <UseDesktopVersionBlock />
+          </MainContainer>
+        ) : (
+          <Outlet />
+        )}
       </MainLayout>
       <SignerModal ref={signerModalRef} />
     </PreviousPageProvider>

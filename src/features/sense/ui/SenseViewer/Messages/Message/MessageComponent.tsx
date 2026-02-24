@@ -1,5 +1,5 @@
-import { LLMMessage } from 'src/features/sense/redux/sense.redux';
 import { LLMAvatar } from 'src/containers/Search/LLMSpark/LLMSpark';
+import { LLMMessage } from 'src/features/sense/redux/sense.redux';
 import Message from './Message';
 
 interface Props {

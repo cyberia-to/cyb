@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Titile } from './components';
 import useGetCreator from 'src/containers/ipfs/hooks/useGetCreator';
+import { Titile } from './components';
 
 function Particle({ cid }) {
   const { creator } = useGetCreator(cid);

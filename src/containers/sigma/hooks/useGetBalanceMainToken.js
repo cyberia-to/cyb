@@ -1,4 +1,4 @@
-import { useGetBalance, initValueMainToken } from './utils';
+import { initValueMainToken, useGetBalance } from './utils';
 
 function useGetBalanceMainToken(address) {
   const addressActive = address?.bech32 || address;

@@ -1,9 +1,8 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import InfiniteScroll from 'react-infinite-scroll-component';
 import Spark from 'src/components/search/Spark/Spark';
-
-import { getRelevance, getRankGrade } from '../../utils/search/utils';
 import { Dots, Loading } from '../../components';
+import { getRankGrade, getRelevance } from '../../utils/search/utils';
 import { coinDecimals } from '../../utils/utils';
 import { MainContainer } from '../portal/components';
 
@@ -31,14 +30,7 @@ function Relevance({ items, fetchMoreData }) {
         refreshFunction={fetchMoreData}
       >
         {Object.keys(items).map((key) => {
-          return (
-            <Spark
-              cid={key}
-              key={key}
-              itemData={items[key]}
-              query="particles"
-            />
-          );
+          return <Spark cid={key} key={key} itemData={items[key]} query="particles" />;
         })}
       </InfiniteScroll>
     </div>
@@ -52,13 +44,8 @@ function Objects() {
   const [loading, setLoading] = useState(true);
   const [allPage, setAllPage] = useState(0);
 
-  useEffect(() => {
-    getFirstItem();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
   function processData(data) {
-    const links = data.result.reduce(
+    const links = (data.result || []).reduce(
       (obj, link) => ({
         ...obj,
         [link.particle]: {
@@ -83,8 +70,13 @@ function Objects() {
     setItems(links);
     setPage(page + 1);
     setLoading(false);
-    setAllPage(Math.ceil(parseFloat(data.pagination.total) / 50));
+    setAllPage(Math.ceil(parseFloat(data.pagination?.total || '0') / 50));
   };
+
+  useEffect(() => {
+    getFirstItem();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const fetchMoreData = async () => {
     // a fake async api call like which sends
@@ -118,12 +110,7 @@ function Objects() {
 
   return (
     <MainContainer width="90%">
-      <Relevance
-        items={items}
-        fetchMoreData={fetchMoreData}
-        page={page}
-        allPage={allPage}
-      />
+      <Relevance items={items} fetchMoreData={fetchMoreData} page={page} allPage={allPage} />
     </MainContainer>
   );
 }

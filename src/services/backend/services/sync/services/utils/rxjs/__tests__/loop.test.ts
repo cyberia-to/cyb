@@ -1,4 +1,4 @@
-import { Subscription, defer, from, of } from 'rxjs';
+import { defer, from, of, Subscription } from 'rxjs';
 import { createLoopObservable } from '../loop';
 
 describe('createLoopObservable', () => {
@@ -23,11 +23,10 @@ describe('createLoopObservable', () => {
 
     const actionObservable$ = defer(() => from(taskPromise));
 
-    const { loop$, restart } = createLoopObservable(
-      isInitialized$,
-      actionObservable$,
-      { onStartInterval: beforeCallback, intervalMs: 100 }
-    );
+    const { loop$, restart } = createLoopObservable(isInitialized$, actionObservable$, {
+      onStartInterval: beforeCallback,
+      intervalMs: 100,
+    });
 
     // restart
     setTimeout(() => restart(), 100);

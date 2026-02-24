@@ -19,11 +19,7 @@ function Tabs({ options, selected }: Props) {
     <div className={style.wrapper}>
       {options.map((item, index) => {
         const type =
-          index === 0
-            ? Position.Left
-            : index === options.length - 1
-            ? Position.Right
-            : undefined;
+          index === 0 ? Position.Left : index === options.length - 1 ? Position.Right : undefined;
 
         const isSelected = selected === item.key;
         return (

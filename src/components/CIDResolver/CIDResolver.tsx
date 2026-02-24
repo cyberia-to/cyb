@@ -1,6 +1,6 @@
+import useParticleDetails from 'src/features/particle/useParticleDetails';
 import { trimString } from 'src/utils/utils';
 import { Cid } from '../link/link';
-import useParticleDetails from 'src/features/particle/useParticleDetails';
 import { Dots } from '../ui/Dots';
 
 type Props = {

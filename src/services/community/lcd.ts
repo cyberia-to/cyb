@@ -26,13 +26,11 @@ export const getFollowsAsCid = async (
     },
   });
 
-  if (!response.txResponses.length) {
+  if (!response?.txResponses?.length) {
     return [];
   }
 
-  return response.txResponses.map(
-    (item) => item?.tx?.body?.messages[0].links[0].to
-  );
+  return response.txResponses.map((item) => item?.tx?.body?.messages[0].links[0].to);
 };
 
 // use src/services/transactions/lcd.tsx
@@ -61,7 +59,7 @@ export const getFollowers = async (
     },
   });
 
-  if (!response.txResponses.length) {
+  if (!response?.txResponses?.length) {
     return [];
   }
 

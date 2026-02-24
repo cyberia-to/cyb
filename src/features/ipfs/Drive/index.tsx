@@ -1,35 +1,20 @@
-import React, { useEffect, useState } from 'react';
-
+import { Pane } from '@cybercongress/gravity';
+import classNames from 'classnames';
+import { saveAs } from 'file-saver';
+import React, { useState } from 'react';
+import { Link } from 'react-router-dom';
+import { Button, Button as CybButton, Input, Select } from 'src/components';
+import Display from 'src/components/containerGradient/Display/Display';
+import { Colors } from 'src/components/containerGradient/types';
 import Table from 'src/components/Table/Table';
 
-import { toListOfObjects } from 'src/services/CozoDb/utils';
-import { saveAs } from 'file-saver';
-
-import { Pane, Text } from '@cybercongress/gravity';
-import {
-  Button,
-  Button as CybButton,
-  Dots,
-  Input,
-  Loading,
-  Select,
-} from 'src/components';
-import FileInputButton from './FileInputButton';
-import { useAppSelector } from 'src/redux/hooks';
-import Display from 'src/components/containerGradient/Display/Display';
-
 import { useBackend } from 'src/contexts/backend/backend';
-
-import { Link } from 'react-router-dom';
-import { Colors } from 'src/components/containerGradient/types';
-import classNames from 'classnames';
+import { useScripting } from 'src/contexts/scripting/scripting';
+import { toListOfObjects } from 'src/services/CozoDb/utils';
 import BackendStatus from './BackendStatus';
 import cozoPresets from './cozo_presets.json';
-
 import styles from './drive.scss';
-import { EmbeddinsDbEntity } from 'src/services/CozoDb/types/entities';
-import useEmbeddingApi from 'src/hooks/useEmbeddingApi';
-import { useScripting } from 'src/contexts/scripting/scripting';
+import FileInputButton from './FileInputButton';
 
 const DEFAULT_PRESET_NAME = '💡 defaul commands...';
 
@@ -45,14 +30,14 @@ const diffMs = (t0: number, t1: number) => `${(t1 - t0).toFixed(1)}ms`;
 
 function Drive() {
   const [queryText, setQueryText] = useState('');
-  const [isLoaded, setIsLoaded] = useState(true);
+  const [isLoaded, _setIsLoaded] = useState(true);
   const [inProgress, setInProgress] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
   const [searchEmbedding, setSearchEmbedding] = useState('');
   // const [summarizeCid, setSummarizeCid] = useState('');
-  const [outputText, setOutputText] = useState('');
+  const [outputText, _setOutputText] = useState('');
   // const [questionText, setQuestionText] = useState('');
-  const [embeddingsProcessStatus, setEmbeddingsProcessStatus] = useState('');
+  const [_embeddingsProcessStatus, _setEmbeddingsProcessStatus] = useState('');
 
   const [errorMessage, setErrorMessage] = useState<string | undefined>();
   const [queryResults, setQueryResults] = useState<{ rows: []; cols: [] }>();
@@ -77,12 +62,9 @@ function Drive() {
             const t1 = performance.now();
 
             try {
-              setStatusMessage(
-                `finished with ${result.rows.length} rows in ${diffMs(t0, t1)}`
-              );
+              setStatusMessage(`finished with ${result.rows.length} rows in ${diffMs(t0, t1)}`);
               if (!result.headers) {
-                result.headers =
-                  result.rows[0].map((_, i) => i.toString()) || [];
+                result.headers = result.rows[0].map((_, i) => i.toString()) || [];
               }
               const rows = toListOfObjects(result);
               const cols = result.headers.map((n) => ({
@@ -93,11 +75,7 @@ function Drive() {
                   const value = item.getValue();
                   if (['cid'].indexOf(n) > -1) {
                     return (
-                      <a
-                        href={`/ipfs/${value}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
+                      <a href={`/ipfs/${value}`} target="_blank" rel="noopener noreferrer">
                         {`${value.slice(0, 10)}...${value.slice(-10)}`}
                       </a>
                     );
@@ -143,11 +121,7 @@ function Drive() {
   }
 
   const exportReations = async () => {
-    const result = await cozoDbRemote!.exportRelations([
-      'pin',
-      'particle',
-      'link',
-    ]);
+    const result = await cozoDbRemote!.exportRelations(['pin', 'particle', 'link']);
     console.log('---export data', result);
     try {
       const blob = new Blob([JSON.stringify(result.data)], {
@@ -247,8 +221,8 @@ function Drive() {
       <div className={styles.main}>
         <Display color={Colors.ORANGE}>
           <p>
-            this is tech preview of cyb brain. it does not adds any new
-            functionality across the app, yet
+            this is tech preview of cyb brain. it does not adds any new functionality across the
+            app, yet
           </p>
           <p>features:</p>
           <div>- log you links while you surf</div>
@@ -257,18 +231,16 @@ function Drive() {
             - sync your <Link to="/search/ipfs">ipfs</Link> pins
           </div>
           <div>
-            - import your transactions and cybergraph from{' '}
-            <Link to="/search/bostrom">bostrom</Link>
+            - import your transactions and cybergraph from <Link to="/search/bostrom">bostrom</Link>
           </div>
           <div>
             - query using ai oriented{' '}
-            <a href="https://www.cozodb.org/" target="_blank">
+            <a href="https://www.cozodb.org/" target="_blank" rel="noopener">
               datalog
             </a>
           </div>
           <p>
-            link your feedback{' '}
-            <Link to="/search/brain%20feedback">brain feedback</Link>
+            link your feedback <Link to="/search/brain%20feedback">brain feedback</Link>
           </p>
         </Display>
         <BackendStatus />
@@ -323,11 +295,7 @@ function Drive() {
           />
           <div className={styles.commandPanel}>
             <div className={styles.subPanel}>
-              <CybButton
-                disabled={!isLoaded || inProgress}
-                onClick={() => runQuery()}
-                small
-              >
+              <CybButton disabled={!isLoaded || inProgress} onClick={() => runQuery()} small>
                 {isLoaded
                   ? inProgress
                     ? 'Query is running'
@@ -345,11 +313,7 @@ function Drive() {
               />
             </div>
             <div className={styles.subPanel}>
-              <CybButton
-                disabled={!isLoaded || !isReady}
-                onClick={exportReations}
-                small
-              >
+              <CybButton disabled={!isLoaded || !isReady} onClick={exportReations} small>
                 export
               </CybButton>
               <FileInputButton caption="import" processFile={importReations} />

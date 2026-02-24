@@ -1,9 +1,9 @@
-import SearchResults from '../Search/SearchResults';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { useBackend } from 'src/contexts/backend/backend';
 import { getIpfsHash } from 'src/utils/ipfs/helpers';
 import { encodeSlash } from '../../utils/utils';
-import { useState, useEffect } from 'react';
+import SearchResults from '../Search/SearchResults';
 
 function ProposalsDetailTableComments() {
   const { proposalId } = useParams();
@@ -31,11 +31,7 @@ function ProposalsDetailTableComments() {
 
   return (
     <div style={{ marginTop: '20px' }}>
-      <SearchResults
-        query={processedQuery}
-        noCommentText={noComments}
-        actionBarTextBtn="Comment"
-      />
+      <SearchResults query={processedQuery} noCommentText={noComments} actionBarTextBtn="Comment" />
     </div>
   );
 }

@@ -1,9 +1,9 @@
 import { Pane } from '@cybercongress/gravity';
-import { $TsFixMeFunc } from 'src/types/tsfix';
 import { ObjKeyValue } from 'src/types/data';
+import { $TsFixMeFunc } from 'src/types/tsfix';
+import { DenomArr, OptionSelect } from '../../../components';
 import BalanceToken from './balanceToken';
 import Select from './Select';
-import { DenomArr, OptionSelect } from '../../../components';
 
 type TokenSetterProps = {
   accountBalances: ObjKeyValue | null;
@@ -15,11 +15,7 @@ type TokenSetterProps = {
   textLeft?: string;
 };
 
-const renderOptions = (
-  data: ObjKeyValue,
-  selected: string,
-  valueSelect: string
-) => {
+const renderOptions = (data: ObjKeyValue, selected: string, valueSelect: string) => {
   return Object.keys(data)
     .filter((item) => item !== selected && item !== valueSelect)
     .map((key) => (

@@ -1,14 +1,13 @@
 import {
-  PATTERN_CYBER,
   PATTERN_COSMOS,
-  PATTERN_SPACE_PUSSY,
+  PATTERN_CYBER,
   PATTERN_ETH,
+  PATTERN_SPACE_PUSSY,
 } from 'src/constants/patterns';
-
-import styles from './styles.scss';
+import imgSpacePussy from '../../../../image/space-pussy.svg';
 
 import { GIFT_ICON } from '../../utils';
-import imgSpacePussy from '../../../../image/space-pussy.svg';
+import styles from './styles.scss';
 
 const classNames = require('classnames');
 
@@ -94,12 +93,7 @@ function ParseAddressesImg({ address, active, statusAddressGift, ...props }) {
       )}
       {active && (
         <>
-          <div
-            className={classNames(
-              styles.textboxFace,
-              styles.textboxBottomGradient
-            )}
-          />
+          <div className={classNames(styles.textboxFace, styles.textboxBottomGradient)} />
           <div className={classNames(styles.textboxBottomLine)} />
         </>
       )}

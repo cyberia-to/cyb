@@ -19,8 +19,6 @@ export class ProgressTracker {
 
   private estimatedTime = -1;
 
-  private batchSize = 1;
-
   private onProgressUpdate?: onProgressUpdateFunc;
 
   public get progress(): ProgressTracking {
@@ -62,12 +60,11 @@ export class ProgressTracker {
       const averageTimePerItem = this.calculateAverageTimePerItem();
       const remainingRequests = this.totalRequests - this.completedRequests;
       const estimatedRemainingItems = remainingRequests * processedCount; // Assuming remaining requests will process the same number of items
-      const estimatedRemainingTime =
-        averageTimePerItem * estimatedRemainingItems;
+      const estimatedRemainingTime = averageTimePerItem * estimatedRemainingItems;
 
       this.completedRequests += processedCount;
       this.estimatedTime = Math.round(estimatedRemainingTime); // Convert to seconds;
-      this.onProgressUpdate && this.onProgressUpdate(this.progress);
+      this.onProgressUpdate?.(this.progress);
     }
 
     return this.progress;
@@ -82,8 +79,7 @@ export class ProgressTracker {
     let totalItems = 0;
 
     for (let i = 1; i < this.requestRecords.length; i++) {
-      const timeDiff =
-        this.requestRecords[i].timestamp - this.requestRecords[i - 1].timestamp;
+      const timeDiff = this.requestRecords[i].timestamp - this.requestRecords[i - 1].timestamp;
       const { itemCount } = this.requestRecords[i];
 
       totalDiff += timeDiff * itemCount;

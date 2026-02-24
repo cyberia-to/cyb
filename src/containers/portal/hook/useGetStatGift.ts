@@ -1,7 +1,7 @@
+import BigNumber from 'bignumber.js';
 import { useEffect, useState } from 'react';
 import { useQueryClient } from 'src/contexts/queryClient';
-import BigNumber from 'bignumber.js';
-import { getConfigGift, getStateGift, AMOUNT_ALL_STAGE } from '../utils';
+import { AMOUNT_ALL_STAGE, getConfigGift, getStateGift } from '../utils';
 
 const initStateBonus = {
   up: 0,
@@ -31,8 +31,7 @@ function useGetStatGift() {
           const queryResponseResultState = await getStateGift(queryClient);
 
           const validResponse =
-            queryResponseResultState !== null &&
-            queryResponseResultConfig !== null;
+            queryResponseResultState !== null && queryResponseResultConfig !== null;
 
           if (validResponse) {
             const {
@@ -60,9 +59,7 @@ function useGetStatGift() {
                 .toNumber();
 
               setCurrentStage(
-                currentStageTemp > AMOUNT_ALL_STAGE
-                  ? AMOUNT_ALL_STAGE
-                  : currentStageTemp
+                currentStageTemp > AMOUNT_ALL_STAGE ? AMOUNT_ALL_STAGE : currentStageTemp
               );
 
               const curentProgressClaim = new BigNumber(claims)

@@ -30,15 +30,8 @@ A cross-platform `Makefile` is provided. Run `make help` for all commands.
 ## Quick start
 
 ```sh
-make setup    # install Node.js deps + Rust toolchain
-make dev      # web dev server at https://localhost:3001
-```
-
-## Web (browser)
-
-```sh
-make dev          # development server
-make build-web    # production build → build/
+$ deno install
+$ deno task start
 ```
 
 ## Tauri desktop (native)
@@ -49,67 +42,11 @@ make macos        # macOS .dmg  (Apple Silicon)
 make linux        # Linux .deb + .AppImage
 ```
 
-For devtools on a production build:
-
-```sh
-npx @tauri-apps/cli build --debug
-```
-
 ## Mobile
 
 ```sh
 make ios          # iOS .ipa  (requires macOS + Xcode)
 make android      # Android .apk (aarch64)
-```
-
-Install to a connected device:
-
-```sh
-make install-ios
-make install-android
-```
-
-## WASM mining module
-
-Rebuild the uhash-web WASM from the [universal-hash](https://github.com/cyberia-to/universal-hash) workspace (must be cloned at `../universal-hash`):
-
-```sh
-make wasm
-```
-
-## App icons
-
-Generate all Tauri app icons (macOS .icns, Windows .ico, PNGs) from an SVG:
-
-```sh
-make icons                                        # default: robot.svg on #1a1a2e
-make icons ICON_SVG=src/image/other.svg            # custom SVG
-make icons ICON_SVG=path/to/logo.svg ICON_BG=000000  # custom background
-```
-
-## Full setup (all platforms)
-
-```sh
-make setup-all    # Node, Rust, Java, Android SDK, iOS (Xcode), Linux libs
-```
-
-### Platform-specific setup
-
-| Command | What it does |
-|---------|-------------|
-| `make setup-node` | Install Node.js + Yarn + dependencies |
-| `make setup-rust` | Install Rust toolchain + wasm-bindgen |
-| `make setup-java` | Install Java 17 (Homebrew / apt) |
-| `make setup-android` | Install Android SDK + NDK + debug keystore |
-| `make setup-ios` | Verify Xcode is installed |
-| `make setup-linux` | Install WebKitGTK + Tauri Linux deps |
-
-## Quality
-
-```sh
-make test     # run tests
-make lint     # run ESLint
-make clean    # remove build artifacts
 ```
 
 # join

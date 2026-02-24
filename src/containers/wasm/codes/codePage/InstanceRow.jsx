@@ -62,9 +62,7 @@ function InstanceRow({ position, address }) {
           <div style={styleLable}>{contract.label}</div>
         </td>
         <td>
-          <Link to={`/contracts/${contract.address}`}>
-            {trimString(contract.address, 10, 6)}
-          </Link>
+          <Link to={`/contracts/${contract.address}`}>{trimString(contract.address, 10, 6)}</Link>
         </td>
         <td>
           <Account address={contract.creator} />

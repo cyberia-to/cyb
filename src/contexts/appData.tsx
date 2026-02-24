@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useMemo, useState } from 'react';
+import React, { useContext, useEffect, useMemo, useRef, useState } from 'react';
 import useQueryContract from 'src/hooks/contract/useQueryContract';
 import useGetMarketData from 'src/hooks/useGetMarketData';
 import useConvertMarketData from 'src/hooks/warp/useConvertMarketData';
@@ -26,8 +26,7 @@ const valueContext = {
 export const FILTERING_CONTRACT =
   'bostrom1p8drdvmwygrreesp4e425q6xs77zkcsj7z7h9as7sketuv5w334slsxv7l';
 
-const DataProviderContext =
-  React.createContext<DataProviderContextType>(valueContext);
+const DataProviderContext = React.createContext<DataProviderContextType>(valueContext);
 
 export function useAppData() {
   return useContext(DataProviderContext);
@@ -43,11 +42,14 @@ function DataProvider({ children }: { children: React.ReactNode }) {
     particles: {},
   });
 
-  const filterParticles = filterContractQuery?.data?.map((item) => item[1]);
+  const filterParticlesRaw = filterContractQuery?.data?.map((item) => item[1]);
+  const filterParticlesRef = useRef<string[]>([]);
+  if (filterParticlesRaw && JSON.stringify(filterParticlesRaw) !== JSON.stringify(filterParticlesRef.current)) {
+    filterParticlesRef.current = filterParticlesRaw;
+  }
+  const filterParticles = filterParticlesRef.current;
 
-  const resultMarketData = Object.keys(convertMarketData).length
-    ? convertMarketData
-    : marketData;
+  const resultMarketData = Object.keys(convertMarketData).length ? convertMarketData : marketData;
 
   useEffect(() => {
     if (!cyber?.connected) {
@@ -89,16 +91,12 @@ function DataProvider({ children }: { children: React.ReactNode }) {
       marketData: resultMarketData,
       dataTotalSupply: dataTotal,
       block: blockHeight,
-      filterParticles: filterParticles || [],
+      filterParticles,
     }),
     [resultMarketData, dataTotal, blockHeight, filterParticles]
   );
 
-  return (
-    <DataProviderContext.Provider value={valueMemo}>
-      {children}
-    </DataProviderContext.Provider>
-  );
+  return <DataProviderContext.Provider value={valueMemo}>{children}</DataProviderContext.Provider>;
 }
 
 export default DataProvider;

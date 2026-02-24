@@ -1,8 +1,7 @@
-import { NeuronAddress } from 'src/types/base';
+import { findLastIndex } from 'lodash';
 import { LinkDto, SyncStatusDto } from 'src/services/CozoDb/types/dto';
 import { EntryType } from 'src/services/CozoDb/types/entities';
-
-import { findLastIndex } from 'lodash';
+import { NeuronAddress } from 'src/types/base';
 import { entityToDto } from 'src/utils/dto';
 
 import { SenseItemLinkMeta } from '../../types/sense';
@@ -14,21 +13,15 @@ export function getLastReadInfo(
   prevTimestampRead = 0,
   prevUnreadCount = 0
 ) {
-  const lastUnreadLinks = links.filter(
-    (link) => link.timestamp > prevTimestampRead
-  );
-  const lastMyLinkIndex = findLastIndex(
-    lastUnreadLinks,
-    (link) => link.neuron === ownerId
-  );
+  const lastUnreadLinks = links.filter((link) => link.timestamp > prevTimestampRead);
+  const lastMyLinkIndex = findLastIndex(lastUnreadLinks, (link) => link.neuron === ownerId);
 
   const unreadCount =
     lastMyLinkIndex < 0
       ? prevUnreadCount + lastUnreadLinks.length
       : lastUnreadLinks.length - lastMyLinkIndex - 1;
 
-  const timestampRead =
-    lastMyLinkIndex < 0 ? prevTimestampRead : links[lastMyLinkIndex].timestamp;
+  const timestampRead = lastMyLinkIndex < 0 ? prevTimestampRead : links[lastMyLinkIndex].timestamp;
 
   return {
     timestampRead,
@@ -62,9 +55,7 @@ export function changeParticleSyncStatus(
       timestamp: timestampUpdate,
     } as SenseItemLinkMeta,
     timestampRead,
-    timestampUpdate: shouldUpdateTimestamp
-      ? timestampUpdate
-      : syncStatus.timestampUpdate,
+    timestampUpdate: shouldUpdateTimestamp ? timestampUpdate : syncStatus.timestampUpdate,
   } as SyncStatusDto;
 }
 
@@ -76,5 +67,4 @@ const mapSyncEntryReadable: Record<SyncEntryName, string> = {
   pin: 'ipfs pins',
 };
 
-export const syncEntryNameToReadable = (name: SyncEntryName) =>
-  mapSyncEntryReadable[name] || name;
+export const syncEntryNameToReadable = (name: SyncEntryName) => mapSyncEntryReadable[name] || name;

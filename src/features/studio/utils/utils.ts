@@ -1,5 +1,5 @@
-import { CyberLinkSimple } from 'src/types/base';
 import { getTransactions } from 'src/services/transactions/lcd';
+import { CyberLinkSimple } from 'src/types/base';
 import { KeywordsItem } from '../studio.context';
 
 export const checkLoopLinks = async (links: CyberLinkSimple[]) => {
@@ -46,10 +46,7 @@ export const mapLinks = (
   ];
 };
 
-export const reduceLoopKeywords = (
-  loopLink: CyberLinkSimple[],
-  keywords: KeywordsItem[]
-) => {
+export const reduceLoopKeywords = (loopLink: CyberLinkSimple[], keywords: KeywordsItem[]) => {
   const keywordsArr: string[] = [];
 
   loopLink.forEach((itemLink) => {

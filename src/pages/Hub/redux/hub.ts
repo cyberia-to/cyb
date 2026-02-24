@@ -1,8 +1,8 @@
-import { PayloadAction, createSlice } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { Option } from 'src/types';
-import { NetworkList, ChannelList, TokenList } from 'src/types/hub';
+import { ChannelList, NetworkList, TokenList } from 'src/types/hub';
 
-const enum Hub {
+enum Hub {
   channels = 'channels',
   tokens = 'tokens',
   networks = 'networks',

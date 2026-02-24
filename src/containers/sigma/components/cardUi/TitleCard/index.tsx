@@ -1,10 +1,10 @@
-import { DenomArr } from 'src/components';
-import { getTypeFromAddress } from 'src/utils/address';
-import { Networks } from 'src/types/networks';
 import cx from 'classnames';
-import TokenChange from 'src/components/TokenChange/TokenChange';
-import MusicalAddress from 'src/components/MusicalAddress/MusicalAddress';
+import { DenomArr } from 'src/components';
 import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
+import MusicalAddress from 'src/components/MusicalAddress/MusicalAddress';
+import TokenChange from 'src/components/TokenChange/TokenChange';
+import { Networks } from 'src/types/networks';
+import { getTypeFromAddress } from 'src/utils/address';
 import styles from './TitleCard.module.scss';
 
 interface Props {
@@ -45,11 +45,7 @@ function TitleCard({ address, totalLiquid, selectAddress, selected }: Props) {
           <div className={styles.address}>
             <MusicalAddress
               address={address}
-              disabled={
-                ![Networks.BOSTROM, Networks.SPACE_PUSSY].includes(
-                  addressNetwork
-                )
-              }
+              disabled={![Networks.BOSTROM, Networks.SPACE_PUSSY].includes(addressNetwork)}
             />
           </div>
         }

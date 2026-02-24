@@ -1,20 +1,19 @@
-import { useEffect, useState } from 'react';
 import { GasPrice } from '@cosmjs/launchpad';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import JSONInput from 'react-json-editor-ajrm';
+import { Link } from 'react-router-dom';
+import { Input } from 'src/components';
+import Button from 'src/components/btnGrd';
+import { BASE_DENOM } from 'src/constants/config';
 import { useSigningClient } from 'src/contexts/signerClient';
-import txs from '../../../utils/txs';
-import { jsonInputStyle, FlexWrapCantainer } from '../ui/ui';
+import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 import { trimString } from '../../../utils/utils';
-import styles from './stylesInstantiationContract.scss';
 import { CardItem } from '../codes/code';
+import { FlexWrapCantainer, jsonInputStyle } from '../ui/ui';
 import RenderInstantiateMsg from './RenderInstantiateMsg';
 import SelectFile from './renderAbi/SelectFile';
 import useParseJsonSchema from './renderAbi/useParseJsonSchema';
-import Button from 'src/components/btnGrd';
-import { Input } from 'src/components';
-import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
-import { BASE_DENOM } from 'src/constants/config';
+import styles from './stylesInstantiationContract.scss';
 
 const executePlaceholder = {
   name: 'Nation coin',
@@ -33,14 +32,12 @@ const executePlaceholder = {
 };
 
 const coinsPlaceholder = [{ denom: BASE_DENOM, amount: '1' }];
-const gasPrice = GasPrice.fromString('0.001boot');
+const _gasPrice = GasPrice.fromString('0.001boot');
 
 export function JSONInputCard({ title, placeholder, setState, height }) {
   return (
     <div className={styles.containerJsonContractJSONInput}>
-      <span className={styles.containerJsonContractJSONInputTitle}>
-        {title}:
-      </span>
+      <span className={styles.containerJsonContractJSONInputTitle}>{title}:</span>
       <JSONInput
         width="100%"
         height={height || '200px'}
@@ -138,10 +135,7 @@ function InstantiationContract({ codeId, updateFnc }) {
     if (label.length) {
       content = (
         <div>
-          <SelectFile
-            text="Upload instantiate schema"
-            stateCallback={setFileAbiExecute}
-          />
+          <SelectFile text="Upload instantiate schema" stateCallback={setFileAbiExecute} />
         </div>
       );
     }
@@ -175,17 +169,11 @@ function InstantiationContract({ codeId, updateFnc }) {
       <div className={styles.containerJsonContractInputContainer}>
         <div className={styles.containerJsonContractInputContainerItem}>
           <span>Label *</span>
-          <Input
-            value={label}
-            onChange={(event) => setLabel(event.target.value)}
-          />
+          <Input value={label} onChange={(event) => setLabel(event.target.value)} />
         </div>
         <div className={styles.containerJsonContractInputContainerItem}>
           <span>Memo</span>
-          <Input
-            value={memo}
-            onChange={(event) => setMemo(event.target.value)}
-          />
+          <Input value={memo} onChange={(event) => setMemo(event.target.value)} />
         </div>
       </div>
 
@@ -212,9 +200,7 @@ function InstantiationContract({ codeId, updateFnc }) {
           <CardItem
             title="Tx"
             value={
-              <Link
-                to={`/network/bostrom/tx/${executeResponse.result.transactionHash}`}
-              >
+              <Link to={`/network/bostrom/tx/${executeResponse.result.transactionHash}`}>
                 {trimString(executeResponse.result.transactionHash, 8, 8)}
               </Link>
             }
@@ -223,9 +209,7 @@ function InstantiationContract({ codeId, updateFnc }) {
       )}
 
       {content && (
-        <FlexWrapCantainer style={{ flexDirection: 'column' }}>
-          {content}
-        </FlexWrapCantainer>
+        <FlexWrapCantainer style={{ flexDirection: 'column' }}>{content}</FlexWrapCantainer>
       )}
 
       {error && (

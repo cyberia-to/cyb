@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
-import { CreatorCyberLink } from 'src/types/cyberLink';
-import { Option } from 'src/types';
 import { getTransactions } from 'src/services/transactions/lcd';
+import { Option } from 'src/types';
+import { CreatorCyberLink } from 'src/types/cyberLink';
 
 // TODO: refactor this
 const getCreator = async (cid) => {

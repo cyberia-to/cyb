@@ -1,7 +1,7 @@
-import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
-import BigNumber from 'bignumber.js';
 import { coin } from '@cosmjs/launchpad';
 import { CyberClient } from '@cybercongress/cyber-js';
+import BigNumber from 'bignumber.js';
+import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 import { CONTRACT_ADDRESS_GIFT } from './utils';
 
 const LENGTH_INVESTMINT = 1041;
@@ -35,25 +35,16 @@ const mssgsClaim = async (
     return msgsBroadcast;
   }
 
-  const resultConstructorMintSwap = await constructorMintSwap(
-    soft3js,
-    amountStake
-  );
+  const resultConstructorMintSwap = await constructorMintSwap(soft3js, amountStake);
 
   msgsBroadcast.push(...resultConstructorMintSwap);
 
   return msgsBroadcast;
 };
 
-const constructorMintSwap = async (
-  soft3js: Soft3MessageFactory,
-  amountStake: BigNumber
-) => {
+const constructorMintSwap = async (soft3js: Soft3MessageFactory, amountStake: BigNumber) => {
   const msgsBroadcast = [];
-  const halfAmountStake = amountStake
-    .dividedBy(2)
-    .dp(0, BigNumber.ROUND_FLOOR)
-    .toString();
+  const halfAmountStake = amountStake.dividedBy(2).dp(0, BigNumber.ROUND_FLOOR).toString();
 
   const resultMintA = await soft3js.investmint(
     coin(halfAmountStake, Soft3MessageFactory.liquidDenom()),
@@ -65,11 +56,7 @@ const constructorMintSwap = async (
     msgsBroadcast.push(resultMintA);
   } else {
     const offerCoin = coin(halfAmountStake, Soft3MessageFactory.liquidDenom());
-    const resultSwapMsg = await soft3js.swap(
-      POOL_ID_H_A,
-      offerCoin,
-      'milliampere'
-    );
+    const resultSwapMsg = await soft3js.swap(POOL_ID_H_A, offerCoin, 'milliampere');
     msgsBroadcast.push(resultSwapMsg);
   }
 
@@ -83,11 +70,7 @@ const constructorMintSwap = async (
     msgsBroadcast.push(resultMintV);
   } else {
     const offerCoin = coin(halfAmountStake, Soft3MessageFactory.liquidDenom());
-    const resultSwapMsg = await soft3js.swap(
-      POOL_ID_H_V,
-      offerCoin,
-      'millivolt'
-    );
+    const resultSwapMsg = await soft3js.swap(POOL_ID_H_V, offerCoin, 'millivolt');
     msgsBroadcast.push(resultSwapMsg);
   }
 

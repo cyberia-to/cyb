@@ -1,18 +1,18 @@
 import { useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
-import { routes } from 'src/routes';
+import SubMenu from 'src/components/appMenu/SubMenu/SubMenu';
 import { CHAIN_ID } from 'src/constants/config';
-import { useAppSelector } from 'src/redux/hooks';
 import usePassportByAddress from 'src/features/passport/hooks/usePassportByAddress';
 import { selectCurrentAddress } from 'src/redux/features/pocket';
-import SubMenu from 'src/components/appMenu/SubMenu/SubMenu';
+import { useAppSelector } from 'src/redux/hooks';
+import { routes } from 'src/routes';
 import useMediaQuery from '../../../../hooks/useMediaQuery';
-import styles from './CurrentApp.module.scss';
 import { selectNetworkImg } from '../../../../utils/utils';
-import ChainInfo from './ui/ChainInfo/ChainInfo';
-import findSelectAppByUrl from './utils/findSelectAppByUrl';
+import styles from './CurrentApp.module.scss';
 import AppSideBar from './ui/AppSideBar/AppSideBar';
+import ChainInfo from './ui/ChainInfo/ChainInfo';
 import { menuButtonId } from './utils/const';
+import findSelectAppByUrl from './utils/findSelectAppByUrl';
 
 function CurrentApp() {
   const mediaQuery = useMediaQuery('(min-width: 768px)');
@@ -35,7 +35,7 @@ function CurrentApp() {
     toggleMenu(false);
   };
 
-  const toggleMenuFc = useMemo(() => () => toggleMenu(!openMenu), [openMenu]);
+  const toggleMenuFc = useMemo(() => () => toggleMenu(!openMenu), [openMenu, toggleMenu]);
 
   return (
     <>
@@ -54,7 +54,7 @@ function CurrentApp() {
         {mediaQuery && <ChainInfo />}
       </div>
 
-      {getRoute && getRoute[0] && (
+      {getRoute?.[0] && (
         <AppSideBar
           menuProps={{
             isOpen: mediaQuery || openMenu,

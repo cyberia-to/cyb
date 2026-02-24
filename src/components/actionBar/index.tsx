@@ -1,6 +1,4 @@
 import React from 'react';
-import { $TsFixMeFunc } from 'src/types/tsfix';
-
 import { useLocation } from 'react-router-dom';
 import { CHAIN_ID } from 'src/constants/config';
 import { useDevice } from 'src/contexts/device';
@@ -10,6 +8,7 @@ import { selectCurrentAddress } from 'src/redux/features/pocket';
 import { useAppSelector } from 'src/redux/hooks';
 import { routes } from 'src/routes';
 import { Networks } from 'src/types/networks';
+import { $TsFixMeFunc } from 'src/types/tsfix';
 import { trimString } from 'src/utils/utils';
 import Button from '../btnGrd';
 import ButtonIcon from '../buttons/ButtonIcon';
@@ -68,10 +67,7 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
   if (commander.isFocused) {
     return (
       <ActionBarContainer>
-        <Button
-          link={routes.search.getLink(commander.value)}
-          disabled={!commander.value.length}
-        >
+        <Button link={routes.search.getLink(commander.value)} disabled={!commander.value.length}>
           Ask
         </Button>
       </ActionBarContainer>
@@ -113,8 +109,7 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
     }
 
     const activeAddress =
-      defaultAccount.account?.cyber.name ||
-      trimString(defaultAccount.account?.cyber.bech32, 10, 4);
+      defaultAccount.account?.cyber.name || trimString(defaultAccount.account?.cyber.bech32, 10, 4);
 
     return (
       <ActionBarContainer>

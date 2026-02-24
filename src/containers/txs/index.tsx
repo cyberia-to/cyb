@@ -1,14 +1,12 @@
-import { v4 as uuidv4 } from 'uuid';
 import { Pane, TableEv as Table } from '@cybercongress/gravity';
 import { Link } from 'react-router-dom';
-import { useTransactionsSubscription } from 'src/generated/graphql';
-
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
-import { trimString, formatNumber } from '../../utils/utils';
+import { useTransactionsSubscription } from 'src/generated/graphql';
+import { v4 as uuidv4 } from 'uuid';
 import { Loading, MainContainer, MsgType, TextTable } from '../../components';
-
 import statusTrueImg from '../../image/ionicons_svg_ios-checkmark-circle.svg';
 import statusFalseImg from '../../image/ionicons_svg_ios-close-circle.svg';
+import { formatNumber, trimString } from '../../utils/utils';
 
 function Txs() {
   const { loading, error, data } = useTransactionsSubscription();
@@ -40,9 +38,7 @@ function Txs() {
         </Table.TextCell>
         <Table.TextCell textAlign="center">
           <TextTable>
-            <Link to={`/network/bostrom/tx/${item.hash}`}>
-              {trimString(item.hash, 6, 6)}
-            </Link>
+            <Link to={`/network/bostrom/tx/${item.hash}`}>{trimString(item.hash, 6, 6)}</Link>
           </TextTable>
         </Table.TextCell>
         <Table.TextCell flex={1.3} textAlign="center">
@@ -54,12 +50,10 @@ function Txs() {
             {item.messages.length > 4 ? (
               <Pane display="flex" alignItems="center">
                 <MsgType key={uuidv4()} type={item.messages[0]['@type']} />
-                <div style={{ marginLeft: '5px' }}>
-                  ({item.messages.length} messages)
-                </div>
+                <div style={{ marginLeft: '5px' }}>({item.messages.length} messages)</div>
               </Pane>
             ) : (
-              item.messages.map((items, i) => {
+              item.messages.map((items, _i) => {
                 const key = uuidv4();
                 return <MsgType key={key} type={items['@type']} />;
               })

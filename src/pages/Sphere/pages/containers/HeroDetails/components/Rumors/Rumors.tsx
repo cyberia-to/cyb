@@ -1,7 +1,6 @@
-import { useMessagesByAddressQuery } from 'src/generated/graphql';
 import { useState } from 'react';
-
 import TableTxsInfinite from 'src/components/TableTxsInfinite/TableTxsInfinite';
+import { useMessagesByAddressQuery } from 'src/generated/graphql';
 
 const LIMIT = 10;
 

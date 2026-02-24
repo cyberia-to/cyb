@@ -1,13 +1,10 @@
 import BigNumber from 'bignumber.js';
 import { useEffect, useState } from 'react';
-import { useIbcDenom } from 'src/contexts/ibcDenom';
-import { useAppData } from 'src/contexts/appData';
-import {
-  getDisplayAmount,
-} from '../../../utils/utils';
 import { BASE_DENOM } from 'src/constants/config';
+import { useAppData } from 'src/contexts/appData';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
 import { ibcDenomAtom } from 'src/pages/teleport/bridge/bridge';
-
+import { getDisplayAmount } from '../../../utils/utils';
 
 function useGetTotalCap() {
   const { marketData, dataTotalSupply } = useAppData();
@@ -23,16 +20,13 @@ function useGetTotalCap() {
   });
 
   useEffect(() => {
-    if (
-      Object.keys(dataTotalSupply).length > 0 &&
-      Object.keys(marketData).length > 0
-    ) {
+    if (Object.keys(dataTotalSupply).length > 0 && Object.keys(marketData).length > 0) {
       let cap = 0;
       Object.keys(dataTotalSupply).forEach((key) => {
         const amount = dataTotalSupply[key];
         const [{ coinDecimals }] = tracesDenom(key);
         const reduceAmount = getDisplayAmount(amount, coinDecimals);
-        if (Object.prototype.hasOwnProperty.call(marketData, key)) {
+        if (Object.hasOwn(marketData, key)) {
           const poolPrice = new BigNumber(marketData[key]);
           const tempCap = poolPrice
             .multipliedBy(Number(reduceAmount))
@@ -51,10 +45,7 @@ function useGetTotalCap() {
           let change = new BigNumber(0);
           if (new BigNumber(cap).comparedTo(lastCap)) {
             const procent = lastCap.dividedBy(cap);
-            change = BigNumber(1)
-              .minus(procent)
-              .multipliedBy(100)
-              .dp(2, BigNumber.ROUND_FLOOR);
+            change = BigNumber(1).minus(procent).multipliedBy(100).dp(2, BigNumber.ROUND_FLOOR);
           } else {
             const procent = new BigNumber(cap).dividedBy(lastCap);
             change = BigNumber(1)
@@ -74,21 +65,15 @@ function useGetTotalCap() {
           }
         }
         setCapData((item) => ({ ...item, currentCap: cap }));
-        localStorage.setItem(
-          'lastCap-temple',
-          JSON.stringify({ cap, timestamp: d })
-        );
+        localStorage.setItem('lastCap-temple', JSON.stringify({ cap, timestamp: d }));
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [marketData, dataTotalSupply]);
+  }, [marketData, dataTotalSupply, tracesDenom]);
 
   useEffect(() => {
     if (Object.keys(marketData).length > 0) {
-      if (
-        Object.prototype.hasOwnProperty.call(marketData, ibcDenomAtom) &&
-        Object.prototype.hasOwnProperty.call(marketData, BASE_DENOM)
-      ) {
+      if (Object.hasOwn(marketData, ibcDenomAtom) && Object.hasOwn(marketData, BASE_DENOM)) {
         const priceBoot = new BigNumber(marketData[BASE_DENOM]);
         const priceAtom = new BigNumber(marketData[ibcDenomAtom]);
         const priceBootForAtom = priceAtom
@@ -96,9 +81,7 @@ function useGetTotalCap() {
           .dp(0, BigNumber.ROUND_FLOOR)
           .toNumber();
 
-        const localStorageDataPrice = localStorage.getItem(
-          'lastPrice-Boot-Atom'
-        );
+        const localStorageDataPrice = localStorage.getItem('lastPrice-Boot-Atom');
 
         setPriceData((item) => ({
           ...item,
@@ -110,12 +93,8 @@ function useGetTotalCap() {
           const oldData = JSON.parse(localStorageDataPrice);
           const timeChange = Date.parse(d) - Date.parse(oldData.timestamp);
           let amountChangeProcent = new BigNumber(0);
-          if (
-            new BigNumber(priceBootForAtom).comparedTo(oldData.priceBootForAtom)
-          ) {
-            const procent = new BigNumber(oldData.priceBootForAtom).dividedBy(
-              priceBootForAtom
-            );
+          if (new BigNumber(priceBootForAtom).comparedTo(oldData.priceBootForAtom)) {
+            const procent = new BigNumber(oldData.priceBootForAtom).dividedBy(priceBootForAtom);
             amountChangeProcent = new BigNumber(1)
               .minus(procent)
               .multipliedBy(100)
@@ -123,12 +102,8 @@ function useGetTotalCap() {
               .multipliedBy(-1);
           }
 
-          if (
-            new BigNumber(oldData.priceBootForAtom).comparedTo(priceBootForAtom)
-          ) {
-            const procent = new BigNumber(priceBootForAtom).dividedBy(
-              oldData.priceBootForAtom
-            );
+          if (new BigNumber(oldData.priceBootForAtom).comparedTo(priceBootForAtom)) {
+            const procent = new BigNumber(priceBootForAtom).dividedBy(oldData.priceBootForAtom);
             amountChangeProcent = new BigNumber(1)
               .minus(procent)
               .multipliedBy(100)

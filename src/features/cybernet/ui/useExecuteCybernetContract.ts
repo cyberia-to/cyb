@@ -5,12 +5,7 @@ import { useCybernet } from './cybernet.context';
 
 type Props = Omit<ExecuteContractProps, 'contractAddress'>;
 
-function useExecuteCybernetContract({
-  query,
-  funds,
-  onSuccess,
-  successMessage,
-}: Props) {
+function useExecuteCybernetContract({ query, funds, onSuccess, successMessage }: Props) {
   const { selectedContract } = useCybernet();
 
   return useExecuteContractWithWaitAndAdviser({

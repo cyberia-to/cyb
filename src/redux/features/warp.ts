@@ -1,5 +1,5 @@
 import { QueryLiquidityPoolsResponse } from '@cybercongress/cyber-js/build/codec/tendermint/liquidity/v1beta1/query';
-import { PayloadAction, createSlice } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 type SliceState = {
   pools: undefined | QueryLiquidityPoolsResponse;
@@ -25,10 +25,7 @@ const slice = createSlice({
   name: 'warp',
   initialState,
   reducers: {
-    setPools: (
-      state,
-      { payload }: PayloadAction<QueryLiquidityPoolsResponse>
-    ) => {
+    setPools: (state, { payload }: PayloadAction<QueryLiquidityPoolsResponse>) => {
       state.pools = payload;
 
       saveToLocalStorage(state);

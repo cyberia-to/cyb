@@ -1,10 +1,10 @@
-import { visit } from 'unist-util-visit';
 import { u } from 'unist-builder';
+import { visit } from 'unist-util-visit';
 
 const CYBERLINK_REGEX = /~\(([^)]+)\)/g;
 const NEURON_REGEX = /@\(([^)]+)\)/g;
 
-const isInsideLink = (node, ancestors) => {
+const isInsideLink = (_node, ancestors) => {
   return ancestors.some((ancestor) => ancestor.type === 'link');
 };
 
@@ -56,10 +56,7 @@ const remarkCybSyntax = () => {
 
         addText(node.value, lastIndex, node.value.length);
 
-        if (
-          children.length > 1 ||
-          (children.length === 1 && children[0].type !== 'text')
-        ) {
+        if (children.length > 1 || (children.length === 1 && children[0].type !== 'text')) {
           parent.children.splice(index, 1, ...children);
         }
       }

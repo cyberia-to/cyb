@@ -1,11 +1,11 @@
-import { useState, useEffect, useCallback } from 'react';
 import BigNumber from 'bignumber.js';
-import { useQueryClient } from 'src/contexts/queryClient';
+import { useCallback, useEffect, useState } from 'react';
+import { BASE_DENOM, DENOM_LIQUID } from 'src/constants/config';
 import { useIbcDenom } from 'src/contexts/ibcDenom';
-import { DENOM_LIQUID, BASE_DENOM } from 'src/constants/config';
+import { useQueryClient } from 'src/contexts/queryClient';
+import { convertAmount, reduceBalances } from '../utils/utils';
 import useGetTotalSupply from './useGetTotalSupply';
 import usePoolListInterval from './usePoolListInterval';
-import { reduceBalances, convertAmount } from '../utils/utils';
 
 const defaultTokenList = {
   [BASE_DENOM]: 0,
@@ -44,11 +44,7 @@ const getPoolPrice = (data, tracesDenom) => {
         if (coinsPair[0] === DENOM_LIQUID) {
           price = calculatePrice(coinsPair, balances, tracesDenom);
         } else {
-          price = calculatePrice(
-            [...coinsPair].reverse(),
-            balances,
-            tracesDenom
-          );
+          price = calculatePrice([...coinsPair].reverse(), balances, tracesDenom);
           copyObj[key].reserveCoinDenoms = [...coinsPair].reverse();
         }
       } else {
@@ -64,7 +60,7 @@ const getPoolsBalance = async (data, client) => {
   const copyObj = { ...data };
   // eslint-disable-next-line no-restricted-syntax
   for (const key in copyObj) {
-    if (Object.hasOwnProperty.call(copyObj, key)) {
+    if (Object.hasOwn(copyObj, key)) {
       const element = copyObj[key];
       const { reserveAccountAddress } = element;
       // eslint-disable-next-line no-await-in-loop
@@ -133,37 +129,6 @@ function useGetMarketData() {
     getPpools();
   }, [dataPools, queryClient, tracesDenom]);
 
-  useEffect(() => {
-    try {
-      if (
-        Object.keys(dataTotal).length > 0 &&
-        Object.keys(poolsTotal).length > 0
-      ) {
-        const marketDataObj = {};
-        marketDataObj[DENOM_LIQUID] = 1;
-        Object.keys(dataTotal).forEach((keyI) => {
-          Object.keys(poolsTotal).forEach((keyJ) => {
-            const itemJ = poolsTotal[keyJ];
-            const { reserveCoinDenoms } = itemJ;
-            if (
-              reserveCoinDenoms[0] === DENOM_LIQUID &&
-              reserveCoinDenoms[1] === keyI
-            ) {
-              marketDataObj[keyI] = itemJ.price;
-            }
-          });
-        });
-        const tempdataPool = getMarketDataPool(marketDataObj);
-        const resultMarketDataObj = { ...marketDataObj, ...tempdataPool };
-        setMarketData(resultMarketDataObj);
-        saveToLocalStorage(resultMarketDataObj);
-      }
-    } catch (error) {
-      console.log('error', error);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dataTotal, poolsTotal]);
-
   const saveToLocalStorage = (obj) => {
     if (Object.keys(obj).length > 0) {
       localStorage.setItem('marketData', JSON.stringify(obj));
@@ -175,26 +140,21 @@ function useGetMarketData() {
       try {
         const tempMarketData = {};
         if (Object.keys(dataTotal).length > 0) {
-          const filteredDataTotalSupply = Object.keys(dataTotal).filter(
-            (item) => item.includes('pool')
+          const filteredDataTotalSupply = Object.keys(dataTotal).filter((item) =>
+            item.includes('pool')
           );
 
           filteredDataTotalSupply.forEach((key) => {
-            if (Object.prototype.hasOwnProperty.call(poolsTotal, key)) {
+            if (Object.hasOwn(poolsTotal, key)) {
               const { reserveCoinDenoms, balances } = poolsTotal[key];
 
-              if (
-                Object.prototype.hasOwnProperty.call(data, reserveCoinDenoms[0])
-              ) {
+              if (Object.hasOwn(data, reserveCoinDenoms[0])) {
                 let marketCapTemp = 0;
                 reserveCoinDenoms.forEach((itemJ) => {
                   if (data[itemJ] && balances[itemJ]) {
                     const marketDataPrice = data[itemJ];
                     const [{ coinDecimals }] = tracesDenom(itemJ);
-                    const balancesConvert = convertAmount(
-                      balances[itemJ],
-                      coinDecimals
-                    );
+                    const balancesConvert = convertAmount(balances[itemJ], coinDecimals);
                     const marketCapaTemp = marketDataPrice * balancesConvert;
                     marketCapTemp += marketCapaTemp;
                   }
@@ -215,8 +175,33 @@ function useGetMarketData() {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [dataTotal, poolsTotal]
+    [dataTotal, poolsTotal, tracesDenom]
   );
+
+  useEffect(() => {
+    try {
+      if (Object.keys(dataTotal).length > 0 && Object.keys(poolsTotal).length > 0) {
+        const marketDataObj = {};
+        marketDataObj[DENOM_LIQUID] = 1;
+        Object.keys(dataTotal).forEach((keyI) => {
+          Object.keys(poolsTotal).forEach((keyJ) => {
+            const itemJ = poolsTotal[keyJ];
+            const { reserveCoinDenoms } = itemJ;
+            if (reserveCoinDenoms[0] === DENOM_LIQUID && reserveCoinDenoms[1] === keyI) {
+              marketDataObj[keyI] = itemJ.price;
+            }
+          });
+        });
+        const tempdataPool = getMarketDataPool(marketDataObj);
+        const resultMarketDataObj = { ...marketDataObj, ...tempdataPool };
+        setMarketData(resultMarketDataObj);
+        saveToLocalStorage(resultMarketDataObj);
+      }
+    } catch (error) {
+      console.log('error', error);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataTotal, poolsTotal, getMarketDataPool, saveToLocalStorage]);
 
   return { marketData, dataTotal };
 }

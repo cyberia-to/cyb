@@ -1,11 +1,11 @@
-import { useIbcDenom } from 'src/contexts/ibcDenom';
-import { formatNumber, getDisplayAmount } from '../../../utils/utils';
-import { DenomArr, TextTable, ValueImg } from '../../../components';
-import Table from 'src/components/Table/Table';
-import { CssVariables } from 'src/style/variables';
 import { createColumnHelper } from '@tanstack/react-table';
 import { useMemo } from 'react';
+import Table from 'src/components/Table/Table';
 import { DENOM_LIQUID } from 'src/constants/config';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
+import { CssVariables } from 'src/style/variables';
+import { DenomArr, TextTable } from '../../../components';
+import { formatNumber, getDisplayAmount } from '../../../utils/utils';
 
 const columnHelper = createColumnHelper<any>();
 
@@ -45,9 +45,7 @@ function TableSlots({ data }: Props) {
         return {
           state:
             item.status === 'Unfreezing' ? (
-              <TextTable color={CssVariables.PRIMARY_COLOR}>
-                Unfreezing
-              </TextTable>
+              <TextTable color={CssVariables.PRIMARY_COLOR}>Unfreezing</TextTable>
             ) : (
               <TextTable marginRight={5} color="#ff9100">
                 Liquid

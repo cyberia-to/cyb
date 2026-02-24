@@ -1,20 +1,18 @@
-import { ProxyMarked, Remote } from 'comlink';
-
-import { BehaviorSubject, Subject, first, tap } from 'rxjs';
 import { CyberClient, SigningCyberClient } from '@cybercongress/cyber-js';
+import { ProxyMarked } from 'comlink';
+import { BehaviorSubject, first, Subject } from 'rxjs';
 import { RPC_URL } from 'src/constants/config';
+import { getPassportByNickname } from 'src/containers/portal/utils';
 import { SenseApi } from 'src/contexts/backend/services/senseApi';
 import { Option } from 'src/types';
-import { getSearchQuery, searchByHash } from 'src/utils/search/utils';
 import { NeuronAddress, ParticleCid } from 'src/types/base';
-import { getPassportByNickname } from 'src/containers/portal/utils';
-import { sendCyberlink } from '../neuron/neuronApi';
-
-import { extractRuneScript } from './helpers';
-import { RuneEngine } from './engine';
+import { getSearchQuery, searchByHash } from 'src/utils/search/utils';
 import DbApiWrapper from '../backend/services/DbApi/DbApi';
 import { IpfsApi } from '../backend/workers/background/api/ipfsApi';
 import { EmbeddingApi } from '../backend/workers/background/api/mlApi';
+import { sendCyberlink } from '../neuron/neuronApi';
+import { RuneEngine } from './engine';
+import { extractRuneScript } from './helpers';
 
 export type RuneInnerDeps = {
   ipfsApi: Option<IpfsApi>;
@@ -39,9 +37,7 @@ const createRuneDeps = () => {
     rune: new BehaviorSubject<RuneInnerDeps['rune']>(undefined),
     queryClient: new BehaviorSubject<RuneInnerDeps['queryClient']>(undefined),
     embeddingApi: new BehaviorSubject<Option<EmbeddingApi>>(undefined),
-    signingClient: new BehaviorSubject<RuneInnerDeps['signingClient']>(
-      undefined
-    ),
+    signingClient: new BehaviorSubject<RuneInnerDeps['signingClient']>(undefined),
     senseApi: new BehaviorSubject<RuneInnerDeps['senseApi']>(undefined),
     address: new BehaviorSubject<RuneInnerDeps['address']>(undefined),
     dbApi: new BehaviorSubject<RuneInnerDeps['dbApi']>(undefined),
@@ -49,13 +45,9 @@ const createRuneDeps = () => {
 
   let abortController: Option<AbortController>;
 
-  const defferedDependency = (
-    name: keyof RuneInnerDeps
-  ): Promise<RuneInnerDeps[typeof name]> => {
+  const defferedDependency = (name: keyof RuneInnerDeps): Promise<RuneInnerDeps[typeof name]> => {
     return new Promise((resolve) => {
-      const item$ = subjectDeps[name] as BehaviorSubject<
-        RuneInnerDeps[typeof name]
-      >;
+      const item$ = subjectDeps[name] as BehaviorSubject<RuneInnerDeps[typeof name]>;
       if (item$.getValue()) {
         resolve(item$.getValue());
       }
@@ -85,9 +77,7 @@ const createRuneDeps = () => {
   };
 
   const graphSearch = async (query: string, page = 0) => {
-    const queryClient = (await defferedDependency(
-      'queryClient'
-    )) as CyberClient;
+    const queryClient = (await defferedDependency('queryClient')) as CyberClient;
 
     const keywordHash = await getSearchQuery(query);
 
@@ -99,11 +89,7 @@ const createRuneDeps = () => {
     return ipfsApi.fetchWithDetails(cid, 'text');
   };
 
-  const evalScriptFromIpfs = async (
-    cid: ParticleCid,
-    funcName: string,
-    params = {}
-  ) => {
+  const evalScriptFromIpfs = async (cid: ParticleCid, funcName: string, params = {}) => {
     try {
       const result = await getIpfsTextConent(cid);
       if (result?.content === undefined) {
@@ -148,9 +134,7 @@ const createRuneDeps = () => {
         throw new Error('Connect your wallet first');
       }
       const senseApi = (await defferedDependency('senseApi')) as SenseApi;
-      const signingClient = (await defferedDependency(
-        'signingClient'
-      )) as SigningCyberClient;
+      const signingClient = (await defferedDependency('signingClient')) as SigningCyberClient;
 
       return sendCyberlink(address, from, to, {
         senseApi,
@@ -164,9 +148,7 @@ const createRuneDeps = () => {
       return passport;
     },
     searcByEmbedding: async (text: string, count = 10) => {
-      const embeddingApi = (await defferedDependency(
-        'embeddingApi'
-      )) as EmbeddingApi;
+      const embeddingApi = (await defferedDependency('embeddingApi')) as EmbeddingApi;
       await defferedDependency('dbApi');
       // console.log('----searcByEmbedding', text);
       return embeddingApi.searchByEmbedding(text, count);

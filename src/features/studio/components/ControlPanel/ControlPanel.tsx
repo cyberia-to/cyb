@@ -1,15 +1,15 @@
 import type { CmdKey } from '@milkdown/kit/core';
 import { callCommand } from '@milkdown/kit/utils';
 import { useInstance } from '@milkdown/react';
-import Links from 'src/components/search/Spark/Meta/Links/Links';
-import { formatCurrency } from 'src/utils/utils';
-import { PREFIXES } from 'src/containers/ipfs/components/metaInfo';
 import { Cid, Display } from 'src/components';
-import styles from './ControlPanel.module.scss';
+import Links from 'src/components/search/Spark/Meta/Links/Links';
+import { PREFIXES } from 'src/containers/ipfs/components/metaInfo';
+import { formatCurrency } from 'src/utils/utils';
 import { useStudioContext } from '../../studio.context';
 import HistoryCommand from '../HistoryCommand/HistoryCommand';
+import styles from './ControlPanel.module.scss';
 
-const contentTypeConfig = {
+const _contentTypeConfig = {
   neuron: {
     label: '@',
     tooltip: '',
@@ -33,9 +33,8 @@ const contentTypeConfig = {
 };
 
 function ControlPanel() {
-  const { keywordsFrom, keywordsTo, currentMarkdown, lastCid } =
-    useStudioContext();
-  const [loading, get] = useInstance();
+  const { keywordsFrom, keywordsTo, currentMarkdown, lastCid } = useStudioContext();
+  const [_loading, get] = useInstance();
 
   function call<T>(command: CmdKey<T>, payload?: T) {
     return get()?.action(callCommand(command, payload));

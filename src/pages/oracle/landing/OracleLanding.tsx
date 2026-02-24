@@ -1,16 +1,14 @@
-import { ActionBar, Button, Tabs } from 'src/components';
-import { routes } from 'src/routes';
 import { useEffect, useRef, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
+import { ActionBar, Button, Tabs } from 'src/components';
+import { setFocus } from 'src/containers/application/Header/Commander/commander.redux';
 // import CyberlinksGraphContainer from 'src/features/cyberlinks/CyberlinksGraph/CyberlinksGraphContainer';
 import { Stars } from 'src/containers/portal/components';
-
-import { useAppDispatch } from 'src/redux/hooks';
-import { setFocus } from 'src/containers/application/Header/Commander/commander.redux';
-
-import { Link, useSearchParams } from 'react-router-dom';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
-import styles from './OracleLanding.module.scss';
+import { useAppDispatch } from 'src/redux/hooks';
+import { routes } from 'src/routes';
 import KeywordButton from './components/KeywordButton/KeywordButton';
+import styles from './OracleLanding.module.scss';
 
 import Stats from './Stats/Stats';
 // import graphDataPrepared from './graphDataPrepared.json';
@@ -32,8 +30,7 @@ const listConfig = {
     ),
     description: (
       <>
-        decentralized <Link to={routes.oracle.ask.getLink('ipfs')}>ipfs</Link>{' '}
-        search
+        decentralized <Link to={routes.oracle.ask.getLink('ipfs')}>ipfs</Link> search
       </>
     ),
   },
@@ -54,14 +51,13 @@ const listConfig = {
     title: 'decentralized ai is alive',
     text: (
       <>
-        behold the new{' '}
-        <Link to={routes.oracle.ask.getLink('truth')}>truth medium</Link>
+        behold the new <Link to={routes.oracle.ask.getLink('truth')}>truth medium</Link>
       </>
     ),
     description: (
       <>
-        <Link to={routes.oracle.ask.getLink('cyber')}>cyber</Link> is the
-        protocol for unified, provable, collective learning
+        <Link to={routes.oracle.ask.getLink('cyber')}>cyber</Link> is the protocol for unified,
+        provable, collective learning
       </>
     ),
   },
@@ -71,7 +67,7 @@ const QUERY_KEY = 'type';
 
 function OracleLanding() {
   const [searchParams] = useSearchParams();
-  const type = searchParams.get(QUERY_KEY);
+  const _type = searchParams.get(QUERY_KEY);
 
   const [titleType, setTitleType] = useState<TitleType>(TitleType.search);
 
@@ -96,20 +92,18 @@ function OracleLanding() {
 
       <header className={styles.header}>
         <Tabs
-          options={[TitleType.search, TitleType.ai, TitleType.learning].map(
-            (type) => {
-              return {
-                onClick: () => {
-                  setTitleType(type);
-                  // navigate(`?${QUERY_KEY}=${mapTitleTypeToTitle[index]}`, {
-                  //   replace: true,
-                  // });
-                },
-                text: mapTitleTypeToTitle[type],
-                key: type,
-              };
-            }
-          )}
+          options={[TitleType.search, TitleType.ai, TitleType.learning].map((type) => {
+            return {
+              onClick: () => {
+                setTitleType(type);
+                // navigate(`?${QUERY_KEY}=${mapTitleTypeToTitle[index]}`, {
+                //   replace: true,
+                // });
+              },
+              text: mapTitleTypeToTitle[type],
+              key: type,
+            };
+          })}
           selected={titleType}
         />
       </header>
@@ -166,20 +160,14 @@ function OracleLanding() {
 
             case TitleType.learning:
               return (
-                <Button
-                  link={routes.oracle.learn.path}
-                  className={styles.actionBarBtn}
-                >
+                <Button link={routes.oracle.learn.path} className={styles.actionBarBtn}>
                   how to learn
                 </Button>
               );
 
             case TitleType.ai:
               return (
-                <Button
-                  onClick={() => dispatch(setFocus(true))}
-                  className={styles.actionBarBtn}
-                >
+                <Button onClick={() => dispatch(setFocus(true))} className={styles.actionBarBtn}>
                   ask something
                 </Button>
               );

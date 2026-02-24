@@ -1,20 +1,21 @@
 /* eslint-disable no-restricted-syntax */
-import { useMemo } from 'react';
-import { v4 as uuidv4 } from 'uuid';
-import BigNumber from 'bignumber.js';
-import useGetTotalSupply from 'src/hooks/useGetTotalSupply';
-import { NoItems, MainContainer, LinkWindow } from 'src/components';
-import usePoolListInterval from 'src/hooks/usePoolListInterval';
-import useWarpDexTickers from 'src/hooks/useGetWarpPools';
+
 import { Coin } from '@cosmjs/launchpad';
-import useGetBalances from 'src/hooks/getBalances';
+import BigNumber from 'bignumber.js';
+import { useMemo } from 'react';
+import { LinkWindow, MainContainer, NoItems } from 'src/components';
 import Loader2 from 'src/components/ui/Loader2';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
+import useGetBalances from 'src/hooks/getBalances';
 import useCurrentAddress from 'src/hooks/useCurrentAddress';
-import { PoolsInfo, PoolCard } from './pool';
-import styles from './pool/styles.module.scss';
+import useGetTotalSupply from 'src/hooks/useGetTotalSupply';
+import useWarpDexTickers from 'src/hooks/useGetWarpPools';
+import usePoolListInterval from 'src/hooks/usePoolListInterval';
+import { v4 as uuidv4 } from 'uuid';
 import useGetMySharesInPools from './hooks/useGetMySharesInPools';
 import usePoolsAssetAmount from './hooks/usePoolsAssetAmount';
+import { PoolCard, PoolsInfo } from './pool';
+import styles from './pool/styles.module.scss';
 
 function WarpDashboardPools() {
   const currentAddress = useCurrentAddress();
@@ -55,7 +56,7 @@ function WarpDashboardPools() {
         const keyItem = uuidv4();
         let vol24: Coin | undefined;
 
-        if (Object.prototype.hasOwnProperty.call(vol24ByPool, item.id)) {
+        if (Object.hasOwn(vol24ByPool, item.id)) {
           vol24 = vol24ByPool[item.id];
         }
 

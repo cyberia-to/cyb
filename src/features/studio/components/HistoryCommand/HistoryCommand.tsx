@@ -1,7 +1,7 @@
-import cx from 'classnames';
-import ButtonsGroup from 'src/components/buttons/ButtonsGroup/ButtonsGroup';
 import { CmdKey } from '@milkdown/kit/core';
 import { redoCommand, undoCommand } from '@milkdown/kit/plugin/history';
+import cx from 'classnames';
+import ButtonsGroup from 'src/components/buttons/ButtonsGroup/ButtonsGroup';
 import styles from './HistoryCommand.modules.scss';
 import reload from './reload.png';
 
@@ -26,11 +26,7 @@ const contentTypeConfig = {
   },
 };
 
-function HistoryCommand({
-  call,
-}: {
-  call: (command: CmdKey<unknown>) => boolean | undefined;
-}) {
+function HistoryCommand({ call }: { call: (command: CmdKey<unknown>) => boolean | undefined }) {
   return (
     <div className={styles.wrapper}>
       <ButtonsGroup

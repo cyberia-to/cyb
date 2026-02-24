@@ -10,9 +10,7 @@ function useGetUnbondingDays() {
 
   const unbondingDays =
     stakingParamsData &&
-    new BigNumber(
-      BigInt(stakingParamsData.params.unbondingTime.seconds).toString()
-    )
+    new BigNumber(BigInt(stakingParamsData.params.unbondingTime.seconds).toString())
       .dividedBy(60)
       .dividedBy(60)
       .dividedBy(24)

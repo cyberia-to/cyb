@@ -26,11 +26,7 @@ const renderColumns = () => [
   columnHelper.accessor('logo', {
     header: 'logo',
     cell: (logo) => (
-      <ImgDenom
-        coinDenom=""
-        tooltipStatus={false}
-        infoDenom={{ coinImageCid: logo.getValue() }}
-      />
+      <ImgDenom coinDenom="" tooltipStatus={false} infoDenom={{ coinImageCid: logo.getValue() }} />
     ),
   }),
   columnHelper.accessor('decimals', {

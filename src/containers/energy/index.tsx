@@ -1,15 +1,15 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { useRobotContext } from 'src/pages/robot/robot.context';
 import Display from 'src/components/containerGradient/Display/Display';
-import { useAppSelector } from 'src/redux/hooks';
-import { selectCurrentAddress } from 'src/redux/features/pocket';
 import { useAdviser } from 'src/features/adviser/context';
-import { MyEnergy, Income, Outcome } from './tab';
-import useGetSlots from '../mint/useGetSlots';
-import { Statistics, ActionBar } from './component';
-import useGetSourceRoutes from './hooks/useSourceRouted';
+import { useRobotContext } from 'src/pages/robot/robot.context';
+import { selectCurrentAddress } from 'src/redux/features/pocket';
+import { useAppSelector } from 'src/redux/hooks';
 import { convertResources } from '../../utils/utils';
+import useGetSlots from '../mint/useGetSlots';
+import { ActionBar, Statistics } from './component';
+import useGetSourceRoutes from './hooks/useSourceRouted';
+import { Income, MyEnergy, Outcome } from './tab';
 
 function RoutedEnergy() {
   const { pageId } = useParams();
@@ -45,8 +45,7 @@ function RoutedEnergy() {
     update: updateSource,
   } = useGetSourceRoutes(address);
 
-  const selectedRoute =
-    selectedIndex !== null && sourceRouted[Number(selectedIndex)];
+  const selectedRoute = selectedIndex !== null && sourceRouted[Number(selectedIndex)];
 
   let content;
 
@@ -80,8 +79,7 @@ function RoutedEnergy() {
           active={pageId}
           myEnergy={balancesResource.milliampere * balancesResource.millivolt}
           outcome={
-            convertResources(sourceEnergy.milliampere) *
-            convertResources(sourceEnergy.millivolt)
+            convertResources(sourceEnergy.milliampere) * convertResources(sourceEnergy.millivolt)
           }
           income={
             convertResources(destinationEnergy.milliampere) *

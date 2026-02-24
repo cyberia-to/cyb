@@ -1,14 +1,14 @@
 import { useMemo } from 'react';
-import { Link, createSearchParams } from 'react-router-dom';
+import { createSearchParams, Link } from 'react-router-dom';
 import { Account } from 'src/components';
 import Display from 'src/components/containerGradient/Display/Display';
+import { CYBER_CONGRESS_ADDRESS } from 'src/constants/app';
+import { BASE_DENOM } from 'src/constants/config';
 import { selectCommunityPassports } from 'src/features/passport/passports.redux';
 import { useAppSelector } from 'src/redux/hooks';
-import { BASE_DENOM } from 'src/constants/config';
-import { CYBER_CONGRESS_ADDRESS } from 'src/constants/app';
 import TitleAction from '../TitleAction/TitleAction';
-import styles from './SendAction.module.scss';
 import TotalCount from '../TotalCount/TotalCount';
+import styles from './SendAction.module.scss';
 
 const TOP_AMOUNT = 5;
 
@@ -67,11 +67,7 @@ function SendAction() {
   return (
     <Display
       title={
-        <TitleAction
-          title="Send"
-          to="send"
-          subTitle="messages with tokens to friends and aliens"
-        />
+        <TitleAction title="Send" to="send" subTitle="messages with tokens to friends and aliens" />
       }
     >
       <div className={styles.container}>

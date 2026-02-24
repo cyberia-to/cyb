@@ -3,8 +3,8 @@ import { useEffect, useState } from 'react';
 import defaultNetworks from 'src/constants/defaultNetworks';
 import { Networks } from 'src/types/networks';
 import { getDenomHash, reduceBalances } from 'src/utils/utils';
-import useGetPoolsWarp from './api/useGetPoolsWarp';
 import useConnectBostrom from './api/useConnectBostrom';
+import useGetPoolsWarp from './api/useGetPoolsWarp';
 
 const BOSTROM_CONFIG = defaultNetworks[Networks.BOSTROM];
 const PUSSY_CONFIG = defaultNetworks[Networks.SPACE_PUSSY];
@@ -14,10 +14,7 @@ function useFindPoolPrice() {
   const { queryClient } = useConnectBostrom();
   const { data } = useGetPoolsWarp(queryClient);
 
-  const denomIbcLP = getDenomHash(
-    'transfer/channel-11',
-    PUSSY_CONFIG.DENOM_LIQUID
-  );
+  const denomIbcLP = getDenomHash('transfer/channel-11', PUSSY_CONFIG.DENOM_LIQUID);
 
   useEffect(() => {
     (async () => {
@@ -38,15 +35,11 @@ function useFindPoolPrice() {
       const tokenA = findPool.reserveCoinDenoms[0];
       const tokenB = findPool.reserveCoinDenoms[1];
 
-      const balances = await queryClient.getAllBalances(
-        findPool.reserveAccountAddress
-      );
+      const balances = await queryClient.getAllBalances(findPool.reserveAccountAddress);
 
       const amount = reduceBalances(balances);
 
-      const price = new BigNumber(amount[tokenA])
-        .div(amount[tokenB])
-        .toNumber();
+      const price = new BigNumber(amount[tokenA]).div(amount[tokenB]).toNumber();
 
       setPoolPrice(price);
     })();

@@ -7,11 +7,11 @@ import { useAdviser } from './context';
 function AdviserContainer() {
   const { content, isOpen, setAdviser, setIsOpen, color } = useAdviser();
 
-  const location = useLocation();
+  const _location = useLocation();
 
   useEffect(() => {
     setAdviser(null);
-  }, [setAdviser, location.pathname]);
+  }, [setAdviser]);
 
   return (
     <div className={styles.wrapper}>

@@ -1,19 +1,15 @@
+import { useEffect } from 'react';
 import Display from 'src/components/containerGradient/Display/Display';
 import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
-import { useBackend } from 'src/contexts/backend/backend';
-import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
-import { useEffect } from 'react';
 import Loader2 from 'src/components/ui/Loader2';
-
-import { markAsRead, LLMMessage } from 'src/features/sense/redux/sense.redux';
-
+import { useBackend } from 'src/contexts/backend/backend';
+import { LLMMessage, markAsRead } from 'src/features/sense/redux/sense.redux';
 import { useRobotContext } from 'src/pages/robot/robot.context';
-import Messages from './Messages/Messages';
+import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
 import { AdviserProps } from '../Sense';
+import Messages from './Messages/Messages';
 import styles from './SenseViewer.module.scss';
-import SenseViewerHeader, {
-  LLMHeader,
-} from './SenseViewerHeader/SenseViewerHeader';
+import SenseViewerHeader, { LLMHeader } from './SenseViewerHeader/SenseViewerHeader';
 
 type Props = {
   selected: string | undefined;
@@ -52,15 +48,11 @@ function SenseViewer({ adviser, selected, isLLMFilter }: Props) {
   }, [error, adviser]);
 
   const llmThreads = useAppSelector((state) => state.sense.llm.threads);
-  const currentThreadId = useAppSelector(
-    (state) => state.sense.llm.currentThreadId
-  );
+  const currentThreadId = useAppSelector((state) => state.sense.llm.currentThreadId);
 
   let llmMessages: LLMMessage[] = [];
   if (isLLMFilter && currentThreadId) {
-    const currentThread = llmThreads.find(
-      (thread) => thread.id === currentThreadId
-    );
+    const currentThread = llmThreads.find((thread) => thread.id === currentThreadId);
     if (currentThread) {
       llmMessages = currentThread.messages;
     }

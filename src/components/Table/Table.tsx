@@ -1,21 +1,20 @@
 import {
-  useReactTable,
   ColumnDef,
-  getCoreRowModel,
   flexRender,
+  getCoreRowModel,
   getSortedRowModel,
   InitialTableState,
   SortingState,
   TableOptions,
+  useReactTable,
 } from '@tanstack/react-table';
-
-import { useEffect, useState, useCallback } from 'react';
 import cx from 'classnames';
+import { useCallback, useEffect, useState } from 'react';
 import { sessionStorageKeys } from 'src/constants/sessionStorageKeys';
-import styles from './Table.module.scss';
+import Triangle from '../atoms/Triangle/Triangle';
 import Loader2 from '../ui/Loader2';
 import NoItems from '../ui/noItems';
-import Triangle from '../atoms/Triangle/Triangle';
+import styles from './Table.module.scss';
 import { tableIDs } from './tableIDs';
 
 const storage = sessionStorage;
@@ -70,9 +69,7 @@ function Table<T extends object>({
   const [selected, setSelected] = useState<string | null>(null);
 
   const savedSorting = id && getDataFromStorage()[id];
-  const [sorting, setSorting] = useState<SortingState>(
-    savedSorting || initialState?.sorting || []
-  );
+  const [sorting, setSorting] = useState<SortingState>(savedSorting || initialState?.sorting || []);
 
   useEffect(() => {
     if (!id) {
@@ -82,12 +79,9 @@ function Table<T extends object>({
     saveDataToStorage(id, sorting);
   }, [sorting, id]);
 
-  const handleSortingChange = useCallback(
-    (sorting: TableOptions<any>['onSortingChange']) => {
-      setSorting(sorting);
-    },
-    []
-  );
+  const handleSortingChange = useCallback((sorting: TableOptions<any>['onSortingChange']) => {
+    setSorting(sorting);
+  }, []);
 
   const table = useReactTable({
     // debugTable: true,
@@ -137,19 +131,12 @@ function Table<T extends object>({
                       }}
                       onClick={header.column.getToggleSortingHandler()}
                     >
-                      {flexRender(
-                        header.column.columnDef.header,
-                        header.getContext()
-                      )}
+                      {flexRender(header.column.columnDef.header, header.getContext())}
                       &nbsp;
                       {header.column.getCanSort() && (
                         <Triangle
                           disabled={!header.column.getIsSorted()}
-                          direction={
-                            header.column.getIsSorted() === 'desc'
-                              ? 'down'
-                              : 'up'
-                          }
+                          direction={header.column.getIsSorted() === 'desc' ? 'down' : 'up'}
                         />
                       )}
                       {/* <div
@@ -186,9 +173,7 @@ function Table<T extends object>({
                     }
 
                     if (
-                      ['a', 'button', 'input'].includes(
-                        (e.target as any).tagName.toLowerCase()
-                      )
+                      ['a', 'button', 'input'].includes((e.target as any).tagName.toLowerCase())
                     ) {
                       return;
                     }
@@ -213,10 +198,7 @@ function Table<T extends object>({
                           width: cell.column.getSize(),
                         }}
                       >
-                        {flexRender(
-                          cell.column.columnDef.cell,
-                          cell.getContext()
-                        )}
+                        {flexRender(cell.column.columnDef.cell, cell.getContext())}
                       </td>
                     );
                   })}
@@ -227,11 +209,7 @@ function Table<T extends object>({
         )}
       </table>
 
-      {hideBody ? null : isLoading ? (
-        <Loader2 />
-      ) : (
-        !data.length && <NoItems text="No data" />
-      )}
+      {hideBody ? null : isLoading ? <Loader2 /> : !data.length && <NoItems text="No data" />}
     </>
   );
 }

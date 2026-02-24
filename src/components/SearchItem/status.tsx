@@ -1,6 +1,6 @@
 import cx from 'classnames';
-import styles from './styles.module.scss';
 import Tooltip from '../tooltip/tooltip';
+import styles from './styles.module.scss';
 
 const size = '15 Mb';
 

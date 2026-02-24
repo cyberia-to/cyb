@@ -10,7 +10,7 @@ const reduceChanges = (messages: any) => {
     return messages.params;
   }
 
-  if (messages.content && messages.content.changes) {
+  if (messages.content?.changes) {
     const { changes } = messages.content;
     return changes.reduce((acc, item) => {
       return { ...acc, [item.key]: item.value };
@@ -23,23 +23,14 @@ const reduceChanges = (messages: any) => {
 const decodeProps = (proposal: any) => {
   const { title, summary, status, messages } = proposal;
 
-  const type = messages[0].content
-    ? messages[0].content['@type']
-    : messages[0]['@type'];
+  const type = messages[0].content ? messages[0].content['@type'] : messages[0]['@type'];
 
-  const proposer = !proposal.proposer.length
-    ? messages[0].authority
-    : proposal.proposer;
+  const proposer = !proposal.proposer.length ? messages[0].authority : proposal.proposer;
 
   const plan = messages[0].content ? messages[0].content.plan : undefined;
-  const recipient = messages[0].content
-    ? messages[0].content.recipient
-    : undefined;
+  const recipient = messages[0].content ? messages[0].content.recipient : undefined;
 
-  const amount =
-    messages[0].content && messages[0].content.amount
-      ? messages[0].content.amount[0]
-      : undefined;
+  const amount = messages[0].content?.amount ? messages[0].content.amount[0] : undefined;
 
   return {
     type,

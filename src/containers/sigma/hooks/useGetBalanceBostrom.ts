@@ -1,13 +1,13 @@
-import { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import BigNumber from 'bignumber.js';
 import _ from 'lodash';
-import { useIbcDenom } from 'src/contexts/ibcDenom';
-import { useAppData } from 'src/contexts/appData';
-import { Nullable } from 'src/types';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BASE_DENOM, DENOM_LIQUID } from 'src/constants/config';
-import useGetBalanceMainToken from './useGetBalanceMainToken';
-import useBalanceToken from './useBalanceToken';
+import { useAppData } from 'src/contexts/appData';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
+import { Nullable } from 'src/types';
 import { convertAmount } from '../../../utils/utils';
+import useBalanceToken from './useBalanceToken';
+import useGetBalanceMainToken from './useGetBalanceMainToken';
 
 const usePrevious = (value: any) => {
   const ref = useRef<any>();
@@ -22,8 +22,7 @@ const usePrevious = (value: any) => {
 function useGetBalanceBostrom(address: Nullable<string>) {
   const { marketData } = useAppData();
   const { tracesDenom } = useIbcDenom();
-  const { balance: balanceMainToken, loading: loadingMalin } =
-    useGetBalanceMainToken(address);
+  const { balance: balanceMainToken, loading: loadingMalin } = useGetBalanceMainToken(address);
   const { balanceToken, loading: loadingToken } = useBalanceToken(address);
   const [totalAmountInLiquid, setTotalAmountInLiquid] = useState({
     currentCap: 0,
@@ -50,11 +49,9 @@ function useGetBalanceBostrom(address: Nullable<string>) {
             const [{ coinDecimals }] = tracesDenom(denom);
             const amountReduce = convertAmount(amount, coinDecimals);
 
-            if (Object.prototype.hasOwnProperty.call(marketData, denom)) {
+            if (Object.hasOwn(marketData, denom)) {
               price = new BigNumber(marketData[denom]);
-              tempCap = tempCap.plus(
-                new BigNumber(amountReduce).multipliedBy(price)
-              );
+              tempCap = tempCap.plus(new BigNumber(amountReduce).multipliedBy(price));
             }
           }
           tempCap = tempCap.dp(0, BigNumber.ROUND_FLOOR).toNumber();
@@ -119,7 +116,7 @@ function useGetBalanceBostrom(address: Nullable<string>) {
     let tempCap = new BigNumber(0);
     if (Object.keys(balances).length > 0) {
       Object.keys(balances).forEach((key) => {
-        if (Object.prototype.hasOwnProperty.call(balances[key], 'cap')) {
+        if (Object.hasOwn(balances[key], 'cap')) {
           const { cap } = balances[key];
           if (cap.amount > 0) {
             const { amount } = cap;

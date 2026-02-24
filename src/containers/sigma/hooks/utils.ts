@@ -1,17 +1,16 @@
 /* eslint-disable no-restricted-syntax */
 import { Decimal } from '@cosmjs/math';
-import BigNumber from 'bignumber.js';
 import { useQuery } from '@tanstack/react-query';
+import BigNumber from 'bignumber.js';
 
-import { BECH32_PREFIX_VALOPER, BASE_DENOM } from 'src/constants/config';
-import { useStake as useVerseStake } from 'src/features/cybernet/ui/hooks/useCurrentAccountStake';
-import { CYBERVER_CONTRACTS } from 'src/features/cybernet/constants';
+import { BASE_DENOM, BECH32_PREFIX_VALOPER } from 'src/constants/config';
 import { useQueryClient } from 'src/contexts/queryClient';
-
-import { isPussyChain } from 'src/utils/chains/pussy';
+import { useCyberClient } from 'src/contexts/queryCyberClient';
+import { CYBERVER_CONTRACTS } from 'src/features/cybernet/constants';
+import { useStake as useVerseStake } from 'src/features/cybernet/ui/hooks/useCurrentAccountStake';
 
 import { getDelegatorDelegations } from 'src/features/staking/delegation/getDelegatorDelegations';
-import { useCyberClient } from 'src/contexts/queryCyberClient';
+import { isPussyChain } from 'src/utils/chains/pussy';
 import { fromBech32 } from '../../../utils/utils';
 
 const initValue = {
@@ -63,9 +62,7 @@ const getRewardsAmount = (data) => {
   const { total } = data;
   if (total && total.length > 0) {
     const [{ amount }] = total;
-    rewardsAmount = rewardsAmount.plus(
-      Decimal.fromAtomics(amount, 18).floor().toString()
-    );
+    rewardsAmount = rewardsAmount.plus(Decimal.fromAtomics(amount, 18).floor().toString());
   }
   return initValueResponseFunc(BASE_DENOM, rewardsAmount.toString());
 };
@@ -76,9 +73,7 @@ const getCommissionAmount = (data) => {
   if (data.commission.commission.length > 0) {
     const { commission } = data;
     const [{ amount }] = commission.commission;
-    commissionAmount = commissionAmount.plus(
-      Decimal.fromAtomics(amount, 18).floor().toString()
-    );
+    commissionAmount = commissionAmount.plus(Decimal.fromAtomics(amount, 18).floor().toString());
   }
   return initValueResponseFunc(BASE_DENOM, commissionAmount.toString());
 };
@@ -117,40 +112,24 @@ export const useGetBalance = (addressBech32) => {
   const { data, isFetching, refetch } = useQuery(
     ['getBalance', addressBech32],
     async () => {
-      const responsegetBalance = await client.getBalance(
-        addressBech32,
-        BASE_DENOM
-      );
+      const responsegetBalance = await client.getBalance(addressBech32, BASE_DENOM);
 
-      const responsedelegatorDelegations = await getDelegatorDelegations(
-        rpc,
-        addressBech32
-      );
+      const responsedelegatorDelegations = await getDelegatorDelegations(rpc, addressBech32);
 
-      const delegationsAmount = getDelegationsAmount(
-        responsedelegatorDelegations
-      );
+      const delegationsAmount = getDelegationsAmount(responsedelegatorDelegations);
 
       const responsedelegatorUnbondingDelegations =
         await client.delegatorUnbondingDelegations(addressBech32);
 
-      const unbondingAmount = getUnbondingAmount(
-        responsedelegatorUnbondingDelegations
-      );
+      const unbondingAmount = getUnbondingAmount(responsedelegatorUnbondingDelegations);
 
-      const responsedelegationTotalRewards =
-        await client.delegationTotalRewards(addressBech32);
+      const responsedelegationTotalRewards = await client.delegationTotalRewards(addressBech32);
 
       const rewardsAmount = getRewardsAmount(responsedelegationTotalRewards);
 
-      const dataValidatorAddress = fromBech32(
-        addressBech32,
-        BECH32_PREFIX_VALOPER
-      );
+      const dataValidatorAddress = fromBech32(addressBech32, BECH32_PREFIX_VALOPER);
 
-      const responsevalidatorCommission = await client.validatorCommission(
-        dataValidatorAddress
-      );
+      const responsevalidatorCommission = await client.validatorCommission(dataValidatorAddress);
 
       const commissionAmount = getCommissionAmount(responsevalidatorCommission);
 

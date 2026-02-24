@@ -1,9 +1,6 @@
 import { useCyberClient } from 'src/contexts/queryCyberClient';
 
-function useDelegationRewards(
-  addressActive?: string,
-  operatorAddress?: string
-) {
+function useDelegationRewards(addressActive?: string, operatorAddress?: string) {
   const { hooks } = useCyberClient();
 
   const { data: dataDelegationRewards, refetch } =
@@ -14,8 +11,7 @@ function useDelegationRewards(
       },
       options: {
         enabled: Boolean(hooks && addressActive && operatorAddress),
-        select: (items) =>
-          items.rewards.length ? items.rewards[0] : undefined,
+        select: (items) => (items.rewards.length ? items.rewards[0] : undefined),
       },
     });
 

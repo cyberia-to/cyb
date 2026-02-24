@@ -1,13 +1,13 @@
 import { Link } from 'react-router-dom';
 import { Account, SearchItem } from 'src/components';
 import {
+  PATTERN_BLOCK,
   PATTERN_CYBER,
   PATTERN_CYBER_VALOPER,
   PATTERN_TX,
-  PATTERN_BLOCK,
 } from 'src/constants/patterns';
 import { routes } from 'src/routes';
-import { trimString, formatNumber } from 'src/utils/utils';
+import { formatNumber, trimString } from 'src/utils/utils';
 import { v4 as uuidv4 } from 'uuid';
 
 const textPreviewSparkApp = (text, value) => (
@@ -30,10 +30,7 @@ function FirstItems({ query }: { query: string }) {
       <Wrapper>
         <Link to={`/network/bostrom/contract/${query}`}>
           <SearchItem hash={`${query}_PATTERN_CYBER`} status="sparkApp">
-            {textPreviewSparkApp(
-              'Explore details of contract',
-              <Account avatar address={query} />
-            )}
+            {textPreviewSparkApp('Explore details of contract', <Account avatar address={query} />)}
           </SearchItem>
         </Link>
       </Wrapper>
@@ -45,10 +42,7 @@ function FirstItems({ query }: { query: string }) {
       <Wrapper>
         <Link to={routes.hero.getLink(query)}>
           <SearchItem hash={`${query}_PATTERN_CYBER_VALOPER`} status="sparkApp">
-            {textPreviewSparkApp(
-              'Explore details of hero',
-              <Account address={query} />
-            )}
+            {textPreviewSparkApp('Explore details of hero', <Account address={query} />)}
           </SearchItem>
         </Link>
       </Wrapper>
@@ -60,10 +54,7 @@ function FirstItems({ query }: { query: string }) {
       <Wrapper>
         <Link to={`/network/bostrom/tx/${query}`}>
           <SearchItem hash={`${query}_PATTERN_TX`} status="sparkApp">
-            {textPreviewSparkApp(
-              'Explore details of tx',
-              trimString(query, 4, 4)
-            )}
+            {textPreviewSparkApp('Explore details of tx', trimString(query, 4, 4))}
           </SearchItem>
         </Link>
       </Wrapper>
@@ -75,10 +66,7 @@ function FirstItems({ query }: { query: string }) {
       <Wrapper>
         <Link to={`/network/bostrom/blocks/${query}`}>
           <SearchItem hash={`${query}_PATTERN_BLOCK`} status="sparkApp">
-            {textPreviewSparkApp(
-              'Explore details of block ',
-              formatNumber(parseFloat(query))
-            )}
+            {textPreviewSparkApp('Explore details of block ', formatNumber(parseFloat(query)))}
           </SearchItem>
         </Link>
       </Wrapper>

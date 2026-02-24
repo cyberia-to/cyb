@@ -1,15 +1,12 @@
+import { proxy, Remote } from 'comlink';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { UserContext } from 'src/services/scripting/types';
-import { Remote, proxy } from 'comlink';
-import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
-import {
-  selectRuneEntypoints,
-  setEntrypoint,
-} from 'src/redux/reducers/scripting';
 import { selectCurrentPassport } from 'src/features/passport/passports.redux';
-import { RuneEngine } from 'src/services/scripting/engine';
-import { Option } from 'src/types';
+import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
+import { selectRuneEntypoints, setEntrypoint } from 'src/redux/reducers/scripting';
 import { EmbeddingApi } from 'src/services/backend/workers/background/api/mlApi';
+import { RuneEngine } from 'src/services/scripting/engine';
+import { UserContext } from 'src/services/scripting/types';
+import { Option } from 'src/types';
 import { useBackend } from '../backend/backend';
 
 type RuneFrontend = Omit<RuneEngine, 'isSoulInitialized$'>;
@@ -31,18 +28,16 @@ export function useScripting() {
 }
 
 function ScriptingProvider({ children }: { children: React.ReactNode }) {
-  const {
-    rune: runeBackend,
-    ipfsApi,
-    isIpfsInitialized,
-    embeddingApi$,
-  } = useBackend();
+  const { rune: runeBackend, ipfsApi, isIpfsInitialized, embeddingApi$ } = useBackend();
 
   const [isSoulInitialized, setIsSoulInitialized] = useState(false);
   const runeRef = useRef<Option<Remote<RuneFrontend>>>();
   const embeddingApiRef = useRef<Option<Remote<EmbeddingApi>>>();
 
   const dispatch = useAppDispatch();
+  const runeEntryPoints = useAppSelector(selectRuneEntypoints);
+  const citizenship = useAppSelector(selectCurrentPassport);
+  const secrets = useAppSelector((state) => state.scripting.context.secrets);
 
   useEffect(() => {
     runeBackend.pushContext('secrets', secrets);
@@ -75,12 +70,7 @@ function ScriptingProvider({ children }: { children: React.ReactNode }) {
 
     setupObservervable();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const runeEntryPoints = useAppSelector(selectRuneEntypoints);
-
-  const citizenship = useAppSelector(selectCurrentPassport);
-  const secrets = useAppSelector((state) => state.scripting.context.secrets);
+  }, [embeddingApi$, runeBackend, secrets]);
 
   useEffect(() => {
     if (!isSoulInitialized || !runeRef.current) {
@@ -116,9 +106,7 @@ function ScriptingProvider({ children }: { children: React.ReactNode }) {
           (async () => {
             const result = await ipfsApi.fetchWithDetails(particleCid, 'text');
 
-            dispatch(
-              setEntrypoint({ name: 'particle', code: result?.content || '' })
-            );
+            dispatch(setEntrypoint({ name: 'particle', code: result?.content || '' }));
           })();
         }
       }
@@ -137,11 +125,7 @@ function ScriptingProvider({ children }: { children: React.ReactNode }) {
     };
   }, [isSoulInitialized]);
 
-  return (
-    <ScriptingContext.Provider value={value}>
-      {children}
-    </ScriptingContext.Provider>
-  );
+  return <ScriptingContext.Provider value={value}>{children}</ScriptingContext.Provider>;
 }
 
 export default ScriptingProvider;

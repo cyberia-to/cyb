@@ -1,6 +1,5 @@
-import axios from 'axios';
-
 import { CyberClient } from '@cybercongress/cyber-js';
+import axios from 'axios';
 import { LCD_URL } from 'src/constants/config';
 import { PATTERN_IPFS_HASH } from 'src/constants/patterns';
 import { ParticleCid } from 'src/types/base';
@@ -76,7 +75,7 @@ export const getRelevance = async (page = 0, limit = 50) => {
       },
     });
     return response.data;
-  } catch (error) {
+  } catch (_error) {
     return {};
   }
 };
@@ -101,7 +100,7 @@ export const keybaseAvatar = async (identity: string) => {
       url: `https://keybase.io/_/api/1.0/user/lookup.json?key_suffix=${identity}&fields=pictures`,
     });
     return response.data;
-  } catch (e) {
+  } catch (_e) {
     return undefined;
   }
 };
@@ -138,7 +137,7 @@ export const getCredit = async (address) => {
     });
 
     return response;
-  } catch (error) {
+  } catch (_error) {
     return null;
   }
 };
@@ -146,11 +145,7 @@ export const getCredit = async (address) => {
 export const getSearchQuery = async (query: ParticleCid | string) =>
   query.match(PATTERN_IPFS_HASH) ? query : getIpfsHash(encodeSlash(query));
 
-export const searchByHash = async (
-  client: CyberClient,
-  hash: string,
-  page: number
-) => {
+export const searchByHash = async (client: CyberClient, hash: string, page: number) => {
   try {
     const results = await client.search(hash, page);
 

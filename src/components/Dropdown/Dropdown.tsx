@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
-import styles from './Dropdown.module.scss';
 import cx from 'classnames';
+import { useState } from 'react';
+import styles from './Dropdown.module.scss';
 
 type Props = {
   options: {

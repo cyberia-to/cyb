@@ -37,41 +37,43 @@ export async function getTransactions({
   orderBy,
   config,
 }: PropsTx) {
-  const { offset, limit } = pagination;
-  const response = await axios.get<GetTxsEventResponseAmino>(
-    `${LCD_URL}/cosmos/tx/v1beta1/txs`,
-    {
+  try {
+    const { offset, limit } = pagination;
+    const response = await axios.get<GetTxsEventResponseAmino>(`${LCD_URL}/cosmos/tx/v1beta1/txs`, {
       params: {
         'pagination.offset': offset,
         'pagination.limit': limit,
-        orderBy,
+        order_by: orderBy,
         events: events.map((evn) => `${evn.key}='${evn.value}'`),
       },
       paramsSerializer: {
         indexes: null,
       },
       signal: config?.signal,
+    });
+
+    const { txs } = response.data;
+
+    // bullshit formatting FIXME:
+    // const formatted = GetTxsEventResponse.fromAmino(response.data);
+    // from amino to protobuf
+    const formatted = {
+      txs,
+      pagination: response.data.pagination || {
+        total: response.data.total,
+      },
+      txResponses: response.data.tx_responses,
+    } as GetTxsEventResponse;
+
+    if (!formatted.pagination?.total) {
+      formatted.pagination.total = formatted.txResponses.length;
     }
-  );
 
-  const { txs } = response.data;
-
-  // bullshit formatting FIXME:
-  // const formatted = GetTxsEventResponse.fromAmino(response.data);
-  // from amino to protobuf
-  const formatted = {
-    txs,
-    pagination: response.data.pagination || {
-      total: response.data.total,
-    },
-    txResponses: response.data.tx_responses,
-  } as GetTxsEventResponse;
-
-  if (!formatted.pagination?.total) {
-    formatted.pagination.total = formatted.txResponses.length;
+    return formatted;
+  } catch (e) {
+    console.error('getTransactions failed:', e);
+    return null;
   }
-
-  return formatted;
 }
 
 const getLink = async (
@@ -83,9 +85,7 @@ const getLink = async (
     const response = await getTransactions({
       events: [
         {
-          key: `cyberlink.particle${
-            type === LinksTypeFilter.to ? 'To' : 'From'
-          }`,
+          key: `cyberlink.particle${type === LinksTypeFilter.to ? 'To' : 'From'}`,
           value: cid,
         },
       ],

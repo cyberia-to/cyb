@@ -1,14 +1,14 @@
 import { EntityToDto } from 'src/types/dto';
 import {
-  PinDbEntity,
-  SyncStatusDbEntity,
-  TransactionDbEntity,
-  ParticleDbEntity,
+  CommunityDbEntity,
   ConfigDbEntity,
   LinkDbEntity,
+  ParticleDbEntity,
+  PinDbEntity,
   SyncQueueDbEntity,
-  CommunityDbEntity,
   SyncQueueKey,
+  SyncStatusDbEntity,
+  TransactionDbEntity,
 } from './entities';
 
 export type PinDto = EntityToDto<PinDbEntity>;

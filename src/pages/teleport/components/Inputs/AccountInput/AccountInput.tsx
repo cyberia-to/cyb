@@ -1,35 +1,29 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Account, Input } from 'src/components';
+import ButtonsGroup from 'src/components/buttons/ButtonsGroup/ButtonsGroup';
 import LinearGradientContainer, {
   Color,
 } from 'src/components/LinearGradientContainer/LinearGradientContainer';
+import { CHAIN_ID } from 'src/constants/config';
 import { PATTERN_CYBER } from 'src/constants/patterns';
+import { getPassportByNickname } from 'src/containers/portal/utils';
+import { useQueryClient } from 'src/contexts/queryClient';
 import {
   SliceState,
   selectAccountsPassports,
   selectCommunityPassports,
 } from 'src/features/passport/passports.redux';
-import { useAppSelector } from 'src/redux/hooks';
-import { useQueryClient } from 'src/contexts/queryClient';
-import { getPassportByNickname } from 'src/containers/portal/utils';
-import { useSearchParams } from 'react-router-dom';
-import useOnClickOutside from 'src/hooks/useOnClickOutside';
-import ButtonsGroup from 'src/components/buttons/ButtonsGroup/ButtonsGroup';
 import useDebounce from 'src/hooks/useDebounce';
-import styles from './AccountInput.module.scss';
-import contains from '../utils';
-import AccountInputOptionList from './AccountInputItem';
-import AccountInputListContainer from './AccountInputContainer';
-import { TypeRecipient } from '../type';
-import { fromBech32 } from 'src/utils/utils';
-import { CHAIN_ID } from 'src/constants/config';
+import useOnClickOutside from 'src/hooks/useOnClickOutside';
+import { useAppSelector } from 'src/redux/hooks';
 import { Networks } from 'src/types/networks';
+import { fromBech32 } from 'src/utils/utils';
+import { TypeRecipient } from '../type';
+import contains from '../utils';
+import styles from './AccountInput.module.scss';
+import AccountInputListContainer from './AccountInputContainer';
+import AccountInputOptionList from './AccountInputItem';
 
 type Props = {
   recipient: string | undefined;
@@ -39,11 +33,7 @@ type Props = {
 
 const PLACEHOLDER_TITLE = 'choose recipient';
 
-function AccountInput({
-  recipient,
-  setRecipient,
-  title = PLACEHOLDER_TITLE,
-}: Props) {
+function AccountInput({ recipient, setRecipient, title = PLACEHOLDER_TITLE }: Props) {
   const queryClient = useQueryClient();
   const [searchParams] = useSearchParams();
   const inputElem = useRef(null);
@@ -52,9 +42,7 @@ function AccountInput({
   const firstEffectOccured = useRef(false);
 
   const [isOpen, setIsOpen] = useState(false);
-  const [selectedTypeRecipient, setSelectedTypeRecipient] = useState(
-    TypeRecipient.friends
-  );
+  const [selectedTypeRecipient, setSelectedTypeRecipient] = useState(TypeRecipient.friends);
   const [valueRecipient, setValueRecipient] = useState<string>('');
   const [listRecipient, setListRecipient] = useState<SliceState>({});
 
@@ -66,10 +54,10 @@ function AccountInput({
   useOnClickOutside(selectContainerRef, clickOutsideHandler);
 
   useEffect(() => {
-    if (recipient && recipient.length && recipient.match(PATTERN_CYBER)) {
+    if (recipient?.length && recipient.match(PATTERN_CYBER)) {
       clickOutsideHandler();
     }
-  }, [recipient]);
+  }, [recipient, clickOutsideHandler]);
 
   const selectedDataRecipient = useMemo(() => {
     if (selectedTypeRecipient === TypeRecipient.my) {
@@ -113,10 +101,7 @@ function AccountInput({
         }
       }
 
-      const resultHandle = await await getPassportByNickname(
-        queryClient,
-        value
-      );
+      const resultHandle = await await getPassportByNickname(queryClient, value);
 
       if (resultHandle) {
         const resultHandleRecipient = {
@@ -128,12 +113,12 @@ function AccountInput({
 
       setListRecipient(listRecipientTemp);
     },
-    [selectedDataRecipient, queryClient, setRecipient]
+    [selectedDataRecipient, queryClient, setRecipient, handleSetRecipient]
   );
 
   const handleSearch = useCallback(
     debounce((inputVal: string) => getRecipient(inputVal), 500),
-    [getRecipient]
+    []
   );
 
   const onChangeRecipient = useCallback(
@@ -177,18 +162,9 @@ function AccountInput({
 
   if (!isOpen && recipient) {
     return (
-      <button
-        type="button"
-        onClick={() => setIsOpen(true)}
-        className={styles.containerBtnValue}
-      >
+      <button type="button" onClick={() => setIsOpen(true)} className={styles.containerBtnValue}>
         <LinearGradientContainer color={Color.Green} title={title}>
-          <Account
-            avatar
-            disabled
-            address={recipient}
-            styleUser={{ height: '42px' }}
-          />
+          <Account avatar disabled address={recipient} styleUser={{ height: '42px' }} />
         </LinearGradientContainer>
       </button>
     );
@@ -224,10 +200,7 @@ function AccountInput({
           </div>
 
           {useListRecipient && Object.keys(useListRecipient).length > 0 && (
-            <AccountInputOptionList
-              data={useListRecipient}
-              onClickByNickname={onClickByNickname}
-            />
+            <AccountInputOptionList data={useListRecipient} onClickByNickname={onClickByNickname} />
           )}
         </AccountInputListContainer>
       )}

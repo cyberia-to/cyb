@@ -1,30 +1,24 @@
-import {
-  matchPath,
-  useLocation,
-  useParams,
-  useSearchParams,
-} from 'react-router-dom';
 import { useEffect, useState } from 'react';
 import InfiniteScroll from 'react-infinite-scroll-component';
-
+import { matchPath, useLocation, useParams, useSearchParams } from 'react-router-dom';
+import { ActionBar, Button } from 'src/components';
 import Display from 'src/components/containerGradient/Display/Display';
 import Spark from 'src/components/search/Spark/Spark';
 import Loader2 from 'src/components/ui/Loader2';
 import { useDevice } from 'src/contexts/device';
-import { IpfsContentType } from 'src/services/ipfs/types';
 
 import useIsOnline from 'src/hooks/useIsOnline';
-import { getSearchQuery } from 'src/utils/search/utils';
 import { routes } from 'src/routes';
-import { ActionBar, Button } from 'src/components';
-import ActionBarContainer from './ActionBarContainer';
-import Filters from './Filters/Filters';
-import styles from './SearchResults.module.scss';
+import { IpfsContentType } from 'src/services/ipfs/types';
+import { getSearchQuery } from 'src/utils/search/utils';
 import FirstItems from './_FirstItems.refactor';
+import ActionBarContainer from './ActionBarContainer';
 import { initialContentTypeFilterState } from './constants';
+import Filters from './Filters/Filters';
 import useSearchData from './hooks/useSearchData';
-import { LinksTypeFilter, SortBy } from './types';
 import LLMSpark, { useIsLLMPageParam } from './LLMSpark/LLMSpark';
+import styles from './SearchResults.module.scss';
+import { LinksTypeFilter, SortBy } from './types';
 
 const sortByLSKey = 'search-sort';
 const NEURON_SEARCH_KEY = 'neuron';
@@ -35,11 +29,7 @@ type Props = {
   actionBarTextBtn?: string;
 };
 
-function SearchResults({
-  query: propQuery,
-  noCommentText,
-  actionBarTextBtn,
-}: Props) {
+function SearchResults({ query: propQuery, noCommentText, actionBarTextBtn }: Props) {
   const { query: q, cid } = useParams();
 
   const [searchParams, setSearchParams] = useSearchParams();
@@ -61,13 +51,9 @@ function SearchResults({
     [key: string]: IpfsContentType;
   }>({});
 
-  const [contentTypeFilter, setContentTypeFilter] = useState(
-    initialContentTypeFilterState
-  );
+  const [contentTypeFilter, setContentTypeFilter] = useState(initialContentTypeFilterState);
   const [sortBy, setSortBy] = useState(
-    neuron
-      ? SortBy.date
-      : (localStorage.getItem(sortByLSKey) as SortBy | null) || SortBy.rank
+    neuron ? SortBy.date : (localStorage.getItem(sortByLSKey) as SortBy | null) || SortBy.rank
   );
 
   const [linksTypeFilter, setLinksTypeFilter] = useState(LinksTypeFilter.all);
@@ -75,8 +61,7 @@ function SearchResults({
   const noResultsText = isOnline
     ? noCommentText || (
         <>
-          there are no answers or questions to this particle{' '}
-          {neuron && 'for this neuron'}
+          there are no answers or questions to this particle {neuron && 'for this neuron'}
           <br /> be the first and create one
         </>
       )
@@ -220,9 +205,7 @@ function SearchResults({
         <div className={styles.actionBar}>
           {isLLM ? (
             <ActionBar>
-              <Button link={`${routes.studio.path}?cid=${keywordHash}`}>
-                Edit & Cyberlink
-              </Button>
+              <Button link={`${routes.studio.path}?cid=${keywordHash}`}>Edit & Cyberlink</Button>
             </ActionBar>
           ) : (
             <ActionBarContainer

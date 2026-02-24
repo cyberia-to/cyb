@@ -3,15 +3,9 @@ import { InputNumber, Select } from 'src/components';
 import { OptionSelect, SelectOption } from 'src/components/Select';
 import KeybaseAvatar from '../../../KeybaseAvatar/keybaseAvatar';
 
-const renderOptions = (
-  data: Validator[],
-  selected: Validator
-): SelectOption[] => {
+const renderOptions = (data: Validator[], selected: Validator): SelectOption[] => {
   return data
-    .filter(
-      (item) =>
-        !item.jailed && item.operatorAddress !== selected.operatorAddress
-    )
+    .filter((item) => !item.jailed && item.operatorAddress !== selected.operatorAddress)
     .map((item) => {
       const { moniker, identity } = item.description;
       return {
@@ -55,9 +49,7 @@ function ReDelegate({
         width="250px"
         valueSelect={valueSelect}
         onChangeSelect={(item) => onChangeReDelegate(item)}
-        options={
-          validatorsAll ? renderOptions(validatorsAll, validatorSelect) : []
-        }
+        options={validatorsAll ? renderOptions(validatorsAll, validatorSelect) : []}
         currentValue={<OptionSelect text="pick hero" value="" />}
       />
     </>

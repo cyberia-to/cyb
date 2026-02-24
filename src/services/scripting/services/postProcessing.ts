@@ -1,12 +1,9 @@
-import {
-  IPFSContentDetails,
-  IPFSContentDetailsMutated,
-} from 'src/services/ipfs/types';
-
-import { QueuePriority } from 'src/services/QueueManager/types';
-import { parseArrayLikeToDetails } from 'src/services/ipfs/utils/content';
-import { ParticleCid } from 'src/types/base';
+import DOMPurify from 'dompurify';
 import { IpfsApi } from 'src/services/backend/workers/background/api/ipfsApi';
+import { IPFSContentDetails, IPFSContentDetailsMutated } from 'src/services/ipfs/types';
+import { parseArrayLikeToDetails } from 'src/services/ipfs/utils/content';
+import { QueuePriority } from 'src/services/QueueManager/types';
+import { ParticleCid } from 'src/types/base';
 import { RuneEngine } from '../engine';
 
 /**
@@ -37,10 +34,7 @@ export async function postProcessIpfContent(
       const result = await ipfsApi.enqueueAndWait(mutation.cid, {
         priority: QueuePriority.URGENT,
       });
-      const mutatedDetails = await parseArrayLikeToDetails(
-        result.result,
-        mutation.cid
-      );
+      const mutatedDetails = await parseArrayLikeToDetails(result.result, mutation.cid);
       // console.log('----cid_result', cid, details, mutation, result);
 
       if (result) {
@@ -53,18 +47,14 @@ export async function postProcessIpfContent(
     }
 
     if (mutation.action === 'content_result') {
-      // update meta to reflect new content
-      // const meta = {
-      //   type: 'file',
-      //   size: mutation.content?.length,
-      //   sizeLocal: mutation.content?.length,
-      //   mime: 'text/plain',
-      //   contentType: 'text',
-      // } as IPFSContentMeta;
+      const sanitized =
+        typeof mutation.content === 'string'
+          ? DOMPurify.sanitize(mutation.content)
+          : mutation.content;
       return {
         ...details,
-        content: mutation.content,
-        text: mutation.content,
+        content: sanitized,
+        text: sanitized,
         mutation: 'modified',
       };
     }

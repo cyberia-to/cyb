@@ -11,9 +11,7 @@ export const RPC_ENDPOINTS: Record<string, string[]> = {
     'https://rpc-cyber-ia.cosmosia.notional.ventures',
     'https://rpc.cyber.bronbro.io',
   ],
-  [Networks.SPACE_PUSSY]: [
-    'https://rpc.space-pussy.cybernode.ai',
-  ],
+  [Networks.SPACE_PUSSY]: ['https://rpc.space-pussy.cybernode.ai'],
 };
 
 /**
@@ -22,10 +20,7 @@ export const RPC_ENDPOINTS: Record<string, string[]> = {
  */
 const rpcCache = new Map<string, string>();
 
-export async function getHealthyRpcUrl(
-  chainId: string,
-  defaultUrl: string
-): Promise<string> {
+export async function getHealthyRpcUrl(chainId: string, defaultUrl: string): Promise<string> {
   const cached = rpcCache.get(chainId);
   if (cached) {
     return cached;

@@ -1,5 +1,5 @@
-import QuestionBtn from 'src/components/Rank/QuestionBtn/QuestionBtn';
 import { Tooltip } from 'src/components';
+import QuestionBtn from 'src/components/Rank/QuestionBtn/QuestionBtn';
 import styles from './ERatio.module.scss';
 
 function ERatio({ eRatio }: { eRatio: number }) {

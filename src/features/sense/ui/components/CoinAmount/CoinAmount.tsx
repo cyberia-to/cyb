@@ -1,7 +1,7 @@
-import { AmountDenom } from 'src/components';
 import { Coin } from '@cosmjs/launchpad';
-import styles from './CoinAmount.module.scss';
 import cx from 'classnames';
+import { AmountDenom } from 'src/components';
+import styles from './CoinAmount.module.scss';
 
 export enum CoinAction {
   send = 'send',

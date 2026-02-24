@@ -1,11 +1,4 @@
-export type ColorLamp =
-  | 'green'
-  | 'blue'
-  | 'purple'
-  | 'white'
-  | 'red'
-  | 'yellow'
-  | 'orange';
+export type ColorLamp = 'green' | 'blue' | 'purple' | 'white' | 'red' | 'yellow' | 'orange';
 
 export enum Positions {
   LEFT = 'left',

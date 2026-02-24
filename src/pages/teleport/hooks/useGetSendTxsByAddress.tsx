@@ -1,12 +1,8 @@
-import { useEffect, useState } from 'react';
-import { AccountValue } from 'src/types/defaultAccount';
-import { Nullable, Option } from 'src/types';
 import { Log } from '@cosmjs/stargate/build/logs';
-
-import {
-  MessagesByAddressQueryHookResult,
-  useMessagesByAddressQuery,
-} from 'src/generated/graphql';
+import { useEffect, useState } from 'react';
+import { MessagesByAddressQueryHookResult, useMessagesByAddressQuery } from 'src/generated/graphql';
+import { Nullable, Option } from 'src/types';
+import { AccountValue } from 'src/types/defaultAccount';
 
 type Txs = {
   success: boolean;
@@ -25,8 +21,7 @@ export type ResponseTxsByType = {
   value: any;
 };
 
-export interface UseGetSendTxsByAddressByType
-  extends MessagesByAddressQueryHookResult {
+export interface UseGetSendTxsByAddressByType extends MessagesByAddressQueryHookResult {
   hasMore: boolean;
   fetchMoreData: () => void;
 }

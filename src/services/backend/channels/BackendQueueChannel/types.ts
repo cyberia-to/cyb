@@ -9,11 +9,5 @@ type DbSaveMessage<N extends DbQueueMessageType, T> = {
 };
 export type DbSaveLinkMessage = DbSaveMessage<'link', LinkDto[]>;
 export type DbSaveParticleMessage = DbSaveMessage<'particle', IPFSContent>;
-export type DbSyncQueueMessage = DbSaveMessage<
-  'sync',
-  SyncQueueItem[] | SyncQueueItem
->;
-export type QueueChannelMessage =
-  | DbSyncQueueMessage
-  | DbSaveLinkMessage
-  | DbSaveParticleMessage;
+export type DbSyncQueueMessage = DbSaveMessage<'sync', SyncQueueItem[] | SyncQueueItem>;
+export type QueueChannelMessage = DbSyncQueueMessage | DbSaveLinkMessage | DbSaveParticleMessage;

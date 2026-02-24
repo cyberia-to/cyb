@@ -3,10 +3,7 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useBackend } from 'src/contexts/backend/backend';
 import { useAdviser } from 'src/features/adviser/context';
-import {
-  getSenseChat,
-  getSenseList,
-} from 'src/features/sense/redux/sense.redux';
+import { getSenseChat, getSenseList } from 'src/features/sense/redux/sense.redux';
 import SenseList from 'src/features/sense/ui/SenseList/SenseList';
 import SenseViewer from 'src/features/sense/ui/SenseViewer/SenseViewer';
 import { useRobotContext } from 'src/pages/robot/robot.context';
@@ -170,19 +167,13 @@ function Sense({ urlSenseId }: { urlSenseId?: string }) {
             }}
           />
         )}
-        <SenseViewer
-          selected={selected}
-          isLLMFilter={isLLMFilter}
-          adviser={adviserProps}
-        />
+        <SenseViewer selected={selected} isLLMFilter={isLLMFilter} adviser={adviserProps} />
       </div>
 
       {isLLMFilter && currentThreadId ? (
         <ActionBarLLM />
       ) : (
-        selected && (
-          <ActionBar id={selected} adviser={adviserProps} update={update} />
-        )
+        selected && <ActionBar id={selected} adviser={adviserProps} update={update} />
       )}
     </>
   );

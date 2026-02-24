@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import BigNumber from 'bignumber.js';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { getNowUtcTime } from 'src/utils/utils';
 
@@ -35,10 +35,7 @@ function useGetGraphStats(refetchInterval: number | undefined) {
           .plus(new BigNumber(40).multipliedBy(particles))
           .toNumber();
         let beta = 0;
-        if (
-          new BigNumber(cyberlinks).comparedTo(0) &&
-          new BigNumber(particles).comparedTo(0)
-        ) {
+        if (new BigNumber(cyberlinks).comparedTo(0) && new BigNumber(particles).comparedTo(0)) {
           beta = new BigNumber(cyberlinks)
             .dividedBy(particles)
             .dp(3, BigNumber.ROUND_FLOOR)
@@ -65,21 +62,13 @@ function useGetGraphStats(refetchInterval: number | undefined) {
       if (lastgraphStatsLs !== null) {
         const oldData = JSON.parse(lastgraphStatsLs);
 
-        const timeChange = new BigNumber(data.timestamp)
-          .minus(oldData.timestamp)
-          .toNumber();
+        const timeChange = new BigNumber(data.timestamp).minus(oldData.timestamp).toNumber();
         const cyberlinksAmount = new BigNumber(data.cyberlinks)
           .minus(oldData.cyberlinks)
           .toNumber();
-        const particlesAmount = new BigNumber(data.particles)
-          .minus(oldData.particles)
-          .toNumber();
-        const bitsAmount = new BigNumber(data.bits)
-          .minus(oldData.bits)
-          .toNumber();
-        const betaAmount = new BigNumber(data.beta)
-          .minus(oldData.beta)
-          .toNumber();
+        const particlesAmount = new BigNumber(data.particles).minus(oldData.particles).toNumber();
+        const bitsAmount = new BigNumber(data.bits).minus(oldData.bits).toNumber();
+        const betaAmount = new BigNumber(data.beta).minus(oldData.beta).toNumber();
 
         if (timeChange > 0) {
           setChangeTimeAmount({

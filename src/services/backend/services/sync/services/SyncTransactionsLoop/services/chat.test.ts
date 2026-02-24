@@ -1,17 +1,16 @@
 import { EntryType } from 'src/services/CozoDb/types/entities';
 import { dateToUtcNumber } from 'src/utils/date';
+import DbApi, {
+  mockFindSyncStatus,
+  mockGetSyncStatus,
+  mockGetTransactions,
+  mockPutSyncStatus,
+  mockUpdateSyncStatus,
+} from '../../../../dataSource/indexedDb/__mocks__/dbApiWrapperMock';
 import {
   MSG_MULTI_SEND_TRANSACTION_TYPE,
   MSG_SEND_TRANSACTION_TYPE,
 } from '../../../../indexer/types';
-
-import DbApi, {
-  mockFindSyncStatus,
-  mockPutSyncStatus,
-  mockGetSyncStatus,
-  mockUpdateSyncStatus,
-  mockGetTransactions,
-} from '../../../../dataSource/indexedDb/__mocks__/dbApiWrapperMock';
 
 import { syncMyChats } from './chat';
 
@@ -54,12 +53,8 @@ describe('SyncMyChatsLoop', () => {
       {
         type: MSG_MULTI_SEND_TRANSACTION_TYPE,
         value: {
-          inputs: [
-            { address: 'sender2', coins: [{ amount: '50', denom: 'ATOM' }] },
-          ],
-          outputs: [
-            { address: myAddress, coins: [{ amount: '50', denom: 'ATOM' }] },
-          ],
+          inputs: [{ address: 'sender2', coins: [{ amount: '50', denom: 'ATOM' }] }],
+          outputs: [{ address: myAddress, coins: [{ amount: '50', denom: 'ATOM' }] }],
         },
         timestamp: dateToUtcNumber('2022-01-02'),
         hash: 'hash456',

@@ -1,0 +1,54 @@
+[package]
+name = "rio-backend"
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+keywords.workspace = true
+repository = "https://github.com/raphamorim/rio"
+documentation = "https://github.com/raphamorim/rio#readme"
+description = "Backend infrastructure for Rio terminal"
+
+[lib]
+path = "src/lib.rs"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+tracing = { workspace = true }
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+toml = "0.9.2"
+base64 = { workspace = true }
+memchr = { version = "2.7.4", default-features = false }
+bitflags = { workspace = true }
+bytemuck = { workspace = true }
+corcovado = { workspace = true }
+rustc-hash = { workspace = true }
+regex = { workspace = true }
+raw-window-handle = { workspace = true }
+copypasta = { version = "0.10.1", default-features = false }
+dirs = "6.0.0"
+image_rs = { workspace = true }
+libc = { workspace = true }
+parking_lot = { workspace = true }
+serde = { workspace = true }
+sugarloaf = { workspace = true }
+teletypewriter = { workspace = true }
+unicode-width = { workspace = true }
+copa = { workspace = true }
+wgpu = { workspace = true }
+url = { workspace = true }
+regex-automata = "0.4.9"
+cursor-icon = { version = "1.1.0", default-features = false }
+smallvec = { version = "1.13.2", default-features = false }
+rio-window = { workspace = true }
+simdutf8 = { version = "0.1.5", default-features = false }
+
+[features]
+default = ["wayland", "x11"]
+x11 = [
+    "copypasta/x11"
+]
+wayland = [
+    "copypasta/wayland",
+]

@@ -8,10 +8,10 @@ import BigNumber from 'bignumber.js';
 import { QueryValidatorsResponse } from 'cosmjs-types/cosmos/staking/v1beta1/query';
 import Long from 'long';
 import {
-  DEFAULT_GAS_LIMITS,
   BASE_DENOM,
-  DENOM_LIQUID,
   COIN_DECIMALS_RESOURCE,
+  DEFAULT_GAS_LIMITS,
+  DENOM_LIQUID,
 } from 'src/constants/config';
 import { calculatePairAmount } from 'src/pages/teleport/swap/utils';
 import { ObjKeyValue } from 'src/types/data';
@@ -107,11 +107,7 @@ class Soft3MessageFactory {
     return true;
   }
 
-  public async investmint(
-    amount: Coin,
-    resource: 'millivolt' | 'milliampere',
-    length: number
-  ) {
+  public async investmint(amount: Coin, resource: 'millivolt' | 'milliampere', length: number) {
     const isMint = await this.checkFreeSlotMint();
 
     if (!isMint) {
@@ -119,9 +115,7 @@ class Soft3MessageFactory {
     }
 
     const minAmountMint =
-      resource === 'milliampere'
-        ? BASE_INVESTMINT_AMOUNT_AMPERE
-        : BASE_INVESTMINT_AMOUNT_VOLT;
+      resource === 'milliampere' ? BASE_INVESTMINT_AMOUNT_AMPERE : BASE_INVESTMINT_AMOUNT_VOLT;
 
     if (new BigNumber(amount.amount).comparedTo(minAmountMint) < 0) {
       return undefined;
@@ -133,18 +127,12 @@ class Soft3MessageFactory {
         neuron: this.senderAddress,
         amount,
         resource,
-        length: Long.fromString(
-          new Uint53(length * BASE_VESTING_TIME).toString()
-        ),
+        length: Long.fromString(new Uint53(length * BASE_VESTING_TIME).toString()),
       },
     };
   }
 
-  public execute(
-    contract: string,
-    msg: Record<string, unknown>,
-    funds?: readonly Coin[]
-  ) {
+  public execute(contract: string, msg: Record<string, unknown>, funds?: readonly Coin[]) {
     return {
       typeUrl: '/cosmwasm.wasm.v1.MsgExecuteContract',
       value: {
@@ -182,9 +170,7 @@ class Soft3MessageFactory {
     }
 
     const sortedArray = result.validators
-      .sort(
-        (itemA, itemB) => parseFloat(itemB.tokens) - parseFloat(itemA.tokens)
-      )
+      .sort((itemA, itemB) => parseFloat(itemB.tokens) - parseFloat(itemA.tokens))
       .slice(10, result.validators.length - 1);
 
     const randomIndex = Math.floor(Math.random() * sortedArray.length);
@@ -197,9 +183,7 @@ class Soft3MessageFactory {
       return undefined;
     }
 
-    const resultPool = (await this.queryClient.pool(
-      poolId
-    )) as QueryLiquidityPoolResponse;
+    const resultPool = (await this.queryClient.pool(poolId)) as QueryLiquidityPoolResponse;
 
     const { pool } = resultPool;
 
@@ -207,9 +191,7 @@ class Soft3MessageFactory {
       return undefined;
     }
 
-    const resultBalances = await this.queryClient.getAllBalances(
-      pool.reserveAccountAddress
-    );
+    const resultBalances = await this.queryClient.getAllBalances(pool.reserveAccountAddress);
 
     if (!resultBalances) {
       return undefined;
@@ -238,11 +220,7 @@ class Soft3MessageFactory {
     const tokenAPoolAmount = getBalPool[offerCoin.denom] || 0;
     const tokenBPoolAmount = getBalPool[demandCoinDenom] || 0;
 
-    if (
-      !tokenAPoolAmount ||
-      !tokenBPoolAmount ||
-      Number(offerCoin.amount) === 0
-    ) {
+    if (!tokenAPoolAmount || !tokenBPoolAmount || Number(offerCoin.amount) === 0) {
       return undefined;
     }
 

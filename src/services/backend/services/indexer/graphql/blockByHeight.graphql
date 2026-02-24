@@ -1,14 +1,14 @@
 query blockByHeight($blockId: bigint) {
-    block(where: { height: { _eq: $blockId } }) {
+  block(where: { height: { _eq: $blockId } }) {
+    hash
+    height
+    proposer_address
+    timestamp
+    transactions {
+      messages
       hash
       height
-      proposer_address
-      timestamp
-      transactions {
-        messages
-        hash
-        height
-        success
-      }
+      success
     }
+  }
 }

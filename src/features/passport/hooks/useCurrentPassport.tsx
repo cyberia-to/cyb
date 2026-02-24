@@ -5,8 +5,7 @@ import useCurrentAddress from '../../../hooks/useCurrentAddress';
 function useCurrentPassport() {
   const currentAddress = useCurrentAddress();
 
-  const bostromAddress =
-    currentAddress && fromBech32(currentAddress, 'bostrom');
+  const bostromAddress = currentAddress && fromBech32(currentAddress, 'bostrom');
 
   const currentPassport = useAppSelector((store) =>
     bostromAddress ? store.passports[bostromAddress] : null

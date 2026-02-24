@@ -1,12 +1,12 @@
-import { Routes, Route } from 'react-router-dom';
-import Swap from './swap/swap';
-import Send from './send/send';
+import { Route, Routes } from 'react-router-dom';
+import RelayerContextProvider from '../../contexts/relayer';
 import Bridge from './bridge/bridge';
+import Layout from './Layout/Layout';
 import TeleportMainScreen from './mainScreen/TeleportMainScreen';
 import Relayer from './relayer/Relayer';
-import RelayerContextProvider from '../../contexts/relayer';
+import Send from './send/send';
+import Swap from './swap/swap';
 import TeleportContextProvider from './Teleport.context';
-import Layout from './Layout/Layout';
 
 function TeleportRouter() {
   return (

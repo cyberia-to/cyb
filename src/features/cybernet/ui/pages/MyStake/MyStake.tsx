@@ -1,11 +1,11 @@
+import { Helmet } from 'react-helmet';
 import Display from 'src/components/containerGradient/Display/Display';
 import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
+import IconsNumber from 'src/components/IconsNumber/IconsNumber';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
 import useCurrentAccountStake from '../../hooks/useCurrentAccountStake';
-import { Helmet } from 'react-helmet';
 import DelegatesTable from '../Delegates/DelegatesTable/DelegatesTable';
 import { HeaderItem } from '../Subnet/SubnetHeader/SubnetHeader';
-import IconsNumber from 'src/components/IconsNumber/IconsNumber';
 
 function MyStake() {
   const { loading, error, data } = useCurrentAccountStake();

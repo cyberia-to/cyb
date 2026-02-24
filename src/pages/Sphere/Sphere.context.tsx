@@ -1,13 +1,13 @@
 import React, { useCallback, useMemo } from 'react';
+import Loader2 from 'src/components/ui/Loader2';
+import { useGetBalance } from 'src/containers/sigma/hooks/utils';
 import { selectCurrentAddress } from 'src/redux/features/pocket';
 import { useAppSelector } from 'src/redux/hooks';
-import { useGetBalance } from 'src/containers/sigma/hooks/utils';
-import Loader2 from 'src/components/ui/Loader2';
+import useDelegatorDelegations from '../../features/staking/delegation/useDelegatorDelegations';
+import useGetHeroes from '../../features/staking/getHeroesHook';
+import useGetUnbondingDays from '../../features/staking/params/useGetUnbondingDays';
 import useValidatorStakingProvisions from '../../features/staking/params/useValidatorStakingProvisions';
 import useStakingPool from '../../features/staking/useStakingPool';
-import useDelegatorDelegations from '../../features/staking/delegation/useDelegatorDelegations';
-import useGetUnbondingDays from '../../features/staking/params/useGetUnbondingDays';
-import useGetHeroes from '../../features/staking/getHeroesHook';
 
 // type ResponesGetHeroes = Omit<
 //   ReturnType<typeof useGetHeroes>,
@@ -19,9 +19,7 @@ const SphereContext = React.createContext<{
   stakingProvisions?: string;
   balance?: ReturnType<typeof useGetBalance>['data'];
   isFetchingBalance: boolean;
-  delegationsData: ReturnType<
-    typeof useDelegatorDelegations
-  >['delegationsData'];
+  delegationsData: ReturnType<typeof useDelegatorDelegations>['delegationsData'];
   unbondingDays?: number;
   validators: ReturnType<typeof useGetHeroes>['validators'];
   refetchFunc: () => void;
@@ -42,11 +40,7 @@ function SphereContextProvider({ children }: { children: React.ReactNode }) {
   // const { chainId = CHAIN_ID } = useParams();
   // const { signingClient, rpcClient } = useChain(chainId);
 
-  const {
-    validators,
-    loadingValidators,
-    refetchAll: refetchAllHeroes,
-  } = useGetHeroes();
+  const { validators, loadingValidators, refetchAll: refetchAllHeroes } = useGetHeroes();
 
   const addressActive = useAppSelector(selectCurrentAddress);
 
@@ -55,8 +49,7 @@ function SphereContextProvider({ children }: { children: React.ReactNode }) {
     refetch: refetchBalance,
     isFetching: isFetchingBalance,
   } = useGetBalance(addressActive);
-  const { delegationsData, refetchDelegations } =
-    useDelegatorDelegations(addressActive);
+  const { delegationsData, refetchDelegations } = useDelegatorDelegations(addressActive);
   const { bondedTokens } = useStakingPool();
   const { unbondingDays } = useGetUnbondingDays();
 
@@ -95,11 +88,7 @@ function SphereContextProvider({ children }: { children: React.ReactNode }) {
     return <Loader2 />;
   }
 
-  return (
-    <SphereContext.Provider value={contextValue}>
-      {children}
-    </SphereContext.Provider>
-  );
+  return <SphereContext.Provider value={contextValue}>{children}</SphereContext.Provider>;
 }
 
 export default SphereContextProvider;

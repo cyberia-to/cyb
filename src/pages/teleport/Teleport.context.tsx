@@ -1,10 +1,10 @@
 import React, { useMemo } from 'react';
 import useCommunityPassports from 'src/features/passport/hooks/useCommunityPassports';
-import { ObjKeyValue } from 'src/types/data';
-import { Nullable } from 'src/types';
 import useGetBalances from 'src/hooks/getBalances';
-import useGetTotalSupply from 'src/hooks/useGetTotalSupply';
 import useCurrentAddress from 'src/hooks/useCurrentAddress';
+import useGetTotalSupply from 'src/hooks/useGetTotalSupply';
+import { Nullable } from 'src/types';
+import { ObjKeyValue } from 'src/types/data';
 
 const TeleportContext = React.createContext<{
   accountBalances: Nullable<ObjKeyValue>;
@@ -35,14 +35,10 @@ function TeleportContextProvider({ children }: { children: React.ReactNode }) {
       totalSupplyProofList,
       totalSupplyAll,
     }),
-    [accountBalances, refreshBalances]
+    [accountBalances, refreshBalances, totalSupplyAll, totalSupplyProofList]
   );
 
-  return (
-    <TeleportContext.Provider value={contextValue}>
-      {children}
-    </TeleportContext.Provider>
-  );
+  return <TeleportContext.Provider value={contextValue}>{children}</TeleportContext.Provider>;
 }
 
 export default TeleportContextProvider;

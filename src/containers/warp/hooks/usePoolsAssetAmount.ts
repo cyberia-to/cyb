@@ -1,27 +1,20 @@
+import { Pool } from '@cybercongress/cyber-js/build/codec/tendermint/liquidity/v1beta1/liquidity';
+import { useQuery } from '@tanstack/react-query';
 import BigNumber from 'bignumber.js';
 import { useEffect, useState } from 'react';
-import { Pool } from '@cybercongress/cyber-js/build/codec/tendermint/liquidity/v1beta1/liquidity';
-import { Option } from 'src/types';
-import { useQueryClient } from 'src/contexts/queryClient';
-import { useIbcDenom } from 'src/contexts/ibcDenom';
 import { useAppData } from 'src/contexts/appData';
-import {
-  OptionNeverArray,
-  PoolsWithAssetsType,
-  PoolsWithAssetsCapType,
-  AssetsType,
-} from '../type';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
+import { useQueryClient } from 'src/contexts/queryClient';
+import { Option } from 'src/types';
 import { convertAmount, reduceBalances } from '../../../utils/utils';
-import { useQuery } from '@tanstack/react-query';
+import { AssetsType, OptionNeverArray, PoolsWithAssetsCapType, PoolsWithAssetsType } from '../type';
 
 const usePoolsAssetAmount = (pools: Option<Pool[]>) => {
   const queryClient = useQueryClient();
   const { marketData } = useAppData();
   const { tracesDenom } = useIbcDenom();
 
-  const [poolsData, setPoolsData] = useState<
-    OptionNeverArray<PoolsWithAssetsCapType[]>
-  >([]);
+  const [poolsData, setPoolsData] = useState<OptionNeverArray<PoolsWithAssetsCapType[]>>([]);
   const [totalCap, setTotalCap] = useState<number>(0);
 
   useEffect(() => {
@@ -55,9 +48,7 @@ const usePoolsAssetAmount = (pools: Option<Pool[]>) => {
         const assetsData: AssetsType = {};
         const { reserveAccountAddress } = pool;
 
-        const getBalancePromise = await queryClient!.getAllBalances(
-          reserveAccountAddress
-        );
+        const getBalancePromise = await queryClient!.getAllBalances(reserveAccountAddress);
 
         const dataReduceBalances = reduceBalances(getBalancePromise);
         Object.keys(dataReduceBalances).forEach((key) => {
@@ -88,8 +79,8 @@ const usePoolsAssetAmount = (pools: Option<Pool[]>) => {
         reserveCoinDenoms.forEach((item) => {
           if (
             Object.keys(marketData).length > 0 &&
-            Object.prototype.hasOwnProperty.call(assets, item) &&
-            Object.prototype.hasOwnProperty.call(marketData, item)
+            Object.hasOwn(assets, item) &&
+            Object.hasOwn(marketData, item)
           ) {
             const amountA = new BigNumber(assets[item]);
             const priceA = marketData[item];
@@ -106,10 +97,7 @@ const usePoolsAssetAmount = (pools: Option<Pool[]>) => {
 
       setTotalCap(totalCapTemp.dp(0, BigNumber.ROUND_FLOOR).toNumber());
       if (totalCapTemp.comparedTo(0)) {
-        localStorage.setItem(
-          'lastPoolCap',
-          totalCapTemp.dp(0, BigNumber.ROUND_FLOOR).toString()
-        );
+        localStorage.setItem('lastPoolCap', totalCapTemp.dp(0, BigNumber.ROUND_FLOOR).toString());
       }
 
       if (Object.keys(marketData).length > 0) {

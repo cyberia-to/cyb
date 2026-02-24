@@ -1,17 +1,16 @@
-import { IPFSHTTPClient, create as createKuboClient } from 'kubo-rpc-client';
 import { multiaddr } from '@multiformats/multiaddr';
-
-import { stringToCid, stringToIpfsPath } from '../../utils/cid';
+import { create as createKuboClient, IPFSHTTPClient } from 'kubo-rpc-client';
+import { CYBER_GATEWAY_URL } from '../../config';
 import {
   AbortOptions,
   CatOptions,
-  IpfsNodeType,
   InitOptions,
   IpfsFileStats,
   IpfsNode,
   IpfsNodePrperties,
+  IpfsNodeType,
 } from '../../types';
-import { CYBER_GATEWAY_URL } from '../../config';
+import { stringToCid, stringToIpfsPath } from '../../utils/cid';
 
 class KuboNode implements IpfsNode {
   readonly nodeType: IpfsNodeType = 'external';

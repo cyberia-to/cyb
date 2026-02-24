@@ -1,8 +1,8 @@
+import _ from 'lodash';
+import { useActiveMenuItem } from 'src/hooks/useActiveMenuItem';
 import getMenuItems from 'src/utils/appsMenu/appsMenu';
 import styles from './CircularMenu.module.scss';
-import _ from 'lodash';
 import CircularMenuItem from './CircularMenuItem';
-import { useActiveMenuItem } from 'src/hooks/useActiveMenuItem';
 
 declare module 'react' {
   interface CSSProperties {
@@ -28,8 +28,10 @@ function CircularMenu({ circleSize }) {
   return (
     <div>
       {linkChunks.map((chunk, index) => {
-        const { menuCircleDiameter, nextLevelMenuAngle, menuItemsAngle } =
-          calculateDiameter(index, circleSize);
+        const { menuCircleDiameter, nextLevelMenuAngle, menuItemsAngle } = calculateDiameter(
+          index,
+          circleSize
+        );
         return (
           <div
             key={index}

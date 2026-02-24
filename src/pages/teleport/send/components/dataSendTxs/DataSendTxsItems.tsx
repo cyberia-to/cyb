@@ -1,12 +1,12 @@
 import { Coin } from '@cosmjs/launchpad';
+import cx from 'classnames';
+import { useEffect, useState } from 'react';
 import { AmountDenom, Cid } from 'src/components';
+import ContentIpfs from 'src/components/contentIpfs/contentIpfs';
 import { PATTERN_IPFS_HASH } from 'src/constants/patterns';
 import useQueueIpfsContent from 'src/hooks/useQueueIpfsContent';
-import { useEffect, useState } from 'react';
-import { parseArrayLikeToDetails } from 'src/services/ipfs/utils/content';
 import { IPFSContentDetails } from 'src/services/ipfs/types';
-import ContentIpfs from 'src/components/contentIpfs/contentIpfs';
-import cx from 'classnames';
+import { parseArrayLikeToDetails } from 'src/services/ipfs/utils/content';
 import { trimString } from 'src/utils/utils';
 import styles from './DataSendTxs.module.scss';
 
@@ -60,13 +60,7 @@ export function Memo({ memo, receive }: { memo: string; receive: boolean }) {
   );
 }
 
-export function AmountDenomColor({
-  coins,
-  receive,
-}: {
-  coins: Coin[];
-  receive?: boolean;
-}) {
+export function AmountDenomColor({ coins, receive }: { coins: Coin[]; receive?: boolean }) {
   return (
     <div
       className={cx(styles.amountDenomContainer, {
@@ -74,9 +68,7 @@ export function AmountDenomColor({
       })}
     >
       {coins.map((item, i) => {
-        return (
-          <AmountDenom denom={item.denom} amountValue={item.amount} key={i} />
-        );
+        return <AmountDenom denom={item.denom} amountValue={item.amount} key={i} />;
       })}
     </div>
   );

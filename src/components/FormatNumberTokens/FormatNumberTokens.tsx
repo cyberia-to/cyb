@@ -1,8 +1,8 @@
 import BigNumber from 'bignumber.js';
 import { CSSProperties } from 'react';
 import { formatNumber } from '../../utils/utils';
-import styles from './FormatNumberTokens.module.scss';
 import DenomArr from '../denom/denomArr';
+import styles from './FormatNumberTokens.module.scss';
 
 const getDecimal = (number: number) => {
   const nstring = new BigNumber(number).toString();
@@ -44,14 +44,9 @@ function FormatNumberTokens({
       }}
       className={styles.containerFormatNumberTokens}
     >
-      <div
-        style={styleValue}
-        className={styles.containerFormatNumberTokensNumber}
-      >
+      <div style={styleValue} className={styles.containerFormatNumberTokensNumber}>
         <span>{formatNumber(Math.floor(value))}</span>
-        <span className={styles.containerFormatNumberTokensNumberDecimal}>
-          {decimal}
-        </span>
+        <span className={styles.containerFormatNumberTokensNumberDecimal}>{decimal}</span>
       </div>
       {text && (
         <div className={styles.containerFormatNumberTokensDenomImg}>
@@ -65,9 +60,7 @@ function FormatNumberTokens({
         </div>
       )}
       {customText && !text && (
-        <div className={styles.containerFormatNumberTokensDenomImg}>
-          {customText}
-        </div>
+        <div className={styles.containerFormatNumberTokensDenomImg}>{customText}</div>
       )}
     </div>
   );

@@ -1,13 +1,13 @@
+import { Link } from 'react-router-dom';
 import Display from 'src/components/containerGradient/Display/Display';
-import styles from '../../Subnet.module.scss';
-import { SubnetInfo, SubnetNeuron } from 'src/features/cybernet/types';
-import { Link, useParams } from 'react-router-dom';
-import { routes } from 'src/routes';
-import SubnetHyperParams from '../SubnetHyperParams/SubnetHyperParams';
-import useCybernetTexts from 'src/features/cybernet/ui/useCybernetTexts';
 import MusicalAddress from 'src/components/MusicalAddress/MusicalAddress';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
+import { SubnetInfo } from 'src/features/cybernet/types';
+import useCybernetTexts from 'src/features/cybernet/ui/useCybernetTexts';
+import { routes } from 'src/routes';
+import styles from '../../Subnet.module.scss';
 import { useCurrentSubnet } from '../../subnet.context';
+import SubnetHyperParams from '../SubnetHyperParams/SubnetHyperParams';
 
 type Props = {};
 
@@ -109,9 +109,7 @@ function SubnetInfo({}: Props) {
 
               return (
                 <li key={item}>
-                  <Link to={routes.oracle.ask.getLink(title.toLowerCase())}>
-                    {title}
-                  </Link>
+                  <Link to={routes.oracle.ask.getLink(title.toLowerCase())}>{title}</Link>
                   <div>{content}</div>
                 </li>
               );

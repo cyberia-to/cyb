@@ -1,23 +1,18 @@
-import { TransactionDto } from 'src/services/CozoDb/types/dto';
-import { SenseChat } from 'src/services/backend/types/sense';
-import { NeuronAddress } from 'src/types/base';
 import { Coin } from 'cosmjs-types/cosmos/base/v1beta1/coin';
+import { SenseChat } from 'src/services/backend/types/sense';
+import { TransactionDto } from 'src/services/CozoDb/types/dto';
+import { NeuronAddress } from 'src/types/base';
 
 import {
-  MSG_SEND_TRANSACTION_TYPE,
   MSG_MULTI_SEND_TRANSACTION_TYPE,
+  MSG_SEND_TRANSACTION_TYPE,
   MsgSendTransaction,
 } from '../../../indexer/types';
 
-export const extractSenseChats = (
-  myAddress: NeuronAddress,
-  transactions: TransactionDto[]
-) => {
+export const extractSenseChats = (myAddress: NeuronAddress, transactions: TransactionDto[]) => {
   const sendTransactions =
     transactions!.filter(
-      (t) =>
-        t.type === MSG_SEND_TRANSACTION_TYPE ||
-        t.type === MSG_MULTI_SEND_TRANSACTION_TYPE
+      (t) => t.type === MSG_SEND_TRANSACTION_TYPE || t.type === MSG_MULTI_SEND_TRANSACTION_TYPE
     ) || [];
 
   if (sendTransactions.length === 0) {
@@ -30,12 +25,9 @@ export const extractSenseChats = (
       const { inputs, outputs } = t.value;
       const isSender = inputs.find((i) => i.address === myAddress);
       const userMessages = isSender ? outputs : inputs;
-      userMessages.forEach((msg) =>
-        updateSenseChat(chats, msg.address, t, msg.coins, isSender)
-      );
+      userMessages.forEach((msg) => updateSenseChat(chats, msg.address, t, msg.coins, isSender));
     } else if (t.type === MSG_SEND_TRANSACTION_TYPE) {
-      const { fromAddress, toAddress, amount } =
-        t.value as MsgSendTransaction['value'];
+      const { fromAddress, toAddress, amount } = t.value as MsgSendTransaction['value'];
       const isSender = fromAddress === myAddress;
       userAddress = isSender ? toAddress : fromAddress;
       updateSenseChat(chats, userAddress, t, amount, isSender);

@@ -13,9 +13,9 @@ type endBlockEventsState = {
 };
 
 function useGetBlockResults(height: number) {
-  const [endBlockEvents, setEndBlockEvents] = useState<
-    endBlockEventsState[] | undefined
-  >(undefined);
+  const [endBlockEvents, setEndBlockEvents] = useState<endBlockEventsState[] | undefined>(
+    undefined
+  );
   const api = useQueryClient();
   const { data } = useQuery(
     ['getBlockResults', height],
@@ -31,8 +31,7 @@ function useGetBlockResults(height: number) {
     if (data) {
       const { endBlockEvents } = data;
       if (endBlockEvents) {
-        const resultParseEndBlockEvents =
-          parseEventsEndBlockEvents(endBlockEvents);
+        const resultParseEndBlockEvents = parseEventsEndBlockEvents(endBlockEvents);
 
         if (resultParseEndBlockEvents) {
           setEndBlockEvents(resultParseEndBlockEvents);
@@ -52,9 +51,7 @@ type ResultSwap = {
 
 function useGetResultSwap(height: number, logs: Log[]) {
   const data = useGetBlockResults(height);
-  const [resultSwap, setResultSwap] = useState<ResultSwap | undefined>(
-    undefined
-  );
+  const [resultSwap, setResultSwap] = useState<ResultSwap | undefined>(undefined);
 
   const resultparseEventsTxs = useMemo(() => {
     return parseEventsTxsSwap(logs);
@@ -62,12 +59,10 @@ function useGetResultSwap(height: number, logs: Log[]) {
 
   useEffect(() => {
     if (data && resultparseEventsTxs) {
-      const { msgIndex, demandCoinDenom, offerCoinDenom } =
-        resultparseEventsTxs;
+      const { msgIndex, demandCoinDenom, offerCoinDenom } = resultparseEventsTxs;
 
       const findBatch = data.find(
-        (item) =>
-          item.msgIndex && parseFloat(item.msgIndex) === parseFloat(msgIndex)
+        (item) => item.msgIndex && parseFloat(item.msgIndex) === parseFloat(msgIndex)
       );
 
       if (findBatch) {

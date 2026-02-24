@@ -1,18 +1,17 @@
-import { ContainerGradientText } from 'src/components';
+import cx from 'classnames';
+import { equals } from 'ramda';
+import { useSelector } from 'react-redux';
+import { Link } from 'react-router-dom';
+import MusicalAddress from 'src/components/MusicalAddress/MusicalAddress';
 import Pill from 'src/components/Pill/Pill';
+import Loader2 from 'src/components/ui/Loader2';
+import { AvataImgIpfs } from 'src/containers/portal/components/avataIpfs';
+import usePassportContract from 'src/features/passport/usePassportContract';
+import { RootState } from 'src/redux/store';
+import { routes } from 'src/routes';
+import { Citizenship } from 'src/types/citizenship';
 import { AccountValue } from 'src/types/defaultAccount';
 import styles from './KeyItem.module.scss';
-import { AvataImgIpfs } from 'src/containers/portal/components/avataIpfs';
-import { routes } from 'src/routes';
-import { Link } from 'react-router-dom';
-import usePassportContract from 'src/features/passport/usePassportContract';
-import { Citizenship } from 'src/types/citizenship';
-import { equals } from 'ramda';
-import Loader2 from 'src/components/ui/Loader2';
-import cx from 'classnames';
-import { useSelector } from 'react-redux';
-import { RootState } from 'src/redux/store';
-import MusicalAddress from 'src/components/MusicalAddress/MusicalAddress';
 
 type Props = {
   account: AccountValue;
@@ -79,9 +78,7 @@ function KeyItem({ account, selected, selectKey }: Props) {
           text={
             <>
               <span className={styles.passportName}>{nickname}</span>
-              {isMainPassport && (
-                <span className={styles.passportMain}>main</span>
-              )}
+              {isMainPassport && <span className={styles.passportMain}>main</span>}
             </>
           }
         />
@@ -99,9 +96,7 @@ function KeyItem({ account, selected, selectKey }: Props) {
       <div className={styles.imageWrapper}>
         <img src={require('./images/1.png')} alt="" />
 
-        {isActive && (
-          <Pill text="active" color="green" className={styles.active} />
-        )}
+        {isActive && <Pill text="active" color="green" className={styles.active} />}
       </div>
 
       <div className={styles.content}>
@@ -122,15 +117,9 @@ function KeyItem({ account, selected, selectKey }: Props) {
           </>
         )}
         from neuron <Pill text={<MusicalAddress address={bech32} />} /> <br />
-        gives{' '}
-        <Pill
-          color={isReadOnly ? 'blue' : 'green'}
-          text={isReadOnly ? 'read' : 'write'}
-        />{' '}
+        gives <Pill color={isReadOnly ? 'blue' : 'green'} text={isReadOnly ? 'read' : 'write'} />{' '}
         access
-        {(passportsLoading ||
-          passportIds.data?.tokens.length ||
-          activePassport.data) && (
+        {(passportsLoading || passportIds.data?.tokens.length || activePassport.data) && (
           <>
             {' '}
             to avatars: <br />
@@ -139,8 +128,7 @@ function KeyItem({ account, selected, selectKey }: Props) {
         {passportsLoading && <Loader2 />}
         {(activePassport.data || !!passportIds.data?.tokens?.length) && (
           <div className={styles.passports}>
-            {activePassport.data &&
-              renderPassportPill(activePassport.data, true)}
+            {activePassport.data && renderPassportPill(activePassport.data, true)}
             {passportIds.data?.tokens?.map((tokenId) => {
               return (
                 <PassportLoader

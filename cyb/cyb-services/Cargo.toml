@@ -1,0 +1,27 @@
+[package]
+name = "cyb-services"
+version = "0.1.0"
+edition = "2024"
+
+[features]
+default = ["mining", "ipfs"]
+mining = ["dep:uhash-core", "dep:hex"]
+ipfs = ["dep:reqwest"]
+db = ["dep:cozo", "dep:warp"]
+
+[dependencies]
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+dirs = "6.0"
+
+# Mining
+uhash-core = { git = "https://github.com/cyberia-to/universal-hash.git", tag = "v0.2.9", optional = true }
+hex = { version = "0.4", optional = true }
+
+# IPFS
+reqwest = { version = "0.12", features = ["json"], optional = true }
+
+# DB (disabled by default — cozo 0.7.6 has rayon compat issue)
+cozo = { version = "0.7.6", features = ["storage-rocksdb"], optional = true }
+warp = { version = "0.3", optional = true }

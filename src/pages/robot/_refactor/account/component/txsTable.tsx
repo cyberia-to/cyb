@@ -1,9 +1,8 @@
 import { useEffect, useState } from 'react';
+import TableTxsInfinite from 'src/components/TableTxsInfinite/TableTxsInfinite';
+import { useAdviser } from 'src/features/adviser/context';
 import { useMessagesByAddressQuery } from 'src/generated/graphql';
 import { useRobotContext } from 'src/pages/robot/robot.context';
-import { useAdviser } from 'src/features/adviser/context';
-
-import TableTxsInfinite from 'src/components/TableTxsInfinite/TableTxsInfinite';
 
 const limit = 10; // Use a constant for the limit
 
@@ -24,8 +23,7 @@ function TxsTable() {
   useEffect(() => {
     setAdviser(
       <>
-        the life history of one neuron, which cannot be removed or destroyed{' '}
-        <br />
+        the life history of one neuron, which cannot be removed or destroyed <br />
         what is written in the blockchain cannot be cut out with an axe
       </>
     );
@@ -54,7 +52,7 @@ function TxsTable() {
 
   return (
     <TableTxsInfinite
-      response={{data, error, loading}}
+      response={{ data, error, loading }}
       hasMore={hasMore}
       fetchMoreData={fetchMoreData}
       accountUser={accountUser}

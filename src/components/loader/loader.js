@@ -59,12 +59,12 @@ const Bootloader = () => {
       let endTime;
       let fileSize;
 
-      const startTime = new Date().getTime();
+      const startTime = Date.now();
 
       const xhr = new XMLHttpRequest();
       xhr.onreadystatechange = () => {
         if (xhr.readyState === 4 && xhr.status === 200) {
-          endTime = new Date().getTime();
+          endTime = Date.now();
           fileSize = xhr.response.size;
           _this.networkSpeed = fileSize / ((endTime - startTime) / 1000) / 1024;
           // Use (fileSize * 8) instead of fileSize for kBps instead of kbps
@@ -99,7 +99,7 @@ const Bootloader = () => {
       );
       xhr.addEventListener(
         'load',
-        (event) => {
+        (_event) => {
           const { status } = xhr;
           if (status === 200 || (status === 0 && xhr.response)) {
             _this.updateProgress(asset.file, asset.size) &&
@@ -126,9 +126,7 @@ const Bootloader = () => {
       // remove asset if it exists
       const oldAsset = document.getElementById(assetId);
       oldAsset &&
-        ((_a = document.head) === null || _a === void 0
-          ? void 0
-          : _a.removeChild(oldAsset));
+        ((_a = document.head) === null || _a === void 0 ? void 0 : _a.removeChild(oldAsset));
       // create new asset
       const objectURL = URL.createObjectURL(blob);
       const tag = js
@@ -179,9 +177,7 @@ const Bootloader = () => {
       const asset = assets_1[i];
       const tag = this.tagMap[asset.file];
       if (tag) {
-        (_a = document.head) === null || _a === void 0
-          ? void 0
-          : _a.appendChild(tag);
+        (_a = document.head) === null || _a === void 0 ? void 0 : _a.appendChild(tag);
       }
     }
   };
@@ -232,9 +228,8 @@ function bootstrap() {
 
   let _a;
   const assets =
-    ((_a =
-      window === null || window === void 0 ? void 0 : window.$bootloader) ===
-      null || _a === void 0
+    ((_a = window === null || window === void 0 ? void 0 : window.$bootloader) === null ||
+    _a === void 0
       ? void 0
       : _a.assets) || {};
   Bootloader()
@@ -250,16 +245,14 @@ function bootstrap() {
 
       progressData.innerHTML = `Loading: <span>${Math.round(
         progress * 100
-      )}%</span>. <br/> Network speed: <span>${
-        Math.round(e.networkSpeed * 100) / 100
-      } kbps</span>`;
+      )}%</span>. <br/> Network speed: <span>${Math.round(e.networkSpeed * 100) / 100} kbps</span>`;
 
       // console.log(e.loaded, e.loaded / e.totalSize); // @TODO
     })
-    .then((report) => {
+    .then((_report) => {
       if (window !== null) {
         let pageloader = null;
-        pageloader = setInterval(function () {
+        pageloader = setInterval(() => {
           if (typeof window.onload === 'function') {
             clearInterval(pageloader);
             window.onload();

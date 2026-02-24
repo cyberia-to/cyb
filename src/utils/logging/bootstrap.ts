@@ -1,9 +1,8 @@
 import {
-  CYBLOG_LOG_SHOW,
-  CYBLOG_CONSOLE_PARAMS_DEFAULT,
   CYBLOG_BROADCAST_CHANNEL_NAME,
+  CYBLOG_CONSOLE_PARAMS_DEFAULT,
+  CYBLOG_LOG_SHOW,
 } from './constants';
-import {} from './cyblog';
 import { ConsoleLogParams } from './types';
 
 let isLogging = false;

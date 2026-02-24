@@ -11,11 +11,7 @@ function HydrogenBalance({ address, isVertical }: Props) {
 
   return (
     <span>
-      <IconsNumber
-        value={totalAmountInLiquid.currentCap}
-        type="hydrogen"
-        isVertical={isVertical}
-      />
+      <IconsNumber value={totalAmountInLiquid.currentCap} type="hydrogen" isVertical={isVertical} />
     </span>
   );
 }

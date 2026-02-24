@@ -1,12 +1,8 @@
-import { useState, useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import InfiniteScroll from 'react-infinite-scroll-component';
-import { LinkTx, LinkCreator } from '../ui/ui';
-import {
-  formatNumber,
-  trimString,
-  parseMsgContract,
-} from '../../../utils/utils';
 import Loader2 from 'src/components/ui/Loader2';
+import { formatNumber, parseMsgContract, trimString } from '../../../utils/utils';
+import { LinkCreator, LinkTx } from '../ui/ui';
 
 function ExecuteTable({ executions }) {
   const [itemsToShow, setItemsToShow] = useState(40);
@@ -15,7 +11,7 @@ function ExecuteTable({ executions }) {
     setTimeout(() => {
       setItemsToShow(itemsToShow + 5);
     }, 250);
-  }, [itemsToShow, setItemsToShow]);
+  }, [itemsToShow]);
 
   const displayedPalettes = useMemo(
     () => executions.slice(0, itemsToShow),
@@ -27,15 +23,11 @@ function ExecuteTable({ executions }) {
       <tr style={{ textAlign: 'center' }} key={item.key}>
         <td>{formatNumber(item.height)}</td>
         <td>
-          <LinkTx txs={item.transactionId}>
-            {trimString(item.transactionId, 3, 3)}
-          </LinkTx>
+          <LinkTx txs={item.transactionId}>{trimString(item.transactionId, 3, 3)}</LinkTx>
         </td>
         <td>{Object.keys(parseMsgContract(item.msg.msg))[0]}</td>
         <td>
-          <LinkCreator address={item.msg.sender}>
-            {trimString(item.msg.sender, 10, 4)}
-          </LinkCreator>
+          <LinkCreator address={item.msg.sender}>{trimString(item.msg.sender, 10, 4)}</LinkCreator>
         </td>
       </tr>
     );

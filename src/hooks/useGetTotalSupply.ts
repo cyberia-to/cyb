@@ -1,12 +1,12 @@
+import { CyberClient } from '@cybercongress/cyber-js';
 import { useQuery } from '@tanstack/react-query';
 import { useEffect, useState } from 'react';
-import { reduceBalances, isNative } from 'src/utils/utils';
-import { Option } from 'src/types';
-import { ObjKeyValue } from 'src/types/data';
-import { CyberClient } from '@cybercongress/cyber-js';
-import { useQueryClient } from 'src/contexts/queryClient';
 import { BASE_DENOM, DENOM_LIQUID } from 'src/constants/config';
 import { useHub } from 'src/contexts/hub';
+import { useQueryClient } from 'src/contexts/queryClient';
+import { Option } from 'src/types';
+import { ObjKeyValue } from 'src/types/data';
+import { isNative, reduceBalances } from 'src/utils/utils';
 
 type OptionInterval = {
   refetchInterval?: number | false;
@@ -28,15 +28,11 @@ const totalSupplyFetcher = (client: Option<CyberClient>) => {
   return client.totalSupply();
 };
 
-function useGetTotalSupply(
-  option: OptionInterval = { refetchInterval: false }
-) {
+function useGetTotalSupply(option: OptionInterval = { refetchInterval: false }) {
   const queryClient = useQueryClient();
   const { tokens } = useHub();
-  const [totalSupplyAll, setTotalSupplyAll] =
-    useState<Option<ObjKeyValue>>(undefined);
-  const [totalSupplyProofList, setTotalSupplyProofList] =
-    useState<Option<ObjKeyValue>>(undefined);
+  const [totalSupplyAll, setTotalSupplyAll] = useState<Option<ObjKeyValue>>(undefined);
+  const [totalSupplyProofList, setTotalSupplyProofList] = useState<Option<ObjKeyValue>>(undefined);
   const { data: dataGetTotalSupply } = useQuery(
     ['totalSupply'],
     () => totalSupplyFetcher(queryClient),

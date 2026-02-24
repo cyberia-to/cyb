@@ -1,6 +1,6 @@
+import { routes } from 'src/routes';
 import { Nullable, Option } from 'src/types';
 import { Citizenship } from 'src/types/citizenship';
-import { routes } from 'src/routes';
 import findApp from 'src/utils/findApp';
 import reduceRobotSubItems from './reduceRobotSubItems';
 
@@ -10,8 +10,7 @@ const findSelectAppByUrl = (
   address: Option<string>
 ) => {
   let pathname = url;
-  const isRobot =
-    url.includes('@') || url.includes('neuron/') || url.includes('robot');
+  const isRobot = url.includes('@') || url.includes('neuron/') || url.includes('robot');
   const isOracle = url.includes('oracle');
   const isSenate = url.includes('senate');
   const isCyberver = url.includes('cyberver');

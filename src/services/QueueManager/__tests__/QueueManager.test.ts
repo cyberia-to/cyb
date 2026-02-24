@@ -1,10 +1,9 @@
-import QueueManager from '../QueueManager';
-import { BehaviorSubject, of } from 'rxjs';
-import { CybIpfsNode } from '../../ipfs/types';
-import { QueueStrategy } from '../QueueStrategy';
-import { I } from '../types';
-import { valuesExpected } from 'src/utils/test-utils/test-utils';
+import { of } from 'rxjs';
 import { fetchIpfsContent } from 'src/services/ipfs/utils/utils-ipfs';
+import { valuesExpected } from 'src/utils/test-utils/test-utils';
+import { CybIpfsNode } from '../../ipfs/types';
+import QueueManager from '../QueueManager';
+import { QueueStrategy } from '../QueueStrategy';
 
 // const mockTimeout = () => (source) => {
 //   console.log('TIMEOUT');
@@ -50,7 +49,7 @@ const cid2 = 'cid2';
 const cid3 = 'cid3';
 const cid4 = 'cid4';
 
-const nextTick = () => {
+const _nextTick = () => {
   return new Promise((resolve) => {
     setTimeout(resolve, 0);
   });
@@ -61,17 +60,14 @@ const onNextTick = (callback) => {
     callback();
   }, 0);
 };
-function wrapPromiseWithSignal(
-  promise: Promise<string>,
-  signal?: AbortSignal
-): Promise<string> {
+function wrapPromiseWithSignal(promise: Promise<string>, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     promise.then((result) => {
       resolve(result);
     });
     console.log('------sssss', signal?.aborted);
     signal?.addEventListener('abort', (e) => {
-      // @ts-ignore
+      // @ts-expect-error
       console.log('------abort', e, e?.target, e?.target?.reason);
 
       if (e?.target?.reason !== 'timeout') {
@@ -81,11 +77,7 @@ function wrapPromiseWithSignal(
   });
 }
 
-const getPromise = (
-  result = 'result',
-  timeout = 500,
-  signal?: AbortSignal
-): Promise<string> =>
+const getPromise = (result = 'result', timeout = 500, signal?: AbortSignal): Promise<string> =>
   wrapPromiseWithSignal(
     new Promise<string>((resolve) => {
       setTimeout(() => resolve(`result ${result}`), timeout);
@@ -144,7 +136,7 @@ describe('QueueManager without timers', () => {
   test('should cancel queue items', (done) => {
     const statuses = valuesExpected(['pending', 'executing', 'cancelled']);
     (fetchIpfsContent as jest.Mock).mockImplementation(
-      (cid: string, source: string, { controller }) =>
+      (_cid: string, _source: string, { controller }) =>
         getPromise('result', 1000, controller.signal)
     );
 
@@ -153,9 +145,7 @@ describe('QueueManager without timers', () => {
       expect(status).toBe(statuses.next().value);
 
       if (status === 'cancelled') {
-        expect(queueManager.getQueueList()[0]?.controller?.signal.aborted).toBe(
-          true
-        );
+        expect(queueManager.getQueueList()[0]?.controller?.signal.aborted).toBe(true);
 
         expect(queueManager.getQueueList().length).toEqual(0);
       }
@@ -182,7 +172,7 @@ describe('QueueManager without timers', () => {
     ]);
 
     (fetchIpfsContent as jest.Mock).mockImplementation(
-      (cid: string, source: string, { controller }) =>
+      (_cid: string, _source: string, { controller }) =>
         getPromise('result', 50000, controller?.signal)
     );
     queueManager.enqueue(cid1, (cid, status, source) => {
@@ -224,9 +214,7 @@ describe('QueueManager without timers', () => {
   });
 
   it('should execute queue items in order by priority', (done) => {
-    (fetchIpfsContent as jest.Mock).mockImplementation(() =>
-      getPromise('good-result', 100)
-    );
+    (fetchIpfsContent as jest.Mock).mockImplementation(() => getPromise('good-result', 100));
     queueManager.enqueue(cid1, jest.fn);
     queueManager.enqueue(cid2, jest.fn);
 
@@ -302,12 +290,10 @@ describe('QueueManager without timers', () => {
 
   test('should execute queue items and deprioritize based on viewPortPriority', (done) => {
     (fetchIpfsContent as jest.Mock).mockImplementation(
-      (cid: string, source: string, { controller }) =>
+      (_cid: string, _source: string, { controller }) =>
         getPromise('result', 5000, controller?.signal)
     );
-    [cid1, cid2, cid3].map((cid) =>
-      queueManager.enqueue(cid, jest.fn, { initialSource: 'node' })
-    );
+    [cid1, cid2, cid3].map((cid) => queueManager.enqueue(cid, jest.fn, { initialSource: 'node' }));
 
     onNextTick(() => {
       const queue = queueManager.getQueueList();

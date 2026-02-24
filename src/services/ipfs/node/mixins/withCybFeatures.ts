@@ -1,4 +1,4 @@
-import { IpfsNode, CybIpfsNode, IpfsContentType } from '../../types';
+import { CybIpfsNode, IpfsContentType, IpfsNode } from '../../types';
 import { parseArrayLikeToDetails } from '../../utils/content';
 import { addContenToIpfs, getIPFSContent } from '../../utils/utils-ipfs';
 
@@ -20,11 +20,7 @@ function withCybFeatures<TBase extends new (...args: any[]) => IpfsNode>(
       const content = await getIPFSContent(cid, this, abortController);
 
       const details = await parseArrayLikeToDetails(content, cid);
-      return !parseAs
-        ? details
-        : details?.type === parseAs
-        ? details
-        : undefined;
+      return !parseAs ? details : details?.type === parseAs ? details : undefined;
     }
 
     async addContent(content: File | string) {
@@ -51,9 +47,7 @@ function withCybFeatures<TBase extends new (...args: any[]) => IpfsNode>(
             return true;
           })
           .catch((err) => {
-            console.log(
-              `Can't connect to swarm ${options.swarmPeerAddress}: ${err.message}`
-            );
+            console.log(`Can't connect to swarm ${options.swarmPeerAddress}: ${err.message}`);
             return false;
           });
       }

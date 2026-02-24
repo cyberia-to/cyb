@@ -9,22 +9,14 @@ type Props = {
   onChangeInputAmount: (val: string) => void;
 };
 
-function Delegate({
-  moniker,
-  delegate,
-  maxValue,
-  value,
-  onChangeInputAmount,
-}: Props) {
+function Delegate({ moniker, delegate, maxValue, value, onChangeInputAmount }: Props) {
   return (
     <>
       <span className={styles.containerText}>
         <span>{delegate ? 'delegate to' : 'undelegate from'}</span>
 
         <span className={styles.moniker}>
-          {moniker && moniker.length > 14
-            ? `${moniker.substring(0, 14)}...`
-            : moniker}
+          {moniker && moniker.length > 14 ? `${moniker.substring(0, 14)}...` : moniker}
         </span>
       </span>
 

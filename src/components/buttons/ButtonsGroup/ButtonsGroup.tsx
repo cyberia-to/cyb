@@ -25,19 +25,13 @@ function ButtonsGroup({ items, onChange, type }: Props) {
             [styles['--disabled']]: item.disabled,
           })}
         >
-          <Tooltip
-            tooltip={!item.disabled && item.tooltip}
-            placement="bottom"
-            strategy="fixed"
-          >
+          <Tooltip tooltip={!item.disabled && item.tooltip} placement="bottom" strategy="fixed">
             <label>
               <input
                 type={type}
                 name={item.name}
                 checked={item.checked}
-                onChange={() =>
-                  !item.disabled && onChange(item.name || item.label)
-                }
+                onChange={() => !item.disabled && onChange(item.name || item.label)}
               />
               {item.label}
             </label>

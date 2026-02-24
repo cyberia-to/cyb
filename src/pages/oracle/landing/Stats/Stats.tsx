@@ -1,14 +1,11 @@
-import {
-  useGetGraphStats,
-  useGetNegentropy,
-} from 'src/containers/temple/hooks';
-import { TypingText } from 'src/containers/temple/pages/play/PlayBanerContent';
 import cx from 'classnames';
-import { routes } from 'src/routes';
 import { Link } from 'react-router-dom';
+import { useGetGraphStats, useGetNegentropy } from 'src/containers/temple/hooks';
+import { TypingText } from 'src/containers/temple/pages/play/PlayBanerContent';
+import { routes } from 'src/routes';
 import { formatNumber, timeSince } from 'src/utils/utils';
-import styles from './Stats.module.scss';
 import { TitleType } from '../type';
+import styles from './Stats.module.scss';
 
 type Props = {
   type: TitleType;
@@ -35,9 +32,7 @@ function Stats({ type }: Props) {
 
     case TitleType.learning:
       value = dataGetGraphStats.data?.cyberlinks;
-      text = (
-        <Link to={routes.oracle.ask.getLink('cyberlink')}>cyberlinks</Link>
-      );
+      text = <Link to={routes.oracle.ask.getLink('cyberlink')}>cyberlinks</Link>;
       if (dataGetGraphStats.changeTimeAmount.cyberlinks) {
         change = dataGetGraphStats.changeTimeAmount.cyberlinks;
       }
@@ -45,9 +40,7 @@ function Stats({ type }: Props) {
 
     case TitleType.ai:
       value = negentropy.data?.negentropy;
-      text = (
-        <Link to={routes.oracle.ask.getLink('negentropy')}>syntropy bits</Link>
-      );
+      text = <Link to={routes.oracle.ask.getLink('negentropy')}>syntropy bits</Link>;
       if (negentropy.changeTimeAmount.amount) {
         change = negentropy.changeTimeAmount.amount;
         time = timeSince(negentropy.changeTimeAmount.time);

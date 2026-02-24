@@ -1,12 +1,4 @@
 /* eslint-disable no-underscore-dangle */
-import { logs } from '@cosmjs/stargate';
-
-import { toHex } from '@cosmjs/encoding';
-import {
-  parsePacketsFromBlockResult,
-  parseAcksFromLogs,
-  parsePacketsFromLogs,
-} from '@confio/relayer/build/lib/utils';
 
 import {
   AckWithMetadata,
@@ -14,8 +6,15 @@ import {
   PacketWithMetadata,
   QueryOpts,
 } from '@confio/relayer/build/lib/endpoint';
+import {
+  parseAcksFromLogs,
+  parsePacketsFromBlockResult,
+  parsePacketsFromLogs,
+} from '@confio/relayer/build/lib/utils';
+import { toHex } from '@cosmjs/encoding';
+import { logs } from '@cosmjs/stargate';
 
-// @ts-ignore
+// @ts-expect-error
 class EndpointPrivate extends Endpoint {
   _packetSender?: string;
 
@@ -51,9 +50,7 @@ class EndpointPrivate extends Endpoint {
     return this._counterpartyPacketMinHeight;
   }
 
-  private get loadCounterpartyPackets(): (
-    opts: QueryOpts
-  ) => Promise<PacketWithMetadata[]> {
+  private get loadCounterpartyPackets(): (opts: QueryOpts) => Promise<PacketWithMetadata[]> {
     if (!this._loadCounterpartyPackets) {
       throw new Error('loadCounterpartyPackets not set');
     }
@@ -88,9 +85,7 @@ class EndpointPrivate extends Endpoint {
     return ([] as PacketWithMetadata[]).concat(...resultsNested);
   }
 
-  async querySentPackets({ minHeight, maxHeight }: QueryOpts = {}): Promise<
-    PacketWithMetadata[]
-  > {
+  async querySentPackets({ minHeight, maxHeight }: QueryOpts = {}): Promise<PacketWithMetadata[]> {
     const packetsFromTxs = await this.getPacketsFromTxs({
       minHeight,
       maxHeight,
@@ -126,9 +121,7 @@ class EndpointPrivate extends Endpoint {
         try {
           sender = logs.findAttribute(parsedLogs, 'message', 'signer').value;
         } catch {
-          this.client.logger.warn(
-            `No message.sender nor message.signer in tx ${toHex(hash)}`
-          );
+          this.client.logger.warn(`No message.sender nor message.signer in tx ${toHex(hash)}`);
         }
       }
       return parsePacketsFromLogs(parsedLogs).map((packet) => ({

@@ -1,22 +1,22 @@
 /* eslint-disable camelcase */
-import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+
 import { Pane } from '@cybercongress/gravity';
+import { useQuery } from '@tanstack/react-query';
+import { ProposalStatus } from 'cosmjs-types/cosmos/gov/v1beta1/gov';
+import dateFormat from 'dateformat';
+import React, { useEffect, useState } from 'react';
+import { Link } from 'react-router-dom';
+import Loader2 from 'src/components/ui/Loader2';
+import { BASE_DENOM, DENOM_LIQUID } from 'src/constants/config';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { useAdviser } from 'src/features/adviser/context';
-import { ProposalStatus } from 'cosmjs-types/cosmos/gov/v1beta1/gov';
-import { BASE_DENOM, DENOM_LIQUID } from 'src/constants/config';
-import dateFormat from 'dateformat';
-import { useQuery } from '@tanstack/react-query';
-
-import Loader2 from 'src/components/ui/Loader2';
 import { routes } from 'src/routes';
-import { getProposals } from '../../utils/governance';
-import { AcceptedCard, ActiveCard, RejectedCard } from './components/card';
 import { ActionBar, CardStatisics } from '../../components';
-import { formatNumber, coinDecimals } from '../../utils/utils';
-import styles from './components/styles.module.scss';
+import { getProposals } from '../../utils/governance';
+import { coinDecimals, formatNumber } from '../../utils/utils';
+import { AcceptedCard, ActiveCard, RejectedCard } from './components/card';
 import Columns from './components/columns';
+import styles from './components/styles.module.scss';
 
 type KeyOfProposalStatus = keyof typeof ProposalStatus;
 
@@ -40,11 +40,7 @@ function Statistics({
         value={formatNumber(Math.floor(communityPoolCyber))}
       />
       <Link to="/sphere">
-        <CardStatisics
-          title="% of staked BOOT"
-          value={formatNumber(staked * 100)}
-          link
-        />
+        <CardStatisics title="% of staked BOOT" value={formatNumber(staked * 100)} link />
       </Link>
       <Link to="/network/bostrom/parameters">
         <CardStatisics title="Network parameters" value={53} link />
@@ -61,11 +57,7 @@ function ProposalWrapper({
   children: React.ReactNode;
 }) {
   return (
-    <Link
-      key={proposalId}
-      style={{ color: 'unset' }}
-      to={`/senate/${proposalId}`}
-    >
+    <Link key={proposalId} style={{ color: 'unset' }} to={`/senate/${proposalId}`}>
       {children}
     </Link>
   );
@@ -84,9 +76,7 @@ const mapProposalToCard = (proposal: any) => {
     messages,
   } = proposal;
 
-  const type = messages[0].content
-    ? messages[0].content['@type']
-    : messages[0]['@type'];
+  const type = messages[0].content ? messages[0].content['@type'] : messages[0]['@type'];
 
   return {
     proposalId: id,
@@ -109,7 +99,7 @@ function Governance() {
   const queryClient = useQueryClient();
   const [communityPoolCyber, setCommunityPoolCyber] = useState(0);
   const [staked, setStaked] = useState(0);
-  const [isLoadingStatistics, setIsLoadingStatistics] = useState(true);
+  const [_isLoadingStatistics, setIsLoadingStatistics] = useState(true);
   const { setAdviser } = useAdviser();
 
   useEffect(() => {
@@ -164,15 +154,11 @@ function Governance() {
     .reverse()
     .filter(
       (item) =>
-        ProposalStatus[item.status as KeyOfProposalStatus] <
-        ProposalStatus.PROPOSAL_STATUS_PASSED
+        ProposalStatus[item.status as KeyOfProposalStatus] < ProposalStatus.PROPOSAL_STATUS_PASSED
     )
     .map(mapProposalToCard)
     .map((item) => (
-      <ProposalWrapper
-        proposalId={item.proposalId!}
-        key={`active_${item.proposalId}`}
-      >
+      <ProposalWrapper proposalId={item.proposalId!} key={`active_${item.proposalId}`}>
         <ActiveCard
           key={item.proposalId}
           id={item.proposalId}
@@ -188,15 +174,11 @@ function Governance() {
   const accepted = (tableData || [])
     .filter(
       (item) =>
-        ProposalStatus[item.status as KeyOfProposalStatus] ===
-        ProposalStatus.PROPOSAL_STATUS_PASSED
+        ProposalStatus[item.status as KeyOfProposalStatus] === ProposalStatus.PROPOSAL_STATUS_PASSED
     )
     .map(mapProposalToCard)
     .map((item) => (
-      <ProposalWrapper
-        proposalId={item.proposalId}
-        key={`accepted_${item.proposalId}`}
-      >
+      <ProposalWrapper proposalId={item.proposalId} key={`accepted_${item.proposalId}`}>
         <AcceptedCard
           key={item.proposalId}
           id={item.proposalId}
@@ -212,15 +194,11 @@ function Governance() {
     .reverse()
     .filter(
       (item) =>
-        ProposalStatus[item.status as KeyOfProposalStatus] >
-        ProposalStatus.PROPOSAL_STATUS_PASSED
+        ProposalStatus[item.status as KeyOfProposalStatus] > ProposalStatus.PROPOSAL_STATUS_PASSED
     )
     .map(mapProposalToCard)
     .map((item) => (
-      <ProposalWrapper
-        proposalId={item.proposalId}
-        key={`rejected_${item.proposalId}`}
-      >
+      <ProposalWrapper proposalId={item.proposalId} key={`rejected_${item.proposalId}`}>
         <RejectedCard
           key={item.proposalId}
           id={item.proposalId}

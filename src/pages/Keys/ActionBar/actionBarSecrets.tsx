@@ -1,11 +1,7 @@
-import { useEffect, useState } from 'react';
 import { Pane } from '@cybercongress/gravity';
-import { Input, ActionBar } from 'src/components';
-import {
-  loadJsonFromLocalStorage,
-  saveJsonToLocalStorage,
-} from 'src/utils/localStorage';
+import { useState } from 'react';
 import { useDispatch } from 'react-redux';
+import { ActionBar, Input } from 'src/components';
 import { setSecret } from 'src/redux/reducers/scripting';
 
 function ActionBarSecrets({ onClickBack }: { onClickBack: () => void }) {
@@ -27,13 +23,7 @@ function ActionBarSecrets({ onClickBack }: { onClickBack: () => void }) {
       }}
       onClickBack={onClickBack}
     >
-      <Pane
-        flex={1}
-        justifyContent="center"
-        alignItems="center"
-        fontSize="18px"
-        display="flex"
-      >
+      <Pane flex={1} justifyContent="center" alignItems="center" fontSize="18px" display="flex">
         <Input
           width="250px"
           value={key}

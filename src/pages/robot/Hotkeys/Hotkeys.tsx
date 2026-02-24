@@ -36,9 +36,7 @@ function Hotkeys() {
         columns={[
           columnHelper.accessor('hotkey', {
             header: 'Hotkey',
-            cell: (row) => (
-              <code className={styles.hotkey}>{row.getValue()}</code>
-            ),
+            cell: (row) => <code className={styles.hotkey}>{row.getValue()}</code>,
           }),
           columnHelper.accessor('page', {
             header: 'Page',

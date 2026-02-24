@@ -1,6 +1,6 @@
+import { Option } from 'src/types';
 import { IpfsContent, IpfsContentSource } from 'src/utils/ipfs/ipfs';
 import styles from './DebugContentInfo.module.scss';
-import { Option } from 'src/types';
 
 function DebugContentInfo({
   cid,

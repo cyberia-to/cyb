@@ -1,9 +1,9 @@
-import BtnGrd from '../../btnGrd';
-import styles from './ErrorScreen.module.scss';
-
-import robot from '../../../image/robot.svg';
 import { LinkWindow } from 'src/components/link/link';
 import { HUB_LINK } from 'src/pages/Social/Social';
+
+import robot from '../../../image/robot.svg';
+import BtnGrd from '../../btnGrd';
+import styles from './ErrorScreen.module.scss';
 
 function ErrorScreen({ error }: { error: Error }) {
   return (

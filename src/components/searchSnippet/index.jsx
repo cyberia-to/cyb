@@ -1,15 +1,11 @@
-import { useEffect, useState } from 'react';
 import { Pane } from '@cybercongress/gravity';
-import { useQueryClient } from 'src/contexts/queryClient';
-import Rank from '../Rank/rank';
-import {
-  timeSince,
-  coinDecimals,
-  exponentialToDecimal,
-} from '../../utils/utils';
-import { getRankGrade } from '../../utils/search/utils';
-import ContentItem from '../ContentItem/contentItem';
+import { useEffect, useState } from 'react';
 import { useDevice } from 'src/contexts/device';
+import { useQueryClient } from 'src/contexts/queryClient';
+import { getRankGrade } from '../../utils/search/utils';
+import { coinDecimals, exponentialToDecimal, timeSince } from '../../utils/utils';
+import ContentItem from '../ContentItem/contentItem';
+import Rank from '../Rank/rank';
 
 function TimeAgo({ timeAgoInMS }) {
   return (
@@ -90,12 +86,7 @@ function SearchSnippet({ cid, data, onClickRank }) {
           />
         </Pane>
       )}
-      <ContentItem
-        cid={cid}
-        item={data}
-        className="contentItem"
-        grade={rankInfo.grade}
-      />
+      <ContentItem cid={cid} item={data} className="contentItem" grade={rankInfo.grade} />
       {timeAgoInMS !== null && <TimeAgo timeAgoInMS={timeAgoInMS} />}
     </Pane>
   );

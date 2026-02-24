@@ -25,15 +25,8 @@ function SenseListItemContainer({ senseItemId }: Props) {
   });
   const address = useAppSelector(selectCurrentAddress);
 
-  const {
-    timestamp,
-    amount,
-    cid,
-    text,
-    isAmountSendToMyAddress,
-    isFollow,
-    from,
-  } = formatSenseItemDataToUI(senseData, address, senseItemId);
+  const { timestamp, amount, cid, text, isAmountSendToMyAddress, isFollow, from } =
+    formatSenseItemDataToUI(senseData, address, senseItemId);
 
   const particle = isParticle(senseItemId);
 

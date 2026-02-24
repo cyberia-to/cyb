@@ -1,8 +1,8 @@
+import { Link } from 'react-router-dom';
 import { MainContainer } from 'src/components';
 import { Stars } from 'src/containers/portal/components';
-import { routes } from 'src/routes';
-import { Link } from 'react-router-dom';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
+import { routes } from 'src/routes';
 import Map from './Map';
 import styles from './Map.module.scss';
 
@@ -103,8 +103,7 @@ function MapLink({ className, to, name }) {
 
 function Map() {
   useAdviserTexts({
-    defaultText:
-      'learn to navigate cyb.ai, but know the cyberverse is deeper than you think',
+    defaultText: 'learn to navigate cyb.ai, but know the cyberverse is deeper than you think',
   });
 
   return (

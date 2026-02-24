@@ -21,9 +21,7 @@ export type responseWarpDexTickersItem = {
   target_volume: number;
 };
 
-const getWarpDexTickers = async (): Promise<
-  Nullable<responseWarpDexTickersItem[]>
-> => {
+const getWarpDexTickers = async (): Promise<Nullable<responseWarpDexTickersItem[]>> => {
   try {
     const response = await axios({
       method: 'get',
@@ -31,7 +29,7 @@ const getWarpDexTickers = async (): Promise<
     });
 
     return response.data as responseWarpDexTickersItem[];
-  } catch (e) {
+  } catch (_e) {
     return null;
   }
 };
@@ -57,11 +55,7 @@ export default function useWarpDexTickers() {
 
   const getAmountVol = useCallback(
     (denom: string, amount: number): BigNumber => {
-      if (
-        tracesDenom &&
-        Object.keys(marketData).length &&
-        Object.prototype.hasOwnProperty.call(marketData, denom)
-      ) {
+      if (tracesDenom && Object.keys(marketData).length && Object.hasOwn(marketData, denom)) {
         const pollPrice = new BigNumber(marketData[denom]);
         const [{ coinDecimals }] = tracesDenom(denom);
         const reduceAmount = getDisplayAmount(amount, coinDecimals);
@@ -106,7 +100,7 @@ export default function useWarpDexTickers() {
         amount: vol24Temp.dp(0, BigNumber.ROUND_FLOOR).toString(10),
       });
     }
-  }, [marketData, data, tracesDenom]);
+  }, [marketData, data, tracesDenom, getAmountVol]);
 
   return { data, vol24Total, vol24ByPool };
 }

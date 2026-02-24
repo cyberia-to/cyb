@@ -7,14 +7,7 @@ interface TextTableProps {
   display?: string;
 }
 
-function TextTable({
-  children,
-  fontSize,
-  color,
-  display,
-  style,
-  ...props
-}: TextTableProps) {
+function TextTable({ children, fontSize, color, display, style, ...props }: TextTableProps) {
   return (
     <Text
       fontSize={`${fontSize || 16}px`}

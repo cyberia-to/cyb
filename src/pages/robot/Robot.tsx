@@ -1,24 +1,23 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
-import TxsTable from 'src/pages/robot/_refactor/account/component/txsTable';
-import Sigma from 'src/containers/sigma';
+import Loader2 from 'src/components/ui/Loader2';
 import RoutedEnergy from 'src/containers/energy';
 import TableDiscipline from 'src/containers/gol/table';
+import Sigma from 'src/containers/sigma';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
+import TxsTable from 'src/pages/robot/_refactor/account/component/txsTable';
 import { routes } from 'src/routes';
-import Loader2 from 'src/components/ui/Loader2';
-import Layout from './Layout/Layout';
-import RobotContextProvider, { useRobotContext } from './robot.context';
-import Brain from './Brain/Brain';
-import SensePage from './SensePage';
-import LayoutRoot from './Layout/LayoutRoot/Layout';
-import ZeroUser from './ZeroUser/ZeroUser';
-import FeedsTab from './_refactor/account/tabs/feeds/feeds';
-import UnderConstruction from './UnderConstruction/UnderConstruction';
-import Heroes from './_refactor/account/tabs/heroes';
-import Karma from './Karma/Karma';
 import Follows from './_refactor/account/tabs/Follows/Follows';
+import FeedsTab from './_refactor/account/tabs/feeds/feeds';
+import Heroes from './_refactor/account/tabs/heroes';
+import Brain from './Brain/Brain';
+import Karma from './Karma/Karma';
+import Layout from './Layout/Layout';
+import LayoutRoot from './Layout/LayoutRoot/Layout';
+import RobotContextProvider, { useRobotContext } from './robot.context';
+import SensePage from './SensePage';
 import Soul from './Soul/Soul';
-import Hotkeys from './Hotkeys/Hotkeys';
+import UnderConstruction from './UnderConstruction/UnderConstruction';
+import ZeroUser from './ZeroUser/ZeroUser';
 
 function RobotRoutes() {
   const { address, isFetched } = useRobotContext();
@@ -48,10 +47,7 @@ function RobotRoutes() {
               <Route path="soul" element={<Soul />} />
 
               {/* energy */}
-              <Route
-                path="/grid"
-                element={<Navigate to={routes.robot.routes.energy.path} />}
-              />
+              <Route path="/grid" element={<Navigate to={routes.robot.routes.energy.path} />} />
               {['energy', 'energy/:pageId'].map((path) => (
                 <Route key={path} path={path} element={<RoutedEnergy />} />
               ))}

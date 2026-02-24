@@ -6,9 +6,7 @@ import { useCyberClient } from 'src/contexts/queryCyberClient';
 import BondStatusKey from '../../pages/Sphere/types/bondStatus';
 
 const sortFunc = (itemA: Validator, itemB: Validator) => {
-  return new BigNumber(itemB.tokens)
-    .minus(new BigNumber(itemA.tokens))
-    .toNumber();
+  return new BigNumber(itemB.tokens).minus(new BigNumber(itemA.tokens)).toNumber();
 };
 
 function useGetHeroes() {
@@ -27,14 +25,8 @@ function useGetHeroes() {
     }),
   });
 
-  const loading = useMemo(
-    () => queries.some((query) => query.isLoading),
-    [queries]
-  );
-  const error = useMemo(
-    () => queries.find((query) => !!query.error)?.error,
-    [queries]
-  );
+  const loading = useMemo(() => queries.some((query) => query.isLoading), [queries]);
+  const error = useMemo(() => queries.find((query) => !!query.error)?.error, [queries]);
 
   const data = useMemo(
     () =>

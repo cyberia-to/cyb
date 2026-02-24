@@ -1,7 +1,7 @@
 /* eslint-disable eqeqeq */
 /* eslint-disable no-nested-ternary */
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { ForceGraph3D } from 'react-force-graph';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import ForceGraph3D from 'react-force-graph-3d';
 import { Loading } from '../../components';
 
 import useGetDataGql from './hooks';
@@ -48,57 +48,45 @@ function ForceQuitter() {
       }
     };
     feachData();
-  }, [dataGql]);
+  }, [dataGql, graph]);
 
-  const handleNodeClick = useCallback(
-    (node) => {
-      const distance = 300;
-      const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
+  const handleNodeClick = useCallback((node) => {
+    const distance = 300;
+    const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
 
-      fgRef.current.cameraPosition(
-        { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
-        node,
-        5000
-      );
-    },
-    [fgRef]
-  );
+    fgRef.current.cameraPosition(
+      { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
+      node,
+      5000
+    );
+  }, []);
 
-  const handleLinkClick = useCallback(
-    (link) => {
-      const node = link.target;
-      const distance = 300;
-      const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
+  const handleLinkClick = useCallback((link) => {
+    const node = link.target;
+    const distance = 300;
+    const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
 
-      fgRef.current.cameraPosition(
-        { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
-        node,
-        5000
-      );
-    },
-    [fgRef]
-  );
+    fgRef.current.cameraPosition(
+      { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
+      node,
+      5000
+    );
+  }, []);
 
   const handleNodeRightClick = useCallback(
     (node) => {
-      window.open(
-        `${window.location.origin}/network/bostrom/contract/${node.id}`,
-        '_blank'
-      );
+      window.open(`${window.location.origin}/network/bostrom/contract/${node.id}`, '_blank');
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fgRef]
+    []
   );
 
   const handleLinkRightClick = useCallback(
     (link) => {
-      window.open(
-        `${window.location.origin}/network/bostrom/tx/${link.name}`,
-        '_blank'
-      );
+      window.open(`${window.location.origin}/network/bostrom/tx/${link.name}`, '_blank');
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [fgRef]
+    []
   );
 
   // check and fix
@@ -121,9 +109,7 @@ function ForceQuitter() {
         }}
       >
         <Loading />
-        <div style={{ color: '#fff', marginTop: 20, fontSize: 20 }}>
-          receiving data
-        </div>
+        <div style={{ color: '#fff', marginTop: 20, fontSize: 20 }}>receiving data</div>
       </div>
     );
   }
@@ -151,9 +137,7 @@ function ForceQuitter() {
           }}
         >
           <Loading />
-          <div style={{ color: '#fff', marginTop: 20, fontSize: 20 }}>
-            rendering brain
-          </div>
+          <div style={{ color: '#fff', marginTop: 20, fontSize: 20 }}>rendering brain</div>
         </div>
       )}
       <ForceGraph3D
@@ -167,18 +151,14 @@ function ForceQuitter() {
         enablePointerInteraction
         nodeLabel="id"
         nodeColor={(link) =>
-          localStorage.getItem('pocket') != null
-            ? link.id == pocket
-              ? 'red'
-              : 'white'
-            : 'white'
+          localStorage.getItem('pocket') != null ? (link.id === pocket ? 'red' : 'white') : 'white'
         }
         nodeOpacity={1.0}
         nodeRelSize={8}
         nodeResolution={16}
         linkColor={(link) =>
           localStorage.getItem('pocket') != null
-            ? link.subject == pocket
+            ? link.subject === pocket
               ? 'red'
               : 'blue'
             : 'blue'
@@ -189,7 +169,7 @@ function ForceQuitter() {
         linkDirectionalParticles={1}
         linkDirectionalParticleColor={(link) =>
           localStorage.getItem('pocket') != null
-            ? link.subject == pocket
+            ? link.subject === pocket
               ? 'red'
               : 'blue'
             : 'blue'
@@ -201,7 +181,7 @@ function ForceQuitter() {
         linkDirectionalArrowResolution={16}
         linkDirectionalArrowColor={(link) =>
           localStorage.getItem('pocket') != null
-            ? link.subject == pocket
+            ? link.subject === pocket
               ? 'red'
               : 'blue'
             : 'blue'

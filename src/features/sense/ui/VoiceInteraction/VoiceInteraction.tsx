@@ -1,11 +1,8 @@
-import { useState, useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Button } from 'src/components';
 import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
-import {
-  addLLMMessageToThread,
-  replaceLastLLMMessageInThread,
-} from '../../redux/sense.redux';
 import { llmRequest } from '../../../../containers/Search/LLMSpark/LLMSpark';
+import { addLLMMessageToThread, replaceLastLLMMessageInThread } from '../../redux/sense.redux';
 import styles from './VoiceInteraction.module.scss';
 
 function VoiceInteraction() {
@@ -15,9 +12,7 @@ function VoiceInteraction() {
   const mediaRecorder = useRef<MediaRecorder | null>(null);
   const audioChunks = useRef<Blob[]>([]);
   const dispatch = useAppDispatch();
-  const currentThreadId = useAppSelector(
-    (state) => state.sense.llm.currentThreadId
-  );
+  const currentThreadId = useAppSelector((state) => state.sense.llm.currentThreadId);
 
   // useEffect(() => {
   //   if (!currentThreadId) {
@@ -68,22 +63,17 @@ function VoiceInteraction() {
         throw new Error('OpenAI API key is not set in environment variables');
       }
 
-      const response = await fetch(
-        'https://api.openai.com/v1/audio/transcriptions',
-        {
-          method: 'POST',
-          headers: {
-            Authorization: `Bearer ${apiKey}`,
-          },
-          body: formData,
-        }
-      );
+      const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: formData,
+      });
 
       if (!response.ok) {
         const errorBody = await response.text();
-        throw new Error(
-          `HTTP error! status: ${response.status}, body: ${errorBody}`
-        );
+        throw new Error(`HTTP error! status: ${response.status}, body: ${errorBody}`);
       }
 
       const data = await response.json();
@@ -154,10 +144,7 @@ function VoiceInteraction() {
 
   return (
     <div className={styles.voiceInteraction}>
-      <Button
-        onClick={isRecording ? stopRecording : startRecording}
-        disabled={isProcessing}
-      >
+      <Button onClick={isRecording ? stopRecording : startRecording} disabled={isProcessing}>
         {isRecording ? '🎤🛑' : '🎤'}
       </Button>
       {isProcessing && <p>Processing audio...</p>}

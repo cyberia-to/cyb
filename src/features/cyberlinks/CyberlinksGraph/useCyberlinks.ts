@@ -1,29 +1,19 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useBackend } from 'src/contexts/backend/backend';
-import {
-  Order_By as OrderBy,
-  useCyberlinksByParticleQuery,
-} from 'src/generated/graphql';
+import { Order_By as OrderBy, useCyberlinksByParticleQuery } from 'src/generated/graphql';
 
-const valueByKeyOrSelf = (key: string, obj: Record<string, any>) =>
-  obj[key] || key;
+const _valueByKeyOrSelf = (key: string, obj: Record<string, any>) => obj[key] || key;
 
 function useParticlesPreview() {
   const { senseApi, isDbInitialized } = useBackend();
-  const [particlesPreview, setParticlesPreview] = useState<
-    Record<string, string>
-  >({});
+  const [particlesPreview, setParticlesPreview] = useState<Record<string, string>>({});
   const [isLoading, setIsLoading] = useState<boolean>(true);
 
   useEffect(() => {
     if (senseApi && isDbInitialized) {
       (async () => {
         setIsLoading(true);
-        const { rows } = await senseApi.getAllParticles([
-          'cid',
-          'text',
-          'mime',
-        ]);
+        const { rows } = await senseApi.getAllParticles(['cid', 'text', 'mime']);
         const particles = Object.fromEntries(
           rows.map((row) => {
             return [row[0], row[1] || row[2]];

@@ -1,21 +1,19 @@
 import { useState } from 'react';
 import { ActionBar, Button, Input } from 'src/components';
-import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
 import {
-  createLLMThread,
   addLLMMessageToThread,
+  createLLMThread,
   replaceLastLLMMessageInThread,
 } from 'src/features/sense/redux/sense.redux';
+import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
 import { v4 as uuidv4 } from 'uuid';
-import styles from './ActionBar.module.scss';
 import { llmRequest } from '../../../../containers/Search/LLMSpark/LLMSpark';
 import VoiceInteraction from '../VoiceInteraction/VoiceInteraction';
+import styles from './ActionBar.module.scss';
 
 function ActionBarLLM() {
   const [text, setText] = useState('');
-  const currentThreadId = useAppSelector(
-    (state) => state.sense.llm.currentThreadId
-  );
+  const currentThreadId = useAppSelector((state) => state.sense.llm.currentThreadId);
   const dispatch = useAppDispatch();
 
   const sendMessage = async () => {
@@ -59,9 +57,7 @@ function ActionBarLLM() {
         sender: 'llm',
         timestamp: Date.now(),
       };
-      dispatch(
-        replaceLastLLMMessageInThread({ threadId, message: llmMessage })
-      );
+      dispatch(replaceLastLLMMessageInThread({ threadId, message: llmMessage }));
     } catch (error) {
       // Handle error: Remove the "waiting..." message
       dispatch(

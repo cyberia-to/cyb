@@ -9,19 +9,18 @@ var __defNormalProp = (obj, key, value) =>
       })
     : (obj[key] = value);
 var __publicField = (obj, key, value) => {
-  __defNormalProp(obj, typeof key !== 'symbol' ? key + '' : key, value);
+  __defNormalProp(obj, typeof key !== 'symbol' ? `${key}` : key, value);
   return value;
 };
 var __accessCheck = (obj, member, msg) => {
-  if (!member.has(obj)) throw TypeError('Cannot ' + msg);
+  if (!member.has(obj)) throw TypeError(`Cannot ${msg}`);
 };
 var __privateGet = (obj, member, getter) => {
   __accessCheck(obj, member, 'read from private field');
   return getter ? getter.call(obj) : member.get(obj);
 };
 var __privateAdd = (obj, member, value) => {
-  if (member.has(obj))
-    throw TypeError('Cannot add the same private member more than once');
+  if (member.has(obj)) throw TypeError('Cannot add the same private member more than once');
   member instanceof WeakSet ? member.add(obj) : member.set(obj, value);
 };
 var __privateMethod = (obj, member, method) => {
@@ -78,11 +77,13 @@ var _empty,
   _allChars,
   allChars_get,
   _a;
-import React, { forwardRef, useRef, useState, useEffect } from 'react';
+
+import React, { forwardRef, useEffect, useRef, useState } from 'react';
+
 const isArray = (thing) => Array.isArray(thing);
 const asArray = (value) => (isArray(value) ? value : [value]);
-let Queue = function (initialItems) {
-  let add = function (steps) {
+const Queue = (initialItems) => {
+  const add = function (steps) {
     asArray(steps).forEach((step) => {
       var _a2;
       return _q.set(
@@ -92,30 +93,29 @@ let Queue = function (initialItems) {
     });
     return this;
   };
-  let getTypeable = () => rawValues().filter((value) => value.typeable);
-  let set = function (index, item) {
-    let keys = [..._q.keys()];
+  const getTypeable = () => rawValues().filter((value) => value.typeable);
+  const set = (index, item) => {
+    const keys = [..._q.keys()];
     _q.set(keys[index], buildQueueItem(item));
   };
-  let buildQueueItem = (queueItem) => {
+  const buildQueueItem = (queueItem) => {
     queueItem.shouldPauseCursor = function () {
       return Boolean(this.typeable || this.cursorable || this.deletable);
     };
     return queueItem;
   };
-  let reset = function () {
+  const reset = () => {
     _q.forEach((item) => delete item.done);
   };
-  let wipe = function () {
+  const wipe = () => {
     _q = /* @__PURE__ */ new Map();
     add(initialItems);
   };
-  let getQueue = () => _q;
-  let rawValues = () => Array.from(_q.values());
-  let destroy = (key) => _q.delete(key);
-  let getItems = (all = false) =>
-    all ? rawValues() : rawValues().filter((i) => !i.done);
-  let done = (key, shouldDestroy = false) =>
+  const getQueue = () => _q;
+  const rawValues = () => Array.from(_q.values());
+  const destroy = (key) => _q.delete(key);
+  const getItems = (all = false) => (all ? rawValues() : rawValues().filter((i) => !i.done));
+  const done = (key, shouldDestroy = false) =>
     shouldDestroy ? _q.delete(key) : (_q.get(key).done = true);
   let _q = /* @__PURE__ */ new Map();
   add(initialItems);
@@ -179,7 +179,7 @@ const PLACEHOLDER_CSS = `[${DATA_ATTRIBUTE}]:before {content: '.'; display: inli
 const createElement = (el) => document.createElement(el);
 const createTextNode = (content) => document.createTextNode(content);
 const appendStyleBlock = (styles, id = '') => {
-  let styleBlock = createElement('style');
+  const styleBlock = createElement('style');
   styleBlock.id = id;
   styleBlock.appendChild(createTextNode(styles));
   document.head.appendChild(styleBlock);
@@ -191,23 +191,18 @@ const calculateDelay = (delayArg) => {
   return delayArg;
 };
 const randomInRange = (value, range2) => {
-  return Math.abs(
-    Math.random() * (value + range2 - (value - range2)) + (value - range2)
-  );
+  return Math.abs(Math.random() * (value + range2 - (value - range2)) + (value - range2));
 };
-let range = (val) => val / 2;
+const range = (val) => val / 2;
 function calculatePace(options) {
   let { speed, deleteSpeed, lifeLike } = options;
   deleteSpeed = deleteSpeed !== null ? deleteSpeed : speed / 3;
   return lifeLike
-    ? [
-        randomInRange(speed, range(speed)),
-        randomInRange(deleteSpeed, range(deleteSpeed)),
-      ]
+    ? [randomInRange(speed, range(speed)), randomInRange(deleteSpeed, range(deleteSpeed))]
     : [speed, deleteSpeed];
 }
 const toArray = (val) => Array.from(val);
-let expandTextNodes = (element) => {
+const expandTextNodes = (element) => {
   [...element.childNodes].forEach((child) => {
     if (child.nodeValue) {
       [...child.nodeValue].forEach((c) => {
@@ -221,38 +216,30 @@ let expandTextNodes = (element) => {
   return element;
 };
 const getParsedBody = (content) => {
-  let doc = document.implementation.createHTMLDocument();
+  const doc = document.implementation.createHTMLDocument();
   doc.body.innerHTML = content;
   return expandTextNodes(doc.body);
 };
-function walkElementNodes(
-  element,
-  shouldReverse = false,
-  shouldIncludeCursor = false
-) {
-  let cursor = element.querySelector(`.${CURSOR_CLASS}`);
-  let walker = document.createTreeWalker(element, NodeFilter.SHOW_ALL, {
+function walkElementNodes(element, shouldReverse = false, shouldIncludeCursor = false) {
+  const cursor = element.querySelector(`.${CURSOR_CLASS}`);
+  const walker = document.createTreeWalker(element, NodeFilter.SHOW_ALL, {
     acceptNode: (node) => {
       var _a2, _b;
       if (cursor && shouldIncludeCursor) {
-        if (
-          (_a2 = node.classList) == null ? void 0 : _a2.contains(CURSOR_CLASS)
-        ) {
+        if ((_a2 = node.classList) == null ? void 0 : _a2.contains(CURSOR_CLASS)) {
           return NodeFilter.FILTER_ACCEPT;
         }
         if (cursor.contains(node)) {
           return NodeFilter.FILTER_REJECT;
         }
       }
-      return (
-        (_b = node.classList) == null ? void 0 : _b.contains(CURSOR_CLASS)
-      )
+      return ((_b = node.classList) == null ? void 0 : _b.contains(CURSOR_CLASS))
         ? NodeFilter.FILTER_REJECT
         : NodeFilter.FILTER_ACCEPT;
     },
   });
   let nextNode;
-  let nodes = [];
+  const nodes = [];
   while ((nextNode = walker.nextNode())) {
     if (!nextNode.originalParent) {
       nextNode.originalParent = nextNode.parentNode;
@@ -272,11 +259,11 @@ const countStepsToSelector = ({ queueItems, selector, cursorPosition, to }) => {
   if (isNumber(selector)) {
     return selector * -1;
   }
-  let isMovingToEnd = new RegExp(END, 'i').test(to);
+  const isMovingToEnd = new RegExp(END, 'i').test(to);
   let selectorIndex = selector
     ? [...queueItems].reverse().findIndex(({ char }) => {
-        let parentElement = char.parentElement;
-        let parentMatches = parentElement.matches(selector);
+        const parentElement = char.parentElement;
+        const parentMatches = parentElement.matches(selector);
         if (isMovingToEnd && parentMatches) {
           return true;
         }
@@ -286,7 +273,7 @@ const countStepsToSelector = ({ queueItems, selector, cursorPosition, to }) => {
   if (selectorIndex < 0) {
     selectorIndex = isMovingToEnd ? 0 : queueItems.length - 1;
   }
-  let offset = isMovingToEnd ? 0 : 1;
+  const offset = isMovingToEnd ? 0 : 1;
   return selectorIndex - cursorPosition + offset;
 };
 const destroyTimeouts = (timeouts) => {
@@ -294,22 +281,22 @@ const destroyTimeouts = (timeouts) => {
   return [];
 };
 const duplicate = (value, times) => new Array(times).fill(value);
-let beforePaint = (cb) => {
+const beforePaint = (cb) => {
   return new Promise((resolve) => {
     requestAnimationFrame(async () => {
       resolve(await cb());
     });
   });
 };
-let getAnimationFromElement = (element) => {
+const getAnimationFromElement = (element) => {
   return element == null
     ? void 0
     : element.getAnimations().find((animation) => {
         return animation.id === element.dataset.tiAnimationId;
       });
 };
-let setCursorAnimation = ({ cursor, frames, options }) => {
-  let animation = cursor.animate(frames, options);
+const setCursorAnimation = ({ cursor, frames, options }) => {
+  const animation = cursor.animate(frames, options);
   animation.pause();
   animation.id = cursor.dataset.tiAnimationId;
   beforePaint(() => {
@@ -319,16 +306,16 @@ let setCursorAnimation = ({ cursor, frames, options }) => {
   });
   return animation;
 };
-let rebuildCursorAnimation = ({ cursor, options, cursorOptions }) => {
+const rebuildCursorAnimation = ({ cursor, options, cursorOptions }) => {
   if (!cursor || !cursorOptions) return;
-  let animation = getAnimationFromElement(cursor);
+  const animation = getAnimationFromElement(cursor);
   let oldCurrentTime;
   if (animation) {
     options.delay = animation.effect.getComputedTiming().delay;
     oldCurrentTime = animation.currentTime;
     animation.cancel();
   }
-  let newAnimation = setCursorAnimation({
+  const newAnimation = setCursorAnimation({
     cursor,
     frames: cursorOptions.animation.frames,
     options,
@@ -338,24 +325,17 @@ let rebuildCursorAnimation = ({ cursor, options, cursorOptions }) => {
   }
   return newAnimation;
 };
-let execute = (queueItem) => {
+const execute = (queueItem) => {
   var _a2;
   return (_a2 = queueItem.func) == null ? void 0 : _a2.call(null);
 };
-let fireItem = async ({
-  index,
-  queueItems,
-  wait: wait2,
-  cursor,
-  cursorOptions,
-}) => {
-  let queueItem = queueItems[index][1];
-  let instantQueue = [];
+const fireItem = async ({ index, queueItems, wait: wait2, cursor, cursorOptions }) => {
+  const queueItem = queueItems[index][1];
+  const instantQueue = [];
   let tempIndex = index;
   let futureItem = queueItem;
-  let shouldBeGrouped = () => futureItem && !futureItem.delay;
-  let shouldPauseCursor =
-    queueItem.shouldPauseCursor() && cursorOptions.autoPause;
+  const shouldBeGrouped = () => futureItem && !futureItem.delay;
+  const shouldPauseCursor = queueItem.shouldPauseCursor() && cursorOptions.autoPause;
   while (shouldBeGrouped()) {
     instantQueue.push(futureItem);
     shouldBeGrouped() && tempIndex++;
@@ -363,13 +343,13 @@ let fireItem = async ({
   }
   if (instantQueue.length) {
     await beforePaint(async () => {
-      for (let q of instantQueue) {
+      for (const q of instantQueue) {
         await execute(q);
       }
     });
     return tempIndex - 1;
   }
-  let animation = getAnimationFromElement(cursor);
+  const animation = getAnimationFromElement(cursor);
   let options;
   if (animation) {
     options = {
@@ -393,7 +373,7 @@ let fireItem = async ({
   return index;
 };
 const fireWhenVisible = (element, func) => {
-  let observer = new IntersectionObserver(
+  const observer = new IntersectionObserver(
     (entries, observer2) => {
       entries.forEach((entry) => {
         if (entry.isIntersecting) {
@@ -410,53 +390,47 @@ const generateHash = () => Math.random().toString().substring(2, 9);
 const isInput = (el) => {
   return 'value' in el;
 };
-let getAllChars = (element) => {
+const getAllChars = (element) => {
   if (isInput(element)) {
     return toArray(element.value);
   }
-  return walkElementNodes(element, true).filter(
-    (c) => !(c.childNodes.length > 0)
-  );
+  return walkElementNodes(element, true).filter((c) => !(c.childNodes.length > 0));
 };
-let handleFunctionalArg = (arg) => {
+const handleFunctionalArg = (arg) => {
   return typeof arg === 'function' ? arg() : arg;
 };
-let select = (selector, element = document, all = false) => {
+const select = (selector, element = document, all = false) => {
   return element[`querySelector${all ? 'All' : ''}`](selector);
 };
-let isBodyElement = (node) =>
-  /body/i.test(node == null ? void 0 : node.tagName);
-let insertIntoElement = (originalTarget, character) => {
+const isBodyElement = (node) => /body/i.test(node == null ? void 0 : node.tagName);
+const insertIntoElement = (originalTarget, character) => {
   if (isInput(originalTarget)) {
     originalTarget.value = `${originalTarget.value}${character.textContent}`;
     return;
   }
   character.innerHTML = '';
-  let target = isBodyElement(character.originalParent)
+  const target = isBodyElement(character.originalParent)
     ? originalTarget
     : // If we add one-off fresh elements, there will be no
       // "originalParent", so always fall back to the default target.
       character.originalParent || originalTarget;
-  target.insertBefore(character, select('.' + CURSOR_CLASS, target) || null);
+  target.insertBefore(character, select(`.${CURSOR_CLASS}`, target) || null);
 };
 const isNonVoidElement = (el) => /<(.+)>(.*?)<\/(.+)>/.test(el.outerHTML);
 const merge = (originalObj, newObj) => Object.assign({}, originalObj, newObj);
-let processCursorOptions = (cursorOptions) => {
+const processCursorOptions = (cursorOptions) => {
   var _a2, _b;
   if (typeof cursorOptions === 'object') {
-    let newOptions = {};
-    let { frames: defaultFrames, options: defaultOptions } =
-      DEFAULT_OPTIONS.cursor.animation;
+    const newOptions = {};
+    const { frames: defaultFrames, options: defaultOptions } = DEFAULT_OPTIONS.cursor.animation;
     newOptions.animation = cursorOptions.animation || {};
     newOptions.animation.frames =
-      ((_a2 = cursorOptions.animation) == null ? void 0 : _a2.frames) ||
-      defaultFrames;
+      ((_a2 = cursorOptions.animation) == null ? void 0 : _a2.frames) || defaultFrames;
     newOptions.animation.options = merge(
       defaultOptions,
       ((_b = cursorOptions.animation) == null ? void 0 : _b.options) || {}
     );
-    newOptions.autoPause =
-      cursorOptions.autoPause ?? DEFAULT_OPTIONS.cursor.autoPause;
+    newOptions.autoPause = cursorOptions.autoPause ?? DEFAULT_OPTIONS.cursor.autoPause;
     newOptions.autoPauseDelay =
       cursorOptions.autoPauseDelay || DEFAULT_OPTIONS.cursor.autoPauseDelay;
     return newOptions;
@@ -468,8 +442,8 @@ let processCursorOptions = (cursorOptions) => {
 };
 const removeNode = (node, rootElement) => {
   if (!node) return;
-  let nodeParent = node.parentNode;
-  let nodeToRemove =
+  const nodeParent = node.parentNode;
+  const nodeToRemove =
     nodeParent.childNodes.length > 1 || nodeParent.isSameNode(rootElement)
       ? // This parent still needs to exist.
         node
@@ -479,17 +453,15 @@ const removeNode = (node, rootElement) => {
   nodeToRemove.remove();
 };
 const repositionCursor = (element, allChars, newCursorPosition) => {
-  let nodeToInsertBefore = allChars[newCursorPosition - 1];
-  let cursor = select(`.${CURSOR_CLASS}`, element);
-  element =
-    (nodeToInsertBefore == null ? void 0 : nodeToInsertBefore.parentNode) ||
-    element;
+  const nodeToInsertBefore = allChars[newCursorPosition - 1];
+  const cursor = select(`.${CURSOR_CLASS}`, element);
+  element = (nodeToInsertBefore == null ? void 0 : nodeToInsertBefore.parentNode) || element;
   element.insertBefore(cursor, nodeToInsertBefore || null);
 };
 function selectorToElement(thing) {
   return typeof thing === 'string' ? select(thing) : thing;
 }
-let cursorFontStyles = {
+const cursorFontStyles = {
   'font-family': '',
   'font-weight': '',
   'font-size': '',
@@ -498,18 +470,13 @@ let cursorFontStyles = {
   color: '',
   transform: 'translateX(-.125em)',
 };
-let setCursorStyles = (id, element) => {
-  let rootSelector = `[${DATA_ATTRIBUTE}='${id}']`;
-  let cursorSelector = `${rootSelector} .${CURSOR_CLASS}`;
-  let computedStyles = getComputedStyle(element);
-  let customProperties = Object.entries(cursorFontStyles).reduce(
-    (accumulator, [item, value]) => {
-      return `${accumulator} ${item}: var(--ti-cursor-${item}, ${
-        value || computedStyles[item]
-      });`;
-    },
-    ''
-  );
+const setCursorStyles = (id, element) => {
+  const rootSelector = `[${DATA_ATTRIBUTE}='${id}']`;
+  const cursorSelector = `${rootSelector} .${CURSOR_CLASS}`;
+  const computedStyles = getComputedStyle(element);
+  const customProperties = Object.entries(cursorFontStyles).reduce((accumulator, [item, value]) => {
+    return `${accumulator} ${item}: var(--ti-cursor-${item}, ${value || computedStyles[item]});`;
+  }, '');
   appendStyleBlock(
     `${cursorSelector} { display: inline-block; width: 0; ${customProperties} }`,
     id
@@ -521,22 +488,19 @@ function splitOnBreak(str) {
     .trim()
     .split(/<br(?:\s*?)(?:\/)?>/);
 }
-let updateCursorPosition = (steps, cursorPosition, printedCharacters) => {
-  return Math.min(
-    Math.max(cursorPosition + steps, 0),
-    printedCharacters.length
-  );
+const updateCursorPosition = (steps, cursorPosition, printedCharacters) => {
+  return Math.min(Math.max(cursorPosition + steps, 0), printedCharacters.length);
 };
-let wait = (callback, delay, timeouts) => {
+const wait = (callback, delay, timeouts) => {
   return new Promise((resolve) => {
-    let cb = async () => {
+    const cb = async () => {
       await callback();
       resolve();
     };
     timeouts.push(setTimeout(cb, delay || 0));
   });
 };
-let TypeIt$1 =
+const TypeIt$1 =
   ((_a = class {
     constructor(element, options = {}) {
       __privateAdd(this, _empty);
@@ -603,9 +567,7 @@ let TypeIt$1 =
         return this.statuses[key];
       });
       __privateAdd(this, _buildOptions, (options) => {
-        options.cursor = processCursorOptions(
-          options.cursor ?? DEFAULT_OPTIONS.cursor
-        );
+        options.cursor = processCursorOptions(options.cursor ?? DEFAULT_OPTIONS.cursor);
         this.opts.strings = __privateMethod(
           this,
           _prependHardcodedStrings,
@@ -627,9 +589,7 @@ let TypeIt$1 =
       this.id = generateHash();
       this.queue = Queue([{ delay: this.opts.startDelay }]);
       __privateGet(this, _buildOptions).call(this, options);
-      this.cursor = __privateMethod(this, _setUpCursor, setUpCursor_fn).call(
-        this
-      );
+      this.cursor = __privateMethod(this, _setUpCursor, setUpCursor_fn).call(this);
       this.element.dataset.typeitId = this.id;
       appendStyleBlock(PLACEHOLDER_CSS);
       if (this.opts.strings.length) {
@@ -648,20 +608,14 @@ let TypeIt$1 =
         __privateMethod(this, _fire, fire_fn).call(this);
         return this;
       }
-      fireWhenVisible(
-        this.element,
-        __privateMethod(this, _fire, fire_fn).bind(this)
-      );
+      fireWhenVisible(this.element, __privateMethod(this, _fire, fire_fn).bind(this));
       return this;
     }
     destroy(shouldRemoveCursor = true) {
       this.timeouts = destroyTimeouts(this.timeouts);
       handleFunctionalArg(shouldRemoveCursor) &&
         this.cursor &&
-        __privateMethod(this, _removeNode, removeNode_fn).call(
-          this,
-          this.cursor
-        );
+        __privateMethod(this, _removeNode, removeNode_fn).call(this, this.cursor);
       this.statuses.destroyed = true;
     }
     reset(rebuild) {
@@ -673,26 +627,24 @@ let TypeIt$1 =
         this.queue.reset();
       }
       this.cursorPosition = 0;
-      for (let property in this.statuses) {
+      for (const property in this.statuses) {
         this.statuses[property] = false;
       }
       this.element[
-        __privateMethod(this, _elementIsInput, elementIsInput_fn).call(this)
-          ? 'value'
-          : 'innerHTML'
+        __privateMethod(this, _elementIsInput, elementIsInput_fn).call(this) ? 'value' : 'innerHTML'
       ] = '';
       return this;
     }
     type(string, actionOpts = {}) {
       string = handleFunctionalArg(string);
-      let { instant } = actionOpts;
-      let bookEndQueueItems = __privateMethod(
+      const { instant } = actionOpts;
+      const bookEndQueueItems = __privateMethod(
         this,
         _generateTemporaryOptionQueueItems,
         generateTemporaryOptionQueueItems_fn
       ).call(this, actionOpts);
-      let chars = maybeChunkStringAsHtml(string, this.opts.html);
-      let charsAsQueueItems = chars.map((char) => {
+      const chars = maybeChunkStringAsHtml(string, this.opts.html);
+      const charsAsQueueItems = chars.map((char) => {
         return {
           func: () => __privateMethod(this, _type, type_fn).call(this, char),
           char,
@@ -703,7 +655,7 @@ let TypeIt$1 =
           typeable: char.nodeType === Node.TEXT_NODE,
         };
       });
-      let itemsToQueue = [
+      const itemsToQueue = [
         bookEndQueueItems[0],
         { func: async () => await this.opts.beforeString(string, this) },
         ...charsAsQueueItems,
@@ -720,11 +672,7 @@ let TypeIt$1 =
       return __privateMethod(this, _queueAndReturn, queueAndReturn_fn).call(
         this,
         {
-          func: () =>
-            __privateMethod(this, _type, type_fn).call(
-              this,
-              createElement('BR')
-            ),
+          func: () => __privateMethod(this, _type, type_fn).call(this, createElement('BR')),
           typeable: true,
         },
         actionOpts
@@ -732,40 +680,29 @@ let TypeIt$1 =
     }
     move(movementArg, actionOpts = {}) {
       movementArg = handleFunctionalArg(movementArg);
-      let bookEndQueueItems = __privateMethod(
+      const bookEndQueueItems = __privateMethod(
         this,
         _generateTemporaryOptionQueueItems,
         generateTemporaryOptionQueueItems_fn
       ).call(this, actionOpts);
-      let { instant, to } = actionOpts;
-      let numberOfSteps = countStepsToSelector({
+      const { instant, to } = actionOpts;
+      const numberOfSteps = countStepsToSelector({
         queueItems: this.queue.getTypeable(),
         selector: movementArg === null ? '' : movementArg,
         to,
-        cursorPosition: __privateGet(
-          this,
-          _derivedCursorPosition,
-          derivedCursorPosition_get
-        ),
+        cursorPosition: __privateGet(this, _derivedCursorPosition, derivedCursorPosition_get),
       });
-      let directionalStep = numberOfSteps < 0 ? -1 : 1;
+      const directionalStep = numberOfSteps < 0 ? -1 : 1;
       this.predictedCursorPosition =
-        __privateGet(this, _derivedCursorPosition, derivedCursorPosition_get) +
-        numberOfSteps;
+        __privateGet(this, _derivedCursorPosition, derivedCursorPosition_get) + numberOfSteps;
       return __privateMethod(this, _queueAndReturn, queueAndReturn_fn).call(
         this,
         [
           bookEndQueueItems[0],
           ...duplicate(
             {
-              func: () =>
-                __privateMethod(this, _move, move_fn).call(
-                  this,
-                  directionalStep
-                ),
-              delay: instant
-                ? 0
-                : __privateMethod(this, _getPace, getPace_fn).call(this),
+              func: () => __privateMethod(this, _move, move_fn).call(this, directionalStep),
+              delay: instant ? 0 : __privateMethod(this, _getPace, getPace_fn).call(this),
               cursorable: true,
             },
             Math.abs(numberOfSteps)
@@ -776,29 +713,21 @@ let TypeIt$1 =
       );
     }
     exec(func, actionOpts = {}) {
-      let bookEndQueueItems = __privateMethod(
+      const bookEndQueueItems = __privateMethod(
         this,
         _generateTemporaryOptionQueueItems,
         generateTemporaryOptionQueueItems_fn
       ).call(this, actionOpts);
       return __privateMethod(this, _queueAndReturn, queueAndReturn_fn).call(
         this,
-        [
-          bookEndQueueItems[0],
-          { func: () => func(this) },
-          bookEndQueueItems[1],
-        ],
+        [bookEndQueueItems[0], { func: () => func(this) }, bookEndQueueItems[1]],
         actionOpts
       );
     }
     options(opts, actionOpts = {}) {
       opts = handleFunctionalArg(opts);
       __privateMethod(this, _updateOptions, updateOptions_fn).call(this, opts);
-      return __privateMethod(this, _queueAndReturn, queueAndReturn_fn).call(
-        this,
-        {},
-        actionOpts
-      );
+      return __privateMethod(this, _queueAndReturn, queueAndReturn_fn).call(this, {}, actionOpts);
     }
     pause(milliseconds, actionOpts = {}) {
       return __privateMethod(this, _queueAndReturn, queueAndReturn_fn).call(
@@ -809,15 +738,15 @@ let TypeIt$1 =
     }
     delete(numCharacters = null, actionOpts = {}) {
       numCharacters = handleFunctionalArg(numCharacters);
-      let bookEndQueueItems = __privateMethod(
+      const bookEndQueueItems = __privateMethod(
         this,
         _generateTemporaryOptionQueueItems,
         generateTemporaryOptionQueueItems_fn
       ).call(this, actionOpts);
-      let num = numCharacters;
-      let { instant, to } = actionOpts;
-      let typeableQueueItems = this.queue.getTypeable();
-      let rounds = (() => {
+      const num = numCharacters;
+      const { instant, to } = actionOpts;
+      const typeableQueueItems = this.queue.getTypeable();
+      const rounds = (() => {
         if (num === null) {
           return typeableQueueItems.length;
         }
@@ -827,11 +756,7 @@ let TypeIt$1 =
         return countStepsToSelector({
           queueItems: typeableQueueItems,
           selector: num,
-          cursorPosition: __privateGet(
-            this,
-            _derivedCursorPosition,
-            derivedCursorPosition_get
-          ),
+          cursorPosition: __privateGet(this, _derivedCursorPosition, derivedCursorPosition_get),
           to,
         });
       })();
@@ -842,9 +767,7 @@ let TypeIt$1 =
           ...duplicate(
             {
               func: __privateMethod(this, _delete, delete_fn).bind(this),
-              delay: instant
-                ? 0
-                : __privateMethod(this, _getPace, getPace_fn).call(this, 1),
+              delay: instant ? 0 : __privateMethod(this, _getPace, getPace_fn).call(this, 1),
               deletable: true,
             },
             rounds
@@ -878,10 +801,7 @@ let TypeIt$1 =
       return this.opts;
     }
     updateOptions(options) {
-      return __privateMethod(this, _updateOptions, updateOptions_fn).call(
-        this,
-        options
-      );
+      return __privateMethod(this, _updateOptions, updateOptions_fn).call(this, options);
     }
     getElement() {
       return this.element;
@@ -908,20 +828,19 @@ let TypeIt$1 =
   (_fire = new WeakSet()),
   (fire_fn = async function (remember = true) {
     this.statuses.started = true;
-    let cleanUp = (qKey) => {
+    const cleanUp = (qKey) => {
       this.queue.done(qKey, !remember);
     };
     try {
-      let queueItems = [...this.queue.getQueue()];
+      const queueItems = [...this.queue.getQueue()];
       for (let index = 0; index < queueItems.length; index++) {
-        let [queueKey, queueItem] = queueItems[index];
+        const [queueKey, queueItem] = queueItems[index];
         if (queueItem.done) continue;
         if (
           !queueItem.deletable ||
-          (queueItem.deletable &&
-            __privateGet(this, _allChars, allChars_get).length)
+          (queueItem.deletable && __privateGet(this, _allChars, allChars_get).length)
         ) {
-          let newIndex = await __privateMethod(
+          const newIndex = await __privateMethod(
             this,
             _fireItemWithContext,
             fireItemWithContext_fn
@@ -930,7 +849,7 @@ let TypeIt$1 =
             .fill(index + 1)
             .map((x, y) => x + y)
             .forEach((i) => {
-              let [key] = queueItems[i];
+              const [key] = queueItems[i];
               cleanUp(key);
             });
           index = newIndex;
@@ -945,19 +864,16 @@ let TypeIt$1 =
       if (!this.opts.loop) {
         throw '';
       }
-      let delay = this.opts.loopDelay;
+      const delay = this.opts.loopDelay;
       __privateMethod(this, _wait, wait_fn).call(
         this,
         async () => {
-          await __privateMethod(this, _prepLoop, prepLoop_fn).call(
-            this,
-            delay[0]
-          );
+          await __privateMethod(this, _prepLoop, prepLoop_fn).call(this, delay[0]);
           __privateMethod(this, _fire, fire_fn).call(this);
         },
         delay[1]
       );
-    } catch (e) {}
+    } catch (_e) {}
     return this;
   }),
   (_move = new WeakSet()),
@@ -975,7 +891,7 @@ let TypeIt$1 =
   }),
   (_prepLoop = new WeakSet()),
   (prepLoop_fn = async function (delay) {
-    let derivedCursorPosition = __privateGet(
+    const derivedCursorPosition = __privateGet(
       this,
       _derivedCursorPosition,
       derivedCursorPosition_get
@@ -984,7 +900,7 @@ let TypeIt$1 =
       (await __privateMethod(this, _move, move_fn).call(this, {
         value: derivedCursorPosition,
       }));
-    let queueItems = __privateGet(this, _allChars, allChars_get).map((c) => {
+    const queueItems = __privateGet(this, _allChars, allChars_get).map((_c) => {
       return [
         Symbol(),
         {
@@ -996,11 +912,11 @@ let TypeIt$1 =
       ];
     });
     for (let index = 0; index < queueItems.length; index++) {
-      await __privateMethod(
+      await __privateMethod(this, _fireItemWithContext, fireItemWithContext_fn).call(
         this,
-        _fireItemWithContext,
-        fireItemWithContext_fn
-      ).call(this, index, queueItems);
+        index,
+        queueItems
+      );
     }
     this.queue.reset();
     this.queue.set(0, { delay });
@@ -1037,8 +953,8 @@ let TypeIt$1 =
     if (__privateGet(this, _shouldRenderCursor, shouldRenderCursor_get)) {
       setCursorStyles(this.id, this.element);
       this.cursor.dataset.tiAnimationId = this.id;
-      let { animation } = this.opts.cursor;
-      let { frames, options } = animation;
+      const { animation } = this.opts.cursor;
+      const { frames, options } = animation;
       setCursorAnimation({
         frames,
         cursor: this.cursor,
@@ -1056,33 +972,22 @@ let TypeIt$1 =
   (_queueAndReturn = new WeakSet()),
   (queueAndReturn_fn = function (steps, opts) {
     this.queue.add(steps);
-    __privateMethod(this, _maybeAppendPause, maybeAppendPause_fn).call(
-      this,
-      opts
-    );
+    __privateMethod(this, _maybeAppendPause, maybeAppendPause_fn).call(this, opts);
     return this;
   }),
   (_maybeAppendPause = new WeakSet()),
   (maybeAppendPause_fn = function (opts = {}) {
-    let delay = opts.delay;
+    const delay = opts.delay;
     delay && this.queue.add({ delay });
   }),
   (_generateTemporaryOptionQueueItems = new WeakSet()),
   (generateTemporaryOptionQueueItems_fn = function (newOptions = {}) {
     return [
       {
-        func: () =>
-          __privateMethod(this, _updateOptions, updateOptions_fn).call(
-            this,
-            newOptions
-          ),
+        func: () => __privateMethod(this, _updateOptions, updateOptions_fn).call(this, newOptions),
       },
       {
-        func: () =>
-          __privateMethod(this, _updateOptions, updateOptions_fn).call(
-            this,
-            this.opts
-          ),
+        func: () => __privateMethod(this, _updateOptions, updateOptions_fn).call(this, this.opts),
       },
     ];
   }),
@@ -1092,20 +997,16 @@ let TypeIt$1 =
   }),
   (_generateQueue = new WeakSet()),
   (generateQueue_fn = function () {
-    let strings = this.opts.strings.filter((string) => !!string);
+    const strings = this.opts.strings.filter((string) => !!string);
     strings.forEach((string, index) => {
       this.type(string);
       if (index + 1 === strings.length) {
         return;
       }
-      let splitItems = this.opts.breakLines
+      const splitItems = this.opts.breakLines
         ? [
             {
-              func: () =>
-                __privateMethod(this, _type, type_fn).call(
-                  this,
-                  createElement('BR')
-                ),
+              func: () => __privateMethod(this, _type, type_fn).call(this, createElement('BR')),
               typeable: true,
             },
           ]
@@ -1116,16 +1017,13 @@ let TypeIt$1 =
             },
             this.queue.getTypeable().length
           );
-      __privateMethod(this, _addSplitPause, addSplitPause_fn).call(
-        this,
-        splitItems
-      );
+      __privateMethod(this, _addSplitPause, addSplitPause_fn).call(this, splitItems);
     });
   }),
   (_buildOptions = new WeakMap()),
   (_prependHardcodedStrings = new WeakSet()),
   (prependHardcodedStrings_fn = function (strings) {
-    let existingMarkup = this.element.innerHTML;
+    const existingMarkup = this.element.innerHTML;
     if (!existingMarkup) {
       return strings;
     }
@@ -1153,7 +1051,7 @@ let TypeIt$1 =
     if (__privateGet(this, _isInput, isInput_get)) {
       return null;
     }
-    let cursor = createElement('span');
+    const cursor = createElement('span');
     cursor.className = CURSOR_CLASS;
     if (!__privateGet(this, _shouldRenderCursor, shouldRenderCursor_get)) {
       cursor.style.visibility = 'hidden';
@@ -1164,7 +1062,7 @@ let TypeIt$1 =
   }),
   (_addSplitPause = new WeakSet()),
   (addSplitPause_fn = function (items) {
-    let delay = this.opts.nextStringDelay;
+    const delay = this.opts.nextStringDelay;
     this.queue.add([{ delay: delay[0] }, ...items, { delay: delay[1] }]);
   }),
   (_type = new WeakSet()),
@@ -1241,14 +1139,13 @@ const TypeIt = ({
   useEffect(() => {
     calculateOptions();
     setShouldShowChildren(false);
-  }, [options]);
+  }, [calculateOptions]);
   useEffect(() => {
     var _a2;
     if (!instanceOptions) return;
-    ((_a2 = instanceRef.current) == null
-      ? void 0
-      : _a2.updateOptions(instanceOptions)) || generateNewInstance();
-  }, [instanceOptions]);
+    ((_a2 = instanceRef.current) == null ? void 0 : _a2.updateOptions(instanceOptions)) ||
+      generateNewInstance();
+  }, [instanceOptions, generateNewInstance]);
   useEffect(() => {
     return () => {
       var _a2;

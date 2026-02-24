@@ -1,6 +1,6 @@
+import Loader2 from 'src/components/ui/Loader2';
 import SearchResults from 'src/containers/Search/SearchResults';
 import useGetIPFSHash from 'src/features/ipfs/hooks/useGetIPFSHash';
-import Loader2 from 'src/components/ui/Loader2';
 
 function SearchResultsTab({ moniker }: { moniker: string }) {
   const hash = useGetIPFSHash(moniker);

@@ -20,12 +20,7 @@ function DmnParam({ data }) {
   } catch (error) {
     console.warn('DmnParam', error);
     return (
-      <Pane
-        justifyContent="center"
-        flexDirection="column"
-        alignItems="center"
-        display="flex"
-      >
+      <Pane justifyContent="center" flexDirection="column" alignItems="center" display="flex">
         <Vitalik />
         Error !
       </Pane>

@@ -1,19 +1,17 @@
 import { of } from 'rxjs';
-
-import { CybIpfsNode } from 'src/services/ipfs/types';
-import { fetchPins } from 'src/services/backend/services/sync/services/SyncIpfsLoop/services';
 import DbApi, {
-  mockGetPins,
   mockDeletePins,
   mockGetParticles,
+  mockGetPins,
   mockPutPins,
   mockPutSyncQueue,
 } from 'src/services/backend/services/dataSource/indexedDb/__mocks__/dbApiWrapperMock';
-
+import { fetchPins } from 'src/services/backend/services/sync/services/SyncIpfsLoop/services';
+import { CybIpfsNode } from 'src/services/ipfs/types';
+import { QueuePriority } from 'src/services/QueueManager/types';
 import ParticlesResolverQueue from '../ParticlesResolverQueue/ParticlesResolverQueue';
 import { ServiceDeps } from '../types';
 import SyncIpfsLoop from './SyncIpfsLoop';
-import { QueuePriority } from 'src/services/QueueManager/types';
 
 jest.mock('src/services/backend/services/dataSource/blockchain/requests');
 jest.mock('src/services/backend/services/dataSource/indexedDb/dbApiWrapper');

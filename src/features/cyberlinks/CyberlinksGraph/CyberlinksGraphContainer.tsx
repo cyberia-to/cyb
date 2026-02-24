@@ -1,14 +1,14 @@
+import { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Loading } from 'src/components';
-import { useAppSelector } from 'src/redux/hooks';
-import { selectCurrentAddress } from 'src/redux/features/pocket';
-import { Stars } from 'src/containers/portal/components';
 import ErrorBoundary from 'src/components/ErrorBoundary/ErrorBoundary';
-import { useEffect } from 'react';
-import useCyberlinks from './useCyberlinks';
+import { Stars } from 'src/containers/portal/components';
+import { selectCurrentAddress } from 'src/redux/features/pocket';
+import { useAppSelector } from 'src/redux/hooks';
 import { PORTAL_ID } from '../../../containers/application/App';
 import GraphNew from '../GraphNew/GraphNew';
 import CyberlinksGraph from './CyberlinksGraph';
+import useCyberlinks from './useCyberlinks';
 
 enum Types {
   '3d' = '3d',

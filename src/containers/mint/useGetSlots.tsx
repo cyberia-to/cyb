@@ -1,7 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
-import { useQueryClient } from 'src/contexts/queryClient';
+import { useCallback, useEffect, useState } from 'react';
 import { DENOM_LIQUID } from 'src/constants/config';
+import { useQueryClient } from 'src/contexts/queryClient';
 import { authAccounts } from '../../utils/search/utils';
 import { convertResources } from '../../utils/utils';
 import { Slot } from './types';
@@ -91,86 +91,6 @@ function useGetSlots(addressActive) {
     }
   );
 
-  function update() {
-    refetchGetAllBalances();
-    refetchAuthAccounts();
-    getBalacesResource();
-  }
-
-  useEffect(() => {
-    const getAuth = async () => {
-      setLoadingAuthAccounts(true);
-      setOriginalVesting(initStateVested);
-      setSlotsData([]);
-      setVested(initStateVested);
-
-      const originalVestingInitAmount = {
-        [DENOM_LIQUID]: 0,
-        millivolt: 0,
-        milliampere: 0,
-      };
-
-      if (dataAuthAccounts && dataAuthAccounts.account.vesting_periods) {
-        const { vesting_periods: vestingPeriods } = dataAuthAccounts.account;
-        const { original_vesting: originalVestingAmount } =
-          dataAuthAccounts.account.base_vesting_account;
-        const { start_time: startTime } = dataAuthAccounts.account;
-
-        const balances = getCalculationBalance(originalVestingAmount);
-        if (balances[DENOM_LIQUID]) {
-          originalVestingInitAmount[DENOM_LIQUID] = balances[DENOM_LIQUID];
-        }
-        if (balances.millivolt) {
-          originalVestingInitAmount.millivolt = balances.millivolt;
-        }
-        if (balances.milliampere) {
-          originalVestingInitAmount.milliampere = balances.milliampere;
-        }
-        setOriginalVesting(originalVestingInitAmount);
-
-        const { tempData, vestedAmount } = getVestingPeriodsData(
-          vestingPeriods,
-          startTime
-        );
-
-        setVested(vestedAmount);
-        setSlotsData(tempData);
-        setLoadingAuthAccounts(false);
-      } else {
-        setOriginalVesting(initStateVested);
-        setLoadingAuthAccounts(false);
-        setSlotsData([]);
-        setVested(initStateVested);
-      }
-    };
-    getAuth();
-  }, [dataAuthAccounts]);
-
-  const getBalacesResource = useCallback(() => {
-    setBalacesResource(initBalacesResource);
-    if (dataGetAllBalances && dataGetAllBalances !== null) {
-      const balacesAmount = {
-        millivolt: 0,
-        milliampere: 0,
-      };
-
-      const balances = getCalculationBalance(dataGetAllBalances);
-      if (balances.millivolt) {
-        balacesAmount.millivolt = convertResources(balances.millivolt);
-      }
-      if (balances.milliampere) {
-        balacesAmount.milliampere = convertResources(balances.milliampere);
-      }
-      setBalacesResource(balacesAmount);
-    } else {
-      setBalacesResource(initBalacesResource);
-    }
-  }, [dataGetAllBalances]);
-
-  useEffect(() => {
-    getBalacesResource();
-  }, [addressActive, getBalacesResource]);
-
   const getCalculationBalance = (data) => {
     const balances = {};
     if (Object.keys(data).length > 0) {
@@ -208,10 +128,7 @@ function useGetSlots(addressActive) {
         // obj.status = 'empty';
         item.amount.forEach((itemAmount) => {
           const amount = {};
-          if (
-            itemAmount.denom === 'millivolt' ||
-            itemAmount.denom === 'milliampere'
-          ) {
+          if (itemAmount.denom === 'millivolt' || itemAmount.denom === 'milliampere') {
             amount[itemAmount.denom] = parseFloat(itemAmount.amount);
           } else {
             amount[itemAmount.denom] = parseFloat(itemAmount.amount);
@@ -239,6 +156,83 @@ function useGetSlots(addressActive) {
 
     return { tempData, vestedAmount };
   };
+
+  const getBalacesResource = useCallback(() => {
+    setBalacesResource(initBalacesResource);
+    if (dataGetAllBalances && dataGetAllBalances !== null) {
+      const balacesAmount = {
+        millivolt: 0,
+        milliampere: 0,
+      };
+
+      const balances = getCalculationBalance(dataGetAllBalances);
+      if (balances.millivolt) {
+        balacesAmount.millivolt = convertResources(balances.millivolt);
+      }
+      if (balances.milliampere) {
+        balacesAmount.milliampere = convertResources(balances.milliampere);
+      }
+      setBalacesResource(balacesAmount);
+    } else {
+      setBalacesResource(initBalacesResource);
+    }
+  }, [dataGetAllBalances, getCalculationBalance]);
+
+  function update() {
+    refetchGetAllBalances();
+    refetchAuthAccounts();
+    getBalacesResource();
+  }
+
+  useEffect(() => {
+    const getAuth = async () => {
+      setLoadingAuthAccounts(true);
+      setOriginalVesting(initStateVested);
+      setSlotsData([]);
+      setVested(initStateVested);
+
+      const originalVestingInitAmount = {
+        [DENOM_LIQUID]: 0,
+        millivolt: 0,
+        milliampere: 0,
+      };
+
+      if (dataAuthAccounts?.account.vesting_periods) {
+        const { vesting_periods: vestingPeriods } = dataAuthAccounts.account;
+        const { original_vesting: originalVestingAmount } =
+          dataAuthAccounts.account.base_vesting_account;
+        const { start_time: startTime } = dataAuthAccounts.account;
+
+        const balances = getCalculationBalance(originalVestingAmount);
+        if (balances[DENOM_LIQUID]) {
+          originalVestingInitAmount[DENOM_LIQUID] = balances[DENOM_LIQUID];
+        }
+        if (balances.millivolt) {
+          originalVestingInitAmount.millivolt = balances.millivolt;
+        }
+        if (balances.milliampere) {
+          originalVestingInitAmount.milliampere = balances.milliampere;
+        }
+        setOriginalVesting(originalVestingInitAmount);
+
+        const { tempData, vestedAmount } = getVestingPeriodsData(vestingPeriods, startTime);
+
+        setVested(vestedAmount);
+        setSlotsData(tempData);
+        setLoadingAuthAccounts(false);
+      } else {
+        setOriginalVesting(initStateVested);
+        setLoadingAuthAccounts(false);
+        setSlotsData([]);
+        setVested(initStateVested);
+      }
+    };
+    getAuth();
+  }, [dataAuthAccounts, getCalculationBalance, getVestingPeriodsData]);
+
+  useEffect(() => {
+    getBalacesResource();
+  }, [getBalacesResource]);
 
   return {
     slotsData,

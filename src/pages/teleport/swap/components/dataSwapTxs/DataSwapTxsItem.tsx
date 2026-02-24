@@ -1,14 +1,14 @@
-import { Link } from 'react-router-dom';
 import rectangle from 'images/rectangle.svg';
 import swapImg from 'images/sync-outline.svg';
-import { useIbcDenom } from 'src/contexts/ibcDenom';
-import { getDisplayAmountReverce } from 'src/utils/utils';
+import { Link } from 'react-router-dom';
+import { AmountDenom, CreatedAt, FormatNumberTokens } from 'src/components';
 import Display from 'src/components/containerGradient/Display/Display';
 import { Colors } from 'src/components/containerGradient/types';
-import { FormatNumberTokens, AmountDenom, CreatedAt } from 'src/components';
-import { CssVariables } from 'src/style/variables';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
 import { MessagesByAddressQuery } from 'src/generated/graphql';
+import { CssVariables } from 'src/style/variables';
 import { ArrayElement } from 'src/types';
+import { getDisplayAmountReverce } from 'src/utils/utils';
 import useGetResultSwap from '../../../hooks/useGetResultSwap';
 import styles from './DataSwapTxs.module.scss';
 
@@ -37,10 +37,7 @@ function DataSwapTxsItem({
   item: ArrayElement<MessagesByAddressQuery['messages_by_address']>;
 }) {
   const { tracesDenom } = useIbcDenom();
-  const dataResultSwap = useGetResultSwap(
-    item.transaction.height,
-    item.transaction.logs
-  );
+  const dataResultSwap = useGetResultSwap(item.transaction.height, item.transaction.logs);
 
   const { value } = item;
 
@@ -82,8 +79,7 @@ function DataSwapTxsItem({
               <AmountDenom
                 denom={tokenA}
                 amountValue={
-                  dataResultSwap &&
-                  parseFloat(dataResultSwap.offerCoin.amount) > 0
+                  dataResultSwap && parseFloat(dataResultSwap.offerCoin.amount) > 0
                     ? dataResultSwap.offerCoin.amount
                     : tokenAAmount
                 }

@@ -1,12 +1,9 @@
 import { useEffect, useState } from 'react';
-import {
-  IPFSContentDetails,
-  IPFSContentDetailsMutated,
-} from 'src/services/ipfs/types';
-import { ParticleCid } from 'src/types/base';
+import { IPFSContentDetails, IPFSContentDetailsMutated } from 'src/services/ipfs/types';
 import { parseArrayLikeToDetails } from 'src/services/ipfs/utils/content';
 import { QueueItemStatus } from 'src/services/QueueManager/types';
 import { Option } from 'src/types';
+import { ParticleCid } from 'src/types/base';
 import useQueueIpfsContent from './useQueueIpfsContent';
 import useRuneMutation from './useRuneMutation';
 
@@ -15,14 +12,8 @@ const useParticle = (
   parentId: Option<string> = undefined,
   rank: Option<number> = undefined
 ) => {
-  const {
-    fetchParticle,
-    status: queueItemStatus,
-    content,
-  } = useQueueIpfsContent(parentId);
-  const [details, setDetails] = useState<
-    IPFSContentDetails | IPFSContentDetailsMutated
-  >();
+  const { fetchParticle, status: queueItemStatus, content } = useQueueIpfsContent(parentId);
+  const [details, setDetails] = useState<IPFSContentDetails | IPFSContentDetailsMutated>();
   const [status, setStatus] = useState<QueueItemStatus>('pending');
   const [hidden, setHidden] = useState(false);
   const [mutated, setMutated] = useState(false);
@@ -53,8 +44,7 @@ const useParticle = (
 
   useEffect(() => {
     if (state === 'done') {
-      const hiddenByRune =
-        !!mutatedDetails?.mutation && mutatedDetails.mutation === 'hidden';
+      const hiddenByRune = !!mutatedDetails?.mutation && mutatedDetails.mutation === 'hidden';
       setHidden(hiddenByRune);
       setDetails(mutatedDetails);
       setMutated(true);

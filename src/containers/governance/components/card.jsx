@@ -1,7 +1,7 @@
 import { Pane } from '@cybercongress/gravity';
-import Display from 'src/components/containerGradient/Display/Display';
 import { ProposalStatus } from 'cosmjs-types/cosmos/gov/v1beta1/gov';
-import { Votes, IconStatus, Tooltip } from '../../../components';
+import Display from 'src/components/containerGradient/Display/Display';
+import { IconStatus, Tooltip, Votes } from '../../../components';
 
 const textPropsImg = require('../../../image/reader-outline.svg');
 const paramChangePropsImg = require('../../../image/cog-outline.svg');
@@ -37,20 +37,14 @@ const returnResponseTypeObj = (typeImg, textType) => ({
 
 const checkTypeProps = (type = '') => {
   if (type.includes('ParameterChangeProposal')) {
-    return returnResponseTypeObj(
-      paramChangePropsImg,
-      'Parameter Change Proposal'
-    );
+    return returnResponseTypeObj(paramChangePropsImg, 'Parameter Change Proposal');
   }
   if (type.includes('CommunityPoolSpendProposal')) {
     return returnResponseTypeObj(comPropsImg, 'Community Pool Spend Proposal');
   }
 
   if (type.includes('SoftwareUpgradeProposal')) {
-    return returnResponseTypeObj(
-      paramChangePropsImg,
-      'Software Upgrade Proposal'
-    );
+    return returnResponseTypeObj(paramChangePropsImg, 'Software Upgrade Proposal');
   }
 
   if (type.includes('TextProposal')) {
@@ -129,14 +123,7 @@ function RejectedCard({ id, name, votes, type, timeEnd }) {
   );
 }
 
-function ActiveCard({
-  id,
-  name,
-  state,
-  type = '',
-  timeEndDeposit,
-  timeEndVoting,
-}) {
+function ActiveCard({ id, name, state, type = '', timeEndDeposit, timeEndVoting }) {
   return (
     <Display color="blue">
       <Pane position="absolute" right="5px" top="5px">
@@ -148,13 +135,7 @@ function ActiveCard({
       <Pane marginBottom={2}>
         <Pane alignItems="center" display="flex" marginBottom={2}>
           State:
-          <IconStatus
-            text
-            marginLeft={10}
-            marginRight={5}
-            size={25}
-            status={state}
-          />
+          <IconStatus text marginLeft={10} marginRight={5} size={25} status={state} />
         </Pane>
       </Pane>
 

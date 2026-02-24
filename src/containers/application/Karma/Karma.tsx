@@ -1,6 +1,4 @@
 import IconsNumber from 'src/components/IconsNumber/IconsNumber';
-import { Link } from 'react-router-dom';
-import { routes } from 'src/routes';
 import styles from './Karma.module.scss';
 import { useGetKarma } from './useGetKarma';
 

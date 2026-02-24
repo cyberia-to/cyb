@@ -1,6 +1,6 @@
-import { convertAmount } from 'src/utils/utils';
-import { useIbcDenom } from 'src/contexts/ibcDenom';
 import { CSSProperties } from 'react';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
+import { convertAmount } from 'src/utils/utils';
 import FormatNumberTokens from '../FormatNumberTokens/FormatNumberTokens';
 
 type Props = {
@@ -19,9 +19,7 @@ function AmountDenom({ amountValue, denom, styleValue }: Props) {
     amount = convertAmount(amountValue, coinDecimals);
   }
 
-  return (
-    <FormatNumberTokens text={denom} value={amount} styleValue={styleValue} />
-  );
+  return <FormatNumberTokens text={denom} value={amount} styleValue={styleValue} />;
 }
 
 export default AmountDenom;

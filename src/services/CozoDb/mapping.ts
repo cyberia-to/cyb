@@ -1,21 +1,19 @@
-import { LsResult } from 'src/services/ipfs/types';
-import { dateToUtcNumber } from 'src/utils/date';
-import { NeuronAddress, ParticleCid, TransactionHash } from 'src/types/base';
-import { IPFSContent } from '../ipfs/types';
-import { LinkDbEntity, PinTypeMap } from './types/entities';
-import { Transaction } from '../backend/services/indexer/types';
-import { LinkDto, ParticleDto, PinDto, TransactionDto } from './types/dto';
+import { LsResult } from 'ipfs-core-types/src/pin';
 import { CyberlinksByParticleQuery } from 'src/generated/graphql';
+import { NeuronAddress, ParticleCid } from 'src/types/base';
+import { dateToUtcNumber } from 'src/utils/date';
 import { removeMarkdownFormatting, replaceQuotes } from 'src/utils/string';
+import { Transaction } from '../backend/services/indexer/types';
+import { IPFSContent } from '../ipfs/types';
+import { LinkDto, ParticleDto, PinDto, TransactionDto } from './types/dto';
+import { PinTypeMap } from './types/entities';
 
 export const mapParticleToEntity = (particle: IPFSContent): ParticleDto => {
   const { cid, meta, textPreview } = particle;
   const { size, mime, type, blocks, sizeLocal } = meta;
 
   // hack to fix string command
-  const text = textPreview
-    ? replaceQuotes(removeMarkdownFormatting(textPreview))
-    : '';
+  const text = textPreview ? replaceQuotes(removeMarkdownFormatting(textPreview)) : '';
 
   return {
     cid,
@@ -34,10 +32,7 @@ export const mapPinToEntity = (pin: LsResult): PinDto => ({
   type: PinTypeMap[pin.type],
 });
 
-export const mapIndexerTransactionToEntity = (
-  neuron: string,
-  tx: Transaction
-): TransactionDto => {
+export const mapIndexerTransactionToEntity = (neuron: string, tx: Transaction): TransactionDto => {
   const {
     transaction_hash,
     index,

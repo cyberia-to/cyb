@@ -1,12 +1,12 @@
 import { SigningCyberClient } from '@cybercongress/cyber-js';
-import React, { useContext, useEffect, useMemo, useState } from 'react';
-import { Option } from 'src/types';
-import { CHAIN_ID } from 'src/constants/config';
-import { Networks } from 'src/types/networks';
 import { useQuery } from '@tanstack/react-query';
+import React, { useContext, useEffect, useMemo, useState } from 'react';
 import Loader2 from 'src/components/ui/Loader2';
-import useGetRpcClient from './useGetRpcClient';
+import { CHAIN_ID } from 'src/constants/config';
+import { Option } from 'src/types';
+import { Networks } from 'src/types/networks';
 import { useSigningClient } from '../signerClient';
+import useGetRpcClient from './useGetRpcClient';
 
 type ChainContextType = {
   readonly signingClient: Option<SigningCyberClient>;
@@ -37,9 +37,7 @@ export function useChainContext() {
 }
 
 function ChainProvider({ children }: { children: React.ReactNode }) {
-  const [chainId, setChainId] = useState<
-    Networks.BOSTROM | Networks.SPACE_PUSSY
-  >(CHAIN_ID);
+  const [chainId, setChainId] = useState<Networks.BOSTROM | Networks.SPACE_PUSSY>(CHAIN_ID);
   const { getSignClientByChainId } = useSigningClient();
   const dataRpc = useGetRpcClient(chainId);
 
@@ -58,9 +56,7 @@ function ChainProvider({ children }: { children: React.ReactNode }) {
     return <Loader2 />;
   }
 
-  return (
-    <ChainContext.Provider value={value}>{children}</ChainContext.Provider>
-  );
+  return <ChainContext.Provider value={value}>{children}</ChainContext.Provider>;
 }
 
 export default ChainProvider;

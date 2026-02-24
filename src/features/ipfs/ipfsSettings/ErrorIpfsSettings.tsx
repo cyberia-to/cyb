@@ -1,14 +1,7 @@
-import {
-  Input,
-  LinkWindow,
-  ActionBar,
-  ContainerGradient,
-} from '../../../components';
+import { ActionBar, ContainerGradient, Input, LinkWindow } from '../../../components';
 import BtnPasport from '../../../containers/portal/pasport/btnPasport';
 import CodeSnipet from './ipfsComponents/codeSnipet';
-import {
-  ContainerKeyValue,
-} from './ipfsComponents/utilsComponents';
+import { ContainerKeyValue } from './ipfsComponents/utilsComponents';
 
 const ipfsDaemon = `$ ipfs daemon
 Initializing daemon...
@@ -46,23 +39,18 @@ function ErrorIpfsSettings({ stateErrorIpfsSettings }) {
         </LinkWindow>{' '}
         , or try these common fixes:
       </div>
-      <div>
-        1. Is your IPFS daemon running? Try starting or restarting it from your
-        terminal:
-      </div>
+      <div>1. Is your IPFS daemon running? Try starting or restarting it from your terminal:</div>
       <CodeSnipet src={ipfsDaemon} />
       <div>
         2. Is your IPFS API configured to allow{' '}
         <LinkWindow to="https://github.com/ipfs/ipfs-webui#configure-ipfs-api-cors-headers">
           cross-origin (CORS)
         </LinkWindow>{' '}
-        requests? If not, run these commands and then start your daemon from the
-        terminal:
+        requests? If not, run these commands and then start your daemon from the terminal:
       </div>
       <CodeSnipet src={ipfsHeaders} />
       <div>
-        3. Is your IPFS API on a port other than 5001? If your node is
-        configured with a{' '}
+        3. Is your IPFS API on a port other than 5001? If your node is configured with a{' '}
         <LinkWindow to="https://github.com/ipfs/kubo/blob/master/docs/config.md#addresses">
           custom API address
         </LinkWindow>

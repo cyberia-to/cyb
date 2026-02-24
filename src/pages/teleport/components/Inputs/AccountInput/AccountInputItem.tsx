@@ -1,10 +1,10 @@
-import { SliceState } from 'src/features/passport/passports.redux';
-import { Citizenship } from 'src/types/citizenship';
-import { Nullable } from 'src/types';
-import { trimString } from 'src/utils/utils';
 import { Account } from 'src/components';
-import styles from './AccountInput.module.scss';
+import { SliceState } from 'src/features/passport/passports.redux';
+import { Nullable } from 'src/types';
+import { Citizenship } from 'src/types/citizenship';
+import { trimString } from 'src/utils/utils';
 import { DataItem } from '../type';
+import styles from './AccountInput.module.scss';
 
 type PropsOptionItem = {
   data: DataItem;

@@ -1,13 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
+import Display from 'src/components/containerGradient/Display/Display';
+import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
 import withRouter from 'src/components/helpers/withRouter';
-import { useBlockByHeightQuery } from 'src/generated/graphql';
 import Table from 'src/components/Table/Table';
 import StatusTxs from 'src/components/TableTxsInfinite/component/StatusTxs';
 import TxHash from 'src/components/TableTxsInfinite/component/txHash';
-import Display from 'src/components/containerGradient/Display/Display';
-import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
-import ActionBarContainer from '../Search/ActionBarContainer';
+import { useBlockByHeightQuery } from 'src/generated/graphql';
 import { MainContainer, TextTable } from '../../components';
+import ActionBarContainer from '../Search/ActionBarContainer';
 import InformationBlock from './informationBlock';
 
 const initialState = {
@@ -33,13 +33,13 @@ function BlockDetails({ router }) {
   });
 
   useEffect(() => {
-    if (data && data.block && Object.keys(data.block).length > 0) {
+    if (data?.block && Object.keys(data.block).length > 0) {
       setBlockInfo(data.block[0]);
     } else {
       setBlockInfo(initialState);
     }
     return () => setBlockInfo(initialState);
-  }, [data, idBlock]);
+  }, [data]);
 
   const tableData = useMemo(() => {
     return data?.block[0].transactions.map((item) => {
@@ -49,9 +49,7 @@ function BlockDetails({ router }) {
             <StatusTxs success={item.success} />
           </TextTable>
         ),
-        [ColumnsTable.messages]: (
-          <TextTable>{item.messages.length || 0}</TextTable>
-        ),
+        [ColumnsTable.messages]: <TextTable>{item.messages.length || 0}</TextTable>,
 
         [ColumnsTable.tx]: (
           <TextTable>

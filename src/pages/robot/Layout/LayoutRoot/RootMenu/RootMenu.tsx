@@ -1,5 +1,5 @@
-import { NavLink } from 'react-router-dom';
 import cx from 'classnames';
+import { NavLink } from 'react-router-dom';
 import Display from 'src/components/containerGradient/Display/Display';
 import IconsNumber from 'src/components/IconsNumber/IconsNumber';
 import styles from './RootMenu.module.scss';

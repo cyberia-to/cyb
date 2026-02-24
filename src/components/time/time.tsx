@@ -1,5 +1,5 @@
-import { formatNumber } from 'src/utils/utils';
 import { convertTimestampToString } from 'src/utils/date';
+import { formatNumber } from 'src/utils/utils';
 import styles from './time.module.scss';
 
 function Time({ msTime }: { msTime: number }) {

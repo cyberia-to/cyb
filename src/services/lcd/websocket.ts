@@ -7,11 +7,7 @@ export const getIncomingTransfersQuery = (address: NeuronAddress) =>
   `tm.event='Tx' AND transfer.recipient='${address}'`;
 
 // eslint-disable-next-line import/no-unused-modules
-export function createNodeWebsocketObservable(
-  address: NeuronAddress,
-  query: string,
-  log: LogFunc
-) {
+export function createNodeWebsocketObservable(address: NeuronAddress, query: string, log: LogFunc) {
   return new Observable((subscriber) => {
     const ws = new WebSocket(WEBSOCKET_URL);
 

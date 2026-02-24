@@ -1,11 +1,4 @@
-import {
-  Remote,
-  expose,
-  proxy,
-  releaseProxy,
-  transferHandlers,
-  wrap,
-} from 'comlink';
+import { expose, proxy, Remote, releaseProxy, transferHandlers, wrap } from 'comlink';
 import { Observable, Observer, Subscribable, Subscription } from 'rxjs'; // v7.8.0
 import { IPFSContentTransferHandler } from './serializers';
 
@@ -17,7 +10,7 @@ const isSharedWorkerUsed =
   isSharedWorkersSupported && !process.env.IS_DEV && !process.env.IS_TAURI;
 
 // apply serializers for custom types
-function installTransferHandlers() {
+export function installTransferHandlers() {
   transferHandlers.set('IPFSContent', IPFSContentTransferHandler);
   transferHandlers.set('observable', {
     canHandle: (value: unknown): value is Observable<unknown> => {
@@ -25,9 +18,9 @@ function installTransferHandlers() {
     },
     deserialize: (value: MessagePort) => {
       return new Observable<unknown>((observer) => {
-        const remote = transferHandlers
-          .get('proxy')!
-          .deserialize(value) as Remote<Subscribable<unknown>>;
+        const remote = transferHandlers.get('proxy')!.deserialize(value) as Remote<
+          Subscribable<unknown>
+        >;
 
         remote
           .subscribe(
@@ -63,9 +56,7 @@ function installTransferHandlers() {
     },
     deserialize: (value: MessagePort) => {
       return new Subscription(() => {
-        const remote = transferHandlers
-          .get('proxy')!
-          .deserialize(value) as Remote<Subscription>;
+        const remote = transferHandlers.get('proxy')!.deserialize(value) as Remote<Subscription>;
 
         remote.unsubscribe().then(() => {
           remote[releaseProxy]();
@@ -83,7 +74,7 @@ function installTransferHandlers() {
 function safeStringify(obj: any): string {
   try {
     return JSON.stringify(obj);
-  } catch (error) {
+  } catch (_error) {
     return String(obj);
   }
 }
@@ -143,6 +134,17 @@ export function createWorkerApi<T>(
   return { worker, workerApiProxy: wrap<T>(worker) };
 }
 
+
+// Wrap already-created worker with comlink proxy (Worker must be created inline for rspack bundling)
+export function createWorkerFromInstance<T>(
+  worker: Worker,
+  workerName: string
+): { worker: WorkerType; workerApiProxy: Remote<T> } {
+  installTransferHandlers();
+  // installLoggingHandler(worker, workerName);
+  return { worker, workerApiProxy: wrap<T>(worker) };
+}
+
 export function exposeWorkerApi<T>(worker: WorkerType, api: T) {
   installTransferHandlers();
   if (typeof worker.onconnect !== 'undefined') {
@@ -153,7 +155,8 @@ export function exposeWorkerApi<T>(worker: WorkerType, api: T) {
       expose(api, port);
     };
   } else {
-    // overrideLogging(worker);
+    // Don't use overrideLogging for regular workers - it calls self.postMessage()
+    // which interferes with comlink's message handling. Use BroadcastChannel instead.
     expose(api);
   }
 }

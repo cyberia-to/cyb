@@ -1,24 +1,19 @@
-import { useState, useRef, useMemo, useCallback, useEffect } from 'react';
-import {
-  CosmographProvider,
-  Cosmograph,
-  CosmographRef,
-} from '@cosmograph/react';
-
-import { CosmosInputNode, CosmosInputLink } from '@cosmograph/cosmos';
+import { CosmosInputLink, CosmosInputNode } from '@cosmograph/cosmos';
+import { Cosmograph, CosmographProvider, CosmographRef } from '@cosmograph/react';
+import { scaleSymlog } from 'd3-scale';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Button } from 'src/components';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
 import useGraphLimit from 'src/pages/robot/Brain/useGraphLimit';
 import { isDevEnv } from 'src/utils/dev';
-import { scaleSymlog } from 'd3-scale';
-import styles from './GraphNew.module.scss';
-import { useCyberlinkWithWaitAndAdviser } from '../hooks/useCyberlink';
 import GraphHoverInfo from '../CyberlinksGraph/GraphHoverInfo/GraphHoverInfo';
 import GraphActionBar from '../graph/GraphActionBar/GraphActionBar';
+import { useCyberlinkWithWaitAndAdviser } from '../hooks/useCyberlink';
+import styles from './GraphNew.module.scss';
 
 function GraphNew({ address, data, size }) {
   const cosmograph = useRef<CosmographRef>();
-  const [degree, setDegree] = useState<number[]>([]);
+  const [_degree, setDegree] = useState<number[]>([]);
   // const histogram = useRef<CosmographHistogramRef<Node>>();
   // const timeline = useRef<CosmographTimelineRef<Link>>();
   // const search = useRef<CosmographSearchRef>();
@@ -61,7 +56,7 @@ function GraphNew({ address, data, size }) {
       scaleColor.current.domain([Math.min(...degree), Math.max(...degree)]);
       setDegree(degree);
     }
-  }, [degree]);
+  }, []);
 
   const handleNodeSelection = useCallback(
     (node?: CosmosInputNode) => {
@@ -129,8 +124,7 @@ function GraphNew({ address, data, size }) {
       return (
         <>
           {/* @nick (or) your */}
-          public brain, with {nodes.length} particles and {links.length}{' '}
-          cyberlinks
+          public brain, with {nodes.length} particles and {links.length} cyberlinks
           <br />
           The limit is {limit}
         </>
@@ -207,9 +201,7 @@ function GraphNew({ address, data, size }) {
             hoveredNodeLabelColor="white"
             nodeSize={(n) => n.size ?? null}
             nodeColor={(d) => {
-              return selectedNodeIds.includes(d.id)
-                ? 'rgb(246, 43, 253)'
-                : d.color;
+              return selectedNodeIds.includes(d.id) ? 'rgb(246, 43, 253)' : d.color;
             }}
             linkColor={(d) => d.color}
             // linkWidth={(l: Link) => l.width ?? null}
@@ -270,11 +262,7 @@ function CyberlinkButton({ selectedNodes, callback }: Props2) {
   }
 
   return (
-    <Button
-      onClick={execute}
-      disabled={!isReady || selectedNodes.length !== 2}
-      pending={isLoading}
-    >
+    <Button onClick={execute} disabled={!isReady || selectedNodes.length !== 2} pending={isLoading}>
       {text}
     </Button>
   );

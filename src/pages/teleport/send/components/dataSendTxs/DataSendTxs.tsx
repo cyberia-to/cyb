@@ -1,15 +1,15 @@
 import { useMemo } from 'react';
-import { v4 as uuidv4 } from 'uuid';
-import { AccountValue } from 'src/types/defaultAccount';
-import { Nullable } from 'src/types';
 import { Link } from 'react-router-dom';
+import { CreatedAt } from 'src/components';
 import Display from 'src/components/containerGradient/Display/Display';
 import { Colors } from 'src/components/containerGradient/types';
-import { CreatedAt } from 'src/components';
-import { DataSendTxs } from './type';
-import { AmountDenomColor, Memo } from './DataSendTxsItems';
-import styles from './DataSendTxs.module.scss';
+import { Nullable } from 'src/types';
+import { AccountValue } from 'src/types/defaultAccount';
+import { v4 as uuidv4 } from 'uuid';
 import InfiniteScrollDataTsx from '../../../components/InfiniteScrollDataTxs/InfiniteScrollDataTsx';
+import styles from './DataSendTxs.module.scss';
+import { AmountDenomColor, Memo } from './DataSendTxsItems';
+import { DataSendTxs } from './type';
 
 function DataSendTxs({
   dataSendTxs,
@@ -37,10 +37,7 @@ function DataSendTxs({
         }
 
         return (
-          <Link
-            to={`/network/bostrom/tx/${item.txhash}`}
-            key={`${item.txhash}_${key}`}
-          >
+          <Link to={`/network/bostrom/tx/${item.txhash}`} key={`${item.txhash}_${key}`}>
             <Display
               sideSaber={isReceive ? 'left' : 'right'}
               color={item.code === 0 ? Colors.BLUE : Colors.RED}
@@ -48,10 +45,7 @@ function DataSendTxs({
               <div className={styles.containerDataItem}>
                 <Memo memo={memo} receive={isReceive} />
                 <div className={styles.containerAmountTime}>
-                  <AmountDenomColor
-                    receive={isReceive}
-                    coins={item.tx.body.messages[0].amount}
-                  />
+                  <AmountDenomColor receive={isReceive} coins={item.tx.body.messages[0].amount} />
                   <CreatedAt timeAt={item.timestamp} />
                 </div>
               </div>

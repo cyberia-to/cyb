@@ -1,7 +1,7 @@
+import cx from 'classnames';
 import React from 'react';
 import { NavLink } from 'react-router-dom';
 import IconsNumber from 'src/components/IconsNumber/IconsNumber';
-import cx from 'classnames';
 import { useRobotContext } from '../../robot.context';
 import styles from './RobotMenu.module.scss';
 
@@ -176,16 +176,11 @@ function RobotMenu({ counts, isRight }: Props) {
           }
 
           function selectTag(content: React.ReactNode) {
-            if (
-              (newUser && !['sigma', 'drive'].includes(link.name)) ||
-              link.isDisabled
-            ) {
+            if ((newUser && !['sigma', 'drive'].includes(link.name)) || link.isDisabled) {
               return (
                 <button
                   type="button"
-                  title={
-                    link.isDisabled ? 'Page is under construction' : undefined
-                  }
+                  title={link.isDisabled ? 'Page is under construction' : undefined}
                   className={styles.disabled}
                 >
                   {content}
@@ -214,9 +209,7 @@ function RobotMenu({ counts, isRight }: Props) {
                 <>
                   <span className={styles.text}>{text}</span>
                   <span className={styles.count}>
-                    {['karma', 'sigma', 'energy', 'rewards'].includes(
-                      link.name
-                    ) ? (
+                    {['karma', 'sigma', 'energy', 'rewards'].includes(link.name) ? (
                       <IconsNumber
                         value={counts[link.name]}
                         type={(() => {

@@ -1,10 +1,5 @@
 query blocks($limit: Int, $offset: Int, $where: block_bool_exp) {
-  block(
-    where: $where
-    limit: $limit
-    offset: $offset
-    order_by: { height: desc }
-  ) {
+  block(where: $where, limit: $limit, offset: $offset, order_by: { height: desc }) {
     hash
     height
     proposer_address

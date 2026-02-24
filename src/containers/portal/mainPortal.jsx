@@ -1,18 +1,16 @@
 import { useEffect, useState } from 'react';
 import { connect } from 'react-redux';
 import { useNavigate } from 'react-router-dom';
+import { Dots } from 'src/components/ui/Dots';
 import { useQueryClient } from 'src/contexts/queryClient';
+import { useAdviser } from 'src/features/adviser/context';
 import { MainContainer, Stars } from './components';
-import { activePassport } from './utils';
-import Release from './release';
 import PortalGift from './gift';
-import styles from './styles.scss';
 // const rocketSpacePussy = require('../../image/rocket.svg');
 import RocketSpacePussy from './RocketSpacePussy';
-import { useAdviser } from 'src/features/adviser/context';
-import { Dots } from 'src/components/ui/Dots';
-import { Display } from 'src/components';
-import { displayValue } from '@tanstack/react-query-devtools/build/lib/utils';
+import Release from './release';
+import styles from './styles.scss';
+import { activePassport } from './utils';
 
 const spacePussy = require('../../image/space-pussy.svg');
 const portalPussyEnter = require('../../sounds/portalPussyEnter.mp3');
@@ -31,10 +29,7 @@ const STAGE_RELEASE = 3;
 const getActiveAddress = (address) => {
   const { account } = address;
   let addressPocket = null;
-  if (
-    account !== null &&
-    Object.prototype.hasOwnProperty.call(account, 'cyber')
-  ) {
+  if (account !== null && Object.hasOwn(account, 'cyber')) {
     const { keys, bech32 } = account.cyber;
     addressPocket = {
       bech32,
@@ -59,10 +54,7 @@ function MainPartal({ defaultAccount }) {
         if (queryClient) {
           const addressActive = getActiveAddress(defaultAccount);
           if (addressActive !== null) {
-            const responseActivePassport = await activePassport(
-              queryClient,
-              addressActive.bech32
-            );
+            const responseActivePassport = await activePassport(queryClient, addressActive.bech32);
             if (responseActivePassport !== null) {
               const { addresses } = responseActivePassport.extension;
               if (addresses !== null) {
@@ -93,9 +85,7 @@ function MainPartal({ defaultAccount }) {
 
     setAdviser(
       <>
-        <blockquote>
-          The measure of intelligence is ability to change.
-        </blockquote>
+        <blockquote>The measure of intelligence is ability to change.</blockquote>
         <br />
         <i>Albert Einstein</i>
       </>

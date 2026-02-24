@@ -1,6 +1,5 @@
-/* eslint-disable import/prefer-default-export */
-import { Column, DBSchema, GetCommandOptions } from './types/types';
 import { DbEntity } from './types/entities';
+import { Column, DBSchema, GetCommandOptions } from './types/types';
 import { entityToArray } from './utils';
 
 export function createCozoDbCommandFactory(dbSchema: DBSchema) {
@@ -19,9 +18,7 @@ export function createCozoDbCommandFactory(dbSchema: DBSchema) {
     const hasValues = values.length > 0;
 
     const actualValues =
-      fieldNames.length > 0
-        ? fieldNames.filter((f) => values.includes(f))
-        : values;
+      fieldNames.length > 0 ? fieldNames.filter((f) => values.includes(f)) : values;
 
     return !hasValues
       ? `:${command} ${tableName} {${keys}}`
@@ -37,12 +34,15 @@ export function createCozoDbCommandFactory(dbSchema: DBSchema) {
 
     const selectedColumns =
       fieldNames.length > 0
-        ? Object.keys(tableSchema.columns).reduce((acc, key) => {
-            if (fieldNames.includes(key)) {
-              acc[key] = tableSchema.columns[key];
-            }
-            return acc;
-          }, {} as Record<string, Column>)
+        ? Object.keys(tableSchema.columns).reduce(
+            (acc, key) => {
+              if (fieldNames.includes(key)) {
+                acc[key] = tableSchema.columns[key];
+              }
+              return acc;
+            },
+            {} as Record<string, Column>
+          )
         : tableSchema.columns;
 
     const colKeys = Object.keys(selectedColumns);
@@ -85,13 +85,11 @@ export function createCozoDbCommandFactory(dbSchema: DBSchema) {
   ) => {
     const tableSchema = dbSchema[tableName];
 
-    const queryFields =
-      selectFields.length > 0 ? selectFields : Object.keys(tableSchema.columns);
+    const queryFields = selectFields.length > 0 ? selectFields : Object.keys(tableSchema.columns);
 
     const requiredFields = [...queryFields, ...conditionFields];
 
-    const conditionsStr =
-      conditions.length > 0 ? `, ${conditions.join(', ')} ` : '';
+    const conditionsStr = conditions.length > 0 ? `, ${conditions.join(', ')} ` : '';
 
     const orderByStr = options.orderBy ? `:order ${options.orderBy}` : '';
     const limitStr = options.limit ? `:limit ${options.limit}` : '';

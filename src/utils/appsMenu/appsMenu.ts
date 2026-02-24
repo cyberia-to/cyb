@@ -1,19 +1,18 @@
-import nebulaIcon from 'src/image/new_icons/nebula.svg';
-import teleport from 'src/image/new_icons/teleport.svg';
-import hfr from 'src/image/new_icons/hfr.svg';
-import robot from 'src/image/new_icons/robot.svg';
-import shpere from 'src/image/new_icons/sphere.svg';
-import senate from 'src/image/new_icons/senate.svg';
-
 import portal from 'images/space-pussy.svg';
-import oracle from 'src/image/new_icons/oracle.svg';
-import warp from 'src/image/new_icons/warp.svg';
+import { CHAIN_ID } from 'src/constants/config';
+import { cybernetRoutes } from 'src/features/cybernet/ui/routes';
 import congress from 'src/image/new_icons/congress.svg';
+import hfr from 'src/image/new_icons/hfr.svg';
 import mining from 'src/image/new_icons/mining.svg';
+import nebulaIcon from 'src/image/new_icons/nebula.svg';
+import oracle from 'src/image/new_icons/oracle.svg';
+import robot from 'src/image/new_icons/robot.svg';
+import senate from 'src/image/new_icons/senate.svg';
+import shpere from 'src/image/new_icons/sphere.svg';
+import teleport from 'src/image/new_icons/teleport.svg';
+import warp from 'src/image/new_icons/warp.svg';
 import { routes } from 'src/routes';
 import { Networks } from 'src/types/networks';
-import { cybernetRoutes } from 'src/features/cybernet/ui/routes';
-import { CHAIN_ID } from 'src/constants/config';
 import { isPussyChain } from '../chains/pussy';
 
 const getMenuItems = () => {
@@ -166,10 +165,7 @@ const getMenuItems = () => {
               name: '👑  board',
               to: '/cyberver/faculties/board',
               // not good, fix
-              matchPathname: cybernetRoutes.subnet.path.replace(
-                ':nameOrUid',
-                'board'
-              ),
+              matchPathname: cybernetRoutes.subnet.path.replace(':nameOrUid', 'board'),
             },
             {
               name: '🏫  faculties',

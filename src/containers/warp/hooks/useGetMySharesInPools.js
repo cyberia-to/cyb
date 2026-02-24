@@ -17,7 +17,7 @@ const useGetMySharesInPools = (accountBalances) => {
       if (Object.keys(filtered).length > 0) {
         Object.keys(filtered).forEach((key) => {
           const amount = new BigNumber(filtered[key]);
-          if (Object.prototype.hasOwnProperty.call(marketData, key)) {
+          if (Object.hasOwn(marketData, key)) {
             const price = new BigNumber(marketData[key]);
             myCaptemp = myCaptemp.plus(amount.multipliedBy(price));
           }

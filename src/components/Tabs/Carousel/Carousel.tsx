@@ -1,8 +1,8 @@
 /* eslint-disable react-hooks/rules-of-hooks */
-import { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import useMediaQuery from '../../../hooks/useMediaQuery';
-import styles from './Carousel.module.scss';
 import TabItem, { Position } from '../TabItem/TabItem';
+import styles from './Carousel.module.scss';
 
 const cx = require('classnames');
 
@@ -63,7 +63,7 @@ function Carousel({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [query]);
+  }, [query, displaySlide]);
 
   if (slides.length < 2) {
     console.error('Please provide more slides');
@@ -89,9 +89,7 @@ function Carousel({
 
   const calculateLeftMargin = useMemo(() => {
     if (itemWidth !== 0) {
-      return `-${
-        visibleSlide * itemWidth - itemWidth * Math.floor(displaySlideState / 2)
-      }px`;
+      return `-${visibleSlide * itemWidth - itemWidth * Math.floor(displaySlideState / 2)}px`;
     }
     return '0px';
   }, [visibleSlide, itemWidth, displaySlideState]);
@@ -112,7 +110,7 @@ function Carousel({
       }, 500);
     }
     // eslint-disable-next-line eqeqeq
-    if (visibleSlide == slides.length) {
+    if (visibleSlide === slides.length) {
       // keep index near the middle of the list when moving right
       // setNavDisabled(true);
       setTimeout(() => {
@@ -148,10 +146,7 @@ function Carousel({
         height: heightSlide || '42px',
       }}
     >
-      <div
-        className={styles.slidesContainer}
-        style={{ width: `${itemWidth}px` }}
-      >
+      <div className={styles.slidesContainer} style={{ width: `${itemWidth}px` }}>
         <div
           id="slides"
           className={cx(styles.slides, {

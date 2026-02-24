@@ -1,14 +1,8 @@
-import {
-  ActionBar as ActionBarComponent,
-  Button,
-  InputNumber,
-} from 'src/components';
 import { useState } from 'react';
-import useGraphLimit from 'src/pages/robot/Brain/useGraphLimit';
+import { ActionBar as ActionBarComponent, Button, InputNumber } from 'src/components';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
-import GraphFullscreenBtn, {
-  useFullscreen,
-} from '../../GraphFullscreenBtn/GraphFullscreenBtn';
+import useGraphLimit from 'src/pages/robot/Brain/useGraphLimit';
+import GraphFullscreenBtn, { useFullscreen } from '../../GraphFullscreenBtn/GraphFullscreenBtn';
 
 enum Steps {
   INITIAL,
@@ -34,9 +28,7 @@ function GraphActionBar({ children }: { children?: React.ReactNode }) {
             <>
               {children}
 
-              <Button onClick={() => setStep(Steps.CHANGE_LIMIT)}>
-                Change limit
-              </Button>
+              <Button onClick={() => setStep(Steps.CHANGE_LIMIT)}>Change limit</Button>
             </>
           )}
 
@@ -69,8 +61,7 @@ function GraphActionBar({ children }: { children?: React.ReactNode }) {
 
       onClickBack = () => setStep(Steps.INITIAL);
 
-      adviserText =
-        'change limit to show in graph, but it can reduce performance';
+      adviserText = 'change limit to show in graph, but it can reduce performance';
 
       break;
     }
@@ -83,9 +74,7 @@ function GraphActionBar({ children }: { children?: React.ReactNode }) {
     defaultText: adviserText,
   });
 
-  return (
-    <ActionBarComponent onClickBack={onClickBack}>{content}</ActionBarComponent>
-  );
+  return <ActionBarComponent onClickBack={onClickBack}>{content}</ActionBarComponent>;
 }
 
 export default GraphActionBar;

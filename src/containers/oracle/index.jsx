@@ -1,11 +1,11 @@
-import { Link } from 'react-router-dom';
 import { Pane } from '@cybercongress/gravity';
+import { Link } from 'react-router-dom';
+import { routes } from 'src/routes';
 import { CardStatisics } from '../../components';
+import ForceGraph from '../../features/cyberlinks/CyberlinksGraph/CyberlinksGraph';
 import { formatNumber } from '../../utils/utils';
 import AccountCount from '../brain/accountCount';
 import useGetStatisticsCyber from './useGetStatisticsCyber';
-import ForceGraph from '../../features/cyberlinks/CyberlinksGraph/CyberlinksGraph';
-import { routes } from 'src/routes';
 
 function Oracle() {
   const { knowledge } = useGetStatisticsCyber();

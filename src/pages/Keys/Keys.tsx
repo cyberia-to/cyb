@@ -1,19 +1,17 @@
+import { useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
-import { RootState } from 'src/redux/store';
 import { Display, DisplayTitle } from 'src/components';
 import ActionBar from 'src/pages/Keys/ActionBar/actionBar';
 import { initPocket } from 'src/redux/features/pocket';
-import { useState } from 'react';
-import styles from './Keys.module.scss';
+import { RootState } from 'src/redux/store';
 import KeyItem from './KeyItem/KeyItem';
 import KeyItemSecrets from './KeyItem/KeyItemSecrets';
+import styles from './Keys.module.scss';
 import { KEY_LIST_TYPE } from './types';
 
 function Keys() {
   const { accounts } = useSelector((state: RootState) => state.pocket);
-  const { secrets } = useSelector(
-    (state: RootState) => state.scripting.context
-  );
+  const { secrets } = useSelector((state: RootState) => state.scripting.context);
 
   const [selectedKey, setSelectedKey] = useState<string | null>();
   const [keyType, setKeyType] = useState<string>(KEY_LIST_TYPE.key);
@@ -25,8 +23,7 @@ function Keys() {
     setSelectedKey(selectedKey === address ? null : address);
   }
 
-  const bostromAccounts =
-    accounts && Object.values(accounts).filter((account) => account?.cyber);
+  const bostromAccounts = accounts && Object.values(accounts).filter((account) => account?.cyber);
 
   return (
     <>
@@ -56,9 +53,7 @@ function Keys() {
                 name={name}
                 value={secrets[name]}
                 selected={selectedKey === name}
-                selectKey={(keyName) =>
-                  selectKey(KEY_LIST_TYPE.secret, keyName)
-                }
+                selectKey={(keyName) => selectKey(KEY_LIST_TYPE.secret, keyName)}
               />
             );
           })}

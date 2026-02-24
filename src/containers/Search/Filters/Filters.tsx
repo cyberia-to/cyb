@@ -1,12 +1,11 @@
 import { useState } from 'react';
+import { Tooltip } from 'src/components';
 import ButtonsGroup from 'src/components/buttons/ButtonsGroup/ButtonsGroup';
 import Links from 'src/components/search/Spark/Meta/Links/Links';
-import { Tooltip } from 'src/components';
-import { AccountInput } from 'src/pages/teleport/components/Inputs';
-
 import { AvataImgIpfs } from 'src/containers/portal/components/avataIpfs';
-import useCurrentAddress from 'src/hooks/useCurrentAddress';
 import useCurrentPassport from 'src/features/passport/hooks/useCurrentPassport';
+import useCurrentAddress from 'src/hooks/useCurrentAddress';
+import { AccountInput } from 'src/pages/teleport/components/Inputs';
 import { initialContentTypeFilterState } from '../constants';
 import { LinksTypeFilter, SortBy } from '../types';
 import styles from './Filters.module.scss';
@@ -96,9 +95,7 @@ function Filters({
         <div>
           <ButtonsGroup
             type="checkbox"
-            onChange={(
-              filter: typeof initialContentTypeFilterState & 'all'
-            ) => {
+            onChange={(filter: typeof initialContentTypeFilterState & 'all') => {
               if (filter === 'all') {
                 setFilters(initialContentTypeFilterState);
                 return;
@@ -176,9 +173,7 @@ function Filters({
             {
               label: '👤',
               name: NeuronFilterType.neuron,
-              checked:
-                (!!neuron && neuron !== currentAddress) ||
-                isNeuronChooserOpened,
+              checked: (!!neuron && neuron !== currentAddress) || isNeuronChooserOpened,
               tooltip: 'show only particles from this neuron',
             },
           ]}
@@ -231,8 +226,6 @@ function Filters({
 
                   case LinksTypeFilter.to:
                     return total.to;
-
-                  case LinksTypeFilter.from:
                   default:
                     return total.from;
                 }

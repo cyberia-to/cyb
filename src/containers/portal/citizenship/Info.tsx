@@ -4,10 +4,10 @@
 /* eslint-disable jsx-a11y/click-events-have-key-events */
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import { steps } from './utils';
+import { LinkWindow } from '../../../components';
 import { formatNumber } from '../../../utils/search/utils';
 import { BOOT_ICON } from '../utils';
-import { LinkWindow } from '../../../components';
+import { steps } from './utils';
 
 const {
   STEP_INIT,
@@ -66,10 +66,8 @@ function Info({
             <div>My name is Cyb.</div>
             <div>
               I have helped{' '}
-              <span style={{ color: '#36d6ae' }}>
-                {formatNumber(counCitizenshipst)}
-              </span>{' '}
-              beings receive Moon Citizenship.
+              <span style={{ color: '#36d6ae' }}>{formatNumber(counCitizenshipst)}</span> beings
+              receive Moon Citizenship.
             </div>
             <div>I can also assist you in 7 simple steps.</div>
             {mobile ? (
@@ -107,9 +105,7 @@ function Info({
             {valuePriceNickname && valuePriceNickname !== null && (
               <>
                 for
-                {` ${formatNumber(
-                  valuePriceNickname.amountPrice
-                )} ${BOOT_ICON}`}
+                {` ${formatNumber(valuePriceNickname.amountPrice)} ${BOOT_ICON}`}
                 <br /> 8+ symbols are freexs
               </>
             )}
@@ -118,19 +114,11 @@ function Info({
         break;
 
       case STEP_RULES:
-        content = (
-          <span>
-            Dear {nickname}, sign the Moon Code before setting up your account.
-          </span>
-        );
+        content = <span>Dear {nickname}, sign the Moon Code before setting up your account.</span>;
         break;
 
       case STEP_AVATAR_UPLOAD:
-        content = (
-          <span>
-            Upload a gif or picture. You will also own this as an NFT.
-          </span>
-        );
+        content = <span>Upload a gif or picture. You will also own this as an NFT.</span>;
         break;
 
       case STEP_KEPLR_INIT_CHECK_FNC:
@@ -140,8 +128,7 @@ function Info({
           <span>
             You need Keplr to use cyb. <br />
             It is opensource and cool! <br /> Check{' '}
-            <LinkWindow to="https://www.keplr.app/">repository</LinkWindow> if
-            necesarry
+            <LinkWindow to="https://www.keplr.app/">repository</LinkWindow> if necesarry
           </span>
         );
         break;
@@ -173,11 +160,7 @@ function Info({
         break;
 
       case STEP_CHECK_ADDRESS_CHECK_FNC:
-        content = (
-          <span>
-            Verification takes time. After that, you can register your passport.
-          </span>
-        );
+        content = <span>Verification takes time. After that, you can register your passport.</span>;
         break;
 
       case STEP_KEPLR_REGISTER:
@@ -187,9 +170,7 @@ function Info({
               you need{' '}
               {valuePriceNickname &&
                 valuePriceNickname !== null &&
-                `${formatNumber(
-                  valuePriceNickname.amountPrice
-                )} ${BOOT_ICON}`}{' '}
+                `${formatNumber(valuePriceNickname.amountPrice)} ${BOOT_ICON}`}{' '}
               for register your nickname, <br /> you can{' '}
               <span
                 style={{ color: '#36d6ae', cursor: 'pointer' }}
@@ -197,8 +178,7 @@ function Info({
               >
                 change
               </span>{' '}
-              nickname or <Link to="/teleport">buy {BOOT_ICON}</Link>, 8+
-              symbols are free
+              nickname or <Link to="/teleport">buy {BOOT_ICON}</Link>, 8+ symbols are free
             </span>
           );
         } else {
@@ -210,8 +190,8 @@ function Info({
       case STEP_CHECK_GIFT:
         content = (
           <span>
-            Congratulations, {nickname} - <br /> you are a citizen of the Moon.
-            Try your luck and check for a gift
+            Congratulations, {nickname} - <br /> you are a citizen of the Moon. Try your luck and
+            check for a gift
           </span>
         );
         break;
@@ -223,7 +203,15 @@ function Info({
 
     return content;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stepCurrent, counCitizenshipst, mobile]);
+  }, [
+    stepCurrent,
+    counCitizenshipst,
+    mobile,
+    nickname,
+    registerDisabled,
+    setStep,
+    valuePriceNickname,
+  ]);
 
   return useContent;
 }

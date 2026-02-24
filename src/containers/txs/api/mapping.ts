@@ -12,9 +12,7 @@ type CosmosTxV1Beta1GetTxResponse = {
   };
 };
 
-export const mapResponseDataGetTxs = (
-  dataTxs: CosmosTxV1Beta1GetTxResponse
-) => {
+export const mapResponseDataGetTxs = (dataTxs: CosmosTxV1Beta1GetTxResponse) => {
   return {
     info: {
       txHash: dataTxs.tx_response?.txhash || '',
@@ -23,10 +21,7 @@ export const mapResponseDataGetTxs = (
       timestamp: dataTxs.tx_response?.timestamp || '',
       memo: dataTxs.tx?.body?.memo || '',
     },
-    rawLog:
-      dataTxs.tx_response?.code !== 0
-        ? dataTxs.tx_response?.raw_log
-        : undefined,
+    rawLog: dataTxs.tx_response?.code !== 0 ? dataTxs.tx_response?.raw_log : undefined,
     messages: dataTxs.tx?.body?.messages || [],
   };
 };

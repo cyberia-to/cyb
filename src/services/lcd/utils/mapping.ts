@@ -1,13 +1,12 @@
-import { Tx } from 'cosmjs-types/cosmos/tx/v1beta1/tx';
-import { MsgSend, MsgMultiSend } from 'cosmjs-types/cosmos/bank/v1beta1/tx';
-
 import { fromBase64 } from '@cosmjs/encoding';
+import { MsgMultiSend, MsgSend } from 'cosmjs-types/cosmos/bank/v1beta1/tx';
+import { Tx } from 'cosmjs-types/cosmos/tx/v1beta1/tx';
 import {
   MSG_MULTI_SEND_TRANSACTION_TYPE,
   MSG_SEND_TRANSACTION_TYPE,
 } from 'src/services/backend/services/indexer/types';
-import { NeuronAddress } from 'src/types/base';
 import { TransactionDto } from 'src/services/CozoDb/types/dto';
+import { NeuronAddress } from 'src/types/base';
 import { getNowUtcNumber } from 'src/utils/date';
 
 // eslint-disable-next-line import/no-unused-modules
@@ -32,10 +31,7 @@ export const extractTxData = (data: string) => {
 };
 
 // eslint-disable-next-line import/no-unused-modules
-export const mapWebsocketTxToTransactions = (
-  neuron: NeuronAddress,
-  result: any
-) => {
+export const mapWebsocketTxToTransactions = (neuron: NeuronAddress, result: any) => {
   const { data, events } = result;
 
   const hash = events['tx.hash'][0];

@@ -1,6 +1,6 @@
+import cx from 'classnames';
 import { useRef, useState } from 'react';
 import { Transition } from 'react-transition-group';
-import cx from 'classnames';
 import { Display, DisplayTitle } from 'src/components';
 import ArrowToggle from 'src/components/ArrowToggle/ArrowToggle';
 import styles from './TransitionContainer.module.scss';
@@ -34,15 +34,11 @@ function TransitionContainer({
             <div className={styles.titleContainer}>
               <span>
                 {title}{' '}
-                <button
-                  type="button"
-                  onClick={onClickBtnOpen}
-                  className={styles.btnOpenIcon}
-                >
+                <button type="button" onClick={onClickBtnOpen} className={styles.btnOpenIcon}>
                   <ArrowToggle isOpen={isOpen} />
                 </button>
               </span>
-              {titleOptions}
+              {titleOptions && <div className={styles.titleOptions}>{titleOptions}</div>}
             </div>
           }
         />

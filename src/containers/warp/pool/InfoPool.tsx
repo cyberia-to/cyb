@@ -15,11 +15,7 @@ function PoolsInfo({ totalCap, myCap, useMyProcent, vol24 }: Props) {
     <div className={styles.PoolsInfoContainer}>
       <ContainerGradientText>
         <div className={styles.PoolsInfoContainerValue}>
-          <FormatNumberTokens
-            styleValue={{ fontSize: '18px' }}
-            text={DENOM_LIQUID}
-            value={myCap}
-          />
+          <FormatNumberTokens styleValue={{ fontSize: '18px' }} text={DENOM_LIQUID} value={myCap} />
         </div>
 
         <div className={styles.PoolsInfoContainerText}>My liquidity</div>

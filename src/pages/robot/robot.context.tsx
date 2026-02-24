@@ -1,5 +1,5 @@
 import React, { useCallback, useMemo, useState } from 'react';
-import { useParams, useLocation, useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate, useParams } from 'react-router-dom';
 import { CHAIN_ID } from 'src/constants/config';
 import usePassportByAddress from 'src/features/passport/hooks/usePassportByAddress';
 import usePassportContract from 'src/features/passport/usePassportContract';
@@ -47,13 +47,10 @@ function RobotContextProvider({ children }: { children: React.ReactNode }) {
   const currentAddress = useAppSelector(selectCurrentAddress);
   const currentUserPassport = usePassportByAddress(currentAddress);
 
-  const { accounts, isInitialized: isPocketInitialized } = useAppSelector(
-    ({ pocket }) => pocket
-  );
+  const { accounts, isInitialized: isPocketInitialized } = useAppSelector(({ pocket }) => pocket);
 
   const { username } = params;
-  const nickname =
-    username?.includes('@') && username.substring(1, username.length);
+  const nickname = username?.includes('@') && username.substring(1, username.length);
 
   let { address } = params;
 
@@ -63,10 +60,7 @@ function RobotContextProvider({ children }: { children: React.ReactNode }) {
   if (robotUrl) {
     address = currentAddress || currentUserPassport.data?.owner;
     isOwner = true;
-  } else if (
-    nickname &&
-    currentUserPassport.data?.extension.nickname === nickname
-  ) {
+  } else if (nickname && currentUserPassport.data?.extension.nickname === nickname) {
     address = currentUserPassport.data.owner;
   }
 
@@ -145,17 +139,11 @@ function RobotContextProvider({ children }: { children: React.ReactNode }) {
   const currentPassport = isOwner ? currentUserPassport : passportContract;
   let currentRobotAddress = address || currentPassport.data?.owner || null;
 
-  if (
-    robotUrl &&
-    currentUserPassport.data &&
-    currentAddress === currentUserPassport.data.owner
-  ) {
+  if (robotUrl && currentUserPassport.data && currentAddress === currentUserPassport.data.owner) {
     navigate(
       location.pathname.replace(
         routes.robot.path,
-        routes.robotPassport.getLink(
-          currentUserPassport.data.extension.nickname
-        )
+        routes.robotPassport.getLink(currentUserPassport.data.extension.nickname)
       ),
       {
         replace: true,
@@ -167,12 +155,9 @@ function RobotContextProvider({ children }: { children: React.ReactNode }) {
     currentRobotAddress = fromBech32(currentRobotAddress, 'pussy');
   }
 
-  const addRefetch = useCallback(
-    (func: () => void) => {
-      setRefetch((items) => [...items, func]);
-    },
-    [setRefetch]
-  );
+  const addRefetch = useCallback((func: () => void) => {
+    setRefetch((items) => [...items, func]);
+  }, []);
 
   const refetchData = useCallback(() => {
     refetchFuncs.forEach((func) => func());
@@ -208,11 +193,7 @@ function RobotContextProvider({ children }: { children: React.ReactNode }) {
       currentRobotAddress,
     ]
   );
-  return (
-    <RobotContext.Provider value={contextValue}>
-      {children}
-    </RobotContext.Provider>
-  );
+  return <RobotContext.Provider value={contextValue}>{children}</RobotContext.Provider>;
 }
 
 export default RobotContextProvider;

@@ -1,14 +1,13 @@
+import { Observable } from 'rxjs';
+import { PATTERN_CYBER } from 'src/constants/patterns';
 import { NeuronAddress, ParticleCid } from 'src/types/base';
 import { getIpfsHash } from 'src/utils/ipfs/helpers';
-import { PATTERN_CYBER } from 'src/constants/patterns';
-import { Subject, Observable } from 'rxjs';
-
-import DbApiWrapper from '../backend/services/DbApi/DbApi';
-import { getFollowsAsCid, getFollowers } from './lcd';
-import { FetchParticleAsync, QueuePriority } from '../QueueManager/types';
-import { CommunityDto } from '../CozoDb/types/dto';
-import { FetchIpfsFunc } from '../backend/services/sync/types';
 import { createCyblogChannel } from 'src/utils/logging/cyblog';
+import DbApiWrapper from '../backend/services/DbApi/DbApi';
+import { FetchIpfsFunc } from '../backend/services/sync/types';
+import { CommunityDto } from '../CozoDb/types/dto';
+import { FetchParticleAsync, QueuePriority } from '../QueueManager/types';
+import { getFollowers, getFollowsAsCid } from './lcd';
 
 export type SyncCommunityResult = {
   action: 'reset' | 'add' | 'complete';
@@ -83,9 +82,9 @@ export const fetchStoredSyncCommunity$ = (
 
       await Promise.all(
         newFollowerCids.map(async (cid: ParticleCid) => {
-          const neuron = (await fetchParticleAsync!(cid, QueuePriority.URGENT))
-            ?.result?.textPreview;
-          if (neuron && neuron.match(PATTERN_CYBER)) {
+          const neuron = (await fetchParticleAsync!(cid, QueuePriority.URGENT))?.result
+            ?.textPreview;
+          if (neuron?.match(PATTERN_CYBER)) {
             const communityItem = {
               ...getExistingOrDefault(cid),
               neuron,
@@ -141,7 +140,7 @@ export const fetchCommunity = async (
   const followsPromise = Promise.all(
     followsCids.map(async (cid) => {
       const neuron = (await fetchParticleAsync!(cid))?.result?.textPreview;
-      if (neuron && neuron.match(PATTERN_CYBER)) {
+      if (neuron?.match(PATTERN_CYBER)) {
         const communityItem = {
           ...getExistingOrDefault(cid),
           neuron,

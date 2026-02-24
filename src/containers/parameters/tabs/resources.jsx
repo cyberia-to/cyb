@@ -1,7 +1,7 @@
 /* eslint-disable radix */
 import { Pane } from '@cybercongress/gravity';
 import { CardStatisics, Vitalik } from '../../../components';
-import { formatCurrency, dhm } from '../../../utils/utils';
+import { dhm, formatCurrency } from '../../../utils/utils';
 
 function ResourcesParam({ data }) {
   try {
@@ -17,23 +17,20 @@ function ResourcesParam({ data }) {
         <CardStatisics title="max slots" value={data.max_slots} />
         <CardStatisics
           title="base investmint period ampere"
-          value={`${dhm(parseInt(data.base_investmint_period_ampere * 1000))}`}
+          value={`${dhm(parseInt(data.base_investmint_period_ampere * 1000, 10))}`}
         />
         <CardStatisics
           title="base investmint period volt"
-          value={`${dhm(parseInt(data.base_investmint_period_volt * 1000))}`}
+          value={`${dhm(parseInt(data.base_investmint_period_volt * 1000, 10))}`}
         />
         <CardStatisics
           title="halving period ampere blocks"
           value={data.halving_period_ampere_blocks}
         />
-        <CardStatisics
-          title="halving period volt blocks"
-          value={data.halving_period_volt_blocks}
-        />
+        <CardStatisics title="halving period volt blocks" value={data.halving_period_volt_blocks} />
         <CardStatisics
           title="min investmint period"
-          value={`${dhm(parseInt(data.min_investmint_period * 1000))}`}
+          value={`${dhm(parseInt(data.min_investmint_period * 1000, 10))}`}
         />
         <CardStatisics
           title="base investmint amount ampere"
@@ -54,12 +51,7 @@ function ResourcesParam({ data }) {
   } catch (error) {
     console.warn('ResourcesParam', error);
     return (
-      <Pane
-        justifyContent="center"
-        flexDirection="column"
-        alignItems="center"
-        display="flex"
-      >
+      <Pane justifyContent="center" flexDirection="column" alignItems="center" display="flex">
         <Vitalik />
         Error !
       </Pane>

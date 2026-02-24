@@ -1,20 +1,21 @@
 /* eslint-disable no-await-in-loop */
-import bech32 from 'bech32';
-import { fromBase64, fromUtf8, toBech32 } from '@cosmjs/encoding';
+
 import { Sha256 } from '@cosmjs/crypto';
-import BigNumber from 'bignumber.js';
-import { ObjKeyValue } from 'src/types/data';
+import { fromBase64, fromUtf8, toBech32 } from '@cosmjs/encoding';
 import { Pool } from '@cybercongress/cyber-js/build/codec/tendermint/liquidity/v1beta1/liquidity';
-import { Option } from 'src/types';
 import { Key } from '@keplr-wallet/types';
-import { AccountValue } from 'src/types/defaultAccount';
+import bech32 from 'bech32';
+import BigNumber from 'bignumber.js';
 import { BECH32_PREFIX, BECH32_PREFIX_VAL_CONS } from 'src/constants/config';
 import { localStorageKeys } from 'src/constants/localStorageKeys';
-import { LEDGER } from './config';
-
-import cyberSpace from '../image/large-purple-circle.png';
-import customNetwork from '../image/large-orange-circle.png';
+import { Option } from 'src/types';
+import { ObjKeyValue } from 'src/types/data';
+import { AccountValue } from 'src/types/defaultAccount';
+import { toHex } from 'src/utils/encoding';
 import cyberBostrom from '../image/large-green.png';
+import customNetwork from '../image/large-orange-circle.png';
+import cyberSpace from '../image/large-purple-circle.png';
+import { LEDGER } from './config';
 
 const DEFAULT_DECIMAL_DIGITS = 3;
 const DEFAULT_CURRENCY = 'GoL';
@@ -83,8 +84,7 @@ export function formatCurrency(
   decimalDigits = DEFAULT_DECIMAL_DIGITS,
   prefixCustom = PREFIXES
 ) {
-  const { prefix = '', power = 1 } =
-    prefixCustom.find((obj) => value >= obj.power) || {};
+  const { prefix = '', power = 1 } = prefixCustom.find((obj) => value >= obj.power) || {};
 
   return `${roundNumber(
     Number(value) / power,
@@ -92,7 +92,7 @@ export function formatCurrency(
   )} ${prefix}${currency.toLocaleUpperCase()}`;
 }
 
-const getDecimal = (number, toFixed) => {
+const getDecimal = (number, _toFixed) => {
   const nstring = number.toString();
   const narray = nstring.split('.');
   const result = narray.length > 1 ? narray[1] : '000';
@@ -118,9 +118,7 @@ export const consensusPubkey = (pubKey: string) => {
 
 const trimString = (address: string, first = 3, second = 8) => {
   if (address && address.length > 11) {
-    return `${address.substring(0, first)}...${address.substring(
-      address.length - second
-    )}`;
+    return `${address.substring(0, first)}...${address.substring(address.length - second)}`;
   }
   if (address && address.length < 11) {
     return address;
@@ -137,9 +135,7 @@ const exponentialToDecimal = (exponential) => {
       let i = 0;
       i <
       +exponentialSplitted[1] -
-        (exponentialSplitted[0].includes('.')
-          ? exponentialSplitted[0].split('.')[1].length
-          : 0);
+        (exponentialSplitted[0].includes('.') ? exponentialSplitted[0].split('.')[1].length : 0);
       i++
     ) {
       postfix += '0';
@@ -178,9 +174,7 @@ function dhm(t) {
 }
 
 const downloadObjectAsJson = (exportObj, exportName) => {
-  const dataStr = `data:text/json;charset=utf-8,${encodeURIComponent(
-    JSON.stringify(exportObj)
-  )}`;
+  const dataStr = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(exportObj))}`;
   const downloadAnchorNode = document.createElement('a');
 
   downloadAnchorNode.setAttribute('href', dataStr);
@@ -328,9 +322,7 @@ function getDenomHash(path, baseDenom) {
   const parts = path.split('/');
   parts.push(baseDenom);
   const newPath = parts.slice().join('/');
-  return `ibc/${Buffer.from(sha256(Buffer.from(newPath)))
-    .toString('hex')
-    .toUpperCase()}`;
+  return `ibc/${toHex(sha256(newPath)).toUpperCase()}`;
 }
 
 function convertAmount(rawAmount, precision) {
@@ -347,10 +339,7 @@ function convertAmountReverce(rawAmount, precision) {
     .toNumber();
 }
 
-function getDisplayAmount(
-  rawAmount: number | string,
-  precision: number
-): number {
+function getDisplayAmount(rawAmount: number | string, precision: number): number {
   return parseFloat(
     new BigNumber(rawAmount)
       .shiftedBy(-precision)
@@ -367,16 +356,13 @@ function getDisplayAmountReverce(rawAmount, precision) {
 }
 
 function isNative(denom) {
-  if (denom && denom.includes('ibc')) {
+  if (denom?.includes('ibc')) {
     return false;
   }
   return true;
 }
 
-const findPoolDenomInArr = (
-  baseDenom: string,
-  dataPools: Pool[]
-): Option<Pool> => {
+const findPoolDenomInArr = (baseDenom: string, dataPools: Pool[]): Option<Pool> => {
   const findObj = dataPools.find((item) => item.poolCoinDenom === baseDenom);
   return findObj;
 };
@@ -398,7 +384,7 @@ const getNowUtcTime = (): number => {
 
 const accountsKeplr = (accounts: Key): AccountValue => {
   const { pubKey, bech32Address, name } = accounts;
-  const pk = Buffer.from(pubKey).toString('hex');
+  const pk = toHex(new Uint8Array(pubKey));
 
   return {
     bech32: bech32Address,

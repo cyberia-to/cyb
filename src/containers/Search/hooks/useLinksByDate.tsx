@@ -31,12 +31,8 @@ function useLinksByDate(
 
           case LinksTypeFilter.all:
             return merge(data.data, dataBacklinks.data).sort((a, b) => {
-              return (
-                new Date(b.timestamp).getTime() -
-                new Date(a.timestamp).getTime()
-              );
+              return new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime();
             });
-          case LinksTypeFilter.from:
           default:
             return data.data;
         }
@@ -57,8 +53,6 @@ function useLinksByDate(
             data.fetchNextPage();
             dataBacklinks.fetchNextPage();
           };
-
-        case LinksTypeFilter.from:
         default:
           return data.fetchNextPage;
           break;
@@ -70,7 +64,6 @@ function useLinksByDate(
           return dataBacklinks.hasNextPage;
         case LinksTypeFilter.all:
           return dataBacklinks.hasNextPage || data.hasNextPage;
-        case LinksTypeFilter.from:
         default:
           return data.hasNextPage;
       }
@@ -81,7 +74,6 @@ function useLinksByDate(
           return dataBacklinks.isInitialLoading;
         case LinksTypeFilter.all:
           return dataBacklinks.isInitialLoading || data.isInitialLoading;
-        case LinksTypeFilter.from:
         default:
           return data.isInitialLoading;
       }
@@ -92,7 +84,6 @@ function useLinksByDate(
           return dataBacklinks.isFetching;
         case LinksTypeFilter.all:
           return dataBacklinks.isFetching || data.isFetching;
-        case LinksTypeFilter.from:
         default:
           return data.isFetching;
       }
@@ -103,7 +94,6 @@ function useLinksByDate(
           return dataBacklinks.error;
         case LinksTypeFilter.all:
           return dataBacklinks.error || data.error;
-        case LinksTypeFilter.from:
         default:
           return data.error;
       }
@@ -117,7 +107,6 @@ function useLinksByDate(
             data.refetch();
             dataBacklinks.refetch();
           };
-        case LinksTypeFilter.from:
         default:
           return data.refetch;
       }

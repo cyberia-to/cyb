@@ -1,34 +1,28 @@
-import { useEffect, useState, useMemo, useCallback } from 'react';
-import { useSelector } from 'react-redux';
-import { useDevice } from 'src/contexts/device';
-import portalAmbient from 'sounds/portalAmbient112.mp3';
-import { RootState } from 'src/redux/store';
 import BigNumber from 'bignumber.js';
-import { Nullable } from 'src/types';
-import useSetActiveAddress from '../../../hooks/useSetActiveAddress';
-import { useGetActivePassport, NEW_RELEASE, AMOUNT_ALL_STAGE } from '../utils';
-import PasportCitizenship from '../pasport';
-import ActionBarPortalGift from './ActionBarPortalGift';
-import {
-  CurrentGift,
-  MainContainer,
-  AboutGift,
-  Stars,
-  MoonAnimation,
-} from '../components';
-import useCheckGift from '../hook/useCheckGift';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSelector } from 'react-redux';
+import portalAmbient from 'sounds/portalAmbient112.mp3';
 import { PATTERN_CYBER } from 'src/constants/patterns';
+import { useDevice } from 'src/contexts/device';
+import { useAdviser } from 'src/features/adviser/context';
+import { RootState } from 'src/redux/store';
+import { Nullable } from 'src/types';
 import Carousel from '../../../components/Tabs/Carousel/CarouselOld/CarouselOld';
-import STEP_INFO from './utils';
-import Info from './Info';
-import useGetStatGift from '../hook/useGetStatGift';
-import usePingTxs, { TxHash } from '../hook/usePingTxs';
+import useSetActiveAddress from '../../../hooks/useSetActiveAddress';
+import { AboutGift, CurrentGift, MainContainer, MoonAnimation, Stars } from '../components';
 import ReleaseStatus from '../components/ReleaseStatus';
-import { CurrentRelease, ReadyRelease } from '../release/type';
+import useCheckGift from '../hook/useCheckGift';
 import useCheckRelease from '../hook/useCheckRelease';
+import useGetStatGift from '../hook/useGetStatGift';
+import usePingTxs from '../hook/usePingTxs';
+import PasportCitizenship from '../pasport';
 import { filterByOwner } from '../release';
 import ActionBarRelease from '../release/ActionBarRelease';
-import { useAdviser } from 'src/features/adviser/context';
+import { CurrentRelease, ReadyRelease } from '../release/type';
+import { AMOUNT_ALL_STAGE, NEW_RELEASE, useGetActivePassport } from '../utils';
+import ActionBarPortalGift from './ActionBarPortalGift';
+import Info from './Info';
+import STEP_INFO from './utils';
 
 const portalAmbientObg = new Audio(portalAmbient);
 
@@ -73,27 +67,20 @@ function PortalGift() {
   const { defaultAccount } = useSelector((store: RootState) => store.pocket);
   const { addressActive } = useSetActiveAddress(defaultAccount, false);
   const { txHash, updateFunc, updateTxHash } = usePingTxs();
-  const { citizenship, loading } = useGetActivePassport(
+  const { citizenship, loading } = useGetActivePassport(addressActive, updateFunc);
+  const { totalGift, totalGiftClaimed, loadingGift, giftData, setLoadingGift } = useCheckGift(
+    citizenship,
     addressActive,
     updateFunc
   );
-  const { totalGift, totalGiftClaimed, loadingGift, giftData, setLoadingGift } =
-    useCheckGift(citizenship, addressActive, updateFunc);
-  const { currentBonus, claimStat, currentStage, progressClaim } =
-    useGetStatGift();
+  const { currentBonus, claimStat, currentStage, progressClaim } = useGetStatGift();
   const {
     totalRelease,
     totalReadyRelease,
     totalBalanceClaimAmount,
     loadingRelease,
     alreadyClaimed,
-  } = useCheckRelease(
-    totalGift,
-    addressActive,
-    loadingGift,
-    updateFunc,
-    currentStage
-  );
+  } = useCheckRelease(totalGift, addressActive, loadingGift, updateFunc, currentStage);
 
   const [selectedAddress, setSelectedAddress] = useState<null | string>(null);
   const [currentGift, setCurrentGift] = useState(null);
@@ -101,10 +88,8 @@ function PortalGift() {
   const [error, setError] = useState<string>();
 
   const [isRelease, setIsRelease] = useState(false);
-  const [currentRelease, setCurrentRelease] =
-    useState<Nullable<CurrentRelease[]>>(null);
-  const [readyRelease, setReadyRelease] =
-    useState<Nullable<ReadyRelease>>(null);
+  const [currentRelease, setCurrentRelease] = useState<Nullable<CurrentRelease[]>>(null);
+  const [readyRelease, setReadyRelease] = useState<Nullable<ReadyRelease>>(null);
 
   useEffect(() => {
     playPortalAmbient();
@@ -125,36 +110,23 @@ function PortalGift() {
         setStepApp(STEP_INFO.STATE_CLAIME);
       }
 
-      if (
-        appStep === STEP_INFO.STATE_PROVE_IN_PROCESS &&
-        txHash.status === 'error'
-      ) {
+      if (appStep === STEP_INFO.STATE_PROVE_IN_PROCESS && txHash.status === 'error') {
         setStepApp(STEP_INFO.STATE_PROVE);
       }
 
-      if (
-        appStep === STEP_INFO.STATE_CLAIM_IN_PROCESS &&
-        txHash.status === 'confirmed'
-      ) {
+      if (appStep === STEP_INFO.STATE_CLAIM_IN_PROCESS && txHash.status === 'confirmed') {
         setStepApp(STEP_INFO.STATE_RELEASE_INIT);
       }
 
-      if (
-        appStep === STEP_INFO.STATE_CLAIM_IN_PROCESS &&
-        txHash.status === 'error'
-      ) {
+      if (appStep === STEP_INFO.STATE_CLAIM_IN_PROCESS && txHash.status === 'error') {
         setStepApp(STEP_INFO.STATE_CLAIME);
       }
       setTimeout(() => updateTxHash(null), 35000);
     }
-  }, [txHash, appStep, loading, citizenship]);
+  }, [txHash, appStep, loading, citizenship, updateTxHash]);
 
   useEffect(() => {
-    if (
-      appStep === STEP_INFO.STATE_INIT &&
-      selectedAddress === null &&
-      citizenship
-    ) {
+    if (appStep === STEP_INFO.STATE_INIT && selectedAddress === null && citizenship) {
       setSelectedAddress(citizenship.owner);
     }
   }, [selectedAddress, appStep, citizenship]);
@@ -182,11 +154,7 @@ function PortalGift() {
       if (!loadingGift) {
         if (!citizenship) {
           setStepApp(STEP_INFO.STATE_CLAIME_TO_PROVE);
-        } else if (
-          totalGift === null &&
-          selectedAddress &&
-          selectedAddress.match(PATTERN_CYBER)
-        ) {
+        } else if (totalGift === null && selectedAddress && selectedAddress.match(PATTERN_CYBER)) {
           setStepApp(STEP_INFO.STATE_GIFT_NULL_ALL);
         } else if (isClaimed === null) {
           setStepApp(STEP_INFO.STATE_CLAIME_TO_PROVE);
@@ -230,7 +198,7 @@ function PortalGift() {
   useEffect(() => {
     if (selectedAddress && totalRelease && !loadingRelease) {
       initState();
-      if (Object.prototype.hasOwnProperty.call(totalRelease, selectedAddress)) {
+      if (Object.hasOwn(totalRelease, selectedAddress)) {
         const {
           balanceClaim: readyReleaseAddrr,
           stage,
@@ -243,7 +211,7 @@ function PortalGift() {
           amount: readyReleaseAddrr,
           addressOwner,
         });
-      } else if (selectedAddress && selectedAddress.match(PATTERN_CYBER)) {
+      } else if (selectedAddress?.match(PATTERN_CYBER)) {
         if (totalReadyRelease) {
           const filterData = filterByOwner(totalReadyRelease, selectedAddress);
           setCurrentRelease(filterData);
@@ -275,6 +243,7 @@ function PortalGift() {
     totalReadyRelease,
     loadingRelease,
     currentStage,
+    initState,
   ]);
 
   useEffect(() => {
@@ -294,25 +263,16 @@ function PortalGift() {
         setCurrentGift(null);
       }
     }
-  }, [loadingGift, totalGift, selectedAddress]);
+  }, [loadingGift, totalGift]);
 
   useEffect(() => {
     if (selectedAddress !== null && totalGift !== null) {
-      if (Object.prototype.hasOwnProperty.call(totalGift, selectedAddress)) {
-        if (
-          Object.prototype.hasOwnProperty.call(
-            totalGift[selectedAddress],
-            'isClaimed'
-          )
-        ) {
+      if (Object.hasOwn(totalGift, selectedAddress)) {
+        if (Object.hasOwn(totalGift[selectedAddress], 'isClaimed')) {
           const { isClaimed: isClaimedAddress } = totalGift[selectedAddress];
           setIsClaimed(isClaimedAddress);
         }
-      } else if (
-        selectedAddress !== null &&
-        selectedAddress.match(PATTERN_CYBER) &&
-        totalGift !== null
-      ) {
+      } else if (selectedAddress?.match(PATTERN_CYBER) && totalGift !== null) {
         const tempGift = [];
         Object.keys(totalGift).forEach((key) => {
           if (!totalGift[key].isClaimed) {
@@ -333,7 +293,7 @@ function PortalGift() {
     } else {
       setIsClaimed(null);
     }
-  }, [selectedAddress, loadingGift, totalGift]);
+  }, [selectedAddress, totalGift]);
 
   const useSelectedGiftData = useMemo(() => {
     try {
@@ -345,18 +305,11 @@ function PortalGift() {
           }
         }
 
-        if (
-          totalGift !== null &&
-          totalGift[selectedAddress] &&
-          totalGift[selectedAddress].isClaimed
-        ) {
+        if (totalGift?.[selectedAddress]?.isClaimed) {
           return totalGift[selectedAddress];
         }
 
-        if (
-          totalGift !== null &&
-          Object.prototype.hasOwnProperty.call(totalGift, selectedAddress)
-        ) {
+        if (totalGift !== null && Object.hasOwn(totalGift, selectedAddress)) {
           return totalGift[selectedAddress];
         }
       }
@@ -374,7 +327,7 @@ function PortalGift() {
     }
     return true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [loading, citizenship]);
+  }, [citizenship]);
 
   const useSetActiveItem = useMemo(() => {
     if (
@@ -394,15 +347,9 @@ function PortalGift() {
   }, [loading, appStep, txHash, citizenship]);
 
   const useUnClaimedGiftData = useMemo(() => {
-    if (
-      giftData !== null &&
-      citizenship &&
-      Object.keys(giftData.unClaimed.addresses).length > 0
-    ) {
+    if (giftData !== null && citizenship && Object.keys(giftData.unClaimed.addresses).length > 0) {
       if (currentBonus?.current) {
-        giftData.unClaimed.claim = Math.floor(
-          giftData.unClaimed.amount * currentBonus.current
-        );
+        giftData.unClaimed.claim = Math.floor(giftData.unClaimed.amount * currentBonus.current);
         return { ...giftData.unClaimed, address: citizenship.owner };
       }
     }
@@ -418,13 +365,7 @@ function PortalGift() {
       alreadyClaimed: 0,
     };
 
-    if (
-      useSelectedGiftData &&
-      readyRelease &&
-      !loading &&
-      selectedAddress &&
-      addressActive
-    ) {
+    if (useSelectedGiftData && readyRelease && !loading && selectedAddress && addressActive) {
       const { bech32 } = addressActive;
       const { amount, address, addressOwner } = readyRelease;
       const { claim, address: addressGift } = useSelectedGiftData;
@@ -432,14 +373,12 @@ function PortalGift() {
         let released = 0;
         let claimAmount = new BigNumber(claim);
 
-        if (selectedAddress && selectedAddress.match(PATTERN_CYBER)) {
+        if (selectedAddress?.match(PATTERN_CYBER)) {
           claimAmount = claimAmount.minus(alreadyClaimed);
         }
 
         released = new BigNumber(claimAmount).minus(amount).toNumber();
-        const currentStageProcent = new BigNumber(currentStage)
-          .dividedBy(100)
-          .toNumber();
+        const currentStageProcent = new BigNumber(currentStage).dividedBy(100).toNumber();
 
         const availableRelease = new BigNumber(claimAmount)
           .multipliedBy(currentStageProcent)
@@ -447,19 +386,14 @@ function PortalGift() {
           .dp(0, BigNumber.ROUND_FLOOR)
           .toNumber();
 
-        const availableReleaseAmount =
-          availableRelease > 0 ? availableRelease : 0;
+        const availableReleaseAmount = availableRelease > 0 ? availableRelease : 0;
 
         statusRelease.gift = claim;
         statusRelease.leftRelease = amount;
         statusRelease.released = released;
         statusRelease.availableRelease = availableReleaseAmount;
 
-        if (
-          selectedAddress &&
-          selectedAddress.match(PATTERN_CYBER) &&
-          alreadyClaimed
-        ) {
+        if (selectedAddress?.match(PATTERN_CYBER) && alreadyClaimed) {
           statusRelease.alreadyClaimed = alreadyClaimed;
         }
 
@@ -487,16 +421,10 @@ function PortalGift() {
         return 0;
       }
 
-      const sliceArrayRelease = currentRelease.slice(
-        0,
-        isNanoLedger ? 1 : currentRelease.length
-      );
+      const sliceArrayRelease = currentRelease.slice(0, isNanoLedger ? 1 : currentRelease.length);
 
       const claimedAmount = sliceArrayRelease.reduce((sum, item) => {
-        if (
-          item.addressOwner === addressActive.bech32 &&
-          totalGift[item.address]?.claim
-        ) {
+        if (item.addressOwner === addressActive.bech32 && totalGift[item.address]?.claim) {
           return sum + totalGift[item.address].claim;
         }
         return sum;
@@ -509,9 +437,7 @@ function PortalGift() {
         return sum;
       }, 0);
 
-      const currentStageProcent = new BigNumber(currentStage)
-        .dividedBy(100)
-        .toNumber();
+      const currentStageProcent = new BigNumber(currentStage).dividedBy(100).toNumber();
 
       const released = new BigNumber(claimedAmount).minus(alreadyClaimed);
 
@@ -528,12 +454,8 @@ function PortalGift() {
 
   const useNextRelease = useMemo(() => {
     if (currentStage < AMOUNT_ALL_STAGE && claimStat) {
-      const nextTarget = new BigNumber(1)
-        .plus(currentStage)
-        .multipliedBy(NEW_RELEASE);
-      return new BigNumber(nextTarget)
-        .minus(claimStat.citizensClaim)
-        .toNumber();
+      const nextTarget = new BigNumber(1).plus(currentStage).multipliedBy(NEW_RELEASE);
+      return new BigNumber(nextTarget).minus(claimStat.citizensClaim).toNumber();
     }
 
     return 0;
@@ -572,12 +494,7 @@ function PortalGift() {
   let content;
 
   if (Math.floor(appStep) === STEP_GIFT_INFO) {
-    content = (
-      <AboutGift
-        addressesClaimed={claimStat.citizensClaim}
-        coefficient={currentBonus}
-      />
-    );
+    content = <AboutGift addressesClaimed={claimStat.citizensClaim} coefficient={currentBonus} />;
   }
 
   if (
@@ -607,16 +524,15 @@ function PortalGift() {
             />
           )}
 
-        {useSelectedGiftData !== null &&
-          Math.floor(appStep) !== STEP_RELEASE && (
-            <CurrentGift
-              title="Claimed"
-              valueTextResult="claimed"
-              selectedAddress={selectedAddress}
-              currentGift={useSelectedGiftData}
-              currentBonus={currentBonus}
-            />
-          )}
+        {useSelectedGiftData !== null && Math.floor(appStep) !== STEP_RELEASE && (
+          <CurrentGift
+            title="Claimed"
+            valueTextResult="claimed"
+            selectedAddress={selectedAddress}
+            currentGift={useSelectedGiftData}
+            currentBonus={currentBonus}
+          />
+        )}
 
         {Math.floor(appStep) === STEP_RELEASE && (
           <ReleaseStatus

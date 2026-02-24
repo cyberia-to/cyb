@@ -1,15 +1,10 @@
-import { useMemo, useState, useCallback } from 'react';
-import { v4 as uuidv4 } from 'uuid';
+import { useCallback, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Tooltip } from 'src/components';
+import { toHex } from 'src/utils/encoding';
+import { v4 as uuidv4 } from 'uuid';
 import styles from './MusicalAddress.module.scss';
-import {
-  DICTIONARY_ABC,
-  getHeight,
-  getNoteFromAdd,
-  makeSound,
-  cutAddress,
-} from './utils';
+import { cutAddress, DICTIONARY_ABC, getHeight, getNoteFromAdd, makeSound } from './utils';
 
 const classNames = require('classnames');
 
@@ -32,8 +27,7 @@ function MusicalAddress({ address: bech32, disabled }: Props) {
     if (address !== null) {
       const { address: sliceAddress } = address;
       const arrayAddress = sliceAddress.split('');
-      const bufferAddress = Buffer.from(sliceAddress)
-        .toString('hex')
+      const bufferAddress = toHex(new TextEncoder().encode(sliceAddress))
         .replace(/[a-z]/g, '')
         .split('');
       arrayAddress.forEach((item, index) => {
@@ -73,7 +67,7 @@ function MusicalAddress({ address: bech32, disabled }: Props) {
       }, 7000);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address, playing]);
+  }, [address, playing, copyAddress]);
 
   function renderAddressPart(text: string) {
     if (disabled) {
@@ -97,15 +91,8 @@ function MusicalAddress({ address: bech32, disabled }: Props) {
         {address && renderAddressPart(address.prefix)}
 
         <div>
-          <Tooltip
-            strategy="fixed"
-            tooltip={!addressCopied ? 'copy address' : 'address copied!'}
-          >
-            <button
-              className={styles.music}
-              onClick={onClickMusicalAddress}
-              type="button"
-            >
+          <Tooltip strategy="fixed" tooltip={!addressCopied ? 'copy address' : 'address copied!'}>
+            <button className={styles.music} onClick={onClickMusicalAddress} type="button">
               {useGetItems.map((item) => {
                 const key = uuidv4();
                 return (

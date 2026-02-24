@@ -1,24 +1,19 @@
 import { useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
-import { useGetBalance } from 'src/pages/robot/_refactor/account/hooks';
+import { useGetKarma } from 'src/containers/application/Karma/useGetKarma';
 import useGetGol from 'src/containers/gol/getGolHooks';
-import { useGetIpfsInfo } from 'src/features/ipfs/ipfsSettings/ipfsComponents/infoIpfsNode';
 import { useGetBalanceBostrom } from 'src/containers/sigma/hooks';
 import { useQueryClient } from 'src/contexts/queryClient';
+import { useGetIpfsInfo } from 'src/features/ipfs/ipfsSettings/ipfsComponents/infoIpfsNode';
+import { selectUnreadCounts } from 'src/features/sense/redux/sense.redux';
+import { useGetBalance } from 'src/pages/robot/_refactor/account/hooks';
+import { useAppSelector } from 'src/redux/hooks';
 import { RootState } from 'src/redux/store';
-
+import { getFollowers, getTransactions, getTweet } from 'src/services/transactions/lcd';
 import { getIpfsHash } from 'src/utils/ipfs/helpers';
 import { convertResources, reduceBalances } from 'src/utils/utils';
-import { useGetKarma } from 'src/containers/application/Karma/useGetKarma';
-import { useAppSelector } from 'src/redux/hooks';
-import { selectUnreadCounts } from 'src/features/sense/redux/sense.redux';
 import { useRobotContext } from '../robot.context';
-import {
-  getTweet,
-  getFollowers,
-  getTransactions,
-} from 'src/services/transactions/lcd';
 
 // remove
 async function getCyberlinksTotal(address: string) {
@@ -68,7 +63,7 @@ function useMenuCounts(address: string | null) {
     if (type === 'log') {
       addRefetch(getTweetCount);
     }
-  }, [location.pathname, address]);
+  }, [location.pathname, address, addRefetch, getTweetCount]);
 
   const { accounts } = useSelector((state: RootState) => state.pocket);
 
@@ -82,9 +77,7 @@ function useMenuCounts(address: string | null) {
   const { data: karma } = useGetKarma(address);
 
   const { resultGol } = useGetGol(address);
-  const badges = Object.keys(resultGol).length
-    ? Object.keys(resultGol).length - 1
-    : 0;
+  const badges = Object.keys(resultGol).length ? Object.keys(resultGol).length - 1 : 0;
 
   async function getCyberlinksCount() {
     try {
@@ -141,7 +134,7 @@ function useMenuCounts(address: string | null) {
     getSequence();
     getTweetCount();
     getEnergy();
-  }, [address]);
+  }, [address, getCyberlinksCount, getEnergy, getFollow, getSequence, getTweetCount]);
 
   return {
     log: tweetsCount,

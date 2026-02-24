@@ -1,8 +1,8 @@
-import React, { useContext } from 'react';
 import { CyberClient } from '@cybercongress/cyber-js';
-import { Option } from 'src/types';
 import { useQuery } from '@tanstack/react-query';
+import React, { useContext } from 'react';
 import { RPC_URL } from 'src/constants/config';
+import { Option } from 'src/types';
 
 const QueryClientContext = React.createContext<Option<CyberClient>>(undefined);
 
@@ -36,11 +36,7 @@ function QueryClientProvider({ children }: { children: React.ReactNode }) {
     // return <APIError />;
   }
 
-  return (
-    <QueryClientContext.Provider value={client}>
-      {children}
-    </QueryClientContext.Provider>
-  );
+  return <QueryClientContext.Provider value={client}>{children}</QueryClientContext.Provider>;
 }
 
 export default QueryClientProvider;

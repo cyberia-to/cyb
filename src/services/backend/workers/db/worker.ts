@@ -1,18 +1,16 @@
 import cozoDb from 'src/services/CozoDb/cozoDb';
+import migrate from 'src/services/CozoDb/migrations/migrations';
 import { DbEntity } from 'src/services/CozoDb/types/entities';
 import { GetCommandOptions } from 'src/services/CozoDb/types/types';
-
-import migrate from 'src/services/CozoDb/migrations/migrations';
-import { exposeWorkerApi } from '../factoryMethods';
 import BroadcastChannelSender from '../../channels/BroadcastChannelSender';
 import { ServiceStatus } from '../../types/services';
+import { exposeWorkerApi } from '../factoryMethods';
 
 const createDbWorkerApi = () => {
   let isInitialized = false;
   const channel = new BroadcastChannelSender();
 
-  const postServiceStatus = (status: ServiceStatus) =>
-    channel.postServiceStatus('db', status);
+  const postServiceStatus = (status: ServiceStatus) => channel.postServiceStatus('db', status);
 
   const init = async () => {
     postServiceStatus('starting');
@@ -24,7 +22,7 @@ const createDbWorkerApi = () => {
     }
 
     // callback to sync writes count worker -> main thread
-    const onWriteCallback = (writesCount: number) => {};
+    const onWriteCallback = (_writesCount: number) => {};
     // channel.post({ type: 'indexeddb_write', value: writesCount });
     console.time('🔋 cozo db initialized');
 
@@ -46,20 +44,14 @@ const createDbWorkerApi = () => {
   const runCommand = async (command: string, immutable?: boolean) =>
     cozoDb.runCommand(command, immutable);
 
-  const executePutCommand = async (
-    tableName: string,
-    array: Partial<DbEntity>[]
-  ) => cozoDb.put(tableName, array);
+  const executePutCommand = async (tableName: string, array: Partial<DbEntity>[]) =>
+    cozoDb.put(tableName, array);
 
-  const executeRmCommand = async (
-    tableName: string,
-    keyValues: Partial<DbEntity>[]
-  ) => cozoDb.rm(tableName, keyValues);
+  const executeRmCommand = async (tableName: string, keyValues: Partial<DbEntity>[]) =>
+    cozoDb.rm(tableName, keyValues);
 
-  const executeUpdateCommand = async (
-    tableName: string,
-    array: Partial<DbEntity>[]
-  ) => cozoDb.update(tableName, array);
+  const executeUpdateCommand = async (tableName: string, array: Partial<DbEntity>[]) =>
+    cozoDb.update(tableName, array);
 
   const executeGetCommand = async (
     tableName: string,
@@ -67,14 +59,11 @@ const createDbWorkerApi = () => {
     conditions?: string[],
     conditionFields?: string[],
     options: GetCommandOptions = {}
-  ) =>
-    cozoDb.get(tableName, selectFields, conditions, conditionFields, options);
+  ) => cozoDb.get(tableName, selectFields, conditions, conditionFields, options);
 
-  const importRelations = async (content: string) =>
-    cozoDb.importRelations(content);
+  const importRelations = async (content: string) => cozoDb.importRelations(content);
 
-  const exportRelations = async (relations: string[]) =>
-    cozoDb.exportRelations(relations);
+  const exportRelations = async (relations: string[]) => cozoDb.exportRelations(relations);
 
   const executeBatchPutCommand = async (
     tableName: string,
@@ -94,7 +83,7 @@ const createDbWorkerApi = () => {
       // eslint-disable-next-line no-await-in-loop
       await runCommand([atomCommand, putCommand].join('\r\n'));
 
-      onProgress && onProgress(i + batch.length);
+      onProgress?.(i + batch.length);
     }
     return { ok: true };
   };

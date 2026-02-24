@@ -3,18 +3,12 @@ import styles from './styles.scss';
 
 const getProcent = (curent, total) => {
   try {
-    if (
-      new BigNumber(total.amount).comparedTo(0) &&
-      new BigNumber(curent.amount).comparedTo(0)
-    ) {
-      return new BigNumber(curent.amount)
-        .dividedBy(total.amount)
-        .multipliedBy(100)
-        .toNumber();
+    if (new BigNumber(total.amount).comparedTo(0) && new BigNumber(curent.amount).comparedTo(0)) {
+      return new BigNumber(curent.amount).dividedBy(total.amount).multipliedBy(100).toNumber();
     }
 
     return 0;
-  } catch (error) {
+  } catch (_error) {
     return 0;
   }
 };
@@ -74,10 +68,7 @@ function ChartTotal({ balance }) {
 
   return (
     <div className={styles.containerChartTotal}>
-      <div
-        className={styles.containerChartTotalLiquid}
-        style={{ width: `100%` }}
-      />
+      <div className={styles.containerChartTotalLiquid} style={{ width: `100%` }} />
     </div>
   );
 }

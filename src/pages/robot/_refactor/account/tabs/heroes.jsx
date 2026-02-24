@@ -1,14 +1,14 @@
-import { Pane, Text, Tooltip, Icon } from '@cybercongress/gravity';
-import Table from 'src/components/Table/Table';
-import { useRobotContext } from 'src/pages/robot/robot.context';
+import { Icon, Pane, Text, Tooltip } from '@cybercongress/gravity';
 import { useEffect } from 'react';
 import Display from 'src/components/containerGradient/Display/Display';
+import Table from 'src/components/Table/Table';
+import { BASE_DENOM } from 'src/constants/config';
+import { useAdviser } from 'src/features/adviser/context';
+import { useRobotContext } from 'src/pages/robot/robot.context';
 import { Account, NumberCurrency } from '../../../../../components';
-import { formatNumber, formatCurrency } from '../../../../../utils/utils';
+import { formatCurrency, formatNumber } from '../../../../../utils/utils';
 import { useGetHeroes } from '../hooks';
 import hS from './heroes.module.scss';
-import { useAdviser } from 'src/features/adviser/context';
-import { BASE_DENOM } from 'src/constants/config';
 
 const getDaysIn = (time) => {
   const completionTime = new Date(time);
@@ -52,10 +52,8 @@ function Unbonding({ amount, stages, entries }) {
       <Tooltip
         content={entries.map((items, index) => (
           <div key={index}>
-            {`${formatNumber(
-              parseFloat(items.balance)
-            )} ${BASE_DENOM.toUpperCase()}`}{' '}
-            in {getDaysIn(items.completionTime)} days
+            {`${formatNumber(parseFloat(items.balance))} ${BASE_DENOM.toUpperCase()}`} in{' '}
+            {getDaysIn(items.completionTime)} days
           </div>
         ))}
         position="bottom"
@@ -72,7 +70,7 @@ function Heroes() {
 
   useEffect(() => {
     addRefetch(refetch);
-  }, [addRefetch]);
+  }, [addRefetch, refetch]);
 
   const { setAdviser } = useAdviser();
 
@@ -106,11 +104,7 @@ function Heroes() {
       unbondings: entries && (
         <Unbonding amount={amount} stages={entries.length} entries={entries} />
       ),
-      reward: (
-        <TextTable>
-          {reward ? <NumberCurrency amount={reward} /> : '-'}
-        </TextTable>
-      ),
+      reward: <TextTable>{reward ? <NumberCurrency amount={reward} /> : '-'}</TextTable>,
       amount: (
         <TextTable>
           <NumberCurrency amount={balance.amount} />

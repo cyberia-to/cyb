@@ -1,10 +1,10 @@
-import useQueueIpfsContent from 'src/hooks/useQueueIpfsContent';
-import { formatCurrency } from 'src/utils/utils';
-import { PREFIXES } from 'src/containers/ipfs/components/metaInfo';
-import { useNavigate } from 'react-router-dom';
-import { routes } from 'src/routes';
 import { useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { PREFIXES } from 'src/containers/ipfs/components/metaInfo';
 import useCyberlinksCount from 'src/features/cyberlinks/hooks/useCyberlinksCount';
+import useQueueIpfsContent from 'src/hooks/useQueueIpfsContent';
+import { routes } from 'src/routes';
+import { formatCurrency } from 'src/utils/utils';
 import Links from './Links/Links';
 import styles from './Meta.module.scss';
 
@@ -35,11 +35,7 @@ function Meta({ cid }: Props) {
         }}
       />
 
-      {size && (
-        <span className={styles.size}>
-          🟥 {formatCurrency(size, 'B', 0, PREFIXES)}
-        </span>
-      )}
+      {size && <span className={styles.size}>🟥 {formatCurrency(size, 'B', 0, PREFIXES)}</span>}
     </div>
   );
 }

@@ -1,15 +1,8 @@
-import {
-  ApolloClient,
-  InMemoryCache,
-  HttpLink,
-  ApolloLink,
-  split,
-} from '@apollo/client';
+import { ApolloClient, ApolloLink, HttpLink, InMemoryCache, split } from '@apollo/client';
 import { GraphQLWsLink } from '@apollo/client/link/subscriptions';
-import { createClient } from 'graphql-ws';
 import { getMainDefinition } from '@apollo/client/utilities';
-
 import { OperationDefinitionNode } from 'graphql';
+import { createClient } from 'graphql-ws';
 import { INDEX_HTTPS, INDEX_WEBSOCKET } from 'src/constants/config';
 
 const httpLink = new HttpLink({
@@ -28,9 +21,7 @@ const wsLink = new GraphQLWsLink(
 
 const terminatingLink = split(
   ({ query }) => {
-    const { kind, operation } = getMainDefinition(
-      query
-    ) as OperationDefinitionNode;
+    const { kind, operation } = getMainDefinition(query) as OperationDefinitionNode;
     return kind === 'OperationDefinition' && operation === 'subscription';
   },
   wsLink,

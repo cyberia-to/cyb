@@ -71,9 +71,7 @@ export type QueueItemResult = {
 
 export type QueueItemAsyncResult = Omit<QueueItemResult, 'item'>;
 
-export type QueueItemPostProcessor = (
-  content: Option<IPFSContent>
-) => Promise<Option<IPFSContent>>;
+export type QueueItemPostProcessor = (content: Option<IPFSContent>) => Promise<Option<IPFSContent>>;
 
 export type FetchParticleAsync = (
   cid: string,

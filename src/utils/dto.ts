@@ -1,25 +1,21 @@
-import { EntityToDto, DtoToEntity } from 'src/types/dto';
+import { DtoToEntity, EntityToDto } from 'src/types/dto';
 import { deserializeString } from './string';
 
 export const snakeToCamel = (str: string) =>
-  str.replace(/([-_][a-z])/g, (group) =>
-    group.toUpperCase().replace('-', '').replace('_', '')
-  );
+  str.replace(/([-_][a-z])/g, (group) => group.toUpperCase().replace('-', '').replace('_', ''));
 
 export const camelToSnake = (str: string) =>
   str.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
 // Function to transform a DB entity to a DTO
 
 // eslint-disable-next-line import/no-unused-modules
-export function entityToDto<T extends Record<string, any>>(
-  dbEntity: T
-): EntityToDto<T> {
+export function entityToDto<T extends Record<string, any>>(dbEntity: T): EntityToDto<T> {
   if (!dbEntity || typeof dbEntity !== 'object') {
     return dbEntity;
   }
   const dto: Record<string, any> = {}; // Specify the type for dto
   Object.keys(dbEntity).forEach((key) => {
-    if (Object.prototype.hasOwnProperty.call(dbEntity, key)) {
+    if (Object.hasOwn(dbEntity, key)) {
       const camelCaseKey = snakeToCamel(key);
       let value = dbEntity[key];
       if (Array.isArray(dbEntity[key])) {
@@ -36,9 +32,7 @@ export function entityToDto<T extends Record<string, any>>(
 }
 
 // eslint-disable-next-line import/no-unused-modules
-export function dtoToEntity<T extends Record<string, any>>(
-  dto: T
-): DtoToEntity<T> {
+export function dtoToEntity<T extends Record<string, any>>(dto: T): DtoToEntity<T> {
   // in case of recursive calls
   if (!dto || typeof dto !== 'object') {
     return dto;
@@ -46,7 +40,7 @@ export function dtoToEntity<T extends Record<string, any>>(
   const dbEntity: any = {};
 
   Object.keys(dto).forEach((key) => {
-    if (Object.prototype.hasOwnProperty.call(dto, key)) {
+    if (Object.hasOwn(dto, key)) {
       const snakeCaseKey = camelToSnake(key);
       let value = dto[key];
       if (Array.isArray(value)) {
@@ -63,15 +57,11 @@ export function dtoToEntity<T extends Record<string, any>>(
   return dbEntity as DtoToEntity<T>; // Replace T with the appropriate DB Entity type if known
 }
 
-export function dtoListToEntity<T extends Record<string, any>>(
-  array: T[]
-): DtoToEntity<T>[] {
+export function dtoListToEntity<T extends Record<string, any>>(array: T[]): DtoToEntity<T>[] {
   return array.map((dto) => dtoToEntity(dto));
 }
 
-export function entityListToDto<T extends Record<string, any>>(
-  array: T[]
-): EntityToDto<T>[] {
+export function entityListToDto<T extends Record<string, any>>(array: T[]): EntityToDto<T>[] {
   return array.map((dto) => entityToDto(dto));
 }
 

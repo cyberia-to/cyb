@@ -1,11 +1,11 @@
-import { Outlet } from 'react-router-dom';
 import cx from 'classnames';
+import { Outlet } from 'react-router-dom';
 import Loader2 from 'src/components/ui/Loader2';
-import styles from './Layout.module.scss';
 import { useRobotContext } from '../../robot.context';
-import RootMenu from './RootMenu/RootMenu';
-import useMenuCounts from '../useMenuCounts';
 import RobotHeader from '../RobotHeader/RobotHeader';
+import useMenuCounts from '../useMenuCounts';
+import styles from './Layout.module.scss';
+import RootMenu from './RootMenu/RootMenu';
 
 function Layout() {
   const { address, isLoading, isOwner } = useRobotContext();

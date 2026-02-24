@@ -1,11 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-
-import { useSetAdviser } from 'src/features/adviser/context';
-import { routes } from 'src/routes';
 import { Dots } from 'src/components';
-import useId from 'src/hooks/useId';
 import { Props as AdviserProps } from 'src/features/adviser/Adviser/Adviser';
+import { useSetAdviser } from 'src/features/adviser/context';
+import useId from 'src/hooks/useId';
+import { routes } from 'src/routes';
 
 type Props =
   | {
@@ -21,15 +20,7 @@ type Props =
   | undefined;
 
 function useAdviserTexts(
-  {
-    isLoading,
-    error,
-    defaultText,
-    txHash,
-    loadingText,
-    successText,
-    priority,
-  } = {} as Props
+  { isLoading, error, defaultText, txHash, loadingText, successText, priority } = {} as Props
 ) {
   const { setAdviser } = useSetAdviser();
 
@@ -38,11 +29,7 @@ function useAdviserTexts(
   const key = useId();
 
   const setAdviserFunc = useCallback(
-    (
-      content: AdviserProps['children'],
-      color?: AdviserProps['color'],
-      priority
-    ) => {
+    (content: AdviserProps['children'], color?: AdviserProps['color'], priority) => {
       setAdviser(key, content, color, priority);
     },
     [setAdviser, key]
@@ -52,7 +39,7 @@ function useAdviserTexts(
     setTimeout(() => {
       setMessageShowed(true);
     }, 4 * 1000);
-  }, [setMessageShowed]);
+  }, []);
 
   useEffect(() => {
     let adviserText = '';
@@ -61,10 +48,7 @@ function useAdviserTexts(
     if (error && !messageShowed) {
       adviserText = (
         <p>
-          {error}{' '}
-          {txHash && (
-            <Link to={routes.txExplorer.getLink(txHash)}>check tx</Link>
-          )}
+          {error} {txHash && <Link to={routes.txExplorer.getLink(txHash)}>check tx</Link>}
         </p>
       );
       color = 'red';
@@ -107,7 +91,7 @@ function useAdviserTexts(
     return () => {
       setAdviserFunc(null);
     };
-  }, [setAdviserFunc, key]);
+  }, [setAdviserFunc]);
 
   return {
     setAdviser: setAdviserFunc,

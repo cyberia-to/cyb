@@ -1,8 +1,6 @@
 import { useBackend } from 'src/contexts/backend/backend';
 import { ContainerGradient } from '../../../components';
-import ContainerAvatar, {
-  ButtonContainerAvatar,
-} from '../components/avataIpfs/containerAvatar';
+import ContainerAvatar, { ButtonContainerAvatar } from '../components/avataIpfs/containerAvatar';
 
 function Avatar({
   txs,

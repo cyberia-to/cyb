@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
-import * as THREE from 'three';
 import ContentItem from 'src/components/ContentItem/contentItem';
+import * as THREE from 'three';
 import styles from './GraphHoverInfo.module.scss';
 
 // fix
@@ -48,8 +48,6 @@ function HoverInfo({ node, camera, size, left, top, right }: Props) {
   const isCid = node.id.startsWith('Qm');
 
   if (!isCid) {
-    // debug, delete
-    // debugger;
   }
 
   return (

@@ -1,17 +1,8 @@
 function LogoLedger() {
   return (
-    <svg
-      viewBox="0 0 1916.3 516.8"
-      className="ledger-img"
-      width="240"
-      height="80"
-    >
+    <svg viewBox="0 0 1916.3 516.8" className="ledger-img" width="240" height="80">
       <use xlinkHref="#ledger">
-        <svg
-          xmlns="http://www.w3.org/2000/svg"
-          viewBox="0 0 1916.3 516.8"
-          id="ledger"
-        >
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1916.3 516.8" id="ledger">
           <g id="ledger_squares_1_">
             <path
               fill="#fff"
@@ -33,10 +24,7 @@ function LogoLedger() {
 // eslint-disable-next-line import/prefer-default-export
 export function ContainetLedger({ logo, children, onClickBtnClose, styles }) {
   return (
-    <div
-      style={{ ...styles }}
-      className="container-action height50 box-shadow-1px"
-    >
+    <div style={{ ...styles }} className="container-action height50 box-shadow-1px">
       <div style={{ position: 'absolute', padding: '0 5px', right: 3, top: 5 }}>
         <span>
           [

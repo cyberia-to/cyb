@@ -1,25 +1,17 @@
-import {
-  createAsyncThunk,
-  createSelector,
-  createSlice,
-  PayloadAction,
-} from '@reduxjs/toolkit';
-import type { SenseApi } from 'src/contexts/backend/services/senseApi';
-import type { RootState } from 'src/redux/store';
-import {
-  MsgMultiSendValue,
-  MsgSendValue,
-} from 'src/services/backend/services/indexer/types';
+import { createAsyncThunk, createSelector, createSlice, PayloadAction } from '@reduxjs/toolkit';
+import { isWorker } from 'src/constants/config';
+import { SenseApi } from 'src/contexts/backend/services/senseApi';
+import { RootState } from 'src/redux/store';
+import { MsgMultiSendValue, MsgSendValue } from 'src/services/backend/services/indexer/types';
 import {
   SenseItemLinkMeta,
   SenseListItem,
   SenseListItemTransactionMeta,
 } from 'src/services/backend/types/sense';
 import { EntryType } from 'src/services/CozoDb/types/entities';
-import { isWorker } from 'src/constants/config';
 import { isParticle } from '../../particle/utils';
-import { SenseItemId } from '../types/sense';
 // Add this import for generating unique thread IDs
+import { SenseItemId } from '../types/sense';
 
 // similar to blockchain/tx/message type
 export type SenseItem = {
@@ -158,21 +150,16 @@ function formatApiData(item: SenseListItem): SenseItem {
     }
 
     default:
-      // sholdn't be
-      // debugger;
       return {};
   }
 
   return formatted;
 }
 
-const getSenseList = createAsyncThunk(
-  'sense/getSenseList',
-  async (senseApi: SenseApi) => {
-    const data = await senseApi!.getList();
-    return data.map(formatApiData);
-  }
-);
+const getSenseList = createAsyncThunk('sense/getSenseList', async (senseApi: SenseApi) => {
+  const data = await senseApi!.getList();
+  return data.map(formatApiData);
+});
 
 const getSenseChat = createAsyncThunk(
   'sense/getSenseChat',
@@ -289,10 +276,7 @@ const slice = createSlice({
       },
     },
     // optimistic update
-    addSenseItem(
-      state,
-      action: PayloadAction<{ id: SenseItemId; item: SenseItem }>
-    ) {
+    addSenseItem(state, action: PayloadAction<{ id: SenseItemId; item: SenseItem }>) {
       const { id, item } = action.payload;
       const chat = state.chats[id]!;
 
@@ -349,9 +333,7 @@ const slice = createSlice({
       }, []);
 
       const sorted = chatsLastMessage.sort((a, b) => {
-        return (
-          Date.parse(b.lastMsg.timestamp) - Date.parse(a.lastMsg.timestamp)
-        );
+        return Date.parse(b.lastMsg.timestamp) - Date.parse(a.lastMsg.timestamp);
       });
 
       state.list.data = sorted.map((i) => i.id);
@@ -360,17 +342,12 @@ const slice = createSlice({
       return initialState;
     },
     // LLM reducers
-    createLLMThread(
-      state,
-      action: PayloadAction<{ id: string; title?: string }>
-    ) {
+    createLLMThread(state, action: PayloadAction<{ id: string; title?: string }>) {
       const newThread: LLMThread = {
         id: action.payload.id,
         messages: [],
         dateUpdated: Date.now(),
-        title:
-          action.payload.title ||
-          `Conversation ${state.llm.threads.length + 1}`,
+        title: action.payload.title || `Conversation ${state.llm.threads.length + 1}`,
       };
       state.llm.threads.push(newThread);
       state.llm.currentThreadId = action.payload.id;
@@ -381,13 +358,8 @@ const slice = createSlice({
       state.llm.currentThreadId = action.payload.id;
     },
 
-    addLLMMessageToThread(
-      state,
-      action: PayloadAction<{ threadId: string; message: LLMMessage }>
-    ) {
-      const thread = state.llm.threads.find(
-        (t) => t.id === action.payload.threadId
-      );
+    addLLMMessageToThread(state, action: PayloadAction<{ threadId: string; message: LLMMessage }>) {
+      const thread = state.llm.threads.find((t) => t.id === action.payload.threadId);
       if (thread) {
         thread.messages.push(action.payload.message);
         thread.dateUpdated = action.payload.message.timestamp;
@@ -400,9 +372,7 @@ const slice = createSlice({
       state,
       action: PayloadAction<{ threadId: string; message: LLMMessage }>
     ) {
-      const thread = state.llm.threads.find(
-        (t) => t.id === action.payload.threadId
-      );
+      const thread = state.llm.threads.find((t) => t.id === action.payload.threadId);
       if (thread && thread.messages.length > 0) {
         thread.messages[thread.messages.length - 1] = action.payload.message;
         localStorage.setItem('llmThreads', JSON.stringify(state.llm.threads));
@@ -410,9 +380,7 @@ const slice = createSlice({
     },
 
     deleteLLMThread(state, action: PayloadAction<{ id: string }>) {
-      const newT = state.llm.threads.filter(
-        (thread) => thread.id !== action.payload.id
-      );
+      const newT = state.llm.threads.filter((thread) => thread.id !== action.payload.id);
 
       console.log('newT', newT);
 

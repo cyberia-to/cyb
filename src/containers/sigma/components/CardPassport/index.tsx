@@ -1,9 +1,9 @@
-import { useMemo, useEffect, useContext } from 'react';
+import { useContext, useEffect, useMemo } from 'react';
 import { Citizenship } from 'src/types/citizenship';
 import { Dots } from '../../../../components';
 import { useGetBalanceBostrom } from '../../hooks';
 import { SigmaContext } from '../../SigmaContext';
-import { TitleCard, RowBalancesDetails } from '../cardUi';
+import { RowBalancesDetails, TitleCard } from '../cardUi';
 import styles from './CardPassport.module.scss';
 
 type Props = {
@@ -13,15 +13,9 @@ type Props = {
   selectedAddress?: string;
 };
 
-function CardPassport({
-  address,
-  selectAddress,
-  passport,
-  selectedAddress,
-}: Props) {
+function CardPassport({ address, selectAddress, passport, selectedAddress }: Props) {
   const { updateDataCap } = useContext(SigmaContext);
-  const { totalAmountInLiquid, balances, totalAmountInLiquidOld } =
-    useGetBalanceBostrom(address);
+  const { totalAmountInLiquid, balances, totalAmountInLiquidOld } = useGetBalanceBostrom(address);
 
   useEffect(() => {
     if (!address) {
@@ -29,15 +23,13 @@ function CardPassport({
     }
 
     updateDataCap({ [address]: { ...totalAmountInLiquid } });
-  }, [address, totalAmountInLiquid]);
+  }, [address, totalAmountInLiquid, updateDataCap]);
 
   const reduceDataBalanceTokenRow = useMemo(() => {
     let dataObj = {};
     if (Object.keys(balances).length > 0) {
       const sortable = Object.fromEntries(
-        Object.entries(balances).sort(
-          ([, a], [, b]) => b.cap.amount - a.cap.amount
-        )
+        Object.entries(balances).sort(([, a], [, b]) => b.cap.amount - a.cap.amount)
       );
       dataObj = sortable;
     }
@@ -46,12 +38,7 @@ function CardPassport({
 
   const renderBalanceTokenRow = useMemo(() => {
     return Object.keys(reduceDataBalanceTokenRow).map((key) => {
-      return (
-        <RowBalancesDetails
-          balance={reduceDataBalanceTokenRow[key]}
-          key={key}
-        />
-      );
+      return <RowBalancesDetails balance={reduceDataBalanceTokenRow[key]} key={key} />;
     });
   }, [reduceDataBalanceTokenRow]);
 
@@ -63,18 +50,12 @@ function CardPassport({
         // selectAddress={selectAddress}
         selected={selectedAddress ? selectedAddress === address : false}
         totalLiquid={
-          totalAmountInLiquid.currentCap > 0
-            ? totalAmountInLiquid
-            : totalAmountInLiquidOld
+          totalAmountInLiquid.currentCap > 0 ? totalAmountInLiquid : totalAmountInLiquidOld
         }
       />
 
       <div className={styles.rows}>
-        {Object.keys(renderBalanceTokenRow).length > 0 ? (
-          renderBalanceTokenRow
-        ) : (
-          <Dots />
-        )}
+        {Object.keys(renderBalanceTokenRow).length > 0 ? renderBalanceTokenRow : <Dots />}
       </div>
 
       {passport?.extension.addresses?.map(({ address }) => {

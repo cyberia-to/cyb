@@ -1,45 +1,26 @@
-import {
-  AvailableAmount,
-  DenomArr,
-  MainContainer,
-  Select,
-  Slider,
-} from 'src/components';
-import { RootState } from 'src/redux/store';
-import useSetActiveAddress from 'src/hooks/useSetActiveAddress';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { PATTERN_CYBER } from 'src/constants/patterns';
-import { useQueryClient } from 'src/contexts/queryClient';
-import {
-  getDisplayAmount,
-  getDisplayAmountReverce,
-  reduceBalances,
-} from 'src/utils/utils';
-import { OptionSelect, SelectOption } from 'src/components/Select';
-import { useIbcDenom } from 'src/contexts/ibcDenom';
 import BigNumber from 'bignumber.js';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createSearchParams, useSearchParams } from 'react-router-dom';
+import { AvailableAmount, DenomArr, MainContainer, Select, Slider } from 'src/components';
+import { OptionSelect } from 'src/components/Select';
+import { BASE_DENOM, CHAIN_ID } from 'src/constants/config';
+import { PATTERN_CYBER } from 'src/constants/patterns';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
+import { useQueryClient } from 'src/contexts/queryClient';
+import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
+import useAccountsPassports from 'src/features/passport/hooks/useAccountsPassports';
+import useSetActiveAddress from 'src/hooks/useSetActiveAddress';
+import { useAppSelector } from 'src/redux/hooks';
+import { RootState } from 'src/redux/store';
 import { Option } from 'src/types';
 import { ObjKeyValue } from 'src/types/data';
-import { createSearchParams, useSearchParams } from 'react-router-dom';
-import { useAppSelector } from 'src/redux/hooks';
-
-import useAccountsPassports from 'src/features/passport/hooks/useAccountsPassports';
-import {
-  Col,
-  GridContainer,
-  TeleportContainer,
-} from '../components/containers/Containers';
-import ActionBar from './actionBar.send';
-import DataSendTxs from './components/dataSendTxs/DataSendTxs';
-import {
-  AccountInput,
-  InputMemo,
-  InputNumberDecimalScale,
-} from '../components/Inputs';
+import { getDisplayAmount, getDisplayAmountReverce, reduceBalances } from 'src/utils/utils';
+import { Col, GridContainer, TeleportContainer } from '../components/containers/Containers';
+import { AccountInput, InputMemo, InputNumberDecimalScale } from '../components/Inputs';
 import useGetSendTxsByAddressByLcd from '../hooks/useGetSendTxsByAddressByLcd';
 import { useTeleport } from '../Teleport.context';
-import { CHAIN_ID, BASE_DENOM } from 'src/constants/config';
-import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
+import ActionBar from './actionBar.send';
+import DataSendTxs from './components/dataSendTxs/DataSendTxs';
 
 const tokenDefaultValue = BASE_DENOM;
 
@@ -49,9 +30,8 @@ function Send() {
   const { defaultAccount } = useAppSelector((state: RootState) => state.pocket);
   useAccountsPassports();
   const { addressActive } = useSetActiveAddress(defaultAccount);
-  const { totalSupplyProofList, accountBalances, refreshBalances } =
-    useTeleport();
-  const [update, setUpdate] = useState(0);
+  const { totalSupplyProofList, accountBalances, refreshBalances } = useTeleport();
+  const [_update, setUpdate] = useState(0);
   const [recipient, setRecipient] = useState<string | undefined>(undefined);
   const [searchParams, setSearchParams] = useSearchParams();
   // const dataSendTxs = useGetSendTxsByAddressByType(
@@ -62,8 +42,7 @@ function Send() {
   const [tokenSelect, setTokenSelect] = useState<string>(tokenDefaultValue);
   const [tokenAmount, setTokenAmount] = useState<string>('');
 
-  const [recipientBalances, setRecipientBalances] =
-    useState<Option<ObjKeyValue>>(undefined);
+  const [recipientBalances, setRecipientBalances] = useState<Option<ObjKeyValue>>(undefined);
 
   const [recipientTokenABalances, setRecipientTokenABalances] = useState(0);
   const [memoValue, setMemoValue] = useState<string>('');
@@ -122,9 +101,7 @@ function Send() {
 
   const validInputAmountToken = useMemo(() => {
     if (Number(tokenAmount) > 0) {
-      const amountToken = parseFloat(
-        getDisplayAmountReverce(tokenAmount, tokenACoinDecimals)
-      );
+      const amountToken = parseFloat(getDisplayAmountReverce(tokenAmount, tokenACoinDecimals));
 
       return amountToken > tokenABalance;
     }
@@ -134,7 +111,7 @@ function Send() {
 
   useEffect(() => {
     const validTokenAmount = !validInputAmountToken && Number(tokenAmount) > 0;
-    const validRecipient = recipient && recipient.match(PATTERN_CYBER);
+    const validRecipient = recipient?.match(PATTERN_CYBER);
 
     setIsExceeded(!(validRecipient && validTokenAmount));
   }, [recipient, validInputAmountToken, tokenAmount]);
@@ -154,12 +131,10 @@ function Send() {
 
       setRecipientBalances(dataReduceBalances);
     })();
-  }, [queryClient, recipient, update]);
+  }, [queryClient, recipient]);
 
   useEffect(() => {
-    setRecipientTokenABalances(
-      recipientBalances ? recipientBalances[tokenSelect] || 0 : 0
-    );
+    setRecipientTokenABalances(recipientBalances ? recipientBalances[tokenSelect] || 0 : 0);
   }, [recipientBalances, tokenSelect]);
 
   const reduceOptions = useMemo(
@@ -167,9 +142,7 @@ function Send() {
       totalSupplyProofList
         ? Object.keys(totalSupplyProofList).map((key) => ({
             value: key,
-            text: (
-              <DenomArr denomValue={key} onlyText tooltipStatusText={false} />
-            ),
+            text: <DenomArr denomValue={key} onlyText tooltipStatusText={false} />,
             img: <DenomArr denomValue={key} onlyImg tooltipStatusImg={false} />,
           }))
         : [],
@@ -193,16 +166,10 @@ function Send() {
   );
 
   const getPercentsOfToken = useCallback(() => {
-    const amountTokenA = getDisplayAmountReverce(
-      tokenAmount,
-      tokenACoinDecimals
-    );
+    const amountTokenA = getDisplayAmountReverce(tokenAmount, tokenACoinDecimals);
 
     return tokenABalance > 0
-      ? new BigNumber(amountTokenA)
-          .dividedBy(tokenABalance)
-          .multipliedBy(100)
-          .toNumber()
+      ? new BigNumber(amountTokenA).dividedBy(tokenABalance).multipliedBy(100).toNumber()
       : 0;
   }, [tokenAmount, tokenABalance, tokenACoinDecimals]);
 
@@ -215,9 +182,7 @@ function Send() {
 
   const amountTokenChange = useCallback(
     (tokenBalance: number, type: 'sender' | 'recipient') => {
-      let amount = new BigNumber(
-        getDisplayAmount(tokenBalance, tokenACoinDecimals)
-      );
+      let amount = new BigNumber(getDisplayAmount(tokenBalance, tokenACoinDecimals));
 
       let changeAmount = new BigNumber(tokenAmount);
 
@@ -260,12 +225,7 @@ function Send() {
                 value: CHAIN_ID,
                 text: CHAIN_ID,
                 img: (
-                  <DenomArr
-                    denomValue={CHAIN_ID}
-                    onlyImg
-                    type="network"
-                    tooltipStatusImg={false}
-                  />
+                  <DenomArr denomValue={CHAIN_ID} onlyImg type="network" tooltipStatusImg={false} />
                 ),
               },
             ]}
@@ -307,23 +267,13 @@ function Send() {
                 title="choose token to send"
               />
               <AvailableAmount
-                title={
-                  tokenAmount.length === 0
-                    ? 'recipient have'
-                    : 'recipient will have'
-                }
-                amountToken={amountTokenChange(
-                  recipientTokenABalances,
-                  'recipient'
-                )}
+                title={tokenAmount.length === 0 ? 'recipient have' : 'recipient will have'}
+                amountToken={amountTokenChange(recipientTokenABalances, 'recipient')}
               />
             </Col>
           </GridContainer>
 
-          <Slider
-            valuePercents={getPercentsOfToken()}
-            onChange={setPercentageBalanceHook}
-          />
+          <Slider valuePercents={getPercentsOfToken()} onChange={setPercentageBalanceHook} />
         </TeleportContainer>
         <TeleportContainer>
           <DataSendTxs dataSendTxs={dataSendTxs} accountUser={addressActive} />

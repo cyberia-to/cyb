@@ -1,8 +1,8 @@
 import { CYBER_GATEWAY } from 'src/constants/config';
+import { useAppData } from 'src/contexts/appData';
 import { CYBER_GATEWAY_URL } from 'src/services/ipfs/config';
 import { IPFSContent, IPFSContentDetails } from 'src/services/ipfs/types';
 import { Option } from 'src/types';
-import { useAppData } from 'src/contexts/appData';
 import EPubView from '../EPubView/EPubView';
 import Pdf from '../PDF';
 import TextMarkdown from '../TextMarkdown';
@@ -12,19 +12,9 @@ import GatewayContent from './component/gateway';
 import Img from './component/img';
 import LinkHttp from './component/link';
 
-function OtherItem({
-  content,
-  cid,
-  search,
-}: {
-  cid: string;
-  search?: boolean;
-  content?: string;
-}) {
+function OtherItem({ content, cid, search }: { cid: string; search?: boolean; content?: string }) {
   if (search) {
-    return (
-      <TextMarkdown preview={search}>{content || `${cid} (n/a)`}</TextMarkdown>
-    );
+    return <TextMarkdown preview={search}>{content || `${cid} (n/a)`}</TextMarkdown>;
   }
   return <GatewayContent url={`${CYBER_GATEWAY}/ipfs/${cid}`} />;
 }
@@ -47,13 +37,7 @@ type ContentTabProps = {
   search?: boolean;
 };
 
-function ContentIpfs({
-  details,
-  content,
-  cid,
-  search,
-  skipCheck,
-}: ContentTabProps) {
+function ContentIpfs({ details, content, cid, search, skipCheck }: ContentTabProps) {
   const contentType = details?.type;
 
   const { filterParticles } = useAppData();
@@ -72,9 +56,7 @@ function ContentIpfs({
     <>
       {!details?.type && <TextMarkdown preview>{cid.toString()}</TextMarkdown>}
 
-      {content?.availableDownload && (
-        <DownloadableItem search={search} cid={cid} />
-      )}
+      {content?.availableDownload && <DownloadableItem search={search} cid={cid} />}
 
       {contentType === 'audio' && content && <Audio content={content} />}
 
@@ -84,23 +66,20 @@ function ContentIpfs({
             <VideoPlayerGatewayOnly content={content} details={details} />
           )}
           {contentType === 'text' && (
-            <TextMarkdown preview={search}>
-              {details.content || cid}
-            </TextMarkdown>
+            <TextMarkdown preview={search}>{details.content || cid}</TextMarkdown>
           )}
-          {contentType === 'image' && <Img content={details.content} />}
-          {contentType === 'pdf' && details.content && (
-            <Pdf content={details.content} />
+          {contentType === 'image' && details.content && <Img content={details.content} />}
+          {contentType === 'image' && !details.content && (
+            <GatewayContent url={`${CYBER_GATEWAY}/ipfs/${cid}`} />
           )}
-          {contentType === 'link' && (
-            <LinkHttp url={details.content!} preview={search} />
+          {contentType === 'pdf' && details.content && <Pdf content={details.content} />}
+          {contentType === 'pdf' && !details.content && (
+            <GatewayContent url={`${CYBER_GATEWAY}/ipfs/${cid}`} />
           )}
+          {contentType === 'link' && <LinkHttp url={details.content!} preview={search} />}
           {contentType === 'html' && <HtmlItem cid={content?.cid} />}
           {contentType === 'epub' && (
-            <EPubView
-              url={`${CYBER_GATEWAY_URL}/ipfs/${cid}`}
-              search={search}
-            />
+            <EPubView url={`${CYBER_GATEWAY_URL}/ipfs/${cid}`} search={search} />
           )}
           {['other', 'cid'].some((i) => i === contentType) && (
             <OtherItem search={search} cid={cid} content={details.content} />

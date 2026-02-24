@@ -1,13 +1,12 @@
 // TODO: need use Display component for this
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Transition } from 'react-transition-group';
-
-import styles from './ContainerGradient.module.scss';
 import { trimString } from '../../utils/utils';
+import styles from './ContainerGradient.module.scss';
 import Display from './Display/Display';
-import { ColorLamp } from './types';
 import DisplayTitle from './DisplayTitle/DisplayTitle';
+import { ColorLamp } from './types';
 
 const classNames = require('classnames');
 
@@ -73,9 +72,7 @@ function TxsStatus({ data }: TxsProps) {
             <div>{data.status}</div>
           </div>
         )}
-        {data.rawLog && (
-          <div className={styles.containerTxsRawLog}>{data.rawLog}</div>
-        )}
+        {data.rawLog && <div className={styles.containerTxsRawLog}>{data.rawLog}</div>}
       </div>
     </ContainerLamp>
   );
@@ -124,12 +121,7 @@ function ContainerGradient({
 
   const useTitle = useCallback(
     (state) => {
-      if (
-        !isOpen &&
-        closedTitle &&
-        closedTitle !== null &&
-        state === 'exited'
-      ) {
+      if (!isOpen && closedTitle && closedTitle !== null && state === 'exited') {
         return closedTitle;
       }
       if (state === 'entered') {
@@ -148,11 +140,9 @@ function ContainerGradient({
         className={classNames(styles.containerContainerGradient, {
           [styles.togglingDisable]: togglingDisable,
           [styles.containerContainerGradientPrimary]: !styleLampContent,
-          [styles.containerContainerGradientPrimary]:
-            styleLampContent === 'blue',
+          [styles.containerContainerGradientPrimary]: styleLampContent === 'blue',
           [styles.containerContainerGradientDanger]: styleLampContent === 'red',
-          [styles.containerContainerGradientGreen]:
-            styleLampContent === 'green',
+          [styles.containerContainerGradientGreen]: styleLampContent === 'green',
         })}
       >
         <Transition in={isOpen} timeout={500}>
@@ -185,14 +175,11 @@ function ContainerGradient({
                   className={classNames(
                     styles.containerContainerGradientContent,
                     {
-                      [styles.containerContainerGradientContentPrimary]:
-                        !styleLampContent,
+                      [styles.containerContainerGradientContentPrimary]: !styleLampContent,
                       [styles.containerContainerGradientContentPrimary]:
                         styleLampContent === 'blue',
-                      [styles.containerContainerGradientContentDanger]:
-                        styleLampContent === 'red',
-                      [styles.containerContainerGradientContentGreen]:
-                        styleLampContent === 'green',
+                      [styles.containerContainerGradientContentDanger]: styleLampContent === 'red',
+                      [styles.containerContainerGradientContentGreen]: styleLampContent === 'green',
                     },
                     styles[`containerContainerGradientContent${state}`]
                   )}

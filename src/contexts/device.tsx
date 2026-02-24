@@ -38,9 +38,7 @@ function DeviceProvider({ children }: { children: React.ReactNode }) {
     };
   }, [isMobile, viewportWidth]);
 
-  return (
-    <DeviceContext.Provider value={value}>{children}</DeviceContext.Provider>
-  );
+  return <DeviceContext.Provider value={value}>{children}</DeviceContext.Provider>;
 }
 
 export default DeviceProvider;

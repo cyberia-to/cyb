@@ -1,15 +1,11 @@
 import { useMemo } from 'react';
-
-import { trimString } from 'src/utils/utils';
-import { Link } from 'react-router-dom';
-import { routes } from 'src/routes';
+import CreatedAt from '../../CreatedAt/CreatedAt';
 import Table from '../../Table/Table';
 import TextTable from '../../text/textTable';
 import MsgTypeTxs from './MsgTypeTxs';
-import CreatedAt from '../../CreatedAt/CreatedAt';
 import RenderValue from './RenderValue';
-import styles from './TableDataTxs.module.scss';
 import StatusTxs from './StatusTxs';
+import styles from './TableDataTxs.module.scss';
 import TxHash from './txHash';
 
 type MessagesData = {
@@ -49,11 +45,7 @@ function TableDataTxs({ data, loading, accountUser }: Props) {
         ),
         [ColumnsTable.type]: (
           <div className={styles.type}>
-            <MsgTypeTxs
-              type={item.type}
-              value={item.value}
-              accountUser={accountUser}
-            />
+            <MsgTypeTxs type={item.type} value={item.value} accountUser={accountUser} />
           </div>
         ),
         [ColumnsTable.timestamp]: (
@@ -68,11 +60,7 @@ function TableDataTxs({ data, loading, accountUser }: Props) {
         ),
         [ColumnsTable.action]: (
           <TextTable display="flex">
-            <RenderValue
-              value={item.value}
-              type={item.type}
-              accountUser={accountUser}
-            />
+            <RenderValue value={item.value} type={item.type} accountUser={accountUser} />
           </TextTable>
         ),
       };

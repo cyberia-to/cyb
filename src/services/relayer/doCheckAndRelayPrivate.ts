@@ -1,10 +1,7 @@
 import { Link as IbcLink, Logger } from '@confio/relayer/build';
 import { AckWithMetadata } from '@confio/relayer/build/lib/endpoint';
 import { RelayedHeights } from '@confio/relayer/build/lib/link';
-import {
-  secondsFromDateNanos,
-  splitPendingPackets,
-} from '@confio/relayer/build/lib/utils';
+import { secondsFromDateNanos, splitPendingPackets } from '@confio/relayer/build/lib/utils';
 import { Tendermint34Client } from '@cosmjs/tendermint-rpc';
 import EndpointPrivate from './EndpointPrivate';
 import queryPacketAttrsBySender from './queryPacketAttrsBySender';
@@ -52,9 +49,9 @@ async function doCheckAndRelayPrivate(
     opts.minHeight = relayFrom.packetHeightA || 0;
     return querySentPacketsA(opts);
   });
-  // @ts-ignore
+  // @ts-expect-error
   link.endA = privateEndA;
-  // @ts-ignore
+  // @ts-expect-error
   link.endB = privateEndB;
 
   console.debug('Relaying from', relayFrom);
@@ -77,41 +74,31 @@ async function doCheckAndRelayPrivate(
   const [packetHeightA, packetHeightB, packetsA, packetsB] = await Promise.all([
     link.endA.client.currentHeight(),
     link.endB.client.currentHeight(),
-    link
-      .getPendingPackets('A', { minHeight: relayFrom.packetHeightA })
-      .catch((e) => {
-        console.error('Error getting pending packets A', e);
-        return [];
-      }),
-    link
-      .getPendingPackets('B', { minHeight: relayFrom.packetHeightB })
-      .catch((e) => {
-        console.error('Error getting pending packets B', e);
-        return [];
-      }),
+    link.getPendingPackets('A', { minHeight: relayFrom.packetHeightA }).catch((e) => {
+      console.error('Error getting pending packets A', e);
+      return [];
+    }),
+    link.getPendingPackets('B', { minHeight: relayFrom.packetHeightB }).catch((e) => {
+      console.error('Error getting pending packets B', e);
+      return [];
+    }),
   ]);
 
   console.debug('Packets A', packetsA);
   console.debug('Packets B', packetsB);
 
-  const cutoffHeightA = await link.endB.client.timeoutHeight(
-    timedoutThresholdBlocks
-  );
+  const cutoffHeightA = await link.endB.client.timeoutHeight(timedoutThresholdBlocks);
   const cutoffTimeA =
-    secondsFromDateNanos(await link.endB.client.currentTime()) +
-    timedoutThresholdSeconds;
+    secondsFromDateNanos(await link.endB.client.currentTime()) + timedoutThresholdSeconds;
   const { toSubmit: submitA, toTimeout: timeoutA } = splitPendingPackets(
     cutoffHeightA,
     cutoffTimeA,
     packetsA
   );
 
-  const cutoffHeightB = await link.endA.client.timeoutHeight(
-    timedoutThresholdBlocks
-  );
+  const cutoffHeightB = await link.endA.client.timeoutHeight(timedoutThresholdBlocks);
   const cutoffTimeB =
-    secondsFromDateNanos(await link.endA.client.currentTime()) +
-    timedoutThresholdSeconds;
+    secondsFromDateNanos(await link.endA.client.currentTime()) + timedoutThresholdSeconds;
   const { toSubmit: submitB, toTimeout: timeoutB } = splitPendingPackets(
     cutoffHeightB,
     cutoffTimeB,
@@ -120,20 +107,16 @@ async function doCheckAndRelayPrivate(
 
   console.debug('Submitting A & B', submitA, submitB);
   // FIXME: use the returned acks first? Then query for others?
-  await Promise.all([
-    link.relayPackets('A', submitA),
-    link.relayPackets('B', submitB),
-  ]).catch((e) => {
-    console.error('Error relaying packets', e);
-    logger.error('Error relaying packets', e);
-  });
+  await Promise.all([link.relayPackets('A', submitA), link.relayPackets('B', submitB)]).catch(
+    (e) => {
+      console.error('Error relaying packets', e);
+      logger.error('Error relaying packets', e);
+    }
+  );
 
   console.debug('Waiting for indexer');
   // let's wait a bit to ensure our newly committed acks are indexed
-  await Promise.all([
-    link.endA.client.waitForIndexer(),
-    link.endB.client.waitForIndexer(),
-  ]);
+  await Promise.all([link.endA.client.waitForIndexer(), link.endB.client.waitForIndexer()]);
 
   console.debug('Getting acks');
   const [ackHeightA, ackHeightB, acksARaw, acksBRaw] = await Promise.all([
@@ -166,20 +149,16 @@ async function doCheckAndRelayPrivate(
 
   console.debug('Relaying acks A & B', acksA, acksB);
 
-  await Promise.all([
-    link.relayAcks('A', acksA),
-    link.relayAcks('B', acksB),
-  ]).catch((e) => {
+  await Promise.all([link.relayAcks('A', acksA), link.relayAcks('B', acksB)]).catch((e) => {
     logger.error(`Error relaying acks${JSON.stringify(e)}`);
   });
 
   console.debug('timing out packets A & B', timeoutA, timeoutB);
-  await Promise.all([
-    link.timeoutPackets('A', timeoutA),
-    link.timeoutPackets('B', timeoutB),
-  ]).catch((e) => {
-    logger.error('Error timing out packets', e);
-  });
+  await Promise.all([link.timeoutPackets('A', timeoutA), link.timeoutPackets('B', timeoutB)]).catch(
+    (e) => {
+      logger.error('Error timing out packets', e);
+    }
+  );
 
   const heights = {
     packetHeightA,

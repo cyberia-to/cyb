@@ -1,5 +1,5 @@
-import { ReactNode } from 'react';
 import cx from 'classnames';
+import { ReactNode } from 'react';
 import AdviserHoverWrapper from 'src/features/adviser/AdviserHoverWrapper/AdviserHoverWrapper';
 import styles from './KeywordButton.module.scss';
 
@@ -11,13 +11,7 @@ type Props = {
   className?: string;
 };
 
-function KeywordButton({
-  text,
-  onClick,
-  tooltip,
-  isKeyword,
-  className,
-}: Props) {
+function KeywordButton({ text, onClick, tooltip, isKeyword, className }: Props) {
   return (
     <AdviserHoverWrapper adviserContent={tooltip || ''}>
       <button

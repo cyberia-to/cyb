@@ -1,9 +1,9 @@
 import cx from 'classnames';
-import arrowImg from 'images/arrow-left-img.svg';
 import linkImg from 'components/search/Spark/Meta/Links/link.svg';
-import styles from './Keywords.module.scss';
-import KeywordButton from '../KeywordButton/KeywordButton';
+import arrowImg from 'images/arrow-left-img.svg';
 import { KeywordsItem, useStudioContext } from '../../studio.context';
+import KeywordButton from '../KeywordButton/KeywordButton';
+import styles from './Keywords.module.scss';
 
 type Props = {
   items: KeywordsItem[];
@@ -40,11 +40,7 @@ function Keywords({ items, type, onClickAddBtn }: Props) {
       <div className={styles.containerPill}>
         {renderItem}
 
-        <KeywordButton
-          text="+"
-          onClick={onClickAddBtn}
-          tooltip={`add keywords ${type}`}
-        />
+        <KeywordButton text="+" onClick={onClickAddBtn} tooltip={`add keywords ${type}`} />
       </div>
     </div>
   );

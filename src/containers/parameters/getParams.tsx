@@ -161,7 +161,7 @@ const getParamDmn = async () => {
   }
 };
 
-const getParamNetwork = async (address, node) => {
+const getParamNetwork = async (_address, _node) => {
   try {
     let staking = null;
     let slashing = null;

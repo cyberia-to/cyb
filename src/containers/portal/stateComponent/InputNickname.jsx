@@ -1,11 +1,10 @@
+import { ContainerGradient, Input } from '../../../components';
 import { steps } from '../citizenship/utils';
-import { Input, ContainerGradient } from '../../../components';
 
 function InputNickname({ valueNickname, step, onChangeNickname }) {
   return (
     <ContainerGradient>
-      {(step === steps.STEP_NICKNAME_CHOSE ||
-        step === steps.STEP_NICKNAME_INVALID) && (
+      {(step === steps.STEP_NICKNAME_CHOSE || step === steps.STEP_NICKNAME_INVALID) && (
         <div style={{ width: '160px' }}>
           <Input
             value={valueNickname}

@@ -1,4 +1,4 @@
-import { PayloadAction, createSlice } from '@reduxjs/toolkit';
+import { createSlice, PayloadAction } from '@reduxjs/toolkit';
 
 type CommunityEntryType = string[];
 
@@ -22,10 +22,7 @@ const slice = createSlice({
   name: 'currentAccount',
   initialState,
   reducers: {
-    setCommunity: (
-      state,
-      { payload }: PayloadAction<SliceState['community']>
-    ) => {
+    setCommunity: (state, { payload }: PayloadAction<SliceState['community']>) => {
       state.community = payload;
     },
   },

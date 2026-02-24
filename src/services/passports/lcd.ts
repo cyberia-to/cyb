@@ -1,9 +1,8 @@
-import { CONTRACT_ADDRESS_PASSPORT } from 'src/containers/portal/utils';
 import { toAscii, toBase64 } from '@cosmjs/encoding';
-import { PassportContractQuery } from 'src/services/soft.js/api/passport';
-
 import axios from 'axios';
 import defaultNetworks from 'src/constants/defaultNetworks';
+import { CONTRACT_ADDRESS_PASSPORT } from 'src/containers/portal/utils';
+import { PassportContractQuery } from 'src/services/soft.js/api/passport';
 
 // need this request to query passports with any queryClient chain
 // eslint-disable-next-line import/prefer-default-export

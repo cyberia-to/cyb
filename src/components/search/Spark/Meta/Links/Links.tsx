@@ -20,13 +20,7 @@ const tooltipDefault: Props['tooltip'] = {
   particle: 'show all particles',
 };
 
-function Links({
-  to = 0,
-  from = 0,
-  value,
-  tooltip = tooltipDefault,
-  onChange,
-}: Props) {
+function Links({ to = 0, from = 0, value, tooltip = tooltipDefault, onChange }: Props) {
   return (
     <div className={styles.links}>
       <ButtonsGroup

@@ -1,15 +1,9 @@
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react';
-import { useBackend } from 'src/contexts/backend/backend';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createSearchParams, useSearchParams } from 'react-router-dom';
-import useParticle from 'src/hooks/useParticle';
-import useDebounce from 'src/hooks/useDebounce';
 import { CID_TWEET } from 'src/constants/app';
+import { useBackend } from 'src/contexts/backend/backend';
+import useDebounce from 'src/hooks/useDebounce';
+import useParticle from 'src/hooks/useParticle';
 import { addIfpsMessageOrCid } from 'src/utils/ipfs/helpers';
 import useAdviserTexts from '../adviser/useAdviserTexts';
 
@@ -58,18 +52,13 @@ function StudioContextProvider({ children }: { children: React.ReactNode }) {
 
   const firstEffectOccured = useRef(false);
   const [searchParams, setSearchParams] = useSearchParams();
-  const updateSearchParams = useCallback(setSearchParams, []);
+  const updateSearchParams = useCallback(setSearchParams, [setSearchParams]);
 
   const { status, details } = useParticle(cidSearchParams!);
-  const content =
-    details && details.type === 'text' && details.content
-      ? details.content
-      : '';
+  const content = details && details.type === 'text' && details.content ? details.content : '';
 
   const [stateActionBar, setStateActionBar] = useState<StateActionBar>('link');
-  const [keywordsFrom, setKeywordsFrom] = useState<KeywordsItem[]>([
-    defaultKeywordsFrom,
-  ]);
+  const [keywordsFrom, setKeywordsFrom] = useState<KeywordsItem[]>([defaultKeywordsFrom]);
   const [keywordsTo, setKeywordsTo] = useState<KeywordsItem[]>([]);
   const [currentMarkdown, setCurrentMarkdown] = useState<string>('');
 
@@ -119,7 +108,7 @@ function StudioContextProvider({ children }: { children: React.ReactNode }) {
         }, 5000);
       });
     }, 5000),
-    [updateSearchParams, ipfsApi]
+    []
   );
 
   const saveMarkdown = useCallback(
@@ -148,13 +137,10 @@ function StudioContextProvider({ children }: { children: React.ReactNode }) {
       }
 
       const stateKeywords = type === 'from' ? keywordsFrom : keywordsTo;
-      const setStateKeywords =
-        type === 'from' ? setKeywordsFrom : setKeywordsTo;
+      const setStateKeywords = type === 'from' ? setKeywordsFrom : setKeywordsTo;
 
       const uniqueArray = [
-        ...new Map(
-          [...stateKeywords, ...newItem].map((item) => [item.cid, item])
-        ).values(),
+        ...new Map([...stateKeywords, ...newItem].map((item) => [item.cid, item])).values(),
       ];
 
       if (uniqueArray.length) {
@@ -167,8 +153,7 @@ function StudioContextProvider({ children }: { children: React.ReactNode }) {
   const removeKeywords = useCallback(
     (type: 'from' | 'to', itemCid: string) => {
       const stateKeywords = type === 'from' ? keywordsFrom : keywordsTo;
-      const setStateKeywords =
-        type === 'from' ? setKeywordsFrom : setKeywordsTo;
+      const setStateKeywords = type === 'from' ? setKeywordsFrom : setKeywordsTo;
       const newState = stateKeywords.filter((item) => item.cid !== itemCid);
       setStateKeywords(newState);
     },
@@ -190,7 +175,6 @@ function StudioContextProvider({ children }: { children: React.ReactNode }) {
     }),
     [
       stateActionBar,
-      setStateActionBar,
       keywordsFrom,
       keywordsTo,
       lastCid,
@@ -202,11 +186,7 @@ function StudioContextProvider({ children }: { children: React.ReactNode }) {
     ]
   );
 
-  return (
-    <StudioContext.Provider value={contextValue}>
-      {children}
-    </StudioContext.Provider>
-  );
+  return <StudioContext.Provider value={contextValue}>{children}</StudioContext.Provider>;
 }
 
 export default StudioContextProvider;

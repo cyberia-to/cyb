@@ -1,4 +1,4 @@
-import { useRef, useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 
 const sphereRad = 250;
 const radiusSp = 0.8;
@@ -203,23 +203,19 @@ function useCanvas() {
     			Then, we take the new coordinates (rotX, y, rotZ), and project these onto the 2D view plane.
     			*/
           rotX = cosAngle * p.x + sinAngle * (p.z - sphereCenterZ);
-          rotZ =
-            -sinAngle * p.x + cosAngle * (p.z - sphereCenterZ) + sphereCenterZ;
+          rotZ = -sinAngle * p.x + cosAngle * (p.z - sphereCenterZ) + sphereCenterZ;
           m = (radiusSp * fLen) / (fLen - rotZ);
           p.projX = rotX * m + projCenterX;
           p.projY = p.y * m + projCenterY;
           // update alpha according to envelope parameters.
           if (p.age < p.attack + p.hold + p.decay) {
             if (p.age < p.attack) {
-              p.alpha =
-                ((p.holdValue - p.initValue) / p.attack) * p.age + p.initValue;
+              p.alpha = ((p.holdValue - p.initValue) / p.attack) * p.age + p.initValue;
             } else if (p.age < p.attack + p.hold) {
               p.alpha = p.holdValue;
             } else if (p.age < p.attack + p.hold + p.decay) {
               p.alpha =
-                ((p.lastValue - p.holdValue) / p.decay) *
-                  (p.age - p.attack - p.hold) +
-                p.holdValue;
+                ((p.lastValue - p.holdValue) / p.decay) * (p.age - p.attack - p.hold) + p.holdValue;
             }
           } else {
             p.dead = true;
@@ -243,11 +239,7 @@ function useCanvas() {
             depthAlphaFactor = 1 - rotZ / zeroAlphaDepth;
             depthAlphaFactor =
               // eslint-disable-next-line no-nested-ternary
-              depthAlphaFactor > 1
-                ? 1
-                : depthAlphaFactor < 0
-                ? 0
-                : depthAlphaFactor;
+              depthAlphaFactor > 1 ? 1 : depthAlphaFactor < 0 ? 0 : depthAlphaFactor;
 
             draw(context);
           }
@@ -295,7 +287,7 @@ function useCanvas() {
     return () => {
       clearInterval(timer);
     };
-  }, []);
+  }, [draw]);
 
   return { canvasRef };
 }

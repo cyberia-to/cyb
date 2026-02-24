@@ -1,10 +1,8 @@
-import Pill from 'src/components/Pill/Pill';
-import styles from './KeyItem.module.scss';
-
 import cx from 'classnames';
-
 import { useState } from 'react';
+import Pill from 'src/components/Pill/Pill';
 import { JsonRecord } from 'src/utils/localStorage';
+import styles from './KeyItem.module.scss';
 
 type Props = {
   name: string;
@@ -36,8 +34,7 @@ function KeyItemSecrets({ name, value, selected, selectKey }: Props) {
           <Pill text={!showValue ? '***********' : value} />
         </button>
         <br />
-        injects into <Pill color="green" text={'rune'} /> script scenarios in
-        the app
+        injects into <Pill color="green" text={'rune'} /> script scenarios in the app
         <br />
       </div>
     </div>

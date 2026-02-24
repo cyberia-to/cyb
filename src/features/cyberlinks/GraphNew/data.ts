@@ -14,11 +14,11 @@ export type Link = {
   color?: string;
 };
 
-const randomIntFromInterval = (min: number, max: number): number => {
+const _randomIntFromInterval = (min: number, max: number): number => {
   return Math.floor(Math.random() * (max - min + 1) + min);
 };
 
-const colors = ['#88C6FF', '#FF99D2', '#2748A4'];
+const _colors = ['#88C6FF', '#FF99D2', '#2748A4'];
 
 // export const links: Link[] = silkRoadCase.map((d) => ({
 //   source: d.source,

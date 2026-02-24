@@ -1,26 +1,15 @@
 import { CyberClient } from '@cybercongress/cyber-js';
 import { useQuery } from '@tanstack/react-query';
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { CHAIN_ID } from 'src/constants/config';
-import {
-  HUB_CHANNELS,
-  HUB_NETWORKS,
-  HUB_TOKENS,
-} from 'src/constants/hubContracts';
+import { HUB_CHANNELS, HUB_NETWORKS, HUB_TOKENS } from 'src/constants/hubContracts';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { setChannels, setNetworks, setTokens } from 'src/pages/Hub/redux/hub';
 import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
 import { Option } from 'src/types';
-import {
-  Channel,
-  ChannelList,
-  Network,
-  NetworkList,
-  Token,
-  TokenList,
-} from 'src/types/hub';
+import { Channel, ChannelList, Network, NetworkList, Token, TokenList } from 'src/types/hub';
 
-const enum TypeFetcher {
+enum TypeFetcher {
   NETWORKS = HUB_NETWORKS,
   TOKENS = HUB_TOKENS,
   CHANNELS = HUB_CHANNELS,
@@ -42,15 +31,10 @@ export function useNetworks() {
   const dispatch = useAppDispatch();
   const { networks: networksStorage } = useAppSelector((state) => state.hub);
   const queryClient = useQueryClient();
-  const [networksData, setNetworksData] =
-    useState<Option<NetworkList>>(networksStorage);
-  const { data } = useQuery(
-    ['hub-networks'],
-    () => fetcher(queryClient, TypeFetcher.NETWORKS),
-    {
-      enabled: Boolean(queryClient),
-    }
-  );
+  const [networksData, setNetworksData] = useState<Option<NetworkList>>(networksStorage);
+  const { data } = useQuery(['hub-networks'], () => fetcher(queryClient, TypeFetcher.NETWORKS), {
+    enabled: Boolean(queryClient),
+  });
 
   useEffect(() => {
     const objectMappedResult: NetworkList = {};
@@ -72,15 +56,10 @@ export function useTokens() {
   const dispatch = useAppDispatch();
   const { tokens: tokensStorage } = useAppSelector((state) => state.hub);
   const queryClient = useQueryClient();
-  const [tokensData, setTokensData] =
-    useState<Option<TokenList>>(tokensStorage);
-  const { data } = useQuery(
-    ['hub-tokens'],
-    () => fetcher(queryClient, TypeFetcher.TOKENS),
-    {
-      enabled: Boolean(queryClient),
-    }
-  );
+  const [tokensData, setTokensData] = useState<Option<TokenList>>(tokensStorage);
+  const { data } = useQuery(['hub-tokens'], () => fetcher(queryClient, TypeFetcher.TOKENS), {
+    enabled: Boolean(queryClient),
+  });
 
   useEffect(() => {
     const objectMappedResult: TokenList = {};
@@ -89,9 +68,7 @@ export function useTokens() {
         if (row.chain_id === CHAIN_ID) {
           const { contract } = row;
           const ticker =
-            contract.indexOf('native') !== -1
-              ? contract.replace('native/', '')
-              : contract;
+            contract.indexOf('native') !== -1 ? contract.replace('native/', '') : contract;
           objectMappedResult[ticker] = row;
         }
       });
@@ -110,15 +87,10 @@ export function useChannels() {
   const dispatch = useAppDispatch();
   const { channels: channelsStorage } = useAppSelector((state) => state.hub);
   const queryClient = useQueryClient();
-  const [channelsData, setChannelsData] =
-    useState<Option<ChannelList>>(channelsStorage);
-  const { data } = useQuery(
-    ['hub-channels'],
-    () => fetcher(queryClient, TypeFetcher.CHANNELS),
-    {
-      enabled: Boolean(queryClient),
-    }
-  );
+  const [channelsData, setChannelsData] = useState<Option<ChannelList>>(channelsStorage);
+  const { data } = useQuery(['hub-channels'], () => fetcher(queryClient, TypeFetcher.CHANNELS), {
+    enabled: Boolean(queryClient),
+  });
 
   useEffect(() => {
     const objectMappedResult: ChannelList = {};

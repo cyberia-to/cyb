@@ -1,55 +1,45 @@
 import { useInfiniteQuery } from '@tanstack/react-query';
 import useGetBackLink from 'src/containers/ipfs/hooks/useGetBackLink';
 import { useQueryClient } from 'src/contexts/queryClient';
-import { getRankGrade, searchByHash } from 'src/utils/search/utils';
+import { enqueueLinksSave } from 'src/services/backend/channels/BackendQueueChannel/backendQueueSenders';
 import { mapLinkToLinkDto } from 'src/services/CozoDb/mapping';
+import { getRankGrade, searchByHash } from 'src/utils/search/utils';
 import { coinDecimals } from 'src/utils/utils';
-
 import { LinksTypeFilter } from '../types';
 import { merge } from './shared';
-import { enqueueLinksSave } from 'src/services/backend/channels/BackendQueueChannel/backendQueueSenders';
 
-const PER_PAGE_LIMIT = 10;
+const _PER_PAGE_LIMIT = 10;
 
 const useSearch = (hash: string, { skip = false } = {}) => {
   const cid = hash;
 
   const queryClient = useQueryClient();
 
-  const {
-    data,
-    fetchNextPage,
-    error,
-    isFetching,
-    refetch,
-    hasNextPage,
-    isInitialLoading,
-  } = useInfiniteQuery(
-    ['useSearch', cid],
-    async ({ pageParam = 0 }: { pageParam?: number }) => {
-      // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
-      const response = await searchByHash(queryClient, cid, pageParam);
+  const { data, fetchNextPage, error, isFetching, refetch, hasNextPage, isInitialLoading } =
+    useInfiniteQuery(
+      ['useSearch', cid],
+      async ({ pageParam = 0 }: { pageParam?: number }) => {
+        // eslint-disable-next-line @typescript-eslint/no-non-null-assertion
+        const response = await searchByHash(queryClient, cid, pageParam);
 
-      if (response?.result) {
-        enqueueLinksSave(
-          response.result.map((l) => mapLinkToLinkDto(hash, l.particle))
-        );
-      }
-
-      return { data: response, page: pageParam };
-    },
-    {
-      enabled: Boolean(queryClient && cid) && !skip,
-      getNextPageParam: (lastPage) => {
-        const total = lastPage?.data?.pagination?.total || 0;
-        if (total === 0 || lastPage.page >= total - 1) {
-          return undefined;
+        if (response?.result) {
+          enqueueLinksSave(response.result.map((l) => mapLinkToLinkDto(hash, l.particle)));
         }
 
-        return lastPage.page + 1;
+        return { data: response, page: pageParam };
       },
-    }
-  );
+      {
+        enabled: Boolean(queryClient && cid) && !skip,
+        getNextPageParam: (lastPage) => {
+          const total = lastPage?.data?.pagination?.total || 0;
+          if (total === 0 || lastPage.page >= total - 1) {
+            return undefined;
+          }
+
+          return lastPage.page + 1;
+        },
+      }
+    );
 
   return {
     data:
@@ -78,11 +68,7 @@ const useSearch = (hash: string, { skip = false } = {}) => {
   };
 };
 
-function useRankLinks(
-  hash: string,
-  type = LinksTypeFilter.from,
-  { skip = false } = {}
-) {
+function useRankLinks(hash: string, type = LinksTypeFilter.from, { skip = false } = {}) {
   const linkType = type;
 
   const searchRank = useSearch(hash, {
@@ -99,12 +85,9 @@ function useRankLinks(
         case LinksTypeFilter.to:
           return backlinksRank.backlinks;
         case LinksTypeFilter.all:
-          return merge(searchRank.data, backlinksRank.backlinks).sort(
-            (a, b) => {
-              return parseFloat(b.rank) - parseFloat(a.rank);
-            }
-          );
-        case LinksTypeFilter.from:
+          return merge(searchRank.data, backlinksRank.backlinks).sort((a, b) => {
+            return parseFloat(b.rank) - parseFloat(a.rank);
+          });
         default:
           return searchRank.data || [];
       }
@@ -124,7 +107,6 @@ function useRankLinks(
             searchRank.refetch();
             backlinksRank.refetch();
           };
-        case LinksTypeFilter.from:
         default:
           return searchRank.refetch;
       }
@@ -135,7 +117,6 @@ function useRankLinks(
           return backlinksRank.isInitialLoading;
         case LinksTypeFilter.all:
           return backlinksRank.isInitialLoading || searchRank.isInitialLoading;
-        case LinksTypeFilter.from:
         default:
           return searchRank.isInitialLoading;
       }
@@ -146,7 +127,6 @@ function useRankLinks(
           return backlinksRank.isFetching;
         case LinksTypeFilter.all:
           return backlinksRank.isFetching || searchRank.isFetching;
-        case LinksTypeFilter.from:
         default:
           return searchRank.isFetching;
       }
@@ -157,7 +137,6 @@ function useRankLinks(
           return backlinksRank.error;
         case LinksTypeFilter.all:
           return backlinksRank.error || searchRank.error;
-        case LinksTypeFilter.from:
         default:
           return searchRank.error;
       }
@@ -168,7 +147,6 @@ function useRankLinks(
           return backlinksRank.hasNextPage;
         case LinksTypeFilter.all:
           return backlinksRank.hasNextPage || searchRank.hasNextPage;
-        case LinksTypeFilter.from:
         default:
           return searchRank.hasNextPage;
       }
@@ -182,7 +160,6 @@ function useRankLinks(
             backlinksRank.fetchNextPage();
             searchRank.fetchNextPage();
           };
-        case LinksTypeFilter.from:
         default:
           return searchRank.fetchNextPage;
       }

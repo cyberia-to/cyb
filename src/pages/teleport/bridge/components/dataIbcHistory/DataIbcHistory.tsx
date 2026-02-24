@@ -11,7 +11,7 @@ function DataIbcHistory() {
     setTimeout(() => {
       setItemsToShow(itemsToShow + 5);
     }, 250);
-  }, [itemsToShow, setItemsToShow]);
+  }, [itemsToShow]);
 
   const displayedPalettes = useMemo(() => {
     if (ibcHistory) {
@@ -31,11 +31,7 @@ function DataIbcHistory() {
   }, [ibcHistory, itemsToShow]);
 
   return (
-    <InfiniteScrollDataTsx
-      dataLength={ItemRows.length}
-      next={setNextDisplayed}
-      hasMore={hasMore}
-    >
+    <InfiniteScrollDataTsx dataLength={ItemRows.length} next={setNextDisplayed} hasMore={hasMore}>
       {ItemRows.length > 0 && ItemRows}
     </InfiniteScrollDataTsx>
   );

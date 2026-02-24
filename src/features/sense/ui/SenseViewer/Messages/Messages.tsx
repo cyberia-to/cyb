@@ -1,11 +1,11 @@
 import dateFormat from 'dateformat';
-import { SenseItem, LLMMessage } from 'src/features/sense/redux/sense.redux';
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import InfiniteScroll from 'react-infinite-scroll-component';
-import MessageContainer from './Message/Message.container';
-import styles from './Messages.module.scss';
+import { LLMMessage, SenseItem } from 'src/features/sense/redux/sense.redux';
 import DateTitle from './DateTitle/DateTitle';
+import MessageContainer from './Message/Message.container';
 import MessageComponent from './Message/MessageComponent';
+import styles from './Messages.module.scss';
 
 type Props = {
   messages: SenseItem[] | LLMMessage[];
@@ -24,7 +24,7 @@ function Messages({ messages, currentChatId }: Props) {
 
   useEffect(() => {
     setShowItemsLength(DEFAULT_ITEMS_LENGTH);
-  }, [currentChatId]);
+  }, []);
 
   useEffect(() => {
     if (!ref.current) {
@@ -32,12 +32,10 @@ function Messages({ messages, currentChatId }: Props) {
     }
 
     ref.current.scrollTop = ref.current.scrollHeight;
-  }, [ref, messages]);
+  }, []);
 
   function setMore() {
-    setShowItemsLength(
-      (showItemsLength) => showItemsLength + LOAD_MORE_ITEMS_LENGTH
-    );
+    setShowItemsLength((showItemsLength) => showItemsLength + LOAD_MORE_ITEMS_LENGTH);
   }
 
   const messagesByDateAll = useMemo(() => {

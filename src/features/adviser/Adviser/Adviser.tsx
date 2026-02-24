@@ -1,7 +1,8 @@
-import React, { useEffect, useState, useRef } from 'react';
 import cx from 'classnames';
+import React, { useEffect, useRef, useState } from 'react';
 import { localStorageKeys } from 'src/constants/localStorageKeys';
 import styles from './Adviser.module.scss';
+
 // import TypeIt from 'typeit-react';
 
 const adviserAudioKey = localStorageKeys.settings.adviserAudio;
@@ -54,8 +55,7 @@ function play(text: string) {
   const voiceLS = localStorage.getItem(adviserVoiceKey);
 
   utterThis.voice =
-    synth.getVoices().find((voice) => voice.name === voiceLS) ||
-    synth.getVoices()[0];
+    synth.getVoices().find((voice) => voice.name === voiceLS) || synth.getVoices()[0];
 
   synth.speak(utterThis);
 }
@@ -110,7 +110,7 @@ function Adviser({
     return () => {
       synth.cancel();
     };
-  }, [children, ref, color, isOpen]);
+  }, [color, isOpen]);
 
   function handleInteraction(e: React.MouseEvent | React.KeyboardEvent) {
     const { target, currentTarget } = e;

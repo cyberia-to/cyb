@@ -1,8 +1,8 @@
-import { useSigningClient } from 'src/contexts/signerClient';
-import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 import { Coin } from '@cosmjs/launchpad';
 import { useMutation } from '@tanstack/react-query';
 import { keplrConstants } from 'src/constants/keplr';
+import { useSigningClient } from 'src/contexts/signerClient';
+import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 
 type Props = {
   contractAddress: string;

@@ -28,6 +28,16 @@
   border-radius: 50%;
 }
 
+.placeholder {
+  background: linear-gradient(135deg, #1a2a3a 0%, #2a3a4a 100%);
+  animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 0.7; }
+}
+
 .buttonContainerAvatar {
   color: #36d6ae;
   background: transparent;

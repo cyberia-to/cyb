@@ -1,9 +1,9 @@
+import { ActionBar, Pane } from '@cybercongress/gravity';
 import { Link } from 'react-router-dom';
-import { Pane, ActionBar } from '@cybercongress/gravity';
-import ActionBarContainer from '../Search/ActionBarContainer';
-import { trimString } from '../../utils/utils';
 import { useDevice } from 'src/contexts/device';
 import { AccountValue } from 'src/types/defaultAccount';
+import { trimString } from '../../utils/utils';
+import ActionBarContainer from '../Search/ActionBarContainer';
 
 type Props = {
   addressActive: AccountValue | null;
@@ -14,13 +14,7 @@ type Props = {
   textBtn: string;
 };
 
-function ActionBarCont({
-  addressActive,
-  keywordHash,
-  updateFunc,
-  rankLink,
-  textBtn,
-}: Props) {
+function ActionBarCont({ addressActive, keywordHash, updateFunc, rankLink, textBtn }: Props) {
   const { isMobile: mobile } = useDevice();
 
   if (!mobile && addressActive) {
@@ -37,8 +31,7 @@ function ActionBarCont({
     return (
       <ActionBar>
         <Pane fontSize="18px">
-          this {trimString(addressActive.bech32, 8, 6)} cyber address is
-          read-only
+          this {trimString(addressActive.bech32, 8, 6)} cyber address is read-only
         </Pane>
       </ActionBar>
     );

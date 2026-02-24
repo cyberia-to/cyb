@@ -4,12 +4,12 @@ function useLog(): [
   string[],
   (messages: string[] | string) => void,
   (message: string) => void,
-  () => void
+  () => void,
 ] {
   const [logMessages, setLogMessages] = useState<string[]>([]);
 
   const appendLog = (messages: string[] | string) => {
-    const items = messages instanceof Array ? messages : [messages];
+    const items = Array.isArray(messages) ? messages : [messages];
     setLogMessages((prev) => [...prev, ...items]);
   };
 

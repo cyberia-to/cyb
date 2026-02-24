@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from 'src/contexts/queryClient';
-import styles from './styles.scss';
 import { trimString } from '../../../../utils/utils';
+import styles from './styles.scss';
 
 export function CardItem({ title, value }) {
   return (

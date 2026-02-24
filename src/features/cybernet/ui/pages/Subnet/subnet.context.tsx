@@ -1,28 +1,19 @@
 import React, { useMemo } from 'react';
 import { useParams } from 'react-router-dom';
-
-import useCurrentAddress from 'src/hooks/useCurrentAddress';
-import {
-  SubnetHyperParameters,
-  SubnetInfo,
-  SubnetNeuron,
-} from 'src/features/cybernet/types';
+import { SubnetHyperParameters, SubnetInfo, SubnetNeuron } from 'src/features/cybernet/types';
 import useCybernetContract from 'src/features/cybernet/ui/useQueryCybernetContract.refactor';
+import useCurrentAddress from 'src/hooks/useCurrentAddress';
 import useCurrentSubnetGrades from './useCurrentSubnetGrades';
 
 const SubnetContext = React.createContext<{
   subnetQuery: ReturnType<typeof useCybernetContract<SubnetInfo>>;
-  hyperparamsQuery: ReturnType<
-    typeof useCybernetContract<SubnetHyperParameters>
-  >;
+  hyperparamsQuery: ReturnType<typeof useCybernetContract<SubnetHyperParameters>>;
   neuronsQuery: ReturnType<typeof useCybernetContract<SubnetNeuron[]>>;
 
   addressRegisteredInSubnet: boolean;
   isRootSubnet: boolean;
   netuid: number;
-  subnetRegistrationQuery: ReturnType<
-    typeof useCybernetContract<number | null>
-  >;
+  subnetRegistrationQuery: ReturnType<typeof useCybernetContract<number | null>>;
   grades: ReturnType<typeof useCurrentSubnetGrades>;
 
   // refetch: () => void;
@@ -123,9 +114,7 @@ function SubnetProvider({ children }: { children: React.ReactNode }) {
     // subnetUidQuery,
   ]);
 
-  return (
-    <SubnetContext.Provider value={value}>{children}</SubnetContext.Provider>
-  );
+  return <SubnetContext.Provider value={value}>{children}</SubnetContext.Provider>;
 }
 
 export default SubnetProvider;

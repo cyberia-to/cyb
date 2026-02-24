@@ -12,9 +12,7 @@ const renderColumnsData = () => {
     }),
     columnHelper.accessor('active', {
       header: 'active',
-      cell: (info) => (
-        <Dot color={info.getValue() ? 'green' : 'red'} animation />
-      ),
+      cell: (info) => <Dot color={info.getValue() ? 'green' : 'red'} animation />,
     }),
     columnHelper.accessor('destinationChainId', {
       header: 'destination chain id',

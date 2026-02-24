@@ -1,11 +1,11 @@
-import SubnetNeuronsTable from './SubnetNeuronsTable/SubnetNeuronsTable';
-import { useCurrentSubnet, useSubnet } from '../../subnet.context';
 import Display from 'src/components/containerGradient/Display/Display';
-import useCybernetTexts from 'src/features/cybernet/ui/useCybernetTexts';
-import { useCurrentContract } from 'src/features/cybernet/ui/cybernet.context';
-import { checkIsMLVerse } from 'src/features/cybernet/ui/utils/verses';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
+import { useCurrentContract } from 'src/features/cybernet/ui/cybernet.context';
+import useCybernetTexts from 'src/features/cybernet/ui/useCybernetTexts';
+import { checkIsMLVerse } from 'src/features/cybernet/ui/utils/verses';
+import { useCurrentSubnet } from '../../subnet.context';
 import SubnetMentorsActionBar from './SubnetMentorsActionBar/SubnetMentorsActionBar';
+import SubnetNeuronsTable from './SubnetNeuronsTable/SubnetNeuronsTable';
 
 type Props = {
   addressRegisteredInSubnet: boolean;
@@ -30,9 +30,7 @@ function SubnetNeurons({ addressRegisteredInSubnet }: Props) {
     <Display noPaddingX noPaddingY>
       <SubnetNeuronsTable />
 
-      {addressRegisteredInSubnet && !isRootSubnet && !isMLVerse && (
-        <SubnetMentorsActionBar />
-      )}
+      {addressRegisteredInSubnet && !isRootSubnet && !isMLVerse && <SubnetMentorsActionBar />}
     </Display>
   );
 }

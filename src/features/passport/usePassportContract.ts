@@ -1,10 +1,7 @@
+import { equals } from 'ramda';
 import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from 'src/contexts/queryClient';
-import { equals } from 'ramda';
-import {
-  PassportContractQuery,
-  queryPassportContract,
-} from 'src/services/soft.js/api/passport';
+import { PassportContractQuery, queryPassportContract } from 'src/services/soft.js/api/passport';
 
 type Props = {
   query: PassportContractQuery;
@@ -53,7 +50,7 @@ function usePassportContract<DataType>({ query, skip }: Props) {
 
     lastQuery.current = query;
     queryContract(query);
-  }, [query, skip]);
+  }, [query, skip, queryContract]);
 
   return {
     data,

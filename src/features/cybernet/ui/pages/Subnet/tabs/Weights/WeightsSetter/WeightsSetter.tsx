@@ -1,11 +1,8 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { ActionBar, InputNumber } from 'src/components';
-import styles from './WeightsSetter.module.scss';
-import { useAdviser } from 'src/features/adviser/context';
-import useExecuteCybernetContract from '../../../../../useExecuteCybernetContract';
-import { usePreviousPage } from 'src/contexts/previousPage';
 import { sessionStorageKeys } from 'src/constants/sessionStorageKeys';
 import { useSubnet } from '../../../subnet.context';
+import styles from './WeightsSetter.module.scss';
 
 const DEFAULT_WEIGHT = 5;
 
@@ -24,20 +21,16 @@ function getSSData() {
 function WeightsSetter({ callback, weights: w }: Props) {
   const { subnetQuery, neuronsQuery } = useSubnet();
 
-  const w2 = w?.reduce((acc, [uid, value], i) => {
+  const w2 = w?.reduce((acc, [uid, value], _i) => {
     acc[uid] = value;
     return acc;
   }, {});
 
-  const {
-    max_weights_limit: maxWeightsLimit,
-    subnetwork_n: length,
-    netuid,
-  } = subnetQuery.data!;
+  const { max_weights_limit: maxWeightsLimit, subnetwork_n: length, netuid } = subnetQuery.data!;
 
   const neurons = neuronsQuery.data || [];
 
-  const ssData = getSSData()?.[netuid];
+  const _ssData = getSSData()?.[netuid];
 
   const [weights, setWeights] = useState(
     // ssData ||

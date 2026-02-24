@@ -1,5 +1,5 @@
-import { Link } from 'react-router-dom';
 import ReactJson from 'react-json-view';
+import { Link } from 'react-router-dom';
 import styles from './styles.scss';
 
 function JsonView({ src, strLength }) {

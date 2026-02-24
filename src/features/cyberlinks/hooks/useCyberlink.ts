@@ -1,12 +1,12 @@
 import { useMutation } from '@tanstack/react-query';
+import { useEffect } from 'react';
 import { useBackend } from 'src/contexts/backend/backend';
 import { useSigningClient } from 'src/contexts/signerClient';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
+import useAddToIPFS from 'src/features/ipfs/hooks/useAddToIPFS';
 import useCurrentAddress from 'src/hooks/useCurrentAddress';
 import useWaitForTransaction from 'src/hooks/useWaitForTransaction';
 import { sendCyberlink } from 'src/services/neuron/neuronApi';
-import { useEffect } from 'react';
-import useAddToIPFS from 'src/features/ipfs/hooks/useAddToIPFS';
 
 type Props = {
   toCid: string | undefined;
@@ -91,18 +91,10 @@ export function useCyberlinkWithWaitAndAdviser({ to, from, callback }: Props2) {
   });
 
   const isLoading =
-    addToIPFSTo.isLoading ||
-    addToIPFSFrom.isLoading ||
-    cyberlink.isLoading ||
-    waitForTx.isLoading;
-  const error =
-    addToIPFSTo.error ||
-    addToIPFSFrom.error ||
-    cyberlink.error ||
-    waitForTx.error;
+    addToIPFSTo.isLoading || addToIPFSFrom.isLoading || cyberlink.isLoading || waitForTx.isLoading;
+  const error = addToIPFSTo.error || addToIPFSFrom.error || cyberlink.error || waitForTx.error;
 
-  const isReady =
-    addToIPFSTo.isReady && addToIPFSFrom.isReady && cyberlink.isReady;
+  const isReady = addToIPFSTo.isReady && addToIPFSFrom.isReady && cyberlink.isReady;
 
   useAdviserTexts({
     isLoading,

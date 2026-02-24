@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import BigNumber from 'bignumber.js';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from 'src/contexts/queryClient';
 
 const keyQuery = 'negentropy';
@@ -28,9 +28,7 @@ function useGetNegentropy(refetchInterval: number | undefined) {
       if (lastgraphStatsLs !== null) {
         const oldData = JSON.parse(lastgraphStatsLs);
         const timeChange = data!.timestamp - oldData.timestamp;
-        const amountChange = new BigNumber(data!.negentropy)
-          .minus(oldData.negentropy)
-          .toNumber();
+        const amountChange = new BigNumber(data!.negentropy).minus(oldData.negentropy).toNumber();
         if (timeChange > 0 && amountChange > 0) {
           setChangeTimeAmount({
             time: timeChange,

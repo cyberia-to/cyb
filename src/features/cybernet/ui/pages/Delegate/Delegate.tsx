@@ -1,28 +1,24 @@
 /* eslint-disable react/no-unstable-nested-components */
+
+import { createColumnHelper } from '@tanstack/react-table';
 import { useParams } from 'react-router-dom';
 import { Account, AmountDenom } from 'src/components';
 import Display from 'src/components/containerGradient/Display/Display';
 import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
-
-import DelegateActionBar from './DelegateActionBar/DelegateActionBar';
-import styles from './Delegate.module.scss';
-import {
-  Delegator,
-  Delegator as DelegatorType,
-} from 'src/features/cybernet/types';
-import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
-import { useAppSelector } from 'src/redux/hooks';
-import { selectCurrentAddress } from 'src/redux/features/pocket';
-import Table from 'src/components/Table/Table';
-import { createColumnHelper } from '@tanstack/react-table';
+import IconsNumber from 'src/components/IconsNumber/IconsNumber';
 import MusicalAddress from 'src/components/MusicalAddress/MusicalAddress';
-import subnetStyles from '../Subnet/Subnet.module.scss';
+import Table from 'src/components/Table/Table';
+import AdviserHoverWrapper from 'src/features/adviser/AdviserHoverWrapper/AdviserHoverWrapper';
+import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
+import { Delegator, Delegator as DelegatorType } from 'src/features/cybernet/types';
+import { selectCurrentAddress } from 'src/redux/features/pocket';
+import { useAppSelector } from 'src/redux/hooks';
+import { SubnetPreviewGroup } from '../../components/SubnetPreview/SubnetPreview';
 import useDelegate from '../../hooks/useDelegate';
 import useCybernetTexts from '../../useCybernetTexts';
-import { useCurrentContract, useCybernet } from '../../cybernet.context';
-import IconsNumber from 'src/components/IconsNumber/IconsNumber';
-import { SubnetPreviewGroup } from '../../components/SubnetPreview/SubnetPreview';
-import AdviserHoverWrapper from 'src/features/adviser/AdviserHoverWrapper/AdviserHoverWrapper';
+import subnetStyles from '../Subnet/Subnet.module.scss';
+import styles from './Delegate.module.scss';
+import DelegateActionBar from './DelegateActionBar/DelegateActionBar';
 
 const columnHelper = createColumnHelper<Delegator>();
 
@@ -58,9 +54,7 @@ function Delegator() {
     defaultText: `${getText('delegate')} info`,
   });
 
-  const myStake = data?.nominators.find(
-    ([address]) => address === currentAddress
-  )?.[1];
+  const myStake = data?.nominators.find(([address]) => address === currentAddress)?.[1];
 
   const nominators = data?.nominators;
 
@@ -74,10 +68,7 @@ function Delegator() {
         </Display>
       )}
 
-      <Display
-        noPadding
-        title={<DisplayTitle title={<MusicalAddress address={address} />} />}
-      >
+      <Display noPadding title={<DisplayTitle title={<MusicalAddress address={address} />} />}>
         {!loading && !data && (
           <div
             style={{
@@ -97,22 +88,14 @@ function Delegator() {
                 let content = value;
 
                 if (item === 'owner') {
-                  content = (
-                    <Account avatar address={value} markCurrentAddress />
-                  );
+                  content = <Account avatar address={value} markCurrentAddress />;
                 }
 
                 if (item === 'take') {
                   content = <span>{(value / 65535).toFixed(2) * 100}%</span>;
                 }
 
-                if (
-                  [
-                    'total_daily_return',
-                    'return_per_1000',
-                    'return_per_giga',
-                  ].includes(item)
-                ) {
+                if (['total_daily_return', 'return_per_1000', 'return_per_giga'].includes(item)) {
                   content = (
                     <div>
                       <IconsNumber value={value.amount} type="pussy" />
@@ -161,13 +144,7 @@ function Delegator() {
               columnHelper.accessor('address', {
                 header: getText('delegator'),
                 enableSorting: false,
-                cell: (info) => (
-                  <Account
-                    address={info.getValue()}
-                    avatar
-                    markCurrentAddress
-                  />
-                ),
+                cell: (info) => <Account address={info.getValue()} avatar markCurrentAddress />,
               }),
               columnHelper.accessor('amount', {
                 header: 'teach power',
@@ -205,11 +182,7 @@ function Delegator() {
         </Display>
       )}
 
-      <DelegateActionBar
-        address={address}
-        stakedAmount={myStake}
-        onSuccess={refetch}
-      />
+      <DelegateActionBar address={address} stakedAmount={myStake} onSuccess={refetch} />
     </>
   );
 }

@@ -16,8 +16,7 @@ const valueContext = {
   networks: undefined,
 };
 
-const HubProviderContext =
-  React.createContext<HubProviderContextType>(valueContext);
+const HubProviderContext = React.createContext<HubProviderContextType>(valueContext);
 
 export function useHub() {
   return useContext(HubProviderContext);
@@ -37,11 +36,7 @@ function HubProvider({ children }: { children: React.ReactNode }) {
     [networks, tokens, channels]
   );
 
-  return (
-    <HubProviderContext.Provider value={valueMemo}>
-      {children}
-    </HubProviderContext.Provider>
-  );
+  return <HubProviderContext.Provider value={valueMemo}>{children}</HubProviderContext.Provider>;
 }
 
 export default HubProvider;

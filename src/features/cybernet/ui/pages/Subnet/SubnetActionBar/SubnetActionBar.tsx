@@ -1,17 +1,16 @@
 import { useState } from 'react';
-
+import { AmountDenom } from 'src/components';
 import ActionBar from 'src/components/actionBar';
 import { useAdviser } from 'src/features/adviser/context';
+import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
+import { ContractTypes } from 'src/features/cybernet/types';
 import { selectCurrentAddress } from 'src/redux/features/pocket';
 import { useAppSelector } from 'src/redux/hooks';
-import useExecuteCybernetContract from '../../../useExecuteCybernetContract';
+import { useCurrentContract } from '../../../cybernet.context';
 import useCybernetTexts from '../../../useCybernetTexts';
-import { useCurrentContract, useCybernet } from '../../../cybernet.context';
-import { ContractTypes } from 'src/features/cybernet/types';
-import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
-import { AmountDenom } from 'src/components';
-import styles from './SubnetActionBar.module.scss';
+import useExecuteCybernetContract from '../../../useExecuteCybernetContract';
 import { useCurrentSubnet } from '../subnet.context';
+import styles from './SubnetActionBar.module.scss';
 
 type Props = {};
 
@@ -23,8 +22,7 @@ enum Steps {
 function SubnetActionBar({}: Props) {
   const [step, setStep] = useState(Steps.INITIAL);
 
-  const { netuid, subnetQuery, subnetRegistrationQuery, neuronsQuery } =
-    useCurrentSubnet();
+  const { netuid, subnetQuery, subnetRegistrationQuery, neuronsQuery } = useCurrentSubnet();
 
   const address = useAppSelector(selectCurrentAddress);
 

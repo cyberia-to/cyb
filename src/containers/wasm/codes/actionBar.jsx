@@ -1,31 +1,26 @@
 /* eslint-disable jsx-a11y/control-has-associated-label */
-import { useEffect, useState, useRef } from 'react';
+
 import { ActionBar as ActionBarContainer, Pane } from '@cybercongress/gravity';
-import { useSigningClient } from 'src/contexts/signerClient';
+import { useEffect, useRef, useState } from 'react';
 import Button from 'src/components/btnGrd';
 import AddFileButton from 'src/components/buttons/AddFile/AddFile';
-import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 import { MEMO_KEPLR } from 'src/constants/config';
+import { useSigningClient } from 'src/contexts/signerClient';
 import useCurrentAddress from 'src/hooks/useCurrentAddress';
+import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 
 import { getTxs } from 'src/services/transactions/lcd';
 import {
-  ActionBarContentText,
-  Dots,
-  TransactionSubmitted,
-  Confirmed,
-  TransactionError,
   Account,
+  ActionBarContentText,
+  Confirmed,
+  Dots,
+  TransactionError,
+  TransactionSubmitted,
 } from '../../../components';
 import { LEDGER } from '../../../utils/config';
 
-const {
-  STAGE_INIT,
-  STAGE_ERROR,
-  STAGE_CONFIRMING,
-  STAGE_CONFIRMED,
-  STAGE_SUBMITTED,
-} = LEDGER;
+const { STAGE_INIT, STAGE_ERROR, STAGE_CONFIRMING, STAGE_CONFIRMED, STAGE_SUBMITTED } = LEDGER;
 
 function ActionBar({ updateFnc }) {
   const { signer, signingClient } = useSigningClient();
@@ -70,7 +65,7 @@ function ActionBar({ updateFnc }) {
     };
     confirmTx();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [txHash]);
+  }, [txHash, updateFnc]);
 
   const uploadCode = async () => {
     setStage(STAGE_SUBMITTED);
@@ -96,8 +91,7 @@ function ActionBar({ updateFnc }) {
         } else {
           setErrorMessage(
             <span>
-              Add address <Account margin="0 5px" address={address} /> to your
-              pocket or make active{' '}
+              Add address <Account margin="0 5px" address={address} /> to your pocket or make active{' '}
             </span>
           );
           setStage(STAGE_ERROR);
@@ -136,9 +130,7 @@ function ActionBar({ updateFnc }) {
       <ActionBarContainer>
         <Pane width="65%" display="flex">
           <ActionBarContentText>
-            <div>
-              {wasm !== null && wasm.name ? wasm.name : 'Select .wasm file'}
-            </div>
+            <div>{wasm?.name ? wasm.name : 'Select .wasm file'}</div>
             <input
               ref={inputOpenFileRef}
               onChange={() => onFilePickerChange(inputOpenFileRef)}
@@ -146,15 +138,9 @@ function ActionBar({ updateFnc }) {
               accept=".wasm"
               style={{ display: 'none' }}
             />
-            <AddFileButton
-              isRemove={wasm}
-              onClick={wasm ? onClickClear : showOpenFileDlg}
-            />
+            <AddFileButton isRemove={wasm} onClick={wasm ? onClickClear : showOpenFileDlg} />
           </ActionBarContentText>
-          <Button
-            disabled={wasm === null || !signer}
-            onClick={() => uploadCode()}
-          >
+          <Button disabled={wasm === null || !signer} onClick={() => uploadCode()}>
             Upload
           </Button>
         </Pane>
@@ -177,22 +163,11 @@ function ActionBar({ updateFnc }) {
   }
 
   if (stage === STAGE_CONFIRMED) {
-    return (
-      <Confirmed
-        txHash={txHash}
-        txHeight={txHeight}
-        onClickBtnClose={() => clearState()}
-      />
-    );
+    return <Confirmed txHash={txHash} txHeight={txHeight} onClickBtnClose={() => clearState()} />;
   }
 
   if (stage === STAGE_ERROR && errorMessage !== null) {
-    return (
-      <TransactionError
-        errorMessage={errorMessage}
-        onClickBtn={() => clearState()}
-      />
-    );
+    return <TransactionError errorMessage={errorMessage} onClickBtn={() => clearState()} />;
   }
 
   return null;

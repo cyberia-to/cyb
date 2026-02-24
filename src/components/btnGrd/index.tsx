@@ -128,9 +128,7 @@ function Button({
         ) : (
           <>
             {text || children}
-            {img && (
-              <img style={{ width: 20, height: 20 }} alt="img" src={img} />
-            )}
+            {img && <img style={{ width: 20, height: 20 }} alt="img" src={img} />}
           </>
         )}
       </GradientContainer>

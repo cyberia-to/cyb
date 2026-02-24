@@ -1,25 +1,20 @@
-import React from 'react';
-import { useCybernet } from '../../../cybernet.context';
 import { AmountDenom } from 'src/components';
-import styles from './Banner.module.scss';
 import { TypingText } from 'src/containers/temple/pages/play/PlayBanerContent';
+import { useCybernet } from '../../../cybernet.context';
+import styles from './Banner.module.scss';
 
 function Banner() {
   const { contracts } = useCybernet();
 
   const totalPaid = contracts.reduce(
-    (acc, contract) =>
-      acc + Number(contract.economy?.total_rewards?.amount || 0),
+    (acc, contract) => acc + Number(contract.economy?.total_rewards?.amount || 0),
     0
   );
 
   return (
     <div className={styles.banner}>
       <h2>
-        <TypingText
-          content="teaching and learning must be rewarded"
-          delay={30}
-        />
+        <TypingText content="teaching and learning must be rewarded" delay={30} />
       </h2>
 
       <div className={styles.center}>

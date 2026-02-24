@@ -1,32 +1,25 @@
-import { useEffect, useState } from 'react';
+import { Coin } from '@cosmjs/launchpad';
 
 import BigNumber from 'bignumber.js';
-import useSetActiveAddress from 'src/hooks/useSetActiveAddress';
+import { useEffect, useState } from 'react';
+import { useSelector } from 'react-redux';
+import { CHAIN_ID, DEFAULT_GAS_LIMITS } from 'src/constants/config';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { useSigningClient } from 'src/contexts/signerClient';
-import { Option } from 'src/types';
-import { useSelector } from 'react-redux';
-import { Coin } from '@cosmjs/launchpad';
-import { useIbcDenom } from 'src/contexts/ibcDenom';
+import useSetActiveAddress from 'src/hooks/useSetActiveAddress';
 import { RootState } from 'src/redux/store';
-import { CHAIN_ID, DEFAULT_GAS_LIMITS } from 'src/constants/config';
+import { Option } from 'src/types';
 import { Account, ActionBar as ActionBarCenter } from '../../components';
+import { sortReserveCoinDenoms } from '../../pages/teleport/swap/utils';
 import { LEDGER } from '../../utils/config';
 import { convertAmountReverce, selectNetworkImg } from '../../utils/utils';
-
 import ActionBarStaps from './actionBarSteps';
-import { sortReserveCoinDenoms } from '../../pages/teleport/swap/utils';
 import { TypeTab, TypeTabEnum } from './type';
 
 const POOL_TYPE_INDEX = 1;
 
-const {
-  STAGE_INIT,
-  STAGE_ERROR,
-  STAGE_SUBMITTED,
-  STAGE_CONFIRMING,
-  STAGE_CONFIRMED,
-} = LEDGER;
+const { STAGE_INIT, STAGE_ERROR, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED } = LEDGER;
 
 const fee = {
   amount: [],
@@ -64,11 +57,10 @@ function ActionBar({ stateActionBar }: Props) {
   const { tracesDenom } = useIbcDenom();
   const [stage, setStage] = useState(STAGE_INIT);
   const [txHash, setTxHash] = useState<Option<string>>(undefined);
-  const [txHashIbc, setTxHashIbc] = useState(null);
-  const [linkIbcTxs, setLinkIbcTxs] = useState<Option<string>>(undefined);
+  const [_txHashIbc, setTxHashIbc] = useState(null);
+  const [_linkIbcTxs, setLinkIbcTxs] = useState<Option<string>>(undefined);
   const [txHeight, setTxHeight] = useState<Option<number>>(undefined);
-  const [errorMessage, setErrorMessage] =
-    useState<Option<string | JSX.Element>>(undefined);
+  const [errorMessage, setErrorMessage] = useState<Option<string | JSX.Element>>(undefined);
 
   const {
     tokenAAmount,
@@ -111,7 +103,7 @@ function ActionBar({ stateActionBar }: Props) {
     };
     confirmTx();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryClient, txHash]);
+  }, [queryClient, txHash, updateFunc]);
 
   const createPool = async () => {
     if (signer && signingClient) {
@@ -126,15 +118,9 @@ function ActionBar({ stateActionBar }: Props) {
       let depositCoins: Coin[] = [];
 
       if ([tokenA, tokenB].sort()[0] === tokenA) {
-        depositCoins = [
-          coinFunc(reduceAmountA, tokenA),
-          coinFunc(reduceAmountB, tokenB),
-        ];
+        depositCoins = [coinFunc(reduceAmountA, tokenA), coinFunc(reduceAmountB, tokenB)];
       } else {
-        depositCoins = [
-          coinFunc(reduceAmountB, tokenB),
-          coinFunc(reduceAmountA, tokenA),
-        ];
+        depositCoins = [coinFunc(reduceAmountB, tokenB), coinFunc(reduceAmountA, tokenA)];
       }
 
       try {
@@ -165,7 +151,7 @@ function ActionBar({ stateActionBar }: Props) {
       setStage(STAGE_SUBMITTED);
 
       let poolId = '';
-      if (Object.prototype.hasOwnProperty.call(myPools, selectMyPool)) {
+      if (Object.hasOwn(myPools, selectMyPool)) {
         poolId = myPools[selectMyPool].id;
       }
       const depositCoins = coinFunc(Number(amountPoolCoin), selectMyPool);
@@ -189,8 +175,7 @@ function ActionBar({ stateActionBar }: Props) {
         } else {
           setErrorMessage(
             <span>
-              Add address <Account margin="0 5px" address={address} /> to your
-              pocket or make active{' '}
+              Add address <Account margin="0 5px" address={address} /> to your pocket or make active{' '}
             </span>
           );
           setStage(STAGE_ERROR);
@@ -216,12 +201,8 @@ function ActionBar({ stateActionBar }: Props) {
         [tokenB]: amountY,
       };
 
-      const [{ coinDecimals: coinDecimalsA }] = tracesDenom(
-        arrangedReserveCoinDenoms[0]
-      );
-      const [{ coinDecimals: coinDecimalsB }] = tracesDenom(
-        arrangedReserveCoinDenoms[1]
-      );
+      const [{ coinDecimals: coinDecimalsA }] = tracesDenom(arrangedReserveCoinDenoms[0]);
+      const [{ coinDecimals: coinDecimalsB }] = tracesDenom(arrangedReserveCoinDenoms[1]);
 
       deposit[arrangedReserveCoinDenoms[0]] = convertAmountReverce(
         deposit[arrangedReserveCoinDenoms[0]],
@@ -234,14 +215,8 @@ function ActionBar({ stateActionBar }: Props) {
       );
 
       const depositCoins = [
-        coinFunc(
-          deposit[arrangedReserveCoinDenoms[0]],
-          arrangedReserveCoinDenoms[0]
-        ),
-        coinFunc(
-          deposit[arrangedReserveCoinDenoms[1]],
-          arrangedReserveCoinDenoms[1]
-        ),
+        coinFunc(deposit[arrangedReserveCoinDenoms[0]], arrangedReserveCoinDenoms[0]),
+        coinFunc(deposit[arrangedReserveCoinDenoms[1]], arrangedReserveCoinDenoms[1]),
       ];
 
       try {
@@ -263,8 +238,7 @@ function ActionBar({ stateActionBar }: Props) {
         } else {
           setErrorMessage(
             <span>
-              Add address <Account margin="0 5px" address={address} /> to your
-              pocket or make active{' '}
+              Add address <Account margin="0 5px" address={address} /> to your pocket or make active{' '}
             </span>
           );
           setStage(STAGE_ERROR);

@@ -1,20 +1,20 @@
 /* eslint-disable react/no-unstable-nested-components */
-import { useMemo } from 'react';
-import { createColumnHelper } from '@tanstack/react-table';
-import Table from 'src/components/Table/Table';
-import { useLocation, useNavigate } from 'react-router-dom';
-import { Delegator } from 'src/features/cybernet/types';
-import { Account } from 'src/components';
 
-import useCurrentAddress from 'src/hooks/useCurrentAddress';
+import { createColumnHelper } from '@tanstack/react-table';
+import { useMemo } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { Account } from 'src/components';
+import Table from 'src/components/Table/Table';
 import { tableIDs } from 'src/components/Table/tableIDs';
-import useCybernetTexts from '../../../useCybernetTexts';
-import { cybernetRoutes } from '../../../routes';
-import { useCybernet } from '../../../cybernet.context';
-import { useDelegates } from '../../../hooks/useDelegate';
-import useCurrentAccountStake from '../../../hooks/useCurrentAccountStake';
+import { Delegator } from 'src/features/cybernet/types';
+import useCurrentAddress from 'src/hooks/useCurrentAddress';
 import IconsNumber from '../../../../../../components/IconsNumber/IconsNumber';
 import { SubnetPreviewGroup } from '../../../components/SubnetPreview/SubnetPreview';
+import { useCybernet } from '../../../cybernet.context';
+import useCurrentAccountStake from '../../../hooks/useCurrentAccountStake';
+import { useDelegates } from '../../../hooks/useDelegate';
+import { cybernetRoutes } from '../../../routes';
+import useCybernetTexts from '../../../useCybernetTexts';
 
 type Props = {};
 
@@ -55,7 +55,7 @@ function DelegatesTable({}: Props) {
     return Number(((value / 1_000_000_000) * 100 * 365).toFixed(2));
   }
 
-  const subnets = subnetsQuery.data || [];
+  const _subnets = subnetsQuery.data || [];
 
   const navigate = useNavigate();
 
@@ -72,11 +72,7 @@ function DelegatesTable({}: Props) {
               address={address}
               avatar
               markCurrentAddress
-              link={cybernetRoutes.delegator.getLink(
-                'pussy',
-                contractName,
-                address
-              )}
+              link={cybernetRoutes.delegator.getLink('pussy', contractName, address)}
             />
           );
         },
@@ -164,13 +160,11 @@ function DelegatesTable({}: Props) {
     }
 
     return cols;
-  }, [currentAddress, getText, subnets, contractName, isMyLearnerPage]);
+  }, [getText, contractName, isMyLearnerPage, getMyStake, getTotalStake, getYieldValue]);
 
   // use 1 loop
   const myMentors =
-    stakeQuery.data
-      ?.filter(({ stake }) => stake > 0)
-      ?.map((stake) => stake.hotkey) || [];
+    stakeQuery.data?.filter(({ stake }) => stake > 0)?.map((stake) => stake.hotkey) || [];
 
   const renderData = !isMyLearnerPage
     ? data
@@ -183,9 +177,7 @@ function DelegatesTable({}: Props) {
         const index = Number(row);
         const { owner } = renderData!.find((_, i) => i === index)!;
 
-        navigate(
-          cybernetRoutes.delegator.getLink('pussy', contractName, owner)
-        );
+        navigate(cybernetRoutes.delegator.getLink('pussy', contractName, owner));
       }}
       columns={columns}
       data={renderData || []}

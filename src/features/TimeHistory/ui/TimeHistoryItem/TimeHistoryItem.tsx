@@ -1,7 +1,7 @@
 import { CreatedAt } from 'src/components';
-import styles from './TimeHistoryItem.module.scss';
 import RouteItem from '../RouteItem/RouteItem';
 import { ActionType } from '../type';
+import styles from './TimeHistoryItem.module.scss';
 
 type Props = {
   time: string;

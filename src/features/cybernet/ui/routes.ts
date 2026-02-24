@@ -21,11 +21,8 @@ export const routes = {
   },
   subnet: {
     path: `${root}/verses/:network/:nameOrAddress/faculties/:nameOrUid`,
-    getLink: (
-      network: string,
-      nameOrAddress: string,
-      nameOrUid: string | number
-    ) => `${root}/verses/${network}/${nameOrAddress}/faculties/${nameOrUid}`,
+    getLink: (network: string, nameOrAddress: string, nameOrUid: string | number) =>
+      `${root}/verses/${network}/${nameOrAddress}/faculties/${nameOrUid}`,
   },
   delegators: {
     path: `${root}/verses/:network/:nameOrAddress/mentors`,

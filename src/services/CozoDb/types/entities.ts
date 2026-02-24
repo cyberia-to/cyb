@@ -1,14 +1,13 @@
-import { PinType } from 'src/services/ipfs/types';
-import { QueuePriority } from 'src/services/QueueManager/types';
+import { PinType } from 'ipfs-core-types/src/pin';
 import { Transaction } from 'src/services/backend/services/indexer/types';
 import {
   SenseChatExtension,
   SenseLinkMeta,
-  SenseListItemtMeta,
   SenseTransactionMeta,
 } from 'src/services/backend/types/sense';
 import { IpfsContentType } from 'src/services/ipfs/types';
-import { NeuronAddress, ParticleCid, TransactionHash } from 'src/types/base';
+import { QueuePriority } from 'src/services/QueueManager/types';
+import { NeuronAddress, ParticleCid } from 'src/types/base';
 import { DtoToEntity } from 'src/types/dto';
 
 type PinEntryType = Exclude<PinType, 'all'>;
@@ -46,9 +45,7 @@ export type TransactionDbEntity = {
   neuron: NeuronAddress;
 };
 
-type SyncItemMeta = DtoToEntity<
-  (SenseLinkMeta | SenseTransactionMeta) & SenseChatExtension
->;
+type SyncItemMeta = DtoToEntity<(SenseLinkMeta | SenseTransactionMeta) & SenseChatExtension>;
 
 export type SyncStatusDbEntity = {
   entry_type: EntryType;

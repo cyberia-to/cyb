@@ -1,10 +1,10 @@
-import { getRelevance } from 'src/utils/search/utils';
 import { QueuePriority } from 'src/services/QueueManager/types';
-import { dtoListToEntity } from 'src/utils/dto';
 import { ParticleCid } from 'src/types/base';
-import { DB_VERSION, type CybCozoDb } from '../cozoDb';
-import { DbEntity, SyncQueueJobType } from '../types/entities';
+import { dtoListToEntity } from 'src/utils/dto';
+import { getRelevance } from 'src/utils/search/utils';
+import { type CybCozoDb, DB_VERSION } from '../cozoDb';
 import { SyncQueueDto } from '../types/dto';
+import { DbEntity, SyncQueueJobType } from '../types/entities';
 
 export const fetchInitialEmbeddings = async (
   saveSyncQueue: (syncItems: Partial<DbEntity>[]) => Promise<void>
@@ -12,14 +12,12 @@ export const fetchInitialEmbeddings = async (
   console.log(' [initial]fetch initial particles...');
   const relevanceParticles = await getRelevance(0, 400);
 
-  const items = relevanceParticles.result.map(
-    ({ particle }: { particle: ParticleCid }) => ({
-      id: particle,
-      data: '',
-      jobType: SyncQueueJobType.particle,
-      priority: QueuePriority.LOW,
-    })
-  ) as SyncQueueDto[];
+  const items = relevanceParticles.result.map(({ particle }: { particle: ParticleCid }) => ({
+    id: particle,
+    data: '',
+    jobType: SyncQueueJobType.particle,
+    priority: QueuePriority.LOW,
+  })) as SyncQueueDto[];
 
   await saveSyncQueue(dtoListToEntity(items));
 };
@@ -52,7 +50,7 @@ const migrate = async (db: CybCozoDb) => {
       `);
 
       console.log(`       ok: ${res2.ok}`);
-    } catch (e) {
+    } catch (_e) {
       console.log('* embeddings already exist');
     }
 
@@ -67,7 +65,7 @@ const migrate = async (db: CybCozoDb) => {
         }
     `);
       console.log(`       ok: ${res3.ok}`);
-    } catch (e) {
+    } catch (_e) {
       console.log('* embeddings semantics already exist');
     }
     console.log('    fill queue to calculate embeddings for all particles');

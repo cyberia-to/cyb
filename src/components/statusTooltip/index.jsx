@@ -1,4 +1,4 @@
-import { Pane, Text, Tooltip, Pill } from '@cybercongress/gravity';
+import { Pane, Pill, Text, Tooltip } from '@cybercongress/gravity';
 
 // const statusHeroes = {
 //   BOND_STATUS_UNSPECIFIED: 0,

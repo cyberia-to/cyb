@@ -1,22 +1,22 @@
 /* eslint-disable no-await-in-loop */
-import { useEffect, useState } from 'react';
+
 import { Pane, Text } from '@cybercongress/gravity';
+import { useEffect, useState } from 'react';
 import { connect } from 'react-redux';
 import { Link, useParams } from 'react-router-dom';
 import { useDevice } from 'src/contexts/device';
-import { getRankGrade, searchByHash } from '../../utils/search/utils';
+import { useQueryClient } from 'src/contexts/queryClient';
+import { enqueueLinksSave } from 'src/services/backend/channels/BackendQueueChannel/backendQueueSenders';
+import { mapLinkToLinkDto } from 'src/services/CozoDb/mapping';
 import { getIpfsHash } from 'src/utils/ipfs/helpers';
 import { Loading, MainContainer } from '../../components';
-import useGetCybernomics from './useGetTokensInfo';
-import SearchTokenInfo from './searchTokensInfo';
-import InfoTokens from './infoTokens';
-import ActionBarCont from './actionBarContainer';
-import useSetActiveAddress from './useSetActiveAddress';
+import { getRankGrade, searchByHash } from '../../utils/search/utils';
 import { coinDecimals } from '../../utils/utils';
-import { useQueryClient } from 'src/contexts/queryClient';
-import { useBackend } from 'src/contexts/backend/backend';
-import { mapLinkToLinkDto } from 'src/services/CozoDb/mapping';
-import { enqueueLinksSave } from 'src/services/backend/channels/BackendQueueChannel/backendQueueSenders';
+import ActionBarCont from './actionBarContainer';
+import InfoTokens from './infoTokens';
+import SearchTokenInfo from './searchTokensInfo';
+import useGetCybernomics from './useGetTokensInfo';
+import useSetActiveAddress from './useSetActiveAddress';
 
 function ContainerGrid({ children }) {
   return (
@@ -55,8 +55,7 @@ function Market({ defaultAccount }) {
   const queryClient = useQueryClient();
 
   const { tab = 'BOOT' } = useParams();
-  const { gol, cyb, boot, hydrogen, milliampere, millivolt, tocyb } =
-    useGetCybernomics();
+  const { gol, cyb, boot, hydrogen, milliampere, millivolt, tocyb } = useGetCybernomics();
   const [resultSearch, setResultSearch] = useState([]);
   const [loadingSearch, setLoadingSearch] = useState(true);
   const [keywordHash, setKeywordHash] = useState('');
@@ -83,9 +82,7 @@ function Market({ defaultAccount }) {
           setAllPage(Math.ceil(parseFloat(response.pagination.total) / 10));
           setPage((item) => item + 1);
 
-          enqueueLinksSave(
-            response.result.map((l) => mapLinkToLinkDto(hash, l.particle))
-          );
+          enqueueLinksSave(response.result.map((l) => mapLinkToLinkDto(hash, l.particle)));
         } else {
           setResultSearch([]);
           setLoadingSearch(false);
@@ -96,7 +93,7 @@ function Market({ defaultAccount }) {
       }
     };
     getFirstItem();
-  }, [queryClient, tab, update]);
+  }, [queryClient, tab]);
 
   const fetchMoreData = async () => {
     // a fake async api call like which sends
@@ -106,9 +103,7 @@ function Market({ defaultAccount }) {
     if (response.result) {
       links = reduceSearchResults(response, tab);
 
-      enqueueLinksSave(
-        response.result.map((l) => mapLinkToLinkDto(keywordHash, l.particle))
-      );
+      enqueueLinksSave(response.result.map((l) => mapLinkToLinkDto(keywordHash, l.particle)));
     }
 
     setTimeout(() => {
@@ -119,7 +114,7 @@ function Market({ defaultAccount }) {
 
   useEffect(() => {
     setRankLink(null);
-  }, [update]);
+  }, []);
 
   const onClickRank = async (key) => {
     if (rankLink === key) {
@@ -133,17 +128,11 @@ function Market({ defaultAccount }) {
     <>
       <MainContainer>
         {addressActive === null && (
-          <Pane
-            boxShadow="0px 0px 5px #36d6ae"
-            paddingX={20}
-            paddingY={20}
-            marginY={20}
-          >
+          <Pane boxShadow="0px 0px 5px #36d6ae" paddingX={20} paddingY={20} marginY={20}>
             <Text fontSize="16px" color="#fff">
               {/* eslint-disable-next-line react/no-unescaped-entities */}
-              Subscribe to someone to make your feed work. Until then, we'll
-              show you the project feed. Start by adding a ledger to{' '}
-              <Link to="/">your pocket</Link>.
+              Subscribe to someone to make your feed work. Until then, we'll show you the project
+              feed. Start by adding a ledger to <Link to="/">your pocket</Link>.
             </Text>
           </Pane>
         )}
@@ -152,9 +141,7 @@ function Market({ defaultAccount }) {
 
           {tab === 'H' && <InfoTokens selectedTokens={tab} data={hydrogen} />}
 
-          {tab === 'A' && (
-            <InfoTokens selectedTokens={tab} data={milliampere} />
-          )}
+          {tab === 'A' && <InfoTokens selectedTokens={tab} data={milliampere} />}
 
           {tab === 'V' && <InfoTokens selectedTokens={tab} data={millivolt} />}
 
@@ -171,11 +158,7 @@ function Market({ defaultAccount }) {
           )}
 
           {tab === 'CYB' && (
-            <InfoTokens
-              selectedTokens={tab}
-              data={cyb}
-              titlePrice="Port price of GCYB in ETH"
-            />
+            <InfoTokens selectedTokens={tab} data={cyb} titlePrice="Port price of GCYB in ETH" />
           )}
         </ContainerGrid>
         <ContainerGrid>
@@ -190,9 +173,7 @@ function Market({ defaultAccount }) {
               }}
             >
               <Loading />
-              <div style={{ color: '#fff', marginTop: 20, fontSize: 20 }}>
-                Searching
-              </div>
+              <div style={{ color: '#fff', marginTop: 20, fontSize: 20 }}>Searching</div>
             </div>
           ) : (
             <SearchTokenInfo

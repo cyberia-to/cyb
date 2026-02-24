@@ -1,7 +1,7 @@
-import { InputNumber } from 'src/components';
-import { useSubnet } from '../subnet.context';
 import { useEffect, useRef } from 'react';
+import { InputNumber } from 'src/components';
 import { usePreviousPage } from 'src/contexts/previousPage';
+import { useSubnet } from '../subnet.context';
 
 type Props = {
   uid: number;

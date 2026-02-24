@@ -18,11 +18,7 @@ class BroadcastChannelSender {
     this.channel = new BroadcastChannel(CYB_BROADCAST_CHANNEL);
   }
 
-  public postServiceStatus(
-    name: ServiceName,
-    status: ServiceStatus,
-    message?: string
-  ) {
+  public postServiceStatus(name: ServiceName, status: ServiceStatus, message?: string) {
     this.channel.postMessage({
       type: 'service_status',
       value: { name, status, message },

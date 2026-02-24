@@ -1,9 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { MEMO_KEPLR } from 'src/constants/config';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { useSigningClient } from 'src/contexts/signerClient';
-import JsonSchemaParse from './JsonSchemaParse';
 import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
-import { MEMO_KEPLR } from 'src/constants/config';
+import JsonSchemaParse from './JsonSchemaParse';
 
 // const coinsPlaceholder = [{ denom: BASE_DENOM, amount: '1' }];
 
@@ -58,7 +58,7 @@ function RenderAbiExecute({ contractAddress, schema, updateFnc }) {
     };
     confirmTx();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryClient, txHash, activeKey]);
+  }, [queryClient, txHash, activeKey, updateFnc]);
 
   const runExecute = async ({ formData }, key) => {
     if (!signer || !formData) {

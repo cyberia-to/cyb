@@ -1,18 +1,16 @@
-import { Observable, defer, from, map, combineLatest } from 'rxjs';
+import { combineLatest, defer, from, map, Observable } from 'rxjs';
 import BroadcastChannelSender from 'src/services/backend/channels/BroadcastChannelSender';
 import { broadcastStatus } from 'src/services/backend/channels/broadcastStatus';
-import { CybIpfsNode } from 'src/services/ipfs/types';
 import { mapPinToEntity } from 'src/services/CozoDb/mapping';
+import { SyncQueueJobType } from 'src/services/CozoDb/types/entities';
+import { CybIpfsNode } from 'src/services/ipfs/types';
 import { QueuePriority } from 'src/services/QueueManager/types';
-
 import DbApi from '../../../DbApi/DbApi';
-
+import { IPFS_SYNC_INTERVAL } from '../consts';
+import ParticlesResolverQueue from '../ParticlesResolverQueue/ParticlesResolverQueue';
 import { ServiceDeps } from '../types';
 import { createLoopObservable } from '../utils/rxjs/loop';
-import { IPFS_SYNC_INTERVAL } from '../consts';
 import { fetchPins } from './services';
-import ParticlesResolverQueue from '../ParticlesResolverQueue/ParticlesResolverQueue';
-import { SyncQueueJobType } from 'src/services/CozoDb/types/entities';
 
 class SyncIpfsLoop {
   private isInitialized$: Observable<boolean>;
@@ -65,7 +63,7 @@ class SyncIpfsLoop {
 
     this._loop$ = loop$;
     this._loop$.subscribe({
-      next: (result) => this.statusApi.sendStatus('active'),
+      next: (_result) => this.statusApi.sendStatus('active'),
       error: (err) => this.statusApi.sendStatus('error', err.toString()),
     });
 
@@ -78,36 +76,26 @@ class SyncIpfsLoop {
 
       const pinsResult = await fetchPins(this.ipfsNode!);
       // console.log('---syncPins pinsResult', pinsResult);
-      const dbPins = (await this.db!.getPins()).rows.map(
-        (row) => row[0] as string
-      );
+      const dbPins = (await this.db!.getPins()).rows.map((row) => row[0] as string);
 
-      const pinsResultSet = new Set(
-        pinsResult.map((pin) => pin.cid.toString())
-      );
+      const pinsResultSet = new Set(pinsResult.map((pin) => pin.cid.toString()));
       const dbPinsSet = new Set(dbPins);
 
       // Find and exclude overlapping pins
       const pinsToRemove = dbPins.filter((pin) => !pinsResultSet.has(pin));
-      const pinsToAdd = pinsResult.filter(
-        (pin) => !dbPinsSet.has(pin.cid.toString())
-      );
+      const pinsToAdd = pinsResult.filter((pin) => !dbPinsSet.has(pin.cid.toString()));
 
       if (pinsToRemove.length) {
         await this.db!.deletePins(pinsToRemove);
       }
 
       const particlesExist = new Set(
-        (await this.db!.getParticlesRaw(['cid'])).rows.map(
-          (row) => row[0] as string
-        )
+        (await this.db!.getParticlesRaw(['cid'])).rows.map((row) => row[0] as string)
       );
 
       const cidsToAdd = pinsToAdd.map((pin) => pin.cid.toString());
 
-      const particlesToAdd = cidsToAdd.filter(
-        (cid) => !particlesExist.has(cid)
-      );
+      const particlesToAdd = cidsToAdd.filter((cid) => !particlesExist.has(cid));
 
       if (particlesToAdd.length > 0) {
         await this.particlesResolver!.enqueue(

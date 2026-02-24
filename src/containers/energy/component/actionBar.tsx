@@ -1,35 +1,29 @@
-import { useEffect, useState } from 'react';
-import { Tab } from '@cybercongress/gravity';
 import { coin } from '@cosmjs/launchpad';
+import { Tab } from '@cybercongress/gravity';
+import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { useSigningClient } from 'src/contexts/signerClient';
-import { PATTERN_CYBER, PATTERN_CYBER_CONTRACT } from 'src/constants/patterns';
 import { DEFAULT_GAS_LIMITS } from 'src/constants/config';
+import { PATTERN_CYBER, PATTERN_CYBER_CONTRACT } from 'src/constants/patterns';
+import { useSigningClient } from 'src/contexts/signerClient';
 import { getTxs } from 'src/services/transactions/lcd';
 import {
-  Dots,
-  ActionBarContentText,
-  TransactionSubmitted,
-  Confirmed,
-  TransactionError,
   Account,
-  Button,
   ActionBar as ActionBarCenter,
+  ActionBarContentText,
+  Button,
+  Confirmed,
+  Dots,
   Input,
+  TransactionError,
+  TransactionSubmitted,
 } from '../../../components';
+import { routes } from '../../../routes';
 import { LEDGER } from '../../../utils/config';
 import { ValueImg } from '../ui';
-import { routes } from '../../../routes';
 
-const back = require('../../../image/arrow-back-outline.svg');
+const _back = require('../../../image/arrow-back-outline.svg');
 
-const {
-  STAGE_INIT,
-  STAGE_ERROR,
-  STAGE_SUBMITTED,
-  STAGE_CONFIRMING,
-  STAGE_CONFIRMED,
-} = LEDGER;
+const { STAGE_INIT, STAGE_ERROR, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED } = LEDGER;
 
 const STAGE_ADD_ROUTER = 2.1;
 const STAGE_SET_ROUTER = 2.2;
@@ -94,7 +88,7 @@ function ActionBar({ selected, updateFnc, addressActive, selectedRoute }) {
     };
     confirmTx();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [txHash]);
+  }, [txHash, updateFnc]);
 
   useEffect(() => {
     if (addressAddRouteInput !== '') {
@@ -168,8 +162,7 @@ function ActionBar({ selected, updateFnc, addressActive, selectedRoute }) {
         } else {
           setErrorMessage(
             <span>
-              Add address <Account margin="0 5px" address={address} /> to your
-              pocket or make active{' '}
+              Add address <Account margin="0 5px" address={address} /> to your pocket or make active{' '}
             </span>
           );
           setStage(STAGE_ERROR);
@@ -216,11 +209,7 @@ function ActionBar({ selected, updateFnc, addressActive, selectedRoute }) {
     );
   }
 
-  if (
-    stage === STAGE_INIT &&
-    selected === 'outcome' &&
-    Object.keys(selectedRoute).length === 0
-  ) {
+  if (stage === STAGE_INIT && selected === 'outcome' && Object.keys(selectedRoute).length === 0) {
     return (
       <ActionBarCenter
         button={{
@@ -231,11 +220,7 @@ function ActionBar({ selected, updateFnc, addressActive, selectedRoute }) {
     );
   }
 
-  if (
-    stage === STAGE_INIT &&
-    selected === 'outcome' &&
-    Object.keys(selectedRoute).length > 0
-  ) {
+  if (stage === STAGE_INIT && selected === 'outcome' && Object.keys(selectedRoute).length > 0) {
     return (
       <ActionBarCenter>
         <Button
@@ -351,22 +336,11 @@ function ActionBar({ selected, updateFnc, addressActive, selectedRoute }) {
   }
 
   if (stage === STAGE_CONFIRMED) {
-    return (
-      <Confirmed
-        txHash={txHash}
-        txHeight={txHeight}
-        onClickBtnClose={() => clearState()}
-      />
-    );
+    return <Confirmed txHash={txHash} txHeight={txHeight} onClickBtnClose={() => clearState()} />;
   }
 
   if (stage === STAGE_ERROR && errorMessage !== null) {
-    return (
-      <TransactionError
-        errorMessage={errorMessage}
-        onClickBtn={() => clearState()}
-      />
-    );
+    return <TransactionError errorMessage={errorMessage} onClickBtn={() => clearState()} />;
   }
 
   return null;

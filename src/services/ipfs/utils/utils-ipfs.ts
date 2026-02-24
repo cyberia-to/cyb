@@ -1,39 +1,29 @@
 /* eslint-disable import/no-unused-modules */
-import { concat as uint8ArrayConcat } from 'uint8arrays/concat';
 
 import { Option } from 'src/types';
+import { concat as uint8ArrayConcat } from 'uint8arrays/concat';
+import { CYBER_GATEWAY_URL, FILE_SIZE_DOWNLOAD } from '../config';
 import {
+  CallBackFuncStatus,
+  IPFSContent,
   // getIpfsUserGatewanAndNodeType,
   IPFSContentMeta,
-  CallBackFuncStatus,
   IpfsContentSource,
-  IpfsNode,
   IpfsFileStats,
-  IPFSContent,
+  IpfsNode,
 } from '../types';
-
+import cyberCluster from './cluster';
+import { contentToUint8Array, createTextPreview, mimeToBaseContentType } from './content';
+import ipfsCacheDb from './ipfsCacheDb';
 import { getMimeFromUint8Array, toAsyncIterableWithMime } from './stream';
 
-import ipfsCacheDb from './ipfsCacheDb';
-import cyberCluster from './cluster';
-
-import {
-  contentToUint8Array,
-  createTextPreview,
-  mimeToBaseContentType,
-} from './content';
-
-import { CYBER_GATEWAY_URL, FILE_SIZE_DOWNLOAD } from '../config';
-
 // Get data by CID from local storage
-const loadIPFSContentFromDb = async (
-  cid: string
-): Promise<Option<IPFSContent>> => {
+const loadIPFSContentFromDb = async (cid: string): Promise<Option<IPFSContent>> => {
   // TODO: enable, disabled for tests
 
   // TODO: use cursor
   const data = await ipfsCacheDb.get(cid);
-  if (data && data.length) {
+  if (data?.length) {
     // TODO: use cursor
     const mime = await getMimeFromUint8Array(data);
     const contentType = mimeToBaseContentType(mime);
@@ -79,7 +69,7 @@ const fetchIPFSContentFromNode = async (
 ): Promise<Option<IPFSContent>> => {
   const controllerLegacy = controller || new AbortController();
   const { signal } = controllerLegacy;
-  let timer: NodeJS.Timeout | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
 
   if (!node) {
     console.log('--------fetchIPFSContentFromNode NO NODE INTIALIZED--------');
@@ -87,9 +77,12 @@ const fetchIPFSContentFromNode = async (
   }
 
   if (!controller) {
-    timer = setTimeout(() => {
-      controllerLegacy.abort();
-    }, 1000 * 60 * 1);
+    timer = setTimeout(
+      () => {
+        controllerLegacy.abort();
+      },
+      1000 * 60 * 1
+    );
   } // 1 min
 
   // TODO: cover ipns case
@@ -117,8 +110,7 @@ const fetchIPFSContentFromNode = async (
 
         meta.mime = await getMimeFromUint8Array(firstChunk);
         meta.contentType = mimeToBaseContentType(meta.mime);
-        const fullyDownloaded =
-          stats.size && stats.size > -1 && firstChunk.length >= stats.size;
+        const fullyDownloaded = stats.size && stats.size > -1 && firstChunk.length >= stats.size;
 
         const textPreview = createTextPreview(firstChunk, meta.contentType);
 
@@ -130,8 +122,8 @@ const fetchIPFSContentFromNode = async (
         const stream = fullyDownloaded
           ? firstChunk
           : allowedSize
-          ? node.cat(cid, { signal })
-          : undefined;
+            ? node.cat(cid, { signal })
+            : undefined;
 
         meta.catTime = Date.now() - statsDoneTime;
 
@@ -157,12 +149,7 @@ const fetchIPFSContentFromNode = async (
     }
   } catch (error) {
     console.debug('error fetchIPFSContentFromNode', error);
-    return {
-      cid,
-      availableDownload: true,
-      source: 'node',
-      meta: { ...emptyStats } as IPFSContentMeta,
-    };
+    return undefined;
   }
 };
 
@@ -185,7 +172,7 @@ const fetchIPFSContentFromGateway = async (
     signal: controller?.signal,
     headers,
   });
-  if (response && response.body) {
+  if (response?.body) {
     // fetch doesn't provide any headers in our case :(
 
     // const contentLength = parseInt(
@@ -201,14 +188,9 @@ const fetchIPFSContentFromGateway = async (
 
     // TODO: fix
     const flushResults = (chunks: Uint8Array[]) =>
-      !isExternalNode
-        ? ipfsCacheDb.add(cid, uint8ArrayConcat(chunks))
-        : Promise.resolve();
+      !isExternalNode ? ipfsCacheDb.add(cid, uint8ArrayConcat(chunks)) : Promise.resolve();
 
-    const { mime, result, firstChunk } = await toAsyncIterableWithMime(
-      response.body,
-      flushResults
-    );
+    const { mime, result, firstChunk } = await toAsyncIterableWithMime(response.body, flushResults);
 
     const contentType = mimeToBaseContentType(mime);
 
@@ -268,20 +250,17 @@ const getIPFSContent = async (
   }
 
   if (node) {
-    callBackFuncStatus && callBackFuncStatus('trying to get with a node');
-    // console.log('----Fetch from node', cid);
+    callBackFuncStatus?.('trying to get with a node');
     const ipfsContent = await fetchIPFSContentFromNode(cid, node, controller);
 
-    return ipfsContent;
+    if (ipfsContent?.result) {
+      return ipfsContent;
+    }
+    // Node failed or returned no content — fall through to gateway
   }
 
-  callBackFuncStatus && callBackFuncStatus('trying to get with a gatway');
-  // console.log('----Fetch from gateway', cid);
-  const respnseGateway = await fetchIPFSContentFromGateway(
-    cid,
-    node,
-    controller
-  );
+  callBackFuncStatus?.('trying to get with a gateway');
+  const respnseGateway = await fetchIPFSContentFromGateway(cid, node, controller);
 
   return respnseGateway;
 };
@@ -293,9 +272,7 @@ const catIPFSContentFromNode = (
   controller?: AbortController
 ): AsyncIterable<Uint8Array> | undefined => {
   if (!node) {
-    console.log(
-      '--------fetchIPFSContentFromNode NO NODE INTIALIZED TODO: cover case--------'
-    );
+    console.log('--------fetchIPFSContentFromNode NO NODE INTIALIZED TODO: cover case--------');
     return undefined;
   }
 
@@ -336,10 +313,7 @@ const catIPFSContentFromNode = (
 //   return count;
 // };
 
-const addContenToIpfs = async (
-  node: IpfsNode,
-  content: File | string
-): Promise<Option<string>> => {
+const addContenToIpfs = async (node: IpfsNode, content: File | string): Promise<Option<string>> => {
   let cid;
   if (node) {
     cid = await node.add(content);
@@ -351,9 +325,4 @@ const addContenToIpfs = async (
   return cid;
 };
 
-export {
-  getIPFSContent,
-  catIPFSContentFromNode,
-  fetchIpfsContent,
-  addContenToIpfs,
-};
+export { getIPFSContent, catIPFSContentFromNode, fetchIpfsContent, addContenToIpfs };

@@ -74,17 +74,14 @@ export const Votes = ({ finalVotes }) => {
           style={{ width: `${toFixedNumber(finalVotes.noWithVeto, 2)}%` }}
         >
           <Tooltip
-            tooltip={`No With Veto: ${toFixedNumber(
-              finalVotes.noWithVeto,
-              2
-            )}%`}
+            tooltip={`No With Veto: ${toFixedNumber(finalVotes.noWithVeto, 2)}%`}
             placement="top"
             contentStyle={{ flexGrow: 1 }}
           />
         </div>
       </div>
     );
-  } catch (error) {
+  } catch (_error) {
     return (
       <div className={styles.votesContainer}>
         <div className={styles.voteSection} style={{ width: '0%' }}>
@@ -188,8 +185,7 @@ export function Deposit({ totalDeposit, minDeposit }) {
             width="100%"
             className="tooltip-text-deposit"
           >
-            Total Deposit {formatNumber(totalDeposit)}{' '}
-            {BASE_DENOM.toUpperCase()}
+            Total Deposit {formatNumber(totalDeposit)} {BASE_DENOM.toUpperCase()}
           </Text>
         </Pane>
       </Pane>

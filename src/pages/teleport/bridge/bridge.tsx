@@ -1,31 +1,22 @@
-import {
-  AvailableAmount,
-  DenomArr,
-  MainContainer,
-  Slider,
-} from 'src/components';
-import Select, { OptionSelect } from 'src/components/Select';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useIbcDenom } from 'src/contexts/ibcDenom';
 import BigNumber from 'bignumber.js';
-import { getDisplayAmount, getDisplayAmountReverce } from 'src/utils/utils';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createSearchParams, useSearchParams } from 'react-router-dom';
+import { AvailableAmount, DenomArr, MainContainer, Slider } from 'src/components';
+import Select, { OptionSelect } from 'src/components/Select';
+import { CHAIN_ID } from 'src/constants/config';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
+import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
 import { useChannels } from 'src/hooks/useHub';
 import { Networks } from 'src/types/networks';
+import { getDisplayAmount, getDisplayAmountReverce } from 'src/utils/utils';
+import HistoryContextProvider from '../../../features/ibc-history/historyContext';
+import { Col, GridContainer, TeleportContainer } from '../components/containers/Containers';
+import InputNumberDecimalScale from '../components/Inputs/InputNumberDecimalScale/InputNumberDecimalScale';
 import { useSetupIbcClient } from '../hooks';
-import {
-  Col,
-  GridContainer,
-  TeleportContainer,
-} from '../components/containers/Containers';
+import { useTeleport } from '../Teleport.context';
 import { TypeTxsT } from '../type';
 import ActionBar from './actionBar.bridge';
-import HistoryContextProvider from '../../../features/ibc-history/historyContext';
 import DataIbcHistory from './components/dataIbcHistory/DataIbcHistory';
-import InputNumberDecimalScale from '../components/Inputs/InputNumberDecimalScale/InputNumberDecimalScale';
-import { useTeleport } from '../Teleport.context';
-import { CHAIN_ID } from 'src/constants/config';
-import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
 
 type Query = {
   networkFrom: string;
@@ -34,16 +25,14 @@ type Query = {
   amount?: string;
 };
 
-export const ibcDenomAtom =
-  'ibc/15E9C5CF5969080539DB395FA7D9C0868265217EFC528433671AAF9B1912D159';
+export const ibcDenomAtom = 'ibc/15E9C5CF5969080539DB395FA7D9C0868265217EFC528433671AAF9B1912D159';
 
 const isCyberChain = (chainId: string) => chainId === CHAIN_ID;
 
 function Bridge() {
   const { tracesDenom } = useIbcDenom();
   const { channels } = useChannels();
-  const { totalSupplyProofList, accountBalances, refreshBalances } =
-    useTeleport();
+  const { totalSupplyProofList, accountBalances, refreshBalances } = useTeleport();
   const [searchParams, setSearchParams] = useSearchParams();
 
   const [tokenSelect, setTokenSelect] = useState<string>(ibcDenomAtom);
@@ -97,14 +86,7 @@ function Bridge() {
         }
       }
     }
-  }, [
-    networkA,
-    networkB,
-    tokenSelect,
-    setSearchParams,
-    searchParams,
-    tokenAmount,
-  ]);
+  }, [networkA, networkB, tokenSelect, setSearchParams, searchParams, tokenAmount]);
 
   useEffect(() => {
     const isInitialized = channels && networkA && networkB;
@@ -131,22 +113,8 @@ function Bridge() {
       channels
         ? [CHAIN_ID, ...Object.keys(channels)].map((key) => ({
             value: key,
-            text: (
-              <DenomArr
-                type="network"
-                denomValue={key}
-                onlyText
-                tooltipStatusText={false}
-              />
-            ),
-            img: (
-              <DenomArr
-                type="network"
-                denomValue={key}
-                onlyImg
-                tooltipStatusImg={false}
-              />
-            ),
+            text: <DenomArr type="network" denomValue={key} onlyText tooltipStatusText={false} />,
+            img: <DenomArr type="network" denomValue={key} onlyImg tooltipStatusImg={false} />,
           }))
         : [],
     [channels]
@@ -157,13 +125,7 @@ function Bridge() {
       totalSupplyProofList
         ? Object.keys(totalSupplyProofList).map((key) => ({
             value: key,
-            text: (
-              <DenomArr
-                denomValue={key}
-                onlyText
-                tooltipStatusText={tokenSelect !== key}
-              />
-            ),
+            text: <DenomArr denomValue={key} onlyText tooltipStatusText={tokenSelect !== key} />,
             img: <DenomArr denomValue={key} onlyImg tooltipStatusImg={false} />,
           }))
         : [],
@@ -178,9 +140,7 @@ function Bridge() {
       return false;
     }
 
-    const amountToken = parseFloat(
-      getDisplayAmountReverce(tokenAmount, tokenACoinDecimals)
-    );
+    const amountToken = parseFloat(getDisplayAmountReverce(tokenAmount, tokenACoinDecimals));
 
     return amountToken > tokenABalance;
   }, [tokenABalance, tokenAmount, tokenACoinDecimals]);
@@ -194,14 +154,7 @@ function Bridge() {
     const validTokenAmount = !validInputAmountToken && Number(tokenAmount) > 0;
 
     setIsExceeded(!(validNetwork && validIbcClient && validTokenAmount));
-  }, [
-    networkA,
-    networkB,
-    typeTxs,
-    ibcClient,
-    tokenAmount,
-    validInputAmountToken,
-  ]);
+  }, [networkA, networkB, typeTxs, ibcClient, tokenAmount, validInputAmountToken]);
 
   const setPercentageBalanceHook = useCallback(
     (value: number) => {
@@ -231,8 +184,7 @@ function Bridge() {
   }, [networkB, networkA]);
 
   const getDenomToken = useCallback(
-    (selectNetwork: string) =>
-      !isCyberChain(selectNetwork) && denomIbc ? denomIbc : tokenSelect,
+    (selectNetwork: string) => (!isCyberChain(selectNetwork) && denomIbc ? denomIbc : tokenSelect),
     [tokenSelect, denomIbc]
   );
 
@@ -252,8 +204,7 @@ function Bridge() {
   }, [networkB, getDenomToken]);
 
   const getAccountBalancesToken = useCallback(
-    (selectNetwork: string) =>
-      !isCyberChain(selectNetwork) ? balanceIbc : accountBalances,
+    (selectNetwork: string) => (!isCyberChain(selectNetwork) ? balanceIbc : accountBalances),
     [accountBalances, balanceIbc]
   );
 
@@ -299,12 +250,7 @@ function Bridge() {
                 validAmount={validInputAmountToken}
                 tokenSelect={tokenSelect}
               />
-              <AvailableAmount
-                amountToken={getDisplayAmount(
-                  tokenABalance,
-                  tokenACoinDecimals
-                )}
-              />
+              <AvailableAmount amountToken={getDisplayAmount(tokenABalance, tokenACoinDecimals)} />
             </Col>
             <Col>
               <Select
@@ -348,9 +294,7 @@ function Bridge() {
           />
 
           <GridContainer>
-            <AvailableAmount
-              amountToken={getDisplayAmount(tokenBBalance, tokenACoinDecimals)}
-            />
+            <AvailableAmount amountToken={getDisplayAmount(tokenBBalance, tokenACoinDecimals)} />
             <Select
               valueSelect={networkB}
               onChangeSelect={(item: string) => setNetworkB(item)}

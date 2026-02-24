@@ -1,12 +1,10 @@
-import { Link, useParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import Display from 'src/components/containerGradient/Display/Display';
 import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
-import { SubnetHyperParameters } from 'src/features/cybernet/types';
-import useCybernetContract from 'src/features/cybernet/ui/useQueryCybernetContract.refactor';
-
-import styles from '../../Subnet.module.scss';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
+import { SubnetHyperParameters } from 'src/features/cybernet/types';
 import { routes } from 'src/routes';
+import styles from '../../Subnet.module.scss';
 import { useCurrentSubnet } from '../../subnet.context';
 
 const config: { [K in keyof SubnetHyperParameters]: { text: string } } = {
@@ -95,9 +93,7 @@ function SubnetHyperParams() {
 
             return (
               <li key={item}>
-                <Link to={routes.oracle.ask.getLink(title.toLowerCase())}>
-                  {title}
-                </Link>
+                <Link to={routes.oracle.ask.getLink(title.toLowerCase())}>{title}</Link>
                 <div>{content}</div>
               </li>
             );

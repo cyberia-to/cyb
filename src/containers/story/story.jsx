@@ -1,10 +1,10 @@
+import { Pane } from '@cybercongress/gravity';
+import cx from 'classnames';
 import React from 'react';
 import LocalizedStrings from 'react-localization';
-import { Pane } from '@cybercongress/gravity';
+import { Button } from 'src/components';
 import { i18n } from '../../i18n/en';
 import styles from './story.module.scss';
-import cx from 'classnames';
-import { Button } from 'src/components';
 
 const mp3 = require('./starwars.mp3');
 const cyberImg = require('../../image/cyber.png');
@@ -126,9 +126,7 @@ class Story extends React.Component {
                 display="flex"
                 align-items="flex-end"
               >
-                {cyber && (
-                  <img style={{ width: 'inherit' }} alt="cyb" src={cyberImg} />
-                )}
+                {cyber && <img style={{ width: 'inherit' }} alt="cyb" src={cyberImg} />}
               </Pane>
               <Pane
                 width={50}
@@ -137,9 +135,7 @@ class Story extends React.Component {
                 display="flex"
                 align-items="flex-end"
               >
-                {cyb && (
-                  <img style={{ width: 'inherit' }} alt="cyb" src={cybImg} />
-                )}
+                {cyb && <img style={{ width: 'inherit' }} alt="cyb" src={cybImg} />}
               </Pane>
             </div>
           )}
@@ -168,9 +164,7 @@ class Story extends React.Component {
             <source src={mp3} type="audio/mpeg" />
           </audio>
         </div>
-        {btnPlay && (
-          <Button text="Play story" onClick={this.Play} style={{ zIndex: 3 }} />
-        )}
+        {btnPlay && <Button text="Play story" onClick={this.Play} style={{ zIndex: 3 }} />}
       </div>
     );
   }

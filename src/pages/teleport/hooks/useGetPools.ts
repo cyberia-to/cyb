@@ -1,8 +1,8 @@
-import { useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
-import { useQueryClient } from 'src/contexts/queryClient';
 import { Params } from '@cybercongress/cyber-js/build/codec/tendermint/liquidity/v1beta1/liquidity';
 import { QueryParamsResponse } from '@cybercongress/cyber-js/build/codec/tendermint/liquidity/v1beta1/query';
+import { useQuery } from '@tanstack/react-query';
+import { useEffect, useState } from 'react';
+import { useQueryClient } from 'src/contexts/queryClient';
 import { Option } from 'src/types';
 
 function useGetParams() {

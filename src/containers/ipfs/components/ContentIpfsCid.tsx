@@ -1,6 +1,6 @@
+import TextMarkdown from 'src/components/TextMarkdown';
 import { QueueItemStatus } from 'src/services/QueueManager/QueueManager';
 import ComponentLoader from '../../../features/ipfs/ipfsSettings/ipfsComponents/ipfsLoader';
-import TextMarkdown from 'src/components/TextMarkdown';
 
 type Props = {
   loading?: boolean;
@@ -27,9 +27,7 @@ function ContentIpfsCid({ loading, statusFetching, status, cid }: Props) {
         }}
       >
         <ComponentLoader style={{ width: '100px', margin: '30px auto' }} />
-        {statusFetching && (
-          <div style={{ fontSize: '20px' }}>{statusFetching}</div>
-        )}
+        {statusFetching && <div style={{ fontSize: '20px' }}>{statusFetching}</div>}
       </div>
     );
   }

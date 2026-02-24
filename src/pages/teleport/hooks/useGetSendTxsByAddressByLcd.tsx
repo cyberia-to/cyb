@@ -1,13 +1,12 @@
+import { TxsResponse } from '@cosmjs/launchpad';
+import { OrderBy } from '@cybercongress/cyber-ts/cosmos/tx/v1beta1/service';
 import { InfiniteData, useInfiniteQuery } from '@tanstack/react-query';
 import BigNumber from 'bignumber.js';
-
-import { Nullable, Option } from 'src/types';
-import { AccountValue } from 'src/types/defaultAccount';
 import { useCallback, useEffect, useState } from 'react';
-import { TxsResponse } from '@cosmjs/launchpad';
 import { PATTERN_CYBER } from 'src/constants/patterns';
 import { getTransactions } from 'src/services/transactions/lcd';
-import { OrderBy } from '@cybercongress/cyber-ts/cosmos/tx/v1beta1/service';
+import { Nullable, Option } from 'src/types';
+import { AccountValue } from 'src/types/defaultAccount';
 
 const limit = 5;
 
@@ -103,10 +102,7 @@ function useGetSendTxsByAddressByLcd(
   const [dataTsx, setDataTxs] = useState<Option<TxsResponse[]>>(undefined);
 
   const dataSend = useGetSendBySenderRecipient(addressSender, addressRecipient);
-  const dataReceive = useGetSendBySenderRecipient(
-    addressRecipient,
-    addressSender
-  );
+  const dataReceive = useGetSendBySenderRecipient(addressRecipient, addressSender);
 
   useEffect(() => {
     let firstSendItem = '0';
@@ -128,10 +124,7 @@ function useGetSendTxsByAddressByLcd(
           dataTxs.push(item);
         }
 
-        if (
-          height > parseFloat(lastSendItem) &&
-          height < parseFloat(firstSendItem)
-        ) {
+        if (height > parseFloat(lastSendItem) && height < parseFloat(firstSendItem)) {
           dataTxs.push(item);
         }
 
@@ -140,9 +133,7 @@ function useGetSendTxsByAddressByLcd(
         }
       });
       dataTxs = [...dataTxs, ...dataSendArr];
-      dataTxs = dataTxs.sort(
-        (itemA, itemB) => parseFloat(itemB.height) - parseFloat(itemA.height)
-      );
+      dataTxs = dataTxs.sort((itemA, itemB) => parseFloat(itemB.height) - parseFloat(itemA.height));
     } else {
       dataTxs = [...dataSendArr, ...dataReceiveArr];
     }

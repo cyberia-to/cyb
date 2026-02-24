@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { ContainerGradientText } from '../../../../components/containerGradient/ContainerGradient';
-import { GIFT_ICON } from '../../utils';
 import { dhm } from '../../../../utils/utils';
+import { GIFT_ICON } from '../../utils';
 import styles from './styles.scss';
 
 function ItemRow({ value, title }) {
@@ -17,19 +17,11 @@ function NextUnfreeze({ timeNext = '', readyRelease }) {
   try {
     const useTimeNext = useMemo(() => {
       if (timeNext !== null) {
-        return (
-          <span className={styles.colorTextStatusTimeUnfreeze}>
-            {dhm(timeNext)}
-          </span>
-        );
+        return <span className={styles.colorTextStatusTimeUnfreeze}>{dhm(timeNext)}</span>;
       }
 
       if (readyRelease && readyRelease !== null) {
-        return (
-          <span className={styles.colorTextStatusTimeReady}>
-            ready {GIFT_ICON}
-          </span>
-        );
+        return <span className={styles.colorTextStatusTimeReady}>ready {GIFT_ICON}</span>;
       }
 
       return '';
@@ -45,7 +37,7 @@ function NextUnfreeze({ timeNext = '', readyRelease }) {
         </div>
       </ContainerGradientText>
     );
-  } catch (error) {
+  } catch (_error) {
     return (
       <ContainerGradientText status="green">
         <div className={styles.containerNextUnfreeze}>

@@ -39,6 +39,10 @@
   gap: 10px;
   width: 100%;
   font-size: 16px;
+
+  .titleOptions {
+    flex-shrink: 0;
+  }
 }
 
 .btnOpenIcon {

@@ -1,7 +1,7 @@
 import cx from 'classnames';
 import styles from './LinearGradientContainer.module.scss';
 
-export const enum Color {
+export enum Color {
   Pink = 'pink',
   Yellow = 'yellow',
   Red = 'red',

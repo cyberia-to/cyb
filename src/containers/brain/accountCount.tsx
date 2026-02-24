@@ -11,9 +11,7 @@ function AccountCount() {
     return <span>∞</span>;
   }
 
-  return (
-    <span>{formatNumber(data?.account_aggregate.aggregate?.count || 0)}</span>
-  );
+  return <span>{formatNumber(data?.account_aggregate.aggregate?.count || 0)}</span>;
 }
 
 export default AccountCount;

@@ -1,9 +1,9 @@
 import { useMemo, useState } from 'react';
 import { DenomArr, MainContainer, OptionSelect, Select } from 'src/components';
 import { SelectOption } from 'src/components/Select';
+import { useRelayer } from '../../../contexts/relayer';
 import { TeleportContainer } from '../components/containers/Containers';
 import ActionBarRelayer from './ActionBar';
-import { useRelayer } from '../../../contexts/relayer';
 import LogRelayer from './components/Relayer/LogRelayer';
 
 function Relayer() {

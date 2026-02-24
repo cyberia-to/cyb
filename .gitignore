@@ -39,5 +39,12 @@ public/wasm
 # Kubo IPFS sidecar binaries (downloaded via make download-kubo)
 src-tauri/bin/
 
+# Deno
+deno.lock
+
+# Rust build artifacts
+cyb/target/
+
 # Claude Code
-.claude
+.claude/*
+!.claude/plans/

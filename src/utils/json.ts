@@ -13,8 +13,7 @@ export const downloadJson = (jsonData: any, fileName: string): void => {
   URL.revokeObjectURL(url);
 };
 
-export const stringifyJson = (_, value) =>
-  typeof value === 'bigint' ? `${value}n` : value;
+export const stringifyJson = (_, value) => (typeof value === 'bigint' ? `${value}n` : value);
 
 export const parseJson = (_, value) =>
   /(-?\d+)n/.test(value) ? BigInt(value.replace('n', '')) : value;

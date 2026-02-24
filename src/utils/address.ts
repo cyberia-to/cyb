@@ -1,7 +1,4 @@
-import {
-  PATTERN_CYBER_CONTRACT,
-  PATTERN_SPACE_PUSSY,
-} from 'src/constants/patterns';
+import { PATTERN_CYBER_CONTRACT } from 'src/constants/patterns';
 import { Networks } from 'src/types/networks';
 
 export function getTypeFromAddress(address: string): Networks {

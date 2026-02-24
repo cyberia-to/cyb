@@ -1,9 +1,9 @@
-import { useEffect, useState, useRef, useCallback } from 'react';
-import { ForceGraph3D } from 'react-force-graph';
-import GraphHoverInfo from './GraphHoverInfo/GraphHoverInfo';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import ForceGraph3D from 'react-force-graph-3d';
+import GraphActionBar from '../graph/GraphActionBar/GraphActionBar';
 
 import styles from './CyberlinksGraph.module.scss';
-import GraphActionBar from '../graph/GraphActionBar/GraphActionBar';
+import GraphHoverInfo from './GraphHoverInfo/GraphHoverInfo';
 
 type Props = {
   data: any;
@@ -39,7 +39,7 @@ function CyberlinksGraph({ data, size, minVersion }: Props) {
       return;
     }
     fgRef.current.cameraPosition({ z: INITIAL_CAMERA_DISTANCE });
-  }, [fgRef]);
+  }, []);
 
   // initial loading camera zoom effect
   useEffect(() => {
@@ -58,7 +58,7 @@ function CyberlinksGraph({ data, size, minVersion }: Props) {
         CAMERA_ZOOM_IN_EFFECT_DURATION
       );
     }, CAMERA_ZOOM_IN_EFFECT_DELAY);
-  }, [fgRef, isRendering]);
+  }, [isRendering]);
 
   useEffect(() => {
     if (!fgRef.current) {
@@ -76,7 +76,7 @@ function CyberlinksGraph({ data, size, minVersion }: Props) {
         fgRef.current.controls().removeEventListener('start', onTouch);
       }
     };
-  }, [fgRef]);
+  }, []);
 
   // orbit camera
   useEffect(() => {
@@ -102,54 +102,45 @@ function CyberlinksGraph({ data, size, minVersion }: Props) {
       clearTimeout(timeout);
       clearInterval(interval);
     };
-  }, [fgRef, touched, isRendering]);
+  }, [touched, isRendering]);
 
-  const handleNodeClick = useCallback(
-    (node) => {
-      if (!fgRef.current) {
-        return;
-      }
+  const handleNodeClick = useCallback((node) => {
+    if (!fgRef.current) {
+      return;
+    }
 
-      const distance = 300;
-      const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
+    const distance = 300;
+    const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
 
-      fgRef.current.cameraPosition(
-        { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
-        node,
-        5000
-      );
-    },
-    [fgRef]
-  );
+    fgRef.current.cameraPosition(
+      { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
+      node,
+      5000
+    );
+  }, []);
 
-  const handleLinkClick = useCallback(
-    (link) => {
-      if (!fgRef.current) {
-        return;
-      }
+  const handleLinkClick = useCallback((link) => {
+    if (!fgRef.current) {
+      return;
+    }
 
-      const node = link.target;
-      const distance = 300;
-      const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
+    const node = link.target;
+    const distance = 300;
+    const distRatio = 1 + distance / Math.hypot(node.x, node.y, node.z);
 
-      fgRef.current.cameraPosition(
-        { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
-        node,
-        5000
-      );
-    },
-    [fgRef]
-  );
+    fgRef.current.cameraPosition(
+      { x: node.x * distRatio, y: node.y * distRatio, z: node.z * distRatio },
+      node,
+      5000
+    );
+  }, []);
 
   const handleNodeRightClick = useCallback((node) => {
     window.open(`${window.location.origin}/ipfs/${node.id}`, '_blank');
   }, []);
 
   const handleLinkRightClick = useCallback((link) => {
-    window.open(
-      `${window.location.origin}/network/bostrom/tx/${link.name}`,
-      '_blank'
-    );
+    window.open(`${window.location.origin}/network/bostrom/tx/${link.name}`, '_blank');
   }, []);
 
   const handleEngineStop = useCallback(() => {
@@ -164,9 +155,7 @@ function CyberlinksGraph({ data, size, minVersion }: Props) {
         position: 'relative',
       }}
     >
-      {isRendering && (
-        <div className={styles.loaderWrapper}>rendering data...</div>
-      )}
+      {isRendering && <div className={styles.loaderWrapper}>rendering data...</div>}
 
       <ForceGraph3D
         height={size}
@@ -187,7 +176,7 @@ function CyberlinksGraph({ data, size, minVersion }: Props) {
         onNodeHover={setHoverNode}
         linkColor={
           // not working
-          (link) =>
+          (_link) =>
             // link.subject && link.subject === currentAddress
             //   ? 'red'
             'rgba(9,255,13,1)'

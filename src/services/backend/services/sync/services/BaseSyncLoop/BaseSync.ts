@@ -1,12 +1,4 @@
-import {
-  Observable,
-  filter,
-  distinctUntilChanged,
-  map,
-  switchMap,
-  take,
-  tap,
-} from 'rxjs';
+import { distinctUntilChanged, filter, map, Observable, switchMap } from 'rxjs';
 
 import BroadcastChannelSender from 'src/services/backend/channels/BroadcastChannelSender';
 import { broadcastStatus } from 'src/services/backend/channels/broadcastStatus';
@@ -14,10 +6,10 @@ import { SyncEntryName } from 'src/services/backend/types/services';
 import { CyblogChannel, createCyblogChannel } from 'src/utils/logging/cyblog';
 
 import DbApiWrapper from '../../../DbApi/DbApi';
+import { SyncServiceParams } from '../../types';
 import ParticlesResolverQueue from '../ParticlesResolverQueue/ParticlesResolverQueue';
 import { ProgressTracker } from '../ProgressTracker/ProgressTracker';
 import { ServiceDeps } from '../types';
-import { SyncServiceParams } from '../../types';
 
 abstract class BaseSync {
   protected name: string;
@@ -42,11 +34,7 @@ abstract class BaseSync {
 
   protected cyblogCh: CyblogChannel;
 
-  constructor(
-    name: SyncEntryName,
-    deps: ServiceDeps,
-    particlesResolver: ParticlesResolverQueue
-  ) {
+  constructor(name: SyncEntryName, deps: ServiceDeps, particlesResolver: ParticlesResolverQueue) {
     this.name = name;
 
     this.abortController = new AbortController();
@@ -67,20 +55,16 @@ abstract class BaseSync {
     this.isInitialized$ = this.createIsInitializedObserver(deps);
 
     this.isInitialized$.subscribe((isInitialized) => {
-      this.cyblogCh.info(
-        `>>> ${this.name} - ${isInitialized ? 'initialized' : 'inactive'}`
-      );
+      this.cyblogCh.info(`>>> ${this.name} - ${isInitialized ? 'initialized' : 'inactive'}`);
       this.statusApi.sendStatus(isInitialized ? 'initialized' : 'inactive');
     });
 
-    this.isInitialized$
-      .pipe(switchMap(() => deps.params$!))
-      .subscribe((params) => {
-        this.params = params;
-        this.cyblogCh.info(`>>> ${this.name} - params updated`, {
-          data: params,
-        });
+    this.isInitialized$.pipe(switchMap(() => deps.params$!)).subscribe((params) => {
+      this.params = params;
+      this.cyblogCh.info(`>>> ${this.name} - params updated`, {
+        data: params,
       });
+    });
 
     // Restart observer
     this.isInitialized$
@@ -97,9 +81,7 @@ abstract class BaseSync {
     this.abortController = new AbortController();
   }
 
-  protected abstract createIsInitializedObserver(
-    deps: ServiceDeps
-  ): Observable<boolean>;
+  protected abstract createIsInitializedObserver(deps: ServiceDeps): Observable<boolean>;
 
   // eslint-disable-next-line class-methods-use-this
   protected createRestartObserver(params$: Observable<SyncServiceParams>) {

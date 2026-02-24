@@ -1,9 +1,9 @@
 import { MainContainer, NoItems } from 'src/components';
-import { useCyberClient } from 'src/contexts/queryCyberClient';
 import Loader2 from 'src/components/ui/Loader2';
+import { useCyberClient } from 'src/contexts/queryCyberClient';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
-import Code from './code';
 import ActionBar from './actionBar';
+import Code from './code';
 
 import styles from './styles.scss';
 

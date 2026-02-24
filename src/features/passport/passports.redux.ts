@@ -1,17 +1,12 @@
-import {
-  PayloadAction,
-  createAsyncThunk,
-  createSelector,
-  createSlice,
-} from '@reduxjs/toolkit';
-import { Citizenship } from 'src/types/citizenship';
 import { CyberClient } from '@cybercongress/cyber-js';
-import type { RootState } from 'src/redux/store';
-import type { AppThunk } from 'src/redux/types';
+import { createAsyncThunk, createSelector, createSlice, PayloadAction } from '@reduxjs/toolkit';
 import { selectCurrentAddress } from 'src/redux/features/pocket';
+import { RootState } from 'src/redux/store';
+import { AppThunk } from 'src/redux/types';
+import { getPassport as getPassportQuery } from 'src/services/passports/lcd';
+import { Citizenship } from 'src/types/citizenship';
 import { Accounts } from 'src/types/defaultAccount';
 import { PASSPORT_NOT_EXISTS_ERROR } from './constants';
-import { getPassport as getPassportQuery } from 'src/services/passports/lcd';
 
 export type SliceState = {
   // address
@@ -85,12 +80,7 @@ const slice = createSlice({
         currentAddress: string;
       }>
     ) => {
-      if (
-        !(
-          state[currentAddress]?.data &&
-          state[currentAddress].data.extension.addresses
-        )
-      ) {
+      if (!state[currentAddress]?.data?.extension.addresses) {
         return;
       }
 
@@ -109,12 +99,7 @@ const slice = createSlice({
         currentAddress: string;
       }>
     ) => {
-      if (
-        !(
-          state[currentAddress]?.data &&
-          state[currentAddress].data.extension.addresses
-        )
-      ) {
+      if (!state[currentAddress]?.data?.extension.addresses) {
         return;
       }
 

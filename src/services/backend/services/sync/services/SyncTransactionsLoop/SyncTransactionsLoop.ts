@@ -1,53 +1,47 @@
 /* eslint-disable camelcase */
+
+import { isEmpty } from 'lodash';
 import {
-  map,
   combineLatest,
-  Observable,
-  from,
   defer,
   distinctUntilChanged,
-  merge,
   filter,
+  from,
+  map,
+  merge,
+  Observable,
 } from 'rxjs';
-import { isEmpty } from 'lodash';
-
-import {
-  EntryType,
-  SyncQueueJobType,
-} from 'src/services/CozoDb/types/entities';
-import { mapIndexerTransactionToEntity } from 'src/services/CozoDb/mapping';
-import { numberToUtcDate } from 'src/utils/date';
-import { NeuronAddress } from 'src/types/base';
-import { QueuePriority } from 'src/services/QueueManager/types';
-import { SyncStatusDto, TransactionDto } from 'src/services/CozoDb/types/dto';
-import { asyncIterableBatchProcessor } from 'src/utils/async/iterable';
-import { throwIfAborted } from 'src/utils/async/promise';
-import {
-  createNodeWebsocketObservable,
-  getIncomingTransfersQuery,
-} from 'src/services/lcd/websocket';
 import {
   MessagesByAddressSenseQueryVariables,
   MessagesByAddressSenseWsDocument,
   MessagesByAddressSenseWsSubscription,
 } from 'src/generated/graphql';
-
+import { mapIndexerTransactionToEntity } from 'src/services/CozoDb/mapping';
+import { SyncStatusDto, TransactionDto } from 'src/services/CozoDb/types/dto';
+import { EntryType, SyncQueueJobType } from 'src/services/CozoDb/types/entities';
 import { mapWebsocketTxToTransactions } from 'src/services/lcd/utils/mapping';
-
-import { ServiceDeps } from '../types';
-import { extractCybelinksFromTransaction } from '../utils/links';
-
 import {
+  createNodeWebsocketObservable,
+  getIncomingTransfersQuery,
+} from 'src/services/lcd/websocket';
+import { QueuePriority } from 'src/services/QueueManager/types';
+import { NeuronAddress } from 'src/types/base';
+import { asyncIterableBatchProcessor } from 'src/utils/async/iterable';
+import { throwIfAborted } from 'src/utils/async/promise';
+import { numberToUtcDate } from 'src/utils/date';
+import { TRANSACTIONS_BATCH_LIMIT } from '../../../indexer/consts';
+import {
+  fetchTransactionMessagesCount,
   fetchTransactionsIterable,
   mapMessagesByAddressVariables,
-  fetchTransactionMessagesCount,
 } from '../../../indexer/transactions';
-import { syncMyChats } from './services/chat';
-import { TRANSACTIONS_BATCH_LIMIT } from '../../../indexer/consts';
-import BaseSyncClient from '../BaseSyncLoop/BaseSyncClient';
 import { createIndexerWebsocket } from '../../../indexer/utils/graphqlClient';
 import { SyncServiceParams } from '../../types';
+import BaseSyncClient from '../BaseSyncLoop/BaseSyncClient';
 import { MAX_DATABASE_PUT_SIZE } from '../consts';
+import { ServiceDeps } from '../types';
+import { extractCybelinksFromTransaction } from '../utils/links';
+import { syncMyChats } from './services/chat';
 
 type DataStreamResult = {
   source: 'indexer' | 'node';
@@ -74,14 +68,10 @@ class SyncTransactionsLoop extends BaseSyncClient {
   }
 
   // eslint-disable-next-line class-methods-use-this
-  protected createClientObservable(
-    timestampFrom: number
-  ): Observable<DataStreamResult> {
+  protected createClientObservable(timestampFrom: number): Observable<DataStreamResult> {
     const { myAddress } = this.params;
     this.cyblogCh.info(
-      `>>> ${this.name} subscribe ${myAddress} from ${numberToUtcDate(
-        timestampFrom
-      )}`
+      `>>> ${this.name} subscribe ${myAddress} from ${numberToUtcDate(timestampFrom)}`
     );
 
     const variables = mapMessagesByAddressVariables({
@@ -92,20 +82,19 @@ class SyncTransactionsLoop extends BaseSyncClient {
       limit: 100,
     }) as MessagesByAddressSenseQueryVariables;
 
-    const indexerObservable$ =
-      createIndexerWebsocket<MessagesByAddressSenseWsSubscription>(
-        MessagesByAddressSenseWsDocument,
-        variables
-      ).pipe(
-        map((response: MessagesByAddressSenseWsSubscription) => {
-          return {
-            source: 'indexer',
-            transactions: response.messages_by_address.map((i) =>
-              mapIndexerTransactionToEntity(myAddress!, i)
-            ),
-          };
-        })
-      );
+    const indexerObservable$ = createIndexerWebsocket<MessagesByAddressSenseWsSubscription>(
+      MessagesByAddressSenseWsDocument,
+      variables
+    ).pipe(
+      map((response: MessagesByAddressSenseWsSubscription) => {
+        return {
+          source: 'indexer',
+          transactions: response.messages_by_address.map((i) =>
+            mapIndexerTransactionToEntity(myAddress!, i)
+          ),
+        };
+      })
+    );
 
     const nodeObservample$ = createNodeWebsocketObservable(
       myAddress!,
@@ -121,10 +110,7 @@ class SyncTransactionsLoop extends BaseSyncClient {
       })
     );
 
-    return merge(
-      indexerObservable$,
-      nodeObservample$
-    ) as Observable<DataStreamResult>;
+    return merge(indexerObservable$, nodeObservample$) as Observable<DataStreamResult>;
   }
 
   protected createInitObservable() {
@@ -137,11 +123,7 @@ class SyncTransactionsLoop extends BaseSyncClient {
     const { signal } = this.abortController;
     const syncItem = await this.db!.getSyncStatus(myAddress!, myAddress!);
 
-    const lastTransactionTimestamp = await this.syncTransactions(
-      myAddress!,
-      myAddress!,
-      syncItem
-    );
+    const lastTransactionTimestamp = await this.syncTransactions(myAddress!, myAddress!, syncItem);
 
     this.statusApi.sendStatus('in-progress', `sync my chats`);
     const syncStatusItems = await syncMyChats(
@@ -157,10 +139,7 @@ class SyncTransactionsLoop extends BaseSyncClient {
     return lastTransactionTimestamp;
   }
 
-  protected async onUpdate(
-    { source, transactions }: DataStreamResult,
-    params: SyncServiceParams
-  ) {
+  protected async onUpdate({ source, transactions }: DataStreamResult, params: SyncServiceParams) {
     const { myAddress } = params;
     const { signal } = this.abortController;
     if (transactions.length === 0) {
@@ -169,13 +148,7 @@ class SyncTransactionsLoop extends BaseSyncClient {
     }
     const syncItem = await this.db!.getSyncStatus(myAddress!, myAddress!);
 
-    await this.processBatchTransactions(
-      myAddress!,
-      myAddress!,
-      transactions,
-      syncItem,
-      source
-    );
+    await this.processBatchTransactions(myAddress!, myAddress!, transactions, syncItem, source);
 
     this.statusApi.sendStatus('in-progress', `sync my chats`);
     const syncStatusItems = await syncMyChats(
@@ -206,9 +179,7 @@ class SyncTransactionsLoop extends BaseSyncClient {
     this.cyblogCh.info(
       `   syncTransactions - process ${address}[${source}],  count: ${
         transactions.length
-      }, from: ${transactions.at(0)?.timestamp}, to: ${
-        transactions.at(-1)?.timestamp
-      }`
+      }, from: ${transactions.at(0)?.timestamp}, to: ${transactions.at(-1)?.timestamp}`
     );
 
     // save transaction
@@ -231,9 +202,7 @@ class SyncTransactionsLoop extends BaseSyncClient {
       ownerId: myAddress,
       entryType: EntryType.transactions,
       id: address,
-      timestampUpdate: shouldUpdateTimestamp
-        ? lastTimestampFrom
-        : timestampUpdate!,
+      timestampUpdate: shouldUpdateTimestamp ? lastTimestampFrom : timestampUpdate!,
       unreadCount: unreadCount! + transactions.length,
       timestampRead: timestampRead || 0,
       disabled: false,
@@ -275,9 +244,7 @@ class SyncTransactionsLoop extends BaseSyncClient {
     this.statusApi.sendStatus(
       'in-progress',
       `sync ${address}...`,
-      this.progressTracker.start(
-        Math.ceil(totalMessageCount / TRANSACTIONS_BATCH_LIMIT)
-      )
+      this.progressTracker.start(Math.ceil(totalMessageCount / TRANSACTIONS_BATCH_LIMIT))
     );
 
     const transactionsAsyncIterable = fetchTransactionsIterable({
@@ -302,9 +269,7 @@ class SyncTransactionsLoop extends BaseSyncClient {
 
       transactionCount += batch.length;
 
-      const transactions = batch.map((i) =>
-        mapIndexerTransactionToEntity(address, i)
-      );
+      const transactions = batch.map((i) => mapIndexerTransactionToEntity(address, i));
 
       lastTimestampFrom = await this.processBatchTransactions(
         myAddress,
@@ -322,8 +287,7 @@ class SyncTransactionsLoop extends BaseSyncClient {
   }
 
   private async syncLinks(batch: TransactionDto[], signal: AbortSignal) {
-    const { tweets, particlesFound, links } =
-      extractCybelinksFromTransaction(batch);
+    const { tweets, particlesFound, links } = extractCybelinksFromTransaction(batch);
     if (links.length > 0) {
       await asyncIterableBatchProcessor(
         links,
@@ -334,9 +298,7 @@ class SyncTransactionsLoop extends BaseSyncClient {
 
     const tweetParticles = Object.keys(tweets);
 
-    const nonTweetParticles = particlesFound.filter(
-      (cid) => !tweetParticles.includes(cid)
-    );
+    const nonTweetParticles = particlesFound.filter((cid) => !tweetParticles.includes(cid));
 
     // pre-resolve 'tweets' particles
     await this.particlesResolver!.enqueueBatch(

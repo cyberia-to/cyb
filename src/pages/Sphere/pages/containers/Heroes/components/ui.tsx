@@ -40,8 +40,7 @@ export function StatusTooltip({
   let statusColor: DotColors;
   let textTooltip: string;
 
-  const switchValue =
-    typeof status === 'number' ? status : statusHeroes[status];
+  const switchValue = typeof status === 'number' ? status : statusHeroes[status];
 
   switch (switchValue) {
     case 1:
@@ -75,19 +74,13 @@ export function StatusTooltip({
 
 export function TextBoard() {
   return (
-    <Pane
-      boxShadow="0px 0px 5px #36d6ae"
-      paddingX={20}
-      paddingY={20}
-      marginY={20}
-    >
+    <Pane boxShadow="0px 0px 5px #36d6ae" paddingX={20} paddingY={20} marginY={20}>
       <Text fontSize="16px" color="#fff">
-        If all heroes collectively will be able to gather 100 heroes, and this
-        number can last for 10000 blocks, additionally 2 TCYB will be allocated
-        to heroes who take part in <Link to="/search/Genesis">Genesis</Link>. If
-        the number of heroes will increase to or over 146, additional 3 TCYB
-        will be allocated. All rewards in that discipline will be distributed to
-        validators per capita.
+        If all heroes collectively will be able to gather 100 heroes, and this number can last for
+        10000 blocks, additionally 2 TCYB will be allocated to heroes who take part in{' '}
+        <Link to="/search/Genesis">Genesis</Link>. If the number of heroes will increase to or over
+        146, additional 3 TCYB will be allocated. All rewards in that discipline will be distributed
+        to validators per capita.
       </Text>
     </Pane>
   );

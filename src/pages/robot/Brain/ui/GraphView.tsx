@@ -17,12 +17,7 @@ function GraphView({ address }: { address?: string }) {
         Limit is: {limit.toLocaleString()}
       </p>
 
-      <CyberlinksGraphContainer
-        address={address}
-        limit={limit}
-        toPortal
-        type="3d"
-      />
+      <CyberlinksGraphContainer address={address} limit={limit} toPortal type="3d" />
     </div>
   );
 }

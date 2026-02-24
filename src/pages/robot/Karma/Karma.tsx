@@ -1,6 +1,6 @@
-import UnderConstruction from '../UnderConstruction/UnderConstruction';
-import { useAdviser } from 'src/features/adviser/context';
 import { useEffect } from 'react';
+import { useAdviser } from 'src/features/adviser/context';
+import UnderConstruction from '../UnderConstruction/UnderConstruction';
 
 function Karma() {
   const { setAdviser } = useAdviser();

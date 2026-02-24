@@ -1,9 +1,9 @@
 import cx from 'classnames';
-import { Link } from 'react-router-dom';
 import { ReactNode } from 'react';
+import { Link } from 'react-router-dom';
 import styles from './TabItem.module.scss';
 
-export const enum Position {
+export enum Position {
   Right = 'right',
   Left = 'left',
 }
@@ -18,16 +18,7 @@ export type Props = {
   onClick?: () => void;
 };
 
-function TabItem({
-  type,
-  text,
-  step,
-  to,
-  isSelected,
-  disable,
-  onClick,
-  ...props
-}: Props) {
+function TabItem({ type, text, step, to, isSelected, disable, onClick, ...props }: Props) {
   let Component: HTMLButtonElement | Link = 'button';
   let componentProps: object = {
     type: 'button',

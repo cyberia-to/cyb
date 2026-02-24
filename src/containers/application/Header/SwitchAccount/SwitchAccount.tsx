@@ -3,24 +3,22 @@ import React, { useMemo, useRef } from 'react';
 import { usePopperTooltip } from 'react-popper-tooltip';
 import { Link, useLocation } from 'react-router-dom';
 import { Transition } from 'react-transition-group';
-
-import usePassportByAddress from 'src/features/passport/hooks/usePassportByAddress';
-import useOnClickOutside from 'src/hooks/useOnClickOutside';
-import { routes } from 'src/routes';
-
 import Pill from 'src/components/Pill/Pill';
-import { useSigningClient } from 'src/contexts/signerClient';
-import useIsOnline from 'src/hooks/useIsOnline';
-import { useAppSelector } from 'src/redux/hooks';
-import BroadcastChannelSender from 'src/services/backend/channels/BroadcastChannelSender';
 import { useBackend } from 'src/contexts/backend/backend';
 import { useDevice } from 'src/contexts/device';
-import { AvataImgIpfs } from '../../../portal/components/avataIpfs';
-import styles from './SwitchAccount.module.scss';
-import networkStyles from '../CurrentApp/CurrentApp.module.scss';
+import { useSigningClient } from 'src/contexts/signerClient';
+import usePassportByAddress from 'src/features/passport/hooks/usePassportByAddress';
+import useIsOnline from 'src/hooks/useIsOnline';
+import useOnClickOutside from 'src/hooks/useOnClickOutside';
+import { useAppSelector } from 'src/redux/hooks';
+import { routes } from 'src/routes';
+import BroadcastChannelSender from 'src/services/backend/channels/BroadcastChannelSender';
 import useMediaQuery from '../../../../hooks/useMediaQuery';
 import robot from '../../../../image/temple/robot.png';
+import { AvataImgIpfs } from '../../../portal/components/avataIpfs';
 import Karma from '../../Karma/Karma';
+import networkStyles from '../CurrentApp/CurrentApp.module.scss';
+import styles from './SwitchAccount.module.scss';
 
 // should be refactored
 function AccountItem({
@@ -36,8 +34,7 @@ function AccountItem({
 
   const { passport } = usePassportByAddress(address);
 
-  const name =
-    passport?.extension?.nickname || data?.cyber?.name || accountName;
+  const name = passport?.extension?.nickname || data?.cyber?.name || accountName;
 
   const nickname = passport?.extension?.nickname;
 
@@ -46,9 +43,7 @@ function AccountItem({
     setControlledVisible(false);
   }
 
-  const robotPath = nickname
-    ? routes.robotPassport.getLink(nickname)
-    : routes.robot.path;
+  const robotPath = nickname ? routes.robotPassport.getLink(nickname) : routes.robot.path;
 
   const linkToRobot = location.pathname.includes('@') ? robotPath : undefined;
 
@@ -56,10 +51,7 @@ function AccountItem({
     <Link
       to={link || linkToRobot}
       onClick={handleClick}
-      className={cx(
-        styles.containerSwichAccount,
-        networkStyles.btnContainerText
-      )}
+      className={cx(styles.containerSwichAccount, networkStyles.btnContainerText)}
     >
       <div className={cx(networkStyles.containerInfoSwitch, styles.content)}>
         {name && (
@@ -149,7 +141,7 @@ function SwitchAccount() {
       });
 
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accounts, defaultAccount, isIpfsInitialized]);
+  }, [accounts, defaultAccount, onClickChangeActiveAcc]);
 
   // const multipleAccounts = renderItem && Object.keys(renderItem).length > 0;
 
@@ -157,20 +149,23 @@ function SwitchAccount() {
     <div style={{ position: 'relative', fontSize: '20px' }} ref={containerRef}>
       <div className={styles.containerSwichAccount}>
         {(!useGetAddress || !mediaQuery) && (
-          <Link
-            className={networkStyles.btnContainerText}
-            to={routes.settings.path}
-          >
-            {mediaQuery ? 'Settings' : '⚙️'}
-          </Link>
+          // eslint-disable-next-line react/jsx-no-useless-fragment
+          <>
+            {/* FIXME: because of styles */}
+            {isMobile ? (
+              <div />
+            ) : (
+              <Link className={networkStyles.btnContainerText} to={routes.settings.path}>
+                {mediaQuery ? 'Settings' : '⚙️'}
+              </Link>
+            )}
+          </>
         )}
         {mediaQuery && useGetAddress && (
           <div
             className={cx(
               networkStyles.containerInfoSwitch,
-              isReadOnly || !signerReady
-                ? networkStyles.containerInfoSwitchGapUnSet
-                : undefined
+              isReadOnly || !signerReady ? networkStyles.containerInfoSwitchGapUnSet : undefined
             )}
           >
             {useGetName && (
@@ -185,28 +180,22 @@ function SwitchAccount() {
               </button>
             )}
             {isReadOnly && <Pill color="yellow" text="read only" />}
-            {!isReadOnly && !signerReady && isOnline && (
-              <Pill color="red" text="switch keplr" />
-            )}
+            {!isReadOnly && !signerReady && isOnline && <Pill color="red" text="switch keplr" />}
             {!isOnline && <Pill color="red" text="offline" />}
             <Karma address={useGetAddress} />
           </div>
         )}
         <Link
           to={
-            passport
-              ? routes.robotPassport.getLink(passport.extension.nickname)
-              : routes.robot.path
+            passport ? routes.robotPassport.getLink(passport.extension.nickname) : routes.robot.path
           }
           className={styles.content}
           // onClick={() => setControlledVisible(!controlledVisible)}
         >
           <div
             className={cx(styles.containerAvatarConnect, {
-              [styles.containerAvatarConnectFalse]:
-                !isIpfsInitialized || !isOnline,
-              [styles.containerAvatarConnectTrueGreen]:
-                isIpfsInitialized && isOnline,
+              [styles.containerAvatarConnectFalse]: !isIpfsInitialized || !isOnline,
+              [styles.containerAvatarConnectTrueGreen]: isIpfsInitialized && isOnline,
             })}
           >
             <AvataImgIpfs

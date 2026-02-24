@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
-import Tooltip from '../tooltip/tooltip';
 import { trimString } from '../../utils/utils';
+import Tooltip from '../tooltip/tooltip';
 import styles from './TextDenom.module.scss';
 
 export type CoinDenomProps = {
@@ -22,10 +22,7 @@ function CoinDenom({ coinDenom, tooltipStatus, infoDenom }: CoinDenomProps) {
     if (coinDenom.includes('pool')) {
       setTextDenom(trimString(coinDenom, 3, 3));
       setTooltipText(trimString(coinDenom, 9, 9));
-    } else if (
-      infoDenom &&
-      Object.prototype.hasOwnProperty.call(infoDenom, 'denom')
-    ) {
+    } else if (infoDenom && Object.hasOwn(infoDenom, 'denom')) {
       const { denom, path } = infoDenom;
       if (denom.length < 20) {
         setTextDenom(denom);
@@ -40,10 +37,7 @@ function CoinDenom({ coinDenom, tooltipStatus, infoDenom }: CoinDenomProps) {
     }
   }, [coinDenom, infoDenom]);
 
-  const validInfo =
-    infoDenom &&
-    Object.prototype.hasOwnProperty.call(infoDenom, 'native') &&
-    infoDenom.native === false;
+  const validInfo = infoDenom && Object.hasOwn(infoDenom, 'native') && infoDenom.native === false;
 
   const validTootipStatusByDenom = validInfo || coinDenom.includes('pool');
 

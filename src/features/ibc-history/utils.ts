@@ -7,34 +7,20 @@ const parseEvents = (rawLog: readonly Log[]) => {
         for (const event of events) {
           if (event.type === 'send_packet') {
             const { attributes } = event;
-            const sourceChannelAttr = attributes.find(
-              (attr) => attr.key === 'packet_src_channel'
-            );
-            const sourceChannelValue = sourceChannelAttr
-              ? sourceChannelAttr.value
-              : undefined;
-            const destChannelAttr = attributes.find(
-              (attr) => attr.key === 'packet_dst_channel'
-            );
-            const destChannelValue = destChannelAttr
-              ? destChannelAttr.value
-              : undefined;
-            const sequenceAttr = attributes.find(
-              (attr) => attr.key === 'packet_sequence'
-            );
+            const sourceChannelAttr = attributes.find((attr) => attr.key === 'packet_src_channel');
+            const sourceChannelValue = sourceChannelAttr ? sourceChannelAttr.value : undefined;
+            const destChannelAttr = attributes.find((attr) => attr.key === 'packet_dst_channel');
+            const destChannelValue = destChannelAttr ? destChannelAttr.value : undefined;
+            const sequenceAttr = attributes.find((attr) => attr.key === 'packet_sequence');
             const sequence = sequenceAttr ? sequenceAttr.value : undefined;
             const timeoutHeightAttr = attributes.find(
               (attr) => attr.key === 'packet_timeout_height'
             );
-            const timeoutHeight = timeoutHeightAttr
-              ? timeoutHeightAttr.value
-              : undefined;
+            const timeoutHeight = timeoutHeightAttr ? timeoutHeightAttr.value : undefined;
             const timeoutTimestampAttr = attributes.find(
               (attr) => attr.key === 'packet_timeout_timestamp'
             );
-            const timeoutTimestamp = timeoutTimestampAttr
-              ? timeoutTimestampAttr.value
-              : undefined;
+            const timeoutTimestamp = timeoutTimestampAttr ? timeoutTimestampAttr.value : undefined;
             if (sequence && destChannelValue && sourceChannelValue) {
               return {
                 destChannelId: destChannelValue,

@@ -1,6 +1,6 @@
-import { useCybernet } from './cybernet.context';
-import { texts, Texts } from './cybernetTexts';
 import { useCallback } from 'react';
+import { useCybernet } from './cybernet.context';
+import { Texts, texts } from './cybernetTexts';
 
 function useCybernetTexts() {
   const { selectedContract } = useCybernet();
@@ -16,7 +16,7 @@ function useCybernetTexts() {
 
       // refactor
       if (typeof t2 === 'object') {
-        text = isPlural ? t2.plural || t2 + 's' : t2.single || t2;
+        text = isPlural ? t2.plural || `${t2}s` : t2.single || t2;
       } else {
         text = t2;
         if (isPlural) {

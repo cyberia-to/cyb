@@ -15,6 +15,7 @@ function Iframe({ url, width = '100%', height = '100%' }: Props) {
       id="iframeCid"
       className={styles.iframe}
       url={url}
+      sandbox={['allow-scripts', 'allow-same-origin']}
     />
   );
 }

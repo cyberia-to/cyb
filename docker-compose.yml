@@ -7,7 +7,6 @@ services:
     ports:
       - '3000:3000'
     environment:
-      - NODE_OPTIONS=--max-old-space-size=8192
       - CHAIN_ID=bostrom
       - RPC_URL=https://rpc.bostrom.cybernode.ai
       - LCD_URL=https://lcd.bostrom.cybernode.ai

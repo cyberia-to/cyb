@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
-import useQueueIpfsContent from 'src/hooks/useQueueIpfsContent';
 import { PATTERN_CYBER } from 'src/constants/patterns';
 import { useCyberlinksByParticleQuery } from 'src/generated/graphql';
+import useQueueIpfsContent from 'src/hooks/useQueueIpfsContent';
 import { QUERY_GET_FOLLOWERS } from './query';
 
 const useGetDataGql = () => {
@@ -9,7 +9,7 @@ const useGetDataGql = () => {
   const { data: dataGql, loading: loadingGql } = useCyberlinksByParticleQuery({
     variables: {
       limit: 1000,
-      where: QUERY_GET_FOLLOWERS ,
+      where: QUERY_GET_FOLLOWERS,
       offset: 0,
     },
   });
@@ -24,7 +24,7 @@ const useGetDataGql = () => {
           const addressResolve = fetchWithDetails
             ? (await fetchWithDetails(item.to)).content
             : null;
-          if (addressResolve && addressResolve.match(PATTERN_CYBER)) {
+          if (addressResolve?.match(PATTERN_CYBER)) {
             setData((itemData) => [
               ...itemData,
               {

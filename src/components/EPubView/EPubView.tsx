@@ -1,9 +1,4 @@
-import React, {
-  CSSProperties,
-  ComponentProps,
-  useCallback,
-  useMemo,
-} from 'react';
+import React, { ComponentProps, CSSProperties, useCallback, useMemo } from 'react';
 import { ReactReader } from 'react-reader';
 import useEPubLocation from 'src/hooks/useEPubLocation';
 

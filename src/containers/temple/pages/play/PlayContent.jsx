@@ -1,19 +1,18 @@
 import { Link } from 'react-router-dom';
 import { ContainerGradientText } from '../../../../components';
-import styles from './styles.scss';
-
-import nebulaIcon from '../../../../image/temple/nebula.png';
-import teleport from '../../../../image/temple/teleport.png';
-import hfr from '../../../../image/temple/hfr.png';
-import temple from '../../../../image/temple/temple.png';
-import robot from '../../../../image/temple/robot.png';
-import shpere from '../../../../image/temple/shpere.png';
-import senate from '../../../../image/temple/senate.png';
 import portal from '../../../../image/space-pussy.svg';
-import oracle from '../../../../image/temple/oracle.png';
-import warp from '../../../../image/temple/warp.png';
+import hfr from '../../../../image/temple/hfr.png';
 import hub from '../../../../image/temple/hub.png';
+import nebulaIcon from '../../../../image/temple/nebula.png';
+import oracle from '../../../../image/temple/oracle.png';
+import robot from '../../../../image/temple/robot.png';
+import senate from '../../../../image/temple/senate.png';
+import shpere from '../../../../image/temple/shpere.png';
+import teleport from '../../../../image/temple/teleport.png';
+import temple from '../../../../image/temple/temple.png';
+import warp from '../../../../image/temple/warp.png';
 import zhdun from '../../../../image/temple/zhdun.png';
+import styles from './styles.scss';
 
 const playContentItem = [
   {
@@ -90,12 +89,8 @@ function PlayContent() {
                 />
               </div>
               <div className={styles.containerPlayContentContainerText}>
-                <div className={styles.containerItemPlayContentTitle}>
-                  {item.title}
-                </div>
-                <div className={styles.containerItemPlayContentDsc}>
-                  {item.description}
-                </div>
+                <div className={styles.containerItemPlayContentTitle}>{item.title}</div>
+                <div className={styles.containerItemPlayContentDsc}>{item.description}</div>
               </div>
             </div>
           </Link>

@@ -1,8 +1,8 @@
 import { Route, Routes } from 'react-router-dom';
-import SphereContextProvider from './Sphere.context';
 import SphereLayout from './Layout/SphereLayout';
-import Heroes from './pages/containers/Heroes/Heroes';
 import HeroDetails from './pages/containers/HeroDetails/HeroDetails';
+import Heroes from './pages/containers/Heroes/Heroes';
+import SphereContextProvider from './Sphere.context';
 
 function SphereRoutes() {
   return (

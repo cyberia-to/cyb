@@ -1,18 +1,17 @@
-import Display from 'src/components/containerGradient/Display/Display';
-import { LinkWindow } from 'src/components';
-import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
 import { Link, Navigate, useParams } from 'react-router-dom';
-
-import useCurrentAddress from 'src/hooks/useCurrentAddress';
+import { LinkWindow } from 'src/components';
+import Display from 'src/components/containerGradient/Display/Display';
+import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
 import { Stars } from 'src/containers/portal/components';
-import { cybernetRoutes } from '../../routes';
-import styles from './Main.module.scss';
-import useCurrentAccountStake from '../../hooks/useCurrentAccountStake';
-import useCybernetTexts from '../../useCybernetTexts';
-import useDelegate from '../../hooks/useDelegate';
+import useCurrentAddress from 'src/hooks/useCurrentAddress';
 import { useCybernet } from '../../cybernet.context';
-import ContractsTable from './ContractsTable/ContractsTable';
+import useCurrentAccountStake from '../../hooks/useCurrentAccountStake';
+import useDelegate from '../../hooks/useDelegate';
+import { cybernetRoutes } from '../../routes';
+import useCybernetTexts from '../../useCybernetTexts';
 import Banner from './Banner/Banner';
+import ContractsTable from './ContractsTable/ContractsTable';
+import styles from './Main.module.scss';
 
 function Main() {
   const address = useCurrentAddress();
@@ -56,11 +55,7 @@ function Main() {
       <Banner />
 
       <div className={styles.verses}>
-        <Display
-          noPaddingX
-          noPaddingY
-          title={<DisplayTitle title="choose verse" />}
-        >
+        <Display noPaddingX noPaddingY title={<DisplayTitle title="choose verse" />}>
           <ContractsTable />
         </Display>
       </div>
@@ -77,12 +72,7 @@ function Main() {
                     {staker_apr && (
                       <div className={styles.apr}>
                         yield up to <br />
-                        <span>
-                          {Number(
-                            selectedContract?.economy?.staker_apr
-                          ).toFixed(2)}
-                          %
-                        </span>
+                        <span>{Number(selectedContract?.economy?.staker_apr).toFixed(2)}%</span>
                       </div>
                     )}
                   </div>
@@ -90,16 +80,9 @@ function Main() {
               />
             }
           >
-            <p className={styles.actionText}>
-              learn by staking on {getText('delegate', true)}
-            </p>
+            <p className={styles.actionText}>learn by staking on {getText('delegate', true)}</p>
             <div className={styles.links}>
-              <Link
-                to={cybernetRoutes.delegators.getLink(
-                  'pussy',
-                  contractNameOrAddress
-                )}
-              >
+              <Link to={cybernetRoutes.delegators.getLink('pussy', contractNameOrAddress)}>
                 {getText('delegate', true)}
               </Link>
 
@@ -108,12 +91,7 @@ function Main() {
               </button>
 
               {haveStake && (
-                <Link
-                  to={cybernetRoutes.myLearner.getLink(
-                    'pussy',
-                    contractNameOrAddress
-                  )}
-                >
+                <Link to={cybernetRoutes.myLearner.getLink('pussy', contractNameOrAddress)}>
                   my {getText('delegator')}
                 </Link>
               )}
@@ -131,12 +109,7 @@ function Main() {
                     {validator_apr && (
                       <div className={styles.apr}>
                         yield up to
-                        <span>
-                          {Number(
-                            selectedContract?.economy?.validator_apr
-                          ).toFixed(2)}
-                          %
-                        </span>
+                        <span>{Number(selectedContract?.economy?.validator_apr).toFixed(2)}%</span>
                       </div>
                     )}
                   </div>
@@ -147,32 +120,17 @@ function Main() {
             <p className={styles.actionText}>teach by linking content</p>
 
             <div className={styles.links}>
-              <Link
-                to={cybernetRoutes.subnet.getLink(
-                  'pussy',
-                  contractNameOrAddress,
-                  0
-                )}
-              >
+              <Link to={cybernetRoutes.subnet.getLink('pussy', contractNameOrAddress, 0)}>
                 {getText('root')}
               </Link>
 
-              <Link
-                to={cybernetRoutes.subnets.getLink(
-                  network,
-                  contractNameOrAddress
-                )}
-              >
+              <Link to={cybernetRoutes.subnets.getLink(network, contractNameOrAddress)}>
                 {getText('subnetwork', true)}
               </Link>
 
               {currentAddressIsDelegator && (
                 <Link
-                  to={cybernetRoutes.delegator.getLink(
-                    network,
-                    contractNameOrAddress,
-                    address
-                  )}
+                  to={cybernetRoutes.delegator.getLink(network, contractNameOrAddress, address)}
                 >
                   my {getText('delegate')}
                 </Link>

@@ -1,10 +1,8 @@
 import cx from 'classnames';
-import TextareaAutosize from 'react-textarea-autosize';
 import React, { useEffect, useState } from 'react';
+import TextareaAutosize from 'react-textarea-autosize';
+import LinearGradientContainer, { Color } from '../LinearGradientContainer/LinearGradientContainer';
 import styles from './Input.module.scss';
-import LinearGradientContainer, {
-  Color,
-} from '../LinearGradientContainer/LinearGradientContainer';
 
 export type Props = {
   color?: Color;

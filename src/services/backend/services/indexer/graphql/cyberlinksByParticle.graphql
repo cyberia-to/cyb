@@ -4,12 +4,7 @@ query CyberlinksByParticle(
   $orderBy: [cyberlinks_order_by!]
   $where: cyberlinks_bool_exp
 ) {
-  cyberlinks(
-    limit: $limit
-    offset: $offset
-    order_by: $orderBy
-    where: $where
-  ) {
+  cyberlinks(limit: $limit, offset: $offset, order_by: $orderBy, where: $where) {
     from: particle_from
     to: particle_to
     timestamp

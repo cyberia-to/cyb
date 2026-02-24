@@ -20,23 +20,13 @@ function CardTemplate({
       marginBottom={marginBottom || 0}
     >
       {title && (
-        <Pane
-          paddingX={0}
-          paddingTop={5}
-          paddingBottom={10}
-          borderBottom={borderBottom || 'none'}
-        >
+        <Pane paddingX={0} paddingTop={5} paddingBottom={10} borderBottom={borderBottom || 'none'}>
           <Text color="#fff" fontSize="20px" fontWeight="500" lineHeight="1.5">
             {title}
           </Text>
         </Pane>
       )}
-      <Pane
-        display="flex"
-        paddingLeft={paddingLeftChild || 0}
-        width="100%"
-        flexDirection="column"
-      >
+      <Pane display="flex" paddingLeft={paddingLeftChild || 0} width="100%" flexDirection="column">
         {children}
       </Pane>
     </Pane>

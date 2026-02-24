@@ -1,18 +1,17 @@
 /* eslint-disable react/no-unstable-nested-components */
 import { createColumnHelper } from '@tanstack/react-table';
-import React, { useMemo } from 'react';
+import { useMemo } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { Cid, DenomArr } from 'src/components';
+import CIDResolver from 'src/components/CIDResolver/CIDResolver';
 import Table from 'src/components/Table/Table';
+import { AvataImgIpfs } from 'src/containers/portal/components/avataIpfs';
+import { ContractTypes, ContractWithData } from 'src/features/cybernet/types';
 import { routes } from 'src/routes';
 import { trimString } from 'src/utils/utils';
 import { useCybernet } from '../../../cybernet.context';
-import { ContractTypes, ContractWithData } from 'src/features/cybernet/types';
 import { cybernetRoutes } from '../../../routes';
 import styles from './ContractsTable.module.scss';
-import { AvataImgIpfs } from 'src/containers/portal/components/avataIpfs';
-import useParticleDetails from 'src/features/particle/useParticleDetails';
-import CIDResolver from 'src/components/CIDResolver/CIDResolver';
 
 const columnHelper = createColumnHelper<ContractWithData>();
 
@@ -55,12 +54,7 @@ function ContractsTable() {
                   <div className={styles.nameCell}>
                     {selected && <span>✔</span>}
 
-                    <Link
-                      to={cybernetRoutes.subnets.getLink(
-                        'pussy',
-                        value || address
-                      )}
-                    >
+                    <Link to={cybernetRoutes.subnets.getLink('pussy', value || address)}>
                       {logo && <AvataImgIpfs cidAvatar={logo} />}
                       {value || trimString(address, 6, 3)}
                     </Link>
@@ -81,8 +75,7 @@ function ContractsTable() {
                 }
 
                 const { type } = row;
-                const difficulty =
-                  type === ContractTypes.Graph ? 'easy' : 'hard';
+                const difficulty = type === ContractTypes.Graph ? 'easy' : 'hard';
 
                 return (
                   <div className={styles.descriptionCell}>
@@ -131,7 +124,7 @@ function ContractsTable() {
               header: '',
               id: 'network',
               cell: (info) => {
-                const value = info.getValue();
+                const _value = info.getValue();
 
                 return <DenomArr type="network" denomValue="space-pussy" />;
               },

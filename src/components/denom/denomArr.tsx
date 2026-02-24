@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { TracesDenomFuncResponse } from 'src/types/ibc';
-import { Option } from 'src/types';
+import { useEffect, useState } from 'react';
 import { useIbcDenom } from 'src/contexts/ibcDenom';
+import { TracesDenomFuncResponse } from 'src/types/ibc';
 import Denom from './index';
 
 // generated, recheck
@@ -103,9 +102,7 @@ function DenomArr({
             <Denom
               type={type}
               denomValue={denom[1].denom}
-              marginContainer={
-                onlyImg ? '0px 0px 0px -12px' : '0px 5px 0px -12px'
-              }
+              marginContainer={onlyImg ? '0px 0px 0px -12px' : '0px 5px 0px -12px'}
               onlyImg
               tooltipStatusImg={tooltipStatusImg}
               tooltipStatusText={tooltipStatusText}

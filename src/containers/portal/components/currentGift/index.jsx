@@ -1,10 +1,10 @@
+import BigNumber from 'bignumber.js';
 import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
-import BigNumber from 'bignumber.js';
-import { formatNumber } from '../../../../utils/utils';
-import ContainerGradient from '../../../../components/containerGradient/ContainerGradient';
-import styles from './CurrentGift.module.scss';
 import { PATTERN_CYBER } from 'src/constants/patterns';
+import ContainerGradient from '../../../../components/containerGradient/ContainerGradient';
+import { formatNumber } from '../../../../utils/utils';
+import styles from './CurrentGift.module.scss';
 
 const GIFT_ICON = '🎁';
 const BOOT_ICON = '🟢';
@@ -50,24 +50,18 @@ const formatBonus = (amount) => {
 
 function TableAllocation({ currentBonus, currentGift }) {
   const itemTable = useMemo(() => {
-    if (currentGift !== null && currentGift.details) {
+    if (currentGift?.details) {
       const { details } = currentGift;
       return keyTable.map((item) => {
         const value = details[item] ? details[item].gift * 10 ** 6 : 0;
         return (
-          <ItemTable
-            key={item}
-            value={Math.floor(parseFloat(value) * currentBonus)}
-            title={item}
-          />
+          <ItemTable key={item} value={Math.floor(parseFloat(value) * currentBonus)} title={item} />
         );
       });
     }
-    return keyTable.map((item) => (
-      <ItemTable key={item} value={0} title={item} />
-    ));
+    return keyTable.map((item) => <ItemTable key={item} value={0} title={item} />);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentGift]);
+  }, [currentGift, currentBonus]);
 
   return <div className={styles.containerTableAllocation}>{itemTable}</div>;
 }
@@ -96,9 +90,7 @@ function CurrentGift({
 
       if (currentBonus?.current) {
         const unclaimedGift = totalGiftAmount.amount - totalGiftClaimed.amount;
-        const unclaimedGiftByBonus = Math.floor(
-          unclaimedGift * currentBonus.current
-        );
+        const unclaimedGiftByBonus = Math.floor(unclaimedGift * currentBonus.current);
         const totalGiftByBonus = unclaimedGiftByBonus + totalGiftClaimed.claim;
         return totalGiftByBonus;
       }
@@ -107,11 +99,7 @@ function CurrentGift({
   }, [totalGiftClaimed, totalGiftAmount, currentBonus]);
 
   const useSelectCyber = useMemo(() => {
-    return (
-      selectedAddress &&
-      selectedAddress !== null &&
-      selectedAddress.match(PATTERN_CYBER)
-    );
+    return selectedAddress?.match(PATTERN_CYBER);
   }, [selectedAddress]);
 
   const useTitle = useMemo(() => {
@@ -133,17 +121,14 @@ function CurrentGift({
             {/* {useSelectCyber ? 'all gift ' : 'gift'} */}
           </div>
           <div>
-            {claim
-              ? formatNumber(parseFloat(claim))
-              : formatNumber(parseFloat(amount))}{' '}
-            {BOOT_ICON}
+            {claim ? formatNumber(parseFloat(claim)) : formatNumber(parseFloat(amount))} {BOOT_ICON}
           </div>
         </div>
       );
     }
     return <div style={{ color: '#1fcbff' }}>no gift {GIFT_ICON}</div>;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentGift, useSelectCyber, title]);
+  }, [currentGift, title]);
 
   const useBaseGift = useMemo(() => {
     if (currentGift && currentGift !== null) {
@@ -162,22 +147,15 @@ function CurrentGift({
     if (currentGift && currentGift !== null) {
       const { amount, claim } = currentGift;
 
-      const curentBonus = new BigNumber(parseFloat(claim))
-        .dividedBy(parseFloat(amount))
-        .toNumber();
+      const curentBonus = new BigNumber(parseFloat(claim)).dividedBy(parseFloat(amount)).toNumber();
 
       if ((curentBonus === 1 || claim === undefined) && currentBonus?.current) {
-        const bonusByAddress = new BigNumber(
-          parseFloat(currentBonus.current)
-        ).toNumber();
+        const bonusByAddress = new BigNumber(parseFloat(currentBonus.current)).toNumber();
 
         return bonusByAddress;
       }
 
-      if (
-        currentGift.address.match(PATTERN_CYBER) &&
-        useTotalAmountByBonus !== null
-      ) {
+      if (currentGift.address.match(PATTERN_CYBER) && useTotalAmountByBonus !== null) {
         const tempCurentBonus = new BigNumber(parseFloat(useTotalAmountByBonus))
           .dividedBy(parseFloat(amount))
 
@@ -185,10 +163,8 @@ function CurrentGift({
         return tempCurentBonus;
       }
 
-      if (Object.prototype.hasOwnProperty.call(currentGift, 'multiplier')) {
-        const temp2 = new BigNumber(
-          parseFloat(currentGift.multiplier)
-        ).toNumber();
+      if (Object.hasOwn(currentGift, 'multiplier')) {
+        const temp2 = new BigNumber(parseFloat(currentGift.multiplier)).toNumber();
         return temp2;
       }
 
@@ -205,11 +181,7 @@ function CurrentGift({
         return formatNumber(Math.floor(parseFloat(amount) * useCurrentBonus));
       }
 
-      if (
-        claim &&
-        address.match(PATTERN_CYBER) &&
-        useTotalAmountByBonus !== null
-      ) {
+      if (claim && address.match(PATTERN_CYBER) && useTotalAmountByBonus !== null) {
         return formatNumber(parseFloat(useTotalAmountByBonus));
       }
 
@@ -221,14 +193,10 @@ function CurrentGift({
     }
     return 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentGift, currentBonus, useCurrentBonus, useTotalAmountByBonus]);
+  }, [currentGift, useCurrentBonus, useTotalAmountByBonus]);
 
   const useValueTextResult = useMemo(() => {
-    if (
-      selectedAddress !== null &&
-      selectedAddress.match(PATTERN_CYBER) &&
-      valueTextResult
-    ) {
+    if (selectedAddress?.match(PATTERN_CYBER) && valueTextResult) {
       return valueTextResult;
     }
 
@@ -255,9 +223,7 @@ function CurrentGift({
       }
       return (
         <>
-          <span style={{ textTransform: 'capitalize', marginRight: 5 }}>
-            {useValueTextResult}
-          </span>
+          <span style={{ textTransform: 'capitalize', marginRight: 5 }}>{useValueTextResult}</span>
           gift {GIFT_ICON}
         </>
       );
@@ -279,16 +245,10 @@ function CurrentGift({
       <div className={styles.containerCurrentGift}>
         <div className={styles.containerCurrentGiftContaiterAmountGift}>
           {useBaseGift === 0 ? (
-            <ItemValue
-              value={`${useBaseGift} ${BOOT_ICON}`}
-              title="base gift"
-            />
+            <ItemValue value={`${useBaseGift} ${BOOT_ICON}`} title="base gift" />
           ) : (
             <>
-              <ItemValue
-                value={`${useBaseGift} ${BOOT_ICON}`}
-                title="base gift"
-              />
+              <ItemValue value={`${useBaseGift} ${BOOT_ICON}`} title="base gift" />
               *
               <ItemValue value={formatBonus(useCurrentBonus)} title="bonus" />
               =
@@ -302,20 +262,14 @@ function CurrentGift({
         {useBaseGift !== 0 && (
           <>
             <div>
-              You have been chosen for good deeds in the cyberverse on the 5th
-              of November 2021:
+              You have been chosen for good deeds in the cyberverse on the 5th of November 2021:
             </div>
-            <TableAllocation
-              currentBonus={useCurrentBonus}
-              currentGift={currentGift}
-            />
+            <TableAllocation currentBonus={useCurrentBonus} currentGift={currentGift} />
           </>
         )}
         <div>
           Please check{' '}
-          <Link to="/ipfs/QmPAi1h1rwWnHkNnxnHZg28eGivpUK8wy8eciqoPSR4PHv">
-            details of the gift
-          </Link>
+          <Link to="/ipfs/QmPAi1h1rwWnHkNnxnHZg28eGivpUK8wy8eciqoPSR4PHv">details of the gift</Link>
         </div>
       </div>
     </ContainerGradient>

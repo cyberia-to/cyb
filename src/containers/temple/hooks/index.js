@@ -1,10 +1,10 @@
-import useAccountCount from './useAccountCount';
-import useGetPortalStats from './useGetPortalStats';
-import useGetNegentropy from './useGetNegentropy';
-import useGetValidatorsBonded from './useGetValidatorsBonded';
-import useGetGraphStats from './useGetGraphStats';
-import useContractsCount from './useGetContract';
 import useGetTotalCap from './getTotalCap';
+import useAccountCount from './useAccountCount';
+import useContractsCount from './useGetContract';
+import useGetGraphStats from './useGetGraphStats';
+import useGetNegentropy from './useGetNegentropy';
+import useGetPortalStats from './useGetPortalStats';
+import useGetValidatorsBonded from './useGetValidatorsBonded';
 
 export {
   useAccountCount,

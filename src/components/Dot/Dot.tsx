@@ -24,7 +24,7 @@ function Dot({ color, className, animation, size = 4 }: Props) {
     if (ref.current) {
       ref.current.style.setProperty('--size', `${size}px`);
     }
-  }, [ref, size]);
+  }, [size]);
 
   return (
     <span

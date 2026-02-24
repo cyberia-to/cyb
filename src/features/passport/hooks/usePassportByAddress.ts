@@ -1,8 +1,8 @@
 import { useEffect } from 'react';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
-import { getPassport } from '../passports.redux';
 import { fromBech32 } from 'src/utils/utils';
+import { getPassport } from '../passports.redux';
 
 type Props = {
   address: string | null | undefined;
@@ -34,12 +34,7 @@ function usePassportByAddress(
   const dispatch = useAppDispatch();
 
   useEffect(() => {
-    if (
-      !queryClient ||
-      !bostromAddress ||
-      skip ||
-      (currentPassport && currentPassport.loading)
-    ) {
+    if (!queryClient || !bostromAddress || skip || currentPassport?.loading) {
       return;
     }
 

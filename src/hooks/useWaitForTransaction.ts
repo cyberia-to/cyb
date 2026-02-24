@@ -25,7 +25,7 @@ function useWaitForTransaction({ hash, onSuccess }: Props) {
       },
       retryDelay: 2500,
       onSuccess: (response) => {
-        onSuccess && onSuccess(response);
+        onSuccess?.(response);
       },
     },
   });

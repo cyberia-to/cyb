@@ -1,23 +1,21 @@
-import { useEffect, useState } from 'react';
-import { ActionBar } from '@cybercongress/gravity';
 import { coins } from '@cosmjs/launchpad';
-import { useSigningClient } from 'src/contexts/signerClient';
+import { ActionBar } from '@cybercongress/gravity';
+import { useEffect, useState } from 'react';
 import {
-  Dots,
   ActionBarContentText,
-  TransactionSubmitted,
-  Confirmed,
-  TransactionError,
   ActionBarSend,
+  Confirmed,
+  Dots,
+  TransactionError,
+  TransactionSubmitted,
 } from 'src/components';
-import { LEDGER } from 'src/utils/config';
+import { BASE_DENOM, DEFAULT_GAS_LIMITS } from 'src/constants/config';
 import { PATTERN_CYBER } from 'src/constants/patterns';
-
-import { DEFAULT_GAS_LIMITS, BASE_DENOM } from 'src/constants/config';
+import { useSigningClient } from 'src/contexts/signerClient';
 import { getTxs } from 'src/services/transactions/lcd';
+import { LEDGER } from 'src/utils/config';
 
-const { STAGE_ERROR, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED } =
-  LEDGER;
+const { STAGE_ERROR, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED } = LEDGER;
 
 const STAGE_SEND = 1.1;
 
@@ -92,7 +90,7 @@ function ActionBarKeplr({ updateAddress, updateBalance, onClickBack }) {
     };
     confirmTx();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [txHash]);
+  }, [txHash, updateBalance]);
 
   useEffect(() => {
     if (recipient.match(PATTERN_CYBER) && parseFloat(amountSend) > 0) {
@@ -135,22 +133,11 @@ function ActionBarKeplr({ updateAddress, updateBalance, onClickBack }) {
   }
 
   if (stage === STAGE_CONFIRMED) {
-    return (
-      <Confirmed
-        txHash={txHash}
-        txHeight={txHeight}
-        onClickBtnClose={() => clearState()}
-      />
-    );
+    return <Confirmed txHash={txHash} txHeight={txHeight} onClickBtnClose={() => clearState()} />;
   }
 
   if (stage === STAGE_ERROR && errorMessage !== null) {
-    return (
-      <TransactionError
-        errorMessage={errorMessage}
-        onClickBtn={() => clearState()}
-      />
-    );
+    return <TransactionError errorMessage={errorMessage} onClickBtn={() => clearState()} />;
   }
 
   return null;

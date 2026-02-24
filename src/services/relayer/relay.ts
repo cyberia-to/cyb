@@ -1,8 +1,8 @@
+import { IbcClient, Link as IbcLink, Logger } from '@confio/relayer/build';
 import { RelayedHeights } from '@confio/relayer/build/lib/link';
 // import { OfflineDirectSigner, OfflineSigner } from '@cosmjs/proto-signing';
 import { GasPrice } from '@cosmjs/stargate';
 import { Tendermint34Client } from '@cosmjs/tendermint-rpc';
-import { IbcClient, Link as IbcLink, Logger } from '@confio/relayer/build';
 import { OfflineAminoSigner, OfflineDirectSigner } from '@keplr-wallet/types';
 import doCheckAndRelayPrivate from './doCheckAndRelayPrivate';
 
@@ -49,12 +49,12 @@ async function relay(
   }
   const link = await IbcLink.createWithExistingConnections(
     await IbcClient.connectWithSigner(rpcA, offlineSignerA, addrA, {
-      // @ts-ignore
+      // @ts-expect-error
       gasPrice: GasPriceA,
       logger,
     }),
     await IbcClient.connectWithSigner(rpcB, offlineSignerB, addrB, {
-      // @ts-ignore
+      // @ts-expect-error
       gasPrice: GasPriceB,
       logger,
     }),

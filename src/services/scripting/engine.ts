@@ -1,38 +1,25 @@
 import initAsync, { compile } from 'cyb-rune-wasm';
-
-import { v4 as uuidv4 } from 'uuid';
-
-import { TabularKeyValues } from 'src/types/data';
-import { keyValuesToObject } from 'src/utils/localStorage';
-import { entityToDto } from 'src/utils/dto';
-
 import { mapObjIndexed } from 'ramda';
-import { removeBrokenUnicode } from 'src/utils/string';
-
-import {
-  BehaviorSubject,
-  ReplaySubject,
-  combineLatest,
-  distinctUntilChanged,
-  map,
-} from 'rxjs';
-
+import { BehaviorSubject, combineLatest, distinctUntilChanged, map, ReplaySubject } from 'rxjs';
 import defaultParticleScript from 'src/services/scripting/rune/default/particle.rn';
 import runtimeScript from 'src/services/scripting/rune/runtime.rn';
-
+import { TabularKeyValues } from 'src/types/data';
+import { entityToDto } from 'src/utils/dto';
+import { keyValuesToObject } from 'src/utils/localStorage';
+import { removeBrokenUnicode } from 'src/utils/string';
+import { v4 as uuidv4 } from 'uuid';
+import { extractRuneScript } from './helpers';
 import {
+  EngineContext,
+  EntrypointParams,
   ScriptCallback,
-  ScriptParticleParams,
   ScriptContext,
-  ScriptParticleResult,
   // ScriptMyParticleParams,
   ScriptEntrypoints,
-  EntrypointParams,
-  EngineContext,
   ScriptMyCampanion,
+  ScriptParticleParams,
+  ScriptParticleResult,
 } from './types';
-
-import { extractRuneScript } from './helpers';
 
 type RuneEntrypoint = {
   readOnly: boolean;
@@ -69,8 +56,7 @@ const defaultRuneEntrypoint: RuneEntrypoint = {
   script: runtimeScript,
 };
 
-const toRecord = (item: TabularKeyValues) =>
-  keyValuesToObject(Object.values(item));
+const _toRecord = (item: TabularKeyValues) => keyValuesToObject(Object.values(item));
 
 export type LoadParams = {
   entrypoints: ScriptEntrypoints;
@@ -89,10 +75,7 @@ function enigine() {
   const isSoulInitialized$ = new ReplaySubject(1);
   combineLatest([isInitialized$, entrypoints$])
     .pipe(
-      map(
-        ([isInitialized, entrypoints]) =>
-          !!(isInitialized && entrypoints.particle)
-      ),
+      map(([isInitialized, entrypoints]) => !!(isInitialized && entrypoints.particle)),
       distinctUntilChanged()
     )
     .subscribe((v) => {
@@ -176,12 +159,7 @@ function enigine() {
     } catch (e) {
       scriptCallbacks.delete(refId);
 
-      console.log(
-        `engine.run err ${compilerParams.funcName}`,
-        e,
-        outputData,
-        compilerParams
-      );
+      console.log(`engine.run err ${compilerParams.funcName}`, e, outputData, compilerParams);
       return {
         diagnosticsOutput: `scripting engine error ${e}`,
         ...outputData,
@@ -190,8 +168,7 @@ function enigine() {
     }
   };
 
-  const getParticleScriptOrAction = ():
-    | ['error' | 'pass' | 'script', string] => {
+  const getParticleScriptOrAction = (): ['error' | 'pass' | 'script', string] => {
     if (!entrypoints.particle) {
       return ['error', ''];
     }
@@ -205,9 +182,7 @@ function enigine() {
     return ['script', script];
   };
 
-  const personalProcessor = async (
-    params: ScriptParticleParams
-  ): Promise<ScriptParticleResult> => {
+  const personalProcessor = async (params: ScriptParticleParams): Promise<ScriptParticleResult> => {
     const [resultType, script] = getParticleScriptOrAction();
 
     if (resultType === 'error') {
@@ -226,11 +201,7 @@ function enigine() {
     const { action, content: outputContent } = output.result;
 
     if (action === 'error') {
-      console.error(
-        `RUNE: personalProcessor error: ${params.cid}`,
-        params,
-        output
-      );
+      console.error(`RUNE: personalProcessor error: ${params.cid}`, params, output);
     }
 
     if (outputContent) {

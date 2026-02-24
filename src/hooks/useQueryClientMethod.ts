@@ -10,7 +10,7 @@ function useQueryClientMethod<T extends keyof CyberClient>(
   const queryClient = useQueryClient();
 
   // TODO: think how to memo params correctly
-  const memoParams = useMemo(() => params, [JSON.stringify(params)]);
+  const memoParams = useMemo(() => params, [params]);
 
   const { isLoading, data, error } = useQuery<
     unknown,

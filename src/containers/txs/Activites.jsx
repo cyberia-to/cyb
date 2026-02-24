@@ -1,11 +1,11 @@
-import { Link } from 'react-router-dom';
 import { fromBase64, fromUtf8 } from '@cosmjs/encoding';
 import ReactJson from 'react-json-view';
-import { Account, DenomArr, AmountDenom, Cid } from 'src/components';
+import { Link } from 'react-router-dom';
+import { Account, AmountDenom, Cid, DenomArr } from 'src/components';
 import { BASE_DENOM } from 'src/constants/config';
+import Row from '../../components/Row/Row';
 import { formatNumber } from '../../utils/search/utils';
 import { timeSince } from '../../utils/utils';
-import Row from '../../components/Row/Row';
 import ContainerMsgsType from './components/ContainerMsgsType';
 
 const S_TO_MS = 1 * 10 ** 3;
@@ -28,10 +28,7 @@ function MultiSend({ msg }) {
                   return (
                     <span key={j}>
                       {' '}
-                      <AmountDenom
-                        amountValue={coin.amount}
-                        denom={coin.denom}
-                      />
+                      <AmountDenom amountValue={coin.amount} denom={coin.denom} />
                     </span>
                   );
                 })}
@@ -92,29 +89,17 @@ function MsgLink({ msg }) {
 function MsgInvestmint({ msg }) {
   return (
     <ContainerMsgsType type={msg['@type']}>
-      {msg.neuron && (
-        <Row title="neuron" value={<Account address={msg.neuron} />} />
-      )}
+      {msg.neuron && <Row title="neuron" value={<Account address={msg.neuron} />} />}
       {msg.amount && (
         <Row
           title="amount"
-          value={
-            <AmountDenom
-              amountValue={msg.amount.amount}
-              denom={msg.amount.denom}
-            />
-          }
+          value={<AmountDenom amountValue={msg.amount.amount} denom={msg.amount.denom} />}
         />
       )}
       {msg.resource && (
-        <Row
-          title="resource"
-          value={<DenomArr gap={8} denomValue={msg.resource} />}
-        />
+        <Row title="resource" value={<DenomArr gap={8} denomValue={msg.resource} />} />
       )}
-      {msg.length && (
-        <Row title="length" value={timeSince(msg.length * S_TO_MS)} />
-      )}
+      {msg.length && <Row title="length" value={timeSince(msg.length * S_TO_MS)} />}
     </ContainerMsgsType>
   );
 }
@@ -134,10 +119,7 @@ function MsgEditRoute({ msg }) {
     <ContainerMsgsType type={msg['@type']}>
       <Row title="source" value={<Account address={msg.source} />} />
       {msg && (
-        <Row
-          title="amount"
-          value={<AmountDenom amountValue={msg.amount} denom={msg.denom} />}
-        />
+        <Row title="amount" value={<AmountDenom amountValue={msg.amount} denom={msg.denom} />} />
       )}
       <Row title="destination" value={<Account address={msg.destination} />} />
     </ContainerMsgsType>
@@ -188,13 +170,7 @@ function Activites({ msg }) {
                       </>
                     );
                   }
-                  return (
-                    <AmountDenom
-                      amountValue={amountValue}
-                      denom={denom}
-                      key={i}
-                    />
-                  );
+                  return <AmountDenom amountValue={amountValue} denom={denom} key={i} />;
                 })
               : `0 ${BASE_DENOM.toUpperCase()}`
           }
@@ -212,14 +188,8 @@ function Activites({ msg }) {
   if (type.includes('MsgCreateValidator')) {
     return (
       <ContainerMsgsType type={msg['@type']}>
-        <Row
-          title="Delegator"
-          value={<Account address={msg.delegator_address} />}
-        />
-        <Row
-          title="Validator"
-          value={<Account address={msg.validator_address} />}
-        />
+        <Row title="Delegator" value={<Account address={msg.delegator_address} />} />
+        <Row title="Validator" value={<Account address={msg.validator_address} />} />
         <Row
           title="Mininum Self Delegation"
           value={`${formatNumber(msg.min_self_delegation)}
@@ -240,22 +210,11 @@ function Activites({ msg }) {
   if (type.includes('MsgDelegate')) {
     return (
       <ContainerMsgsType type={msg['@type']}>
-        <Row
-          title="Delegator"
-          value={<Account address={msg.delegator_address} />}
-        />
-        <Row
-          title="Validator"
-          value={<Account address={msg.validator_address} />}
-        />
+        <Row title="Delegator" value={<Account address={msg.delegator_address} />} />
+        <Row title="Validator" value={<Account address={msg.validator_address} />} />
         <Row
           title="Delegation Amount"
-          value={
-            <AmountDenom
-              amountValue={msg.amount.amount}
-              denom={msg.amount.denom}
-            />
-          }
+          value={<AmountDenom amountValue={msg.amount.amount} denom={msg.amount.denom} />}
         />
       </ContainerMsgsType>
     );
@@ -263,22 +222,11 @@ function Activites({ msg }) {
   if (type.includes('MsgUndelegate')) {
     return (
       <ContainerMsgsType type={msg['@type']}>
-        <Row
-          title="Delegator"
-          value={<Account address={msg.delegator_address} />}
-        />
-        <Row
-          title="Validator"
-          value={<Account address={msg.validator_address} />}
-        />
+        <Row title="Delegator" value={<Account address={msg.delegator_address} />} />
+        <Row title="Validator" value={<Account address={msg.validator_address} />} />
         <Row
           title="Undelegation Amount"
-          value={
-            <AmountDenom
-              amountValue={msg.amount.amount}
-              denom={msg.amount.denom}
-            />
-          }
+          value={<AmountDenom amountValue={msg.amount.amount} denom={msg.amount.denom} />}
         />
       </ContainerMsgsType>
     );
@@ -286,26 +234,12 @@ function Activites({ msg }) {
   if (type.includes('MsgBeginRedelegate')) {
     return (
       <ContainerMsgsType type={msg['@type']}>
-        <Row
-          title="Delegator"
-          value={<Account address={msg.delegator_address} />}
-        />
-        <Row
-          title="Redelegated from"
-          value={<Account address={msg.validator_src_address} />}
-        />
-        <Row
-          title="Redelegated to"
-          value={<Account address={msg.validator_dst_address} />}
-        />
+        <Row title="Delegator" value={<Account address={msg.delegator_address} />} />
+        <Row title="Redelegated from" value={<Account address={msg.validator_src_address} />} />
+        <Row title="Redelegated to" value={<Account address={msg.validator_dst_address} />} />
         <Row
           title="Redelegation Amount"
-          value={
-            <AmountDenom
-              amountValue={msg.amount.amount}
-              denom={msg.amount.denom}
-            />
-          }
+          value={<AmountDenom amountValue={msg.amount.amount} denom={msg.amount.denom} />}
         />
       </ContainerMsgsType>
     );
@@ -325,20 +259,12 @@ function Activites({ msg }) {
         />
         <Row
           title="Offer coin"
-          value={
-            <AmountDenom
-              amountValue={msg.offer_coin.amount}
-              denom={msg.offer_coin.denom}
-            />
-          }
+          value={<AmountDenom amountValue={msg.offer_coin.amount} denom={msg.offer_coin.denom} />}
         />
         <Row
           title="Offer coin fee"
           value={
-            <AmountDenom
-              amountValue={msg.offer_coin_fee.amount}
-              denom={msg.offer_coin_fee.denom}
-            />
+            <AmountDenom amountValue={msg.offer_coin_fee.amount} denom={msg.offer_coin_fee.denom} />
           }
         />
         <Row title="Order price" value={msg.order_price} />
@@ -351,25 +277,14 @@ function Activites({ msg }) {
   if (type.includes('MsgDepositWithinBatch')) {
     return (
       <ContainerMsgsType type={msg['@type']}>
-        <Row
-          title="Depositor address"
-          value={<Account address={msg.depositor_address} />}
-        />
+        <Row title="Depositor address" value={<Account address={msg.depositor_address} />} />
         <Row title="Pool id" value={msg.pool_id} />
         <Row
           title="Deposit coins"
           value={
-            <div
-              style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}
-            >
+            <div style={{ display: 'flex', gap: '10px', flexDirection: 'column' }}>
               {msg.deposit_coins.map((data, i) => {
-                return (
-                  <AmountDenom
-                    amountValue={data.amount}
-                    key={i}
-                    denom={data.denom}
-                  />
-                );
+                return <AmountDenom amountValue={data.amount} key={i} denom={data.denom} />;
               })}
             </div>
           }
@@ -381,19 +296,11 @@ function Activites({ msg }) {
   if (type.includes('MsgWithdrawWithinBatch')) {
     return (
       <ContainerMsgsType type={msg['@type']}>
-        <Row
-          title="Withdrawer address"
-          value={<Account address={msg.withdrawer_address} />}
-        />
+        <Row title="Withdrawer address" value={<Account address={msg.withdrawer_address} />} />
         <Row title="Pool id" value={msg.pool_id} />
         <Row
           title="Pool coin"
-          value={
-            <AmountDenom
-              amountValue={msg.pool_coin.amount}
-              denom={msg.pool_coin.denom}
-            />
-          }
+          value={<AmountDenom amountValue={msg.pool_coin.amount} denom={msg.pool_coin.denom} />}
         />
       </ContainerMsgsType>
     );
@@ -403,10 +310,7 @@ function Activites({ msg }) {
   if (type.includes('MsgWithdrawValidatorCommission')) {
     return (
       <ContainerMsgsType type={msg['@type']}>
-        <Row
-          title="address"
-          value={<Account address={msg.validator_address} />}
-        />
+        <Row title="address" value={<Account address={msg.validator_address} />} />
       </ContainerMsgsType>
     );
   }
@@ -414,14 +318,8 @@ function Activites({ msg }) {
   if (type.includes('MsgWithdrawDelegatorReward')) {
     return (
       <ContainerMsgsType type={msg['@type']}>
-        <Row
-          title="delegator"
-          value={<Account address={msg.delegator_address} />}
-        />
-        <Row
-          title="validator"
-          value={<Account address={msg.validator_address} />}
-        />
+        <Row title="delegator" value={<Account address={msg.delegator_address} />} />
+        <Row title="validator" value={<Account address={msg.validator_address} />} />
       </ContainerMsgsType>
     );
   }
@@ -429,10 +327,7 @@ function Activites({ msg }) {
   if (type.includes('MsgModifyWithdrawAddress')) {
     return (
       <ContainerMsgsType type={msg['@type']}>
-        <Row
-          title="delegator"
-          value={<Account address={msg.delegator_address} />}
-        />
+        <Row title="delegator" value={<Account address={msg.delegator_address} />} />
       </ContainerMsgsType>
     );
   }
@@ -450,9 +345,7 @@ function Activites({ msg }) {
                   if (i > 0) {
                     return ` ,${amount.amount} ${amount.denom}`;
                   }
-                  return `${formatNumber(
-                    amount.amount
-                  )} ${amount.denom.toUpperCase()}`;
+                  return `${formatNumber(amount.amount)} ${amount.denom.toUpperCase()}`;
                 })
               : `0 ${BASE_DENOM.toUpperCase()}`
           }
@@ -466,9 +359,7 @@ function Activites({ msg }) {
       <ContainerMsgsType type={msg['@type']}>
         <Row
           title="Proposal Id"
-          value={
-            <Link to={`/senate/${msg.proposal_id}`}>{msg.proposal_id}</Link>
-          }
+          value={<Link to={`/senate/${msg.proposal_id}`}>{msg.proposal_id}</Link>}
         />
         <Row title="Depositor" value={<Account address={msg.depositor} />} />
         <Row
@@ -477,9 +368,7 @@ function Activites({ msg }) {
             if (i > 0) {
               return ` ,${amount.amount} ${amount.denom}`;
             }
-            return `${formatNumber(
-              amount.amount
-            )} ${amount.denom.toUpperCase()}`;
+            return `${formatNumber(amount.amount)} ${amount.denom.toUpperCase()}`;
           })}
         />
       </ContainerMsgsType>
@@ -491,9 +380,7 @@ function Activites({ msg }) {
       <ContainerMsgsType type={msg['@type']}>
         <Row
           title="Proposal Id"
-          value={
-            <Link to={`/senate/${msg.proposal_id}`}>{msg.proposal_id}</Link>
-          }
+          value={<Link to={`/senate/${msg.proposal_id}`}>{msg.proposal_id}</Link>}
         />
         <Row title="Voter" value={<Account address={msg.voter} />} />
         <Row title="Vote Option" value={msg.option} />
@@ -505,10 +392,7 @@ function Activites({ msg }) {
   if (type.includes('MsgUnjail')) {
     return (
       <ContainerMsgsType type={msg['@type']}>
-        <Row
-          title="address"
-          value={<Account address={msg.validator_addr || msg.address} />}
-        />
+        <Row title="address" value={<Account address={msg.validator_addr || msg.address} />} />
       </ContainerMsgsType>
     );
   }
@@ -539,9 +423,7 @@ function Activites({ msg }) {
                   if (i > 0) {
                     return ` ,${amount.amount} ${amount.denom}`;
                   }
-                  return `${formatNumber(
-                    amount.amount
-                  )} ${amount.denom.toUpperCase()}`;
+                  return `${formatNumber(amount.amount)} ${amount.denom.toUpperCase()}`;
                 })
               : `0 ${BASE_DENOM.toUpperCase()}`
           }
@@ -585,9 +467,7 @@ function Activites({ msg }) {
                   if (i > 0) {
                     return ` ,${amount.amount} ${amount.denom}`;
                   }
-                  return `${formatNumber(
-                    amount.amount
-                  )} ${amount.denom.toUpperCase()}`;
+                  return `${formatNumber(amount.amount)} ${amount.denom.toUpperCase()}`;
                 })
               : `0 ${BASE_DENOM.toUpperCase()}`
           }
@@ -627,12 +507,7 @@ function Activites({ msg }) {
         <Row title="Source port" value={msg.source_port} />
         <Row
           title="Token"
-          value={
-            <AmountDenom
-              amountValue={msg.token.amount}
-              denom={msg.token.denom}
-            />
-          }
+          value={<AmountDenom amountValue={msg.token.amount} denom={msg.token.denom} />}
         />
         <Row
           title="Timeout height"
@@ -647,11 +522,11 @@ function Activites({ msg }) {
   // ibc
   if (type.includes('MsgRecvPacket')) {
     const { packet } = msg;
-    if (Object.prototype.hasOwnProperty.call(packet, 'data')) {
+    if (Object.hasOwn(packet, 'data')) {
       try {
         const dataPacketSring = fromUtf8(fromBase64(packet.data));
         packet.data = dataPacketSring;
-      } catch (e) {
+      } catch (_e) {
         // That string wasn't valid.
       }
     }
@@ -713,12 +588,7 @@ function Activites({ msg }) {
 
   return (
     <div>
-      <ReactJson
-        src={msg}
-        theme="twilight"
-        displayObjectSize={false}
-        displayDataTypes={false}
-      />
+      <ReactJson src={msg} theme="twilight" displayObjectSize={false} displayDataTypes={false} />
     </div>
   );
 }

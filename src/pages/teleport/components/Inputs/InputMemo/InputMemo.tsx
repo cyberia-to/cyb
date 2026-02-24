@@ -1,7 +1,7 @@
-import { Input } from 'src/components';
-import { Color } from 'src/components/LinearGradientContainer/LinearGradientContainer';
-import AddFileButton from 'src/components/buttons/AddFile/AddFile';
 import { RefObject, useCallback, useRef, useState } from 'react';
+import { Input } from 'src/components';
+import AddFileButton from 'src/components/buttons/AddFile/AddFile';
+import { Color } from 'src/components/LinearGradientContainer/LinearGradientContainer';
 import { useBackend } from 'src/contexts/backend/backend';
 import styles from './InputMemo.module.scss';
 
@@ -12,17 +12,10 @@ type Props = {
   title?: string;
 };
 
-function InputMemo({
-  onChangeValue,
-  value,
-  isTextarea,
-  title = 'type public message',
-}: Props) {
+function InputMemo({ onChangeValue, value, isTextarea, title = 'type public message' }: Props) {
   const { ipfsApi, isIpfsInitialized } = useBackend();
   const inputOpenFileRef = useRef<HTMLInputElement>(null);
-  const [selectedFileName, setSelectedFileName] = useState<
-    string | undefined
-  >();
+  const [selectedFileName, setSelectedFileName] = useState<string | undefined>();
 
   const calculationIpfsTo = useCallback(
     async (file: File | undefined) => {

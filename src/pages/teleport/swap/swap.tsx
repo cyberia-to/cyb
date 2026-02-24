@@ -1,42 +1,33 @@
-import { MainContainer, Slider } from 'src/components';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RootState } from 'src/redux/store';
-import useSetActiveAddress from 'src/hooks/useSetActiveAddress';
 import { Pool } from '@cybercongress/cyber-js/build/codec/tendermint/liquidity/v1beta1/liquidity';
-import usePoolListInterval from 'src/hooks/usePoolListInterval';
 import BigNumber from 'bignumber.js';
-import { useIbcDenom } from 'src/contexts/ibcDenom';
-import {
-  getDisplayAmount,
-  getDisplayAmountReverce,
-  reduceBalances,
-} from 'src/utils/utils';
-import { useQueryClient } from 'src/contexts/queryClient';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createSearchParams, useSearchParams } from 'react-router-dom';
-import { useAppSelector } from 'src/redux/hooks';
+import { MainContainer, Slider } from 'src/components';
 import { BASE_DENOM, DENOM_LIQUID } from 'src/constants/config';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
+import { useQueryClient } from 'src/contexts/queryClient';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
-import TokenSetterSwap, { TokenSetterId } from './components/TokenSetterSwap';
-import { useGetParams, useGetSwapPrice } from '../hooks';
-import { sortReserveCoinDenoms, calculatePairAmount } from './utils';
-
-import ActionBar from './actionBar.swap';
+import usePoolListInterval from 'src/hooks/usePoolListInterval';
+import useSetActiveAddress from 'src/hooks/useSetActiveAddress';
+import { useAppSelector } from 'src/redux/hooks';
+import { RootState } from 'src/redux/store';
+import { getDisplayAmount, getDisplayAmountReverce, reduceBalances } from 'src/utils/utils';
 import { TeleportContainer } from '../components/containers/Containers';
+import { useGetParams, useGetSwapPrice } from '../hooks';
 import useGetSendTxsByAddressByType from '../hooks/useGetSendTxsByAddress';
-import DataSwapTxs from './components/dataSwapTxs/DataSwapTxs';
 import { useTeleport } from '../Teleport.context';
+import ActionBar from './actionBar.swap';
+import DataSwapTxs from './components/dataSwapTxs/DataSwapTxs';
 import Slippage from './components/slippage/Slippage';
+import TokenSetterSwap, { TokenSetterId } from './components/TokenSetterSwap';
+import { calculatePairAmount, sortReserveCoinDenoms } from './utils';
 
 const tokenADefaultValue = BASE_DENOM;
 const tokenBDefaultValue = DENOM_LIQUID;
 
 function Swap() {
   const { tracesDenom } = useIbcDenom();
-  const {
-    totalSupplyProofList: totalSupply,
-    accountBalances,
-    refreshBalances,
-  } = useTeleport();
+  const { totalSupplyProofList: totalSupply, accountBalances, refreshBalances } = useTeleport();
   const queryClient = useQueryClient();
   const [update, setUpdate] = useState(0);
   const { defaultAccount } = useAppSelector((state: RootState) => state.pocket);
@@ -57,12 +48,7 @@ function Swap() {
   const [selectedPool, setSelectedPool] = useState<Pool | undefined>(undefined);
   const [swapPrice, setSwapPrice] = useState<number>(0);
   const [isExceeded, setIsExceeded] = useState<boolean>(false);
-  const poolPrice = useGetSwapPrice(
-    tokenA,
-    tokenB,
-    tokenAPoolAmount,
-    tokenBPoolAmount
-  );
+  const poolPrice = useGetSwapPrice(tokenA, tokenB, tokenAPoolAmount, tokenBPoolAmount);
   const firstEffectOccured = useRef(false);
   const [tokenABalance, setTokenABalance] = useState(0);
   const [tokenBBalance, setTokenBBalance] = useState(0);
@@ -97,10 +83,8 @@ function Swap() {
       if (tokenA.length > 0 && tokenB.length > 0) {
         poolsData.forEach((item) => {
           if (
-            sortReserveCoinDenoms(
-              item.reserveCoinDenoms[0],
-              item.reserveCoinDenoms[1]
-            ).join() === sortReserveCoinDenoms(tokenA, tokenB).join()
+            sortReserveCoinDenoms(item.reserveCoinDenoms[0], item.reserveCoinDenoms[1]).join() ===
+            sortReserveCoinDenoms(tokenA, tokenB).join()
           ) {
             setSelectedPool(item);
           }
@@ -128,7 +112,7 @@ function Swap() {
       setTokenAPoolAmount(dataReduceBalances[tokenA] || 0);
       setTokenBPoolAmount(dataReduceBalances[tokenB] || 0);
     })();
-  }, [queryClient, tokenA, tokenB, selectedPool, update]);
+  }, [queryClient, tokenA, tokenB, selectedPool]);
 
   const amountChangeHandler = useCallback(
     (values: string | number, id: TokenSetterId) => {
@@ -148,8 +132,10 @@ function Swap() {
           isReverse,
         };
 
-        const { counterPairAmount: counterPairAmountValue, price } =
-          calculatePairAmount(inputAmount, state);
+        const { counterPairAmount: counterPairAmountValue, price } = calculatePairAmount(
+          inputAmount,
+          state
+        );
 
         counterPairAmount = counterPairAmountValue;
         setSwapPrice(price.toNumber());
@@ -165,14 +151,7 @@ function Swap() {
         setTokenBAmount(counterPairAmount.toString(10));
       }
     },
-    [
-      tokenAPoolAmount,
-      tokenB,
-      tokenA,
-      tokenBPoolAmount,
-      tokenACoinDecimals,
-      tokenBCoinDecimals,
-    ]
+    [tokenAPoolAmount, tokenB, tokenA, tokenBPoolAmount, tokenACoinDecimals, tokenBCoinDecimals]
   );
 
   useEffect(() => {
@@ -181,7 +160,7 @@ function Swap() {
       amountChangeHandler(tokenAAmount, TokenSetterId.tokenAAmount);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [update, amountChangeHandler, tokenA, tokenB]);
+  }, [update, amountChangeHandler, tokenAAmount]);
 
   const validInputAmountTokenA = useMemo(() => {
     const isValid = Number(tokenAAmount) > 0 && !!tokenABalance;
@@ -190,9 +169,7 @@ function Swap() {
       return false;
     }
 
-    const amountToken = parseFloat(
-      getDisplayAmountReverce(tokenAAmount, tokenACoinDecimals)
-    );
+    const amountToken = parseFloat(getDisplayAmountReverce(tokenAAmount, tokenACoinDecimals));
 
     return amountToken > tokenABalance;
   }, [tokenAAmount, tokenABalance, tokenACoinDecimals]);
@@ -219,8 +196,7 @@ function Swap() {
     // validation swap
     let exceeded = true;
 
-    const validTokenAmountA =
-      !validInputAmountTokenA && Number(tokenAAmount) > 0;
+    const validTokenAmountA = !validInputAmountTokenA && Number(tokenAAmount) > 0;
 
     // check pool , check slippage 3%
     if (poolPrice !== 0 && validTokenAmountA && useGetSlippage < 3) {
@@ -316,14 +292,7 @@ function Swap() {
         }
       }
     }
-  }, [
-    tokenA,
-    tokenB,
-    tokenAAmount,
-    setSearchParams,
-    searchParams,
-    amountChangeHandler,
-  ]);
+  }, [tokenA, tokenB, tokenAAmount, setSearchParams, searchParams, amountChangeHandler]);
 
   const getPercentsOfToken = useCallback(() => {
     return tokenABalance > 0

@@ -1,5 +1,5 @@
-import { NavLink } from 'react-router-dom';
 import cx from 'classnames';
+import { NavLink } from 'react-router-dom';
 import { Display } from 'src/components';
 import styles from './SettingsMenu.module.scss';
 

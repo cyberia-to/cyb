@@ -1,9 +1,9 @@
 import React, { useEffect, useRef } from 'react';
 import Popper, { usePopperTooltip } from 'react-popper-tooltip';
 import 'react-popper-tooltip/dist/styles.css';
-import cx from 'classnames';
 
 import { PositioningStrategy } from '@popperjs/core';
+import cx from 'classnames';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
 import styles from './Tooltip.module.scss';
 
@@ -46,19 +46,14 @@ function AdviserTooltipWrapper({
   }, [setAdviser]);
 
   return (
-    <div
-      ref={ref}
-      style={contentStyle}
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-    >
+    <div ref={ref} style={contentStyle} onMouseEnter={onMouseEnter} onMouseLeave={onMouseLeave}>
       {children}
     </div>
   );
 }
 
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-function Tooltip({
+function _Tooltip({
   children,
   trigger = 'hover',
   tooltip,
@@ -75,19 +70,18 @@ function Tooltip({
     }
   };
 
-  const { visible, getTooltipProps, setTooltipRef, setTriggerRef } =
-    usePopperTooltip(
-      {
-        trigger,
-        delayHide: 100,
-        interactive: true,
-        onVisibleChange: setMountedOnceVisible,
-        placement,
-      },
-      {
-        strategy,
-      }
-    );
+  const { visible, getTooltipProps, setTooltipRef, setTriggerRef } = usePopperTooltip(
+    {
+      trigger,
+      delayHide: 100,
+      interactive: true,
+      onVisibleChange: setMountedOnceVisible,
+      placement,
+    },
+    {
+      strategy,
+    }
+  );
 
   return (
     <>

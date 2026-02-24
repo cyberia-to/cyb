@@ -1,42 +1,35 @@
-import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { connect } from 'react-redux';
-import BigNumber from 'bignumber.js';
-import { coins, GasPrice } from '@cosmjs/launchpad';
 import { toAscii, toBase64 } from '@cosmjs/encoding';
+import { coins, GasPrice } from '@cosmjs/launchpad';
+import BigNumber from 'bignumber.js';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { connect } from 'react-redux';
+import { BASE_DENOM, CHAIN_ID } from 'src/constants/config';
+import { useBackend } from 'src/contexts/backend/backend';
+import { useDevice } from 'src/contexts/device';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { useSigningClient } from 'src/contexts/signerClient';
-import { getKeplr } from 'src/utils/keplrUtils';
-import { useDevice } from 'src/contexts/device';
-import { Nullable } from 'src/types';
 
 import { useAdviser } from 'src/features/adviser/context';
-import { useBackend } from 'src/contexts/backend/backend';
 import { getPassport } from 'src/features/passport/passports.redux';
 import { useAppDispatch } from 'src/redux/hooks';
 import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
-import { BASE_DENOM, CHAIN_ID } from 'src/constants/config';
-import { MainContainer, MoonAnimation, Stars } from '../components';
-import {
-  Rules,
-  InputNickname,
-  Avatar,
-  InitKeplr,
-  SetupKeplr,
-  Passport,
-} from '../stateComponent';
-import ActionBar from './ActionBar';
+import { Nullable } from 'src/types';
+import { getKeplr } from 'src/utils/keplrUtils';
+import Carousel from '../../../components/Tabs/Carousel/CarouselOld/CarouselOld';
+import useSetActiveAddress from '../../../hooks/useSetActiveAddress';
 import { getCredit } from '../../../utils/search/utils';
+import { MainContainer, MoonAnimation, Stars } from '../components';
 import { AvataImgIpfs } from '../components/avataIpfs';
+import { Avatar, InitKeplr, InputNickname, Passport, Rules, SetupKeplr } from '../stateComponent';
 import {
   CONSTITUTION_HASH,
   CONTRACT_ADDRESS_PASSPORT,
-  getPassportByNickname,
   getNumTokens,
+  getPassportByNickname,
 } from '../utils';
-import useSetActiveAddress from '../../../hooks/useSetActiveAddress';
-import { steps } from './utils';
+import ActionBar from './ActionBar';
 import Info from './Info';
-import Carousel from '../../../components/Tabs/Carousel/CarouselOld/CarouselOld';
+import { steps } from './utils';
 
 const portalConfirmed = require('../../../sounds/portalConfirmed112.mp3');
 const portalAmbient = require('../../../sounds/portalAmbient112.mp3');
@@ -122,7 +115,7 @@ const items = [
   },
 ];
 
-const gasPrice = GasPrice.fromString('0.001boot');
+const _gasPrice = GasPrice.fromString('0.001boot');
 
 const calculatePriceNicname = (valueNickname) => {
   let funds = [];
@@ -186,7 +179,7 @@ function GetCitizenship({ defaultAccount }) {
     const getCounCitizenshipst = async () => {
       if (queryClient) {
         const respnseNumTokens = await getNumTokens(queryClient);
-        if (respnseNumTokens !== null && respnseNumTokens.count) {
+        if (respnseNumTokens?.count) {
           setCounCitizenshipst(parseFloat(respnseNumTokens.count));
         }
       }
@@ -228,7 +221,7 @@ function GetCitizenship({ defaultAccount }) {
             } else {
               setStep(STEP_KEPLR_CONNECT);
             }
-          } catch (error) {
+          } catch (_error) {
             setStep(STEP_KEPLR_SETUP);
           }
         }
@@ -298,30 +291,6 @@ function GetCitizenship({ defaultAccount }) {
     return null;
   }, [valueNickname]);
 
-  useEffect(() => {
-    const checkAddress = async () => {
-      if (
-        step === STEP_CHECK_ADDRESS_CHECK_FNC &&
-        queryClient &&
-        addressActive !== null
-      ) {
-        const { bech32 } = addressActive;
-        const response = await queryClient.getAccount(bech32);
-        await getBalanceAndNickname(bech32);
-        if (
-          response &&
-          Object.prototype.hasOwnProperty.call(response, 'accountNumber')
-        ) {
-          setStep(STEP_RULES);
-        } else {
-          setStep(STEP_ACTIVE_ADD);
-        }
-      }
-    };
-    checkAddress();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryClient, addressActive, step]);
-
   const getBalanceAndNickname = useCallback(
     async (bech32) => {
       if (usePriceNickname !== null) {
@@ -344,15 +313,29 @@ function GetCitizenship({ defaultAccount }) {
     [queryClient, usePriceNickname]
   );
 
+  useEffect(() => {
+    const checkAddress = async () => {
+      if (step === STEP_CHECK_ADDRESS_CHECK_FNC && queryClient && addressActive !== null) {
+        const { bech32 } = addressActive;
+        const response = await queryClient.getAccount(bech32);
+        await getBalanceAndNickname(bech32);
+        if (response && Object.hasOwn(response, 'accountNumber')) {
+          setStep(STEP_RULES);
+        } else {
+          setStep(STEP_ACTIVE_ADD);
+        }
+      }
+    };
+    checkAddress();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [queryClient, addressActive, step, getBalanceAndNickname]);
+
   const checkAddressNetwork = useCallback(async () => {
     if (step === STEP_ACTIVE_ADD && queryClient && addressActive !== null) {
       const { bech32 } = addressActive;
       const response = await queryClient.getAccount(bech32);
       console.log('response', response);
-      if (
-        response &&
-        Object.prototype.hasOwnProperty.call(response, 'accountNumber')
-      ) {
+      if (response && Object.hasOwn(response, 'accountNumber')) {
         setStep(STEP_RULES);
       } else {
         const responseCredit = await getCredit(bech32);
@@ -392,10 +375,7 @@ function GetCitizenship({ defaultAccount }) {
   const checkNickname = useCallback(async () => {
     try {
       if (queryClient) {
-        const responsData = await getPassportByNickname(
-          queryClient,
-          valueNickname
-        );
+        const responsData = await getPassportByNickname(queryClient, valueNickname);
         if (responsData === null) {
           setStep(STEP_NICKNAME_APROVE);
         } else {
@@ -482,6 +462,7 @@ function GetCitizenship({ defaultAccount }) {
     signingClient,
     signedMessage,
     isIpfsInitialized,
+    ipfsApi?.addContent,
   ]);
 
   const onChangeNickname = useCallback((e) => {
@@ -526,13 +507,7 @@ function GetCitizenship({ defaultAccount }) {
         inputOpenFileRef={inputOpenFileRef}
         onFilePickerChange={onFilePickerChange}
         showOpenFileDlg={showOpenFileDlg}
-        avatar={
-          avatarIpfs === null ? (
-            'upload avatar'
-          ) : (
-            <AvataImgIpfs cidAvatar={avatarIpfs} />
-          )
-        }
+        avatar={avatarIpfs === null ? 'upload avatar' : <AvataImgIpfs cidAvatar={avatarIpfs} />}
       />
     );
   }
@@ -617,9 +592,7 @@ function GetCitizenship({ defaultAccount }) {
       <MainContainer>
         <Stars />
 
-        {(step === STEP_INIT || !mobile) && (
-          <MoonAnimation stepCurrent={step} />
-        )}
+        {(step === STEP_INIT || !mobile) && <MoonAnimation stepCurrent={step} />}
 
         {step !== STEP_INIT && step !== STEP_CHECK_GIFT && (
           <Carousel

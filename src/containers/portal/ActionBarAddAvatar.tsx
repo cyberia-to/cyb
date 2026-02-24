@@ -1,11 +1,10 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
-import { GasPrice } from '@cosmjs/launchpad';
-import { useSigningClient } from 'src/contexts/signerClient';
-import { Nullable } from 'src/types';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useBackend } from 'src/contexts/backend/backend';
+import { useSigningClient } from 'src/contexts/signerClient';
 import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
-import { ActionBarSteps, ActionBarContainer } from './components';
-import { Dots, BtnGrd } from '../../components';
+import { Nullable } from 'src/types';
+import { BtnGrd, Dots } from '../../components';
+import { ActionBarContainer, ActionBarSteps } from './components';
 import { CONTRACT_ADDRESS_PASSPORT } from './utils';
 
 const STATE_INIT = 1;
@@ -84,7 +83,7 @@ function ActionBarAddAvatar({ step, setStep, updateTxHash, citizenship }) {
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [avatarIpfs, signer, signingClient, citizenship]);
+  }, [avatarIpfs, signer, signingClient, citizenship, setStep, updateTxHash]);
 
   if (step === STATE_AVATAR) {
     return (

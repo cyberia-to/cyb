@@ -1,6 +1,6 @@
 import { Pane } from '@cybercongress/gravity';
+import { BtnGrd, ButtonIcon } from '../../../../components';
 import ActionBarContainer from './index';
-import { ButtonIcon, BtnGrd } from '../../../../components';
 
 const back = require('../../../../image/arrow-left-img.svg');
 
@@ -55,9 +55,7 @@ function ActionBarSteps({
       >
         {children}
       </ActionBarContentText>
-      {btnText && (
-        <BtnGrd disabled={!!disabled} onClick={onClickFnc} text={btnText} />
-      )}
+      {btnText && <BtnGrd disabled={disabled} onClick={onClickFnc} text={btnText} />}
     </ActionBarContainer>
   );
 }

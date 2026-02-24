@@ -1,16 +1,14 @@
-import { BehaviorSubject, Observable, first } from 'rxjs';
+import { BehaviorSubject, first, Observable } from 'rxjs';
+import { mapParticleToEntity } from 'src/services/CozoDb/mapping';
 import { LinkDto } from 'src/services/CozoDb/types/dto';
 import { IPFSContent } from 'src/services/ipfs/types';
-import { mapParticleToEntity } from 'src/services/CozoDb/mapping';
-import { QueueChannelMessage } from './types';
-import { CYB_QUEUE_CHANNEL } from '../consts';
-
-import { enqueueParticleEmbeddingMaybe } from './backendQueueSenders';
-import ParticlesResolverQueue from '../../services/sync/services/ParticlesResolverQueue/ParticlesResolverQueue';
-import DbApi from '../../services/DbApi/DbApi';
-
-import { SyncQueueItem } from '../../services/sync/services/ParticlesResolverQueue/types';
 import { Option } from 'src/types';
+import DbApi from '../../services/DbApi/DbApi';
+import ParticlesResolverQueue from '../../services/sync/services/ParticlesResolverQueue/ParticlesResolverQueue';
+import { SyncQueueItem } from '../../services/sync/services/ParticlesResolverQueue/types';
+import { CYB_QUEUE_CHANNEL } from '../consts';
+import { enqueueParticleEmbeddingMaybe } from './backendQueueSenders';
+import { QueueChannelMessage } from './types';
 
 class BackendQueueChannelListener {
   private channel = new BroadcastChannel(CYB_QUEUE_CHANNEL);
@@ -31,8 +29,7 @@ class BackendQueueChannelListener {
 
     this.channel.onmessage = (event) => this.onMessage(event);
 
-    this.channel.onmessageerror = (event) =>
-      console.error(`${CYB_QUEUE_CHANNEL} error`, event);
+    this.channel.onmessageerror = (event) => console.error(`${CYB_QUEUE_CHANNEL} error`, event);
   }
 
   private async getDeffredDbApi(): Promise<DbApi> {
@@ -54,7 +51,7 @@ class BackendQueueChannelListener {
 
   private async saveLinks(links: LinkDto[]) {
     const dbApi = await this.getDeffredDbApi();
-    const res = await dbApi.putCyberlinks(links);
+    const _res = await dbApi.putCyberlinks(links);
     // console.log('---saveLinks done', links, res);
   }
 
@@ -67,12 +64,7 @@ class BackendQueueChannelListener {
         await enqueueParticleEmbeddingMaybe(content);
       }
     } catch (e) {
-      console.log(
-        '---saveParticle e',
-        content,
-        content.textPreview,
-        e.toString()
-      );
+      console.log('---saveParticle e', content, content.textPreview, e.toString());
       throw e;
     }
   }

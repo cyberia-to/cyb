@@ -1,6 +1,6 @@
+import cx from 'classnames';
 import React from 'react';
 import Tooltip from 'src/components/tooltip/tooltip';
-import cx from 'classnames';
 import styles from './AddFile.module.scss';
 
 export type Props = {

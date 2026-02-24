@@ -4,11 +4,7 @@ import useQueueIpfsContent from 'src/hooks/useQueueIpfsContent';
 /**
  @deprecated TODO: refactor to useParticle hook
   */
-function useParticleDetails(
-  cid: string,
-  { skip = false } = {},
-  parentId?: string
-) {
+function useParticleDetails(cid: string, { skip = false } = {}, parentId?: string) {
   const { fetchWithDetails } = useQueueIpfsContent(parentId || cid);
 
   const { data, isLoading, error } = useQuery(

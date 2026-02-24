@@ -1,7 +1,7 @@
 import { Pane } from '@cybercongress/gravity';
 import { useNavigate } from 'react-router-dom';
-import Card from '../ui/card';
 import { formatNumber } from '../../../utils/utils';
+import Card from '../ui/card';
 
 type Props = {
   myEnergy: number;

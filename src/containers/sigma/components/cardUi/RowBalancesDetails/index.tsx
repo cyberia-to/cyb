@@ -1,13 +1,13 @@
-import { useState, useMemo } from 'react';
-import { Transition } from 'react-transition-group';
+import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
+import { Transition } from 'react-transition-group';
+import { DenomArr, FormatNumberTokens } from 'src/components';
 import { useIbcDenom } from 'src/contexts/ibcDenom';
-import { FormatNumberTokens, DenomArr } from 'src/components';
-import DetailsBalance from '../DetailsBalance';
-import ChartTotal from '../ChartTotal';
-import BtnArrow from '../BtnArrow';
-import styles from './styles.module.scss';
 import { convertAmount, replaceSlash } from '../../../../../utils/utils';
+import BtnArrow from '../BtnArrow';
+import ChartTotal from '../ChartTotal';
+import DetailsBalance from '../DetailsBalance';
+import styles from './styles.module.scss';
 
 const cx = require('classnames');
 
@@ -20,10 +20,7 @@ function RowBalancesDetails({ balance }) {
   };
 
   const checkDetailsToken = useMemo(() => {
-    if (
-      Object.prototype.hasOwnProperty.call(balance, 'total') &&
-      Object.keys(balance).length >= 5
-    ) {
+    if (Object.hasOwn(balance, 'total') && Object.keys(balance).length >= 5) {
       return true;
     }
 
@@ -41,7 +38,7 @@ function RowBalancesDetails({ balance }) {
 
     return 0;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [balance]);
+  }, [balance, tracesDenom]);
 
   const getTypeDenomKey = (key) => {
     const denom = tracesDenom(key);
@@ -56,9 +53,7 @@ function RowBalancesDetails({ balance }) {
     }
 
     if (key.includes('pool') && denom[1]) {
-      return `${getTypeDenomKey(denom[0].denom)}-${getTypeDenomKey(
-        denom[1].denom
-      )}`;
+      return `${getTypeDenomKey(denom[0].denom)}-${getTypeDenomKey(denom[1].denom)}`;
     }
 
     return denom[0].denom;
@@ -102,14 +97,8 @@ function RowBalancesDetails({ balance }) {
           </button>
           <FormatNumberTokens value={useAmountTotal} />
         </div>
-        <FormatNumberTokens
-          text={balance.price.denom}
-          value={balance.price.amount}
-        />
-        <FormatNumberTokens
-          text={balance.cap.denom}
-          value={balance.cap.amount}
-        />
+        <FormatNumberTokens text={balance.price.denom} value={balance.price.amount} />
+        <FormatNumberTokens text={balance.cap.denom} value={balance.cap.amount} />
       </div>
       {checkDetailsToken && (
         <Transition in={isOpen} timeout={300}>

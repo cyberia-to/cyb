@@ -1,32 +1,34 @@
+import * as R from 'ramda';
 import {
   BehaviorSubject,
-  EMPTY,
-  Observable,
   catchError,
   combineLatest,
   debounceTime,
   distinctUntilChanged,
+  EMPTY,
   filter,
   interval,
   map,
   merge,
   mergeMap,
+  Observable,
   of,
   share,
-  tap,
   throwError,
   timeout,
   withLatestFrom,
 } from 'rxjs';
-
-import * as R from 'ramda';
 
 import { CybIpfsNode, IpfsContentSource } from 'src/services/ipfs/types';
 import { fetchIpfsContent } from 'src/services/ipfs/utils/utils-ipfs';
 import { ParticleCid } from 'src/types/base';
 
 import { promiseToObservable } from '../../utils/rxjs/helpers';
-
+import { enqueueParticleSave } from '../backend/channels/BackendQueueChannel/backendQueueSenders';
+import BroadcastChannelSender from '../backend/channels/BroadcastChannelSender';
+import { CustomHeaders, XCybSourceValues } from './constants';
+import { QueueItemTimeoutError } from './QueueItemTimeoutError';
+import { QueueStrategy } from './QueueStrategy';
 import type {
   QueueItem,
   QueueItemAsyncResult,
@@ -37,15 +39,6 @@ import type {
   QueueStats,
 } from './types';
 
-import { QueueStrategy } from './QueueStrategy';
-
-import { enqueueParticleSave } from '../backend/channels/BackendQueueChannel/backendQueueSenders';
-import BroadcastChannelSender from '../backend/channels/BroadcastChannelSender';
-import { RuneEngine } from '../scripting/engine';
-
-import { QueueItemTimeoutError } from './QueueItemTimeoutError';
-import { CustomHeaders, XCybSourceValues } from './constants';
-
 const QUEUE_DEBOUNCE_MS = 33;
 const CONNECTION_KEEPER_RETRY_MS = 15000;
 
@@ -53,9 +46,9 @@ function getQueueItemTotalPriority(item: QueueItem): number {
   return (item.priority || 0) + (item.viewPortPriority || 0);
 }
 
-// const debugCid = (cid: ParticleCid, prefix: string, ...args) => {
-//   console.log(`>>> ${prefix}: ${cid}`, ...args);
-// };
+const _debugCid = (cid: ParticleCid, prefix: string, ...args) => {
+  console.log(`>>> ${prefix}: ${cid}`, ...args);
+};
 
 const strategies = {
   external: new QueueStrategy(
@@ -65,6 +58,22 @@ const strategies = {
       gateway: { timeout: 10000, maxConcurrentExecutions: 11 },
     },
     ['db', 'node', 'gateway']
+  ),
+  embedded: new QueueStrategy(
+    {
+      db: { timeout: 5000, maxConcurrentExecutions: 999 },
+      node: { timeout: 60 * 1000, maxConcurrentExecutions: 30 },
+      gateway: { timeout: 21000, maxConcurrentExecutions: 11 },
+    },
+    ['db', 'gateway', 'node']
+  ),
+  helia: new QueueStrategy(
+    {
+      db: { timeout: 5000, maxConcurrentExecutions: 999 },
+      node: { timeout: 15 * 1000, maxConcurrentExecutions: 50 },
+      gateway: { timeout: 15000, maxConcurrentExecutions: 30 },
+    },
+    ['db', 'gateway', 'node']
   ),
 };
 
@@ -79,8 +88,6 @@ class QueueManager {
 
   private queueDebounceMs: number;
 
-  private lastNodeCallTime: number = Date.now();
-
   private channel = new BroadcastChannelSender();
 
   private executing: Record<QueueSource, Set<ParticleCid>> = {
@@ -94,19 +101,13 @@ class QueueManager {
   }
 
   public async setNode(node: CybIpfsNode, customStrategy?: QueueStrategy) {
-    console.log(
-      `* switch node from ${this.node?.nodeType || '<none>'} to ${
-        node.nodeType
-      }`
-    );
+    console.log(`* switch node from ${this.node?.nodeType || '<none>'} to ${node.nodeType}`);
     this.node = node;
     this.switchStrategy(customStrategy || strategies[node.nodeType]);
   }
 
   private getItemBySourceAndPriority(queue: QueueMap) {
-    const pendingItems = [...queue.values()].filter(
-      (i) => i.status === 'pending'
-    );
+    const pendingItems = [...queue.values()].filter((i) => i.status === 'pending');
 
     const pendingBySource = R.groupBy((i) => i.source, pendingItems);
 
@@ -116,12 +117,9 @@ class QueueManager {
       const settings = this.strategy.settings[queueSource as IpfsContentSource];
 
       const executeCount =
-        settings.maxConcurrentExecutions -
-        this.executing[queueSource as IpfsContentSource].size;
+        settings.maxConcurrentExecutions - this.executing[queueSource as IpfsContentSource].size;
       const itemsByPriority = items
-        .sort(
-          (a, b) => getQueueItemTotalPriority(b) - getQueueItemTotalPriority(a)
-        )
+        .sort((a, b) => getQueueItemTotalPriority(b) - getQueueItemTotalPriority(a))
         .slice(0, executeCount);
 
       itemsToExecute.push(...itemsByPriority);
@@ -137,6 +135,7 @@ class QueueManager {
 
   private fetchData$(item: QueueItem) {
     const { cid, source, callbacks, controller } = item;
+    console.log(`🔄 fetchData: ${cid.slice(0, 12)}... source=${source}`);
     // const abortController = controller || new AbortController();
     const settings = this.strategy.settings[source];
     this.executing[source].add(cid);
@@ -180,7 +179,7 @@ class QueueManager {
       map((result): QueueItemResult => {
         return {
           item,
-          status: result ? 'completed' : 'error',
+          status: result?.result ? 'completed' : 'error',
           source,
           result,
         };
@@ -239,9 +238,7 @@ class QueueManager {
         if (item && getQueueItemTotalPriority(item) < 0 && item.controller) {
           // abort request and move to pending
           item.controller.abort('cancelled');
-          item.callbacks.map((callback) =>
-            callback(item.cid, 'pending', item.source)
-          );
+          item.callbacks.map((callback) => callback(item.cid, 'pending', item.source));
 
           queue.set(cid, { ...item, status: 'pending' });
           // console.log('-----cancel item', item, queue);
@@ -285,9 +282,7 @@ class QueueManager {
     interval(CONNECTION_KEEPER_RETRY_MS)
       .pipe(
         filter(
-          () =>
-            !!this.node &&
-            !![...this.queue$.value.values()].find((i) => i.source === 'node')
+          () => !!this.node && !![...this.queue$.value.values()].find((i) => i.source === 'node')
         )
       )
       .subscribe(() => {
@@ -312,10 +307,8 @@ class QueueManager {
 
     this.queue$
       .pipe(
-        withLatestFrom(isInitialized$),
-        filter(([, isInitialized]) => isInitialized),
         debounceTime(this.queueDebounceMs),
-        map(([queue]) => this.cancelDeprioritizedItems(queue)),
+        map((queue) => this.cancelDeprioritizedItems(queue)),
         mergeMap((queue) => {
           const workItems = this.getItemBySourceAndPriority(queue);
           // console.log('---workItems', workItems);
@@ -330,9 +323,8 @@ class QueueManager {
       )
       .subscribe(({ item, status, source, result }) => {
         const { cid } = item;
+        console.log(`📦 result: ${cid.slice(0, 12)}... source=${source} status=${status} hasResult=${!!result?.result}`);
         const callbacks = this.queue$.value.get(cid)?.callbacks || [];
-        // fix to process dublicated items
-        // debugCid(cid, 'subscribe', cid, source, status, result, callbacks);
 
         callbacks.map((callback) => callback(cid, status, source, result));
 
@@ -358,9 +350,7 @@ class QueueManager {
           } else {
             this.removeAndNext(cid);
             // notify thatn nothing found from all sources
-            callbacks.map((callback) =>
-              callback(cid, 'not_found', source, result)
-            );
+            callbacks.map((callback) => callback(cid, 'not_found', source, result));
           }
         }
 
@@ -368,14 +358,10 @@ class QueueManager {
       });
   }
 
-  public enqueue(
-    cid: string,
-    callback: QueueItemCallback,
-    options: QueueItemOptions = {}
-  ): void {
+  public enqueue(cid: string, callback: QueueItemCallback, options: QueueItemOptions = {}): void {
     const queue = this.queue$.value;
     const existingItem = queue.get(cid);
-    // debugCid(cid, '----/--enqueue ', cid, existingItem);
+    console.log(`📥 enqueue: ${cid.slice(0, 12)}... source=${this.strategy.order[0]} queueSize=${queue.size}`);
 
     // In case if item already in queue,
     // just attach one more callback to quieued item
@@ -406,7 +392,7 @@ class QueueManager {
     options: QueueItemOptions = {}
   ): Promise<QueueItemAsyncResult> {
     return new Promise((resolve) => {
-      const callback = ((cid, status, source, result) => {
+      const callback = ((_cid, status, source, result) => {
         if (status === 'completed' || status === 'not_found') {
           resolve({ status, source, result });
         }

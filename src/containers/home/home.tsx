@@ -1,17 +1,17 @@
-import { useEffect, useState, useMemo } from 'react';
-import { Link } from 'react-router-dom';
 import { Pane } from '@cybercongress/gravity';
 import BigNumber from 'bignumber.js';
-import { useQueryClient } from 'src/contexts/queryClient';
+import { useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { BASE_DENOM } from 'src/constants/config';
 import { useAppData } from 'src/contexts/appData';
+import { useQueryClient } from 'src/contexts/queryClient';
+import { useContractsCountQuery } from 'src/generated/graphql';
 import { CardStatisics, Dots, MainContainer } from '../../components';
-import Txs from '../brain/tx';
 import { formatCurrency, formatNumber } from '../../utils/utils';
 import useGetStatisticsCyber from '../brain/hooks/getStatisticsCyber';
 import KnowledgeTab from '../brain/tabs/knowledge';
+import Txs from '../brain/tx';
 import { getNumTokens, getStateGift } from '../portal/utils';
-import { BASE_DENOM, LCD_URL } from 'src/constants/config';
-import { useContractsCountQuery } from 'src/generated/graphql';
 import { useGetNegentropy } from '../temple/hooks';
 
 const PREFIXES = [
@@ -74,14 +74,11 @@ function Home() {
         try {
           const queryResponseResultState = await getStateGift(queryClient);
           const respnseNumTokens = await getNumTokens(queryClient);
-          if (respnseNumTokens !== null && respnseNumTokens.count) {
+          if (respnseNumTokens?.count) {
             setCounCitizenshipst(parseFloat(respnseNumTokens.count));
           }
 
-          if (
-            queryResponseResultState !== null &&
-            queryResponseResultState.claims
-          ) {
+          if (queryResponseResultState?.claims) {
             const { claims } = queryResponseResultState;
             setCitizensClaim(claims);
           }
@@ -118,10 +115,7 @@ function Home() {
     const particles = new BigNumber(cidsCount);
 
     if (link.comparedTo(0) && particles.comparedTo(0)) {
-      const beta = link
-        .dividedBy(particles)
-        .dp(3, BigNumber.ROUND_FLOOR)
-        .toNumber();
+      const beta = link.dividedBy(particles).dp(3, BigNumber.ROUND_FLOOR).toNumber();
       return beta;
     }
 
@@ -137,9 +131,7 @@ function Home() {
           styleContainer={{ minWidth: 'unset' }}
         />
         <CardStatisics
-          value={
-            memoryLoader ? <Dots /> : formatCurrency(memory, 'B', 0, PREFIXES)
-          }
+          value={memoryLoader ? <Dots /> : formatCurrency(memory, 'B', 0, PREFIXES)}
           title="GPU memory"
           styleContainer={{ minWidth: 'unset' }}
         />
@@ -203,13 +195,7 @@ function Home() {
         />
         <CardStatisics
           title="Contracts"
-          value={
-            loading ? (
-              <Dots />
-            ) : (
-              formatNumber(data?.contracts_aggregate.aggregate?.count || 0)
-            )
-          }
+          value={loading ? <Dots /> : formatNumber(data?.contracts_aggregate.aggregate?.count || 0)}
         />
         <CardStatisics
           value={formatNumber(useGetBeta)}

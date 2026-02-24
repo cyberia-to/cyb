@@ -1,9 +1,9 @@
-import QueueManager from '../QueueManager';
 import { of } from 'rxjs';
-import { CybIpfsNode } from '../../ipfs/types';
-import { QueueStrategy } from '../QueueStrategy';
-import { valuesExpected } from 'src/utils/test-utils/test-utils';
 import { fetchIpfsContent } from 'src/services/ipfs/utils/utils-ipfs';
+import { valuesExpected } from 'src/utils/test-utils/test-utils';
+import { CybIpfsNode } from '../../ipfs/types';
+import QueueManager from '../QueueManager';
+import { QueueStrategy } from '../QueueStrategy';
 
 // const mockTimeout = () => (source) => {
 //   console.log('TIMEOUT');
@@ -45,26 +45,23 @@ const queueStrategy = new QueueStrategy(
 );
 
 const cid1 = 'cid1';
-const cid2 = 'cid1';
-const cid3 = 'cid1';
+const _cid2 = 'cid1';
+const _cid3 = 'cid1';
 
-const nextTick = () => {
+const _nextTick = () => {
   return new Promise((resolve) => {
     setTimeout(resolve, 0);
   });
 };
 
-function wrapPromiseWithSignal(
-  promise: Promise<string>,
-  signal?: AbortSignal
-): Promise<string> {
+function wrapPromiseWithSignal(promise: Promise<string>, signal?: AbortSignal): Promise<string> {
   return new Promise((resolve, reject) => {
     promise.then((result) => {
       resolve(result);
     });
 
     signal?.addEventListener('abort', (e) => {
-      // @ts-ignore
+      // @ts-expect-error
       if (e?.target?.reason !== 'timeout') {
         reject(new DOMException('canceled', 'AbortError'));
       }
@@ -72,11 +69,7 @@ function wrapPromiseWithSignal(
   });
 }
 
-const getPromise = (
-  result = 'result',
-  timeout = 500,
-  signal?: AbortSignal
-): Promise<string> =>
+const _getPromise = (result = 'result', timeout = 500, signal?: AbortSignal): Promise<string> =>
   wrapPromiseWithSignal(
     new Promise<string>((resolve) => {
       setTimeout(() => resolve(`result ${result}`), timeout);

@@ -1,10 +1,10 @@
 import { useEffect } from 'react';
+import { useAdviser } from 'src/features/adviser/context';
+import usePassportByAddress from 'src/features/passport/hooks/usePassportByAddress';
+import { selectCurrentAddress } from 'src/redux/features/pocket';
+import { useAppSelector } from 'src/redux/hooks';
 import GetCitizenship from './citizenship';
 import PassportMoonCitizenship from './PasportMoonCitizenship';
-import { useAppSelector } from 'src/redux/hooks';
-import { selectCurrentAddress } from 'src/redux/features/pocket';
-import usePassportByAddress from 'src/features/passport/hooks/usePassportByAddress';
-import { useAdviser } from 'src/features/adviser/context';
 
 function PortalCitizenship() {
   const addressActive = useAppSelector(selectCurrentAddress);

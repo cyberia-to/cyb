@@ -1,7 +1,7 @@
-import CoinDenom from '../valueImg/TextDenom';
-import ImgDenom from '../valueImg/imgDenom';
 import ImgNetwork from '../networksImg/imgNetwork';
 import TextNetwork from '../networksImg/textNetwork';
+import ImgDenom from '../valueImg/imgDenom';
+import CoinDenom from '../valueImg/TextDenom';
 
 type DenomProps = {
   denomValue: string;
@@ -18,13 +18,7 @@ type DenomProps = {
   size?: number;
 };
 
-function ContainerDenom({
-  justifyContent,
-  marginContainer,
-  flexDirection,
-  gap,
-  children,
-}) {
+function ContainerDenom({ justifyContent, marginContainer, flexDirection, gap, children }) {
   return (
     <div
       style={{
@@ -72,10 +66,7 @@ function Denom({
         )}
 
         {!onlyImg && (
-          <TextNetwork
-            network={denomValue}
-            tooltipStatus={onlyText && tooltipStatusText}
-          />
+          <TextNetwork network={denomValue} tooltipStatus={onlyText && tooltipStatusText} />
         )}
       </ContainerDenom>
     );

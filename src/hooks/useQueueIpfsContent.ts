@@ -1,18 +1,13 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { proxy } from 'comlink';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useBackend } from 'src/contexts/backend/backend';
+import { FetchWithDetailsFunc, IPFSContent, IpfsContentSource } from 'src/services/ipfs/types';
 import {
   FetchParticleAsync,
   QueueItemOptions,
   QueueItemStatus,
   QueuePriority,
 } from 'src/services/QueueManager/types';
-
-import {
-  FetchWithDetailsFunc,
-  IPFSContent,
-  IpfsContentSource,
-} from 'src/services/ipfs/types';
-import { useBackend } from 'src/contexts/backend/backend';
-import { proxy } from 'comlink';
 import { Option } from 'src/types';
 
 type UseIpfsContentReturn = {
@@ -40,13 +35,13 @@ function useQueueIpfsContent(parentId?: string): UseIpfsContentReturn {
   } = useBackend();
 
   const fetchParticle = useCallback(
-    async (cid: string, rank?: number) => {
+    async (cid: string, _rank?: number) => {
       setContent(undefined);
       setStatus('pending');
       setSource(undefined);
 
       const callback = (
-        cid: string,
+        _cid: string,
         status: QueueItemStatus,
         source: IpfsContentSource,
         result: Option<IPFSContent>
@@ -67,8 +62,7 @@ function useQueueIpfsContent(parentId?: string): UseIpfsContentReturn {
   );
 
   const fetchParticleAsync = useCallback(
-    async (cid: string, options?: QueueItemOptions) =>
-      ipfsApi?.enqueueAndWait(cid, options),
+    async (cid: string, options?: QueueItemOptions) => ipfsApi?.enqueueAndWait(cid, options),
     [ipfsApi]
   );
 

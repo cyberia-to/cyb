@@ -1,8 +1,8 @@
-import { routes } from 'src/routes';
 import { Tooltip } from 'src/components';
-import { useAppSelector } from 'src/redux/hooks';
-import { selectUnreadCounts } from '../../redux/sense.redux';
 import SideButtonLink from 'src/components/sideButtonLink/SideButtonLink';
+import { useAppSelector } from 'src/redux/hooks';
+import { routes } from 'src/routes';
+import { selectUnreadCounts } from '../../redux/sense.redux';
 import styles from './SenseButton.module.scss';
 
 function SenseButton() {
@@ -13,8 +13,7 @@ function SenseButton() {
   const notificationCountStr =
     typeof notificationCount === 'number' ? notificationCount.toString() : '';
   const firstThreedigits = notificationCountStr.slice(0, 3) || '0';
-  const hiddenPartCount =
-    notificationCountStr.length > 3 ? notificationCountStr.length - 3 : 1;
+  const hiddenPartCount = notificationCountStr.length > 3 ? notificationCountStr.length - 3 : 1;
 
   return (
     <SideButtonLink to={routes.robot.routes.sense.path} buttonType="sense">

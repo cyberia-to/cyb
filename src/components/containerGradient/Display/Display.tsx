@@ -1,8 +1,8 @@
-import React from 'react';
 import cx from 'classnames';
-import styles from './Display.module.scss';
+import React from 'react';
 import DisplayTitle from '../DisplayTitle/DisplayTitle';
 import { ColorLamp, Colors } from '../types';
+import styles from './Display.module.scss';
 
 type Props = {
   children: React.ReactNode;
@@ -45,9 +45,7 @@ function Display({
         [sideSaber ? styles[sideSaber] : undefined]: sideSaber,
       })}
     >
-      {title && (
-        <header>{React.cloneElement(title, { inDisplay: true })}</header>
-      )}
+      {title && <header>{React.cloneElement(title, { inDisplay: true })}</header>}
 
       <div className={styles.inner}>{children}</div>
     </div>

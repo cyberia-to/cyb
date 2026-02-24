@@ -1,14 +1,12 @@
-import { Observable, defer, filter, from, tap } from 'rxjs';
-
+import { clone } from 'ramda';
+import { defer, from, Observable } from 'rxjs';
 import { SyncEntryName } from 'src/services/backend/types/services';
 import { isAbortException } from 'src/utils/exceptions/helpers';
-import { clone } from 'ramda';
-
+import { SyncServiceParams } from '../../types';
 import ParticlesResolverQueue from '../ParticlesResolverQueue/ParticlesResolverQueue';
 import { ServiceDeps } from '../types';
 import { createLoopObservable } from '../utils/rxjs/loop';
 import BaseSync from './BaseSync';
-import { SyncServiceParams } from '../../types';
 
 abstract class BaseSyncLoop extends BaseSync {
   private restartLoop: (() => void) | undefined;
@@ -69,12 +67,9 @@ abstract class BaseSyncLoop extends BaseSync {
       await this.sync(params);
     } catch (e) {
       const isAborted = isAbortException(e);
-      this.cyblogCh.info(
-        `>>> ${this.name} ${params.myAddress} sync error [abrt:${isAborted}]:`,
-        {
-          error: e,
-        }
-      );
+      this.cyblogCh.info(`>>> ${this.name} ${params.myAddress} sync error [abrt:${isAborted}]:`, {
+        error: e,
+      });
 
       if (!isAborted) {
         throw e;

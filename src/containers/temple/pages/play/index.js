@@ -1,4 +1,4 @@
-import PlayContent from './PlayContent';
 import PlayBanerContent from './PlayBanerContent';
+import PlayContent from './PlayContent';
 
 export { PlayContent, PlayBanerContent };

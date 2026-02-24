@@ -16,7 +16,7 @@ export type OptionNeverArray<T> = T | never[];
 
 export type TypeTab = 'create-pool' | 'add-liquidity' | 'sub-liquidity';
 
-export const enum TypeTabEnum {
+export enum TypeTabEnum {
   ADD_LIQUIDITY = 'add-liquidity',
   CREATE_POOL = 'create-pool',
   SUB_LIQUIDITY = 'sub-liquidity',

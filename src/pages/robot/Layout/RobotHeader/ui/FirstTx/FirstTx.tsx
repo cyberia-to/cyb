@@ -1,8 +1,8 @@
-import { useMemo } from 'react';
-import { Time } from 'src/components';
 import BigNumber from 'bignumber.js';
-import { getNowUtcNumber } from 'src/utils/date';
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
+import { Time } from 'src/components';
+import { getNowUtcNumber } from 'src/utils/date';
 import useGetTimeCreatePassport from './api/api';
 
 type Props = {
@@ -23,9 +23,7 @@ function FirstTx({ address }: Props) {
       return undefined;
     }
 
-    return new BigNumber(getNowUtcNumber())
-      .minus(Date.parse(timestamp))
-      .toNumber();
+    return new BigNumber(getNowUtcNumber()).minus(Date.parse(timestamp)).toNumber();
   }, [data]);
 
   if (!time) {

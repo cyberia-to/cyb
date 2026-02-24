@@ -3,14 +3,12 @@ import { useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { LinksType } from 'src/containers/Search/types';
 import useParticle from 'src/hooks/useParticle';
+import { routes } from 'src/routes';
 import type { IpfsContentType } from 'src/services/ipfs/types';
 import { $TsFixMe } from 'src/types/tsfix';
-
-import { routes } from 'src/routes';
-import SearchItem from '../SearchItem/searchItem';
-
 import { getRankGrade } from '../../utils/search/utils';
 import ContentIpfs from '../contentIpfs/contentIpfs';
+import SearchItem from '../SearchItem/searchItem';
 
 type ContentItemProps = {
   item?: $TsFixMe;
@@ -35,26 +33,20 @@ function ContentItem({
 
   useEffect(() => {
     details?.type && setType && setType(details?.type);
-  }, [details]); // TODO: REFACT - setType rise infinite loop
+  }, [details, setType]); // TODO: REFACT - setType rise infinite loop
 
   if (hidden) {
     return <div />;
   }
 
   return (
-    <Link
-      className={className}
-      style={{ color: '#fff' }}
-      to={routes.oracle.ask.getLink(cid)}
-    >
+    <Link className={className} style={{ color: '#fff' }} to={routes.oracle.ask.getLink(cid)}>
       <SearchItem
         key={cid}
         linkType={linkType}
         status={status}
         grade={
-          item?.rank
-            ? getRankGrade(item.rank)
-            : grade || { from: 'n/a', to: 'n/a', value: 'n/a' }
+          item?.rank ? getRankGrade(item.rank) : grade || { from: 'n/a', to: 'n/a', value: 'n/a' }
         }
       >
         <ContentIpfs details={details} content={content} cid={cid} search />

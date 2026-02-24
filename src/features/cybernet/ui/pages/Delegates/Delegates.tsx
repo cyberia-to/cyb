@@ -1,8 +1,8 @@
 import Display from 'src/components/containerGradient/Display/Display';
 import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
-import useCybernetTexts from '../../useCybernetTexts';
 import { useDelegates } from '../../hooks/useDelegate';
+import useCybernetTexts from '../../useCybernetTexts';
 import DelegatesTable from './DelegatesTable/DelegatesTable';
 
 function Delegates() {
@@ -18,11 +18,7 @@ function Delegates() {
   });
 
   return (
-    <Display
-      noPaddingX
-      noPaddingY
-      title={<DisplayTitle title={getText('delegate', true)} />}
-    >
+    <Display noPaddingX noPaddingY title={<DisplayTitle title={getText('delegate', true)} />}>
       <DelegatesTable />
     </Display>
   );

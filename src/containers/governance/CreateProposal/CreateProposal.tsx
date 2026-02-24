@@ -1,7 +1,7 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Display, DisplayTitle, Input } from 'src/components';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
-import { Link } from 'react-router-dom';
 import { routes } from 'src/routes';
 import CreateProposalActionBar from './CreateProposalActionBar';
 
@@ -16,11 +16,7 @@ function CreateProposal() {
   return (
     <div>
       <Display title={<DisplayTitle title="Create proposal" />}>
-        <Input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="title"
-        />
+        <Input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="title" />
 
         <br />
 
@@ -40,8 +36,7 @@ function CreateProposal() {
         <br />
 
         <p>
-          if need different, <Link to={routes.social.path}>contact devs</Link>{' '}
-          or{' '}
+          if need different, <Link to={routes.social.path}>contact devs</Link> or{' '}
           <Link
             to="https://docs.cosmos.network/v0.50/build/modules/gov#proposal-submission"
             reloadDocument

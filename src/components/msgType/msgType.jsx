@@ -1,19 +1,16 @@
 import { Pane } from '@cybercongress/gravity';
-// import { formatNumber } from '../../utils/search/utils';
-// import { msgType } from '../../utils/utils';
-
-const link = require('../../image/link.svg');
-const bank = require('../../image/send.svg');
-const stake = require('../../image/stake.svg');
-const gov = require('../../image/gov.svg');
-const distribution = require('../../image/distribution.svg');
-const slashing = require('../../image/slashing.svg');
-const investmint = require('../../image/sync-outline.svg');
-const grid = require('../../image/share-social-outline.svg');
-const swap = require('../../image/swap-horizontal.svg');
-const addLiquidity = require('../../image/msgs_ic_pooladd.svg');
-const subLiquidity = require('../../image/msgs_ic_poolremove.svg');
-const createPool = require('../../image/flask-outline.svg');
+import link from '../../image/link.svg';
+import bank from '../../image/send.svg';
+import stake from '../../image/stake.svg';
+import gov from '../../image/gov.svg';
+import distribution from '../../image/distribution.svg';
+import slashing from '../../image/slashing.svg';
+import investmint from '../../image/sync-outline.svg';
+import grid from '../../image/share-social-outline.svg';
+import swap from '../../image/swap-horizontal.svg';
+import addLiquidity from '../../image/msgs_ic_pooladd.svg';
+import subLiquidity from '../../image/msgs_ic_poolremove.svg';
+import createPool from '../../image/flask-outline.svg';
 
 function ContainerTitle({ img, children }) {
   return (
@@ -123,20 +120,14 @@ function MsgType({ type }) {
 
   // distribution
   if (type.includes('MsgWithdrawValidatorCommission')) {
-    return (
-      <ContainerTitle img={distribution}>Withdraw Commission</ContainerTitle>
-    );
+    return <ContainerTitle img={distribution}>Withdraw Commission</ContainerTitle>;
   }
 
   if (type.includes('MsgWithdrawDelegatorReward')) {
     return <ContainerTitle img={distribution}>Withdraw Reward</ContainerTitle>;
   }
   if (type.includes('MsgModifyWithdrawAddress')) {
-    return (
-      <ContainerTitle img={distribution}>
-        Modify Withdraw Address
-      </ContainerTitle>
-    );
+    return <ContainerTitle img={distribution}>Modify Withdraw Address</ContainerTitle>;
   }
 
   // slashing

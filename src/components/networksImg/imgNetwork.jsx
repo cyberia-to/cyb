@@ -1,18 +1,14 @@
-import { useEffect, useState, useCallback } from 'react';
-import {
-  isNativeChainId,
-  useTracesNetworks,
-} from '../../hooks/useTracesNetworks';
-import Tooltip from '../tooltip/tooltip';
-
-import boot from '../../image/large-green.png';
-import pussy from '../../image/large-purple-circle.png';
+import cosmos from 'images/cosmos-2.svg';
 import eth from 'images/Ethereum_logo_2014.svg';
 import osmo from 'images/osmosis.svg';
-import cosmos from 'images/cosmos-2.svg';
 import terra from 'images/terra.svg';
-import defaultImg from '../../image/large-orange-circle.png';
+import { useCallback, useEffect, useState } from 'react';
 import useQueueIpfsContent from 'src/hooks/useQueueIpfsContent';
+import { isNativeChainId, useTracesNetworks } from '../../hooks/useTracesNetworks';
+import boot from '../../image/large-green.png';
+import defaultImg from '../../image/large-orange-circle.png';
+import pussy from '../../image/large-purple-circle.png';
+import Tooltip from '../tooltip/tooltip';
 
 // maybe reuse enum from DenomArr
 const getNativeImg = (text) => {
@@ -56,9 +52,21 @@ function ImgNetwork({ network, marginImg, size, zIndexImg, tooltipStatus }) {
 
   const { fetchWithDetails } = useQueueIpfsContent();
 
+  const getImgFromIpfsByCid = useCallback(
+    async (cidAvatar) => {
+      if (cidAvatar && fetchWithDetails) {
+        return fetchWithDetails(cidAvatar, 'image').then(
+          (details) => details?.content && setImgDenom(details?.content)
+        );
+      }
+      return null;
+    },
+    [fetchWithDetails]
+  );
+
   useEffect(() => {
     if (network && !isNativeChainId(network)) {
-      if (Object.prototype.hasOwnProperty.call(chainInfo, 'chainIdImageCid')) {
+      if (Object.hasOwn(chainInfo, 'chainIdImageCid')) {
         const { chainIdImageCid, chainName } = chainInfo;
         if (chainIdImageCid && chainIdImageCid.length > 0) {
           getImgFromIpfsByCid(chainIdImageCid);
@@ -73,19 +81,7 @@ function ImgNetwork({ network, marginImg, size, zIndexImg, tooltipStatus }) {
       setImgDenom(nativeImg);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chainInfo, network]);
-
-  const getImgFromIpfsByCid = useCallback(
-    async (cidAvatar) => {
-      if (cidAvatar && fetchWithDetails) {
-        return fetchWithDetails(cidAvatar, 'image').then(
-          (details) => details?.content && setImgDenom(details?.content)
-        );
-      }
-      return null;
-    },
-    [fetchWithDetails]
-  );
+  }, [chainInfo, network, getImgFromIpfsByCid]);
 
   if (tooltipStatus) {
     return (

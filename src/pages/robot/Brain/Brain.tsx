@@ -1,12 +1,12 @@
-import { Tabs } from 'src/components';
-import { Route, Routes, useParams } from 'react-router-dom';
 import { useMemo } from 'react';
+import { Route, Routes, useParams } from 'react-router-dom';
+import { Tabs } from 'src/components';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
 import CyberlinksGraphContainer from 'src/features/cyberlinks/CyberlinksGraph/CyberlinksGraphContainer';
 import { useRobotContext } from '../robot.context';
-import TreedView from './ui/TreedView';
 import styles from './Brain.module.scss';
 import GraphView from './ui/GraphView';
+import TreedView from './ui/TreedView';
 import useGraphLimit from './useGraphLimit';
 
 enum TabsKey {
@@ -63,11 +63,7 @@ function Brain() {
 
       <Routes>
         {['/', 'graph'].map((path) => (
-          <Route
-            key={path}
-            path={path}
-            element={<Graph2d address={address} />}
-          />
+          <Route key={path} path={path} element={<Graph2d address={address} />} />
         ))}
 
         <Route path="list" element={<TreedView address={address} />} />

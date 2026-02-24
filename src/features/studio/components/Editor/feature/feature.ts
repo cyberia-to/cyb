@@ -13,11 +13,7 @@ export const defaultFeatures: Record<EditorFeature, boolean> = {
   [EditorFeature.Placeholder]: true,
 };
 
-async function loadFeature(
-  feature: EditorFeature,
-  editor: Editor,
-  config?: never
-) {
+async function loadFeature(feature: EditorFeature, editor: Editor, config?: never) {
   switch (feature) {
     case EditorFeature.Placeholder: {
       const { defineFeature } = await import('./placeholder/placeholder');

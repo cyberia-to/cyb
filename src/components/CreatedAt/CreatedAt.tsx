@@ -1,5 +1,5 @@
-import { timeSince } from 'src/utils/utils';
 import { dateToUtcNumber, getNowUtcNumber } from 'src/utils/date';
+import { timeSince } from 'src/utils/utils';
 import styles from './CreatedAt.module.scss';
 
 export type Props = {

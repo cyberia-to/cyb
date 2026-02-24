@@ -1,6 +1,6 @@
-import { CardCantainer, LinkTx, LinkCreator } from '../ui/ui';
-import { CardItem } from '../codes/code';
 import { trimString } from '../../../utils/utils';
+import { CardItem } from '../codes/code';
+import { CardCantainer, LinkCreator, LinkTx } from '../ui/ui';
 
 function InitializationInfo({ initTxHash, details }) {
   return (
@@ -12,18 +12,14 @@ function InitializationInfo({ initTxHash, details }) {
       <CardItem
         title="Creator"
         value={
-          <LinkCreator address={details.creator}>
-            {trimString(details.creator, 10)}
-          </LinkCreator>
+          <LinkCreator address={details.creator}>{trimString(details.creator, 10)}</LinkCreator>
         }
       />
       <CardItem
         title="Admin"
         value={
           details.admin ? (
-            <LinkCreator address={details.creator}>
-              {trimString(details.creator, 10)}
-            </LinkCreator>
+            <LinkCreator address={details.creator}>{trimString(details.creator, 10)}</LinkCreator>
           ) : (
             '-'
           )

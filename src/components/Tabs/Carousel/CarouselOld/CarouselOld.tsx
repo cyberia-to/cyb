@@ -1,7 +1,7 @@
 /* eslint-disable react-hooks/rules-of-hooks */
-import { useState, useEffect, useCallback } from 'react';
-import styles from './CarouselOld.module.scss';
+import { useCallback, useEffect, useState } from 'react';
 import TabItem, { Position } from '../../TabItem/TabItem';
+import styles from './CarouselOld.module.scss';
 
 const cx = require('classnames');
 
@@ -58,7 +58,7 @@ function Carousel({
     slidesWithClones.push({});
     setStateSlides(slidesWithClones);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [slides]);
 
   // Whenever the left and right arrows are disabled
   // We want to enable them again after a specific
@@ -73,7 +73,7 @@ function Carousel({
       }, transitionSpeed * 2);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [leftAndRightDisabled]);
+  }, [leftAndRightDisabled, transitionSpeed]);
 
   const calculateLeftMargin = () => {
     return `-${visibleSlide * slideWidth - slideWidth}px`;
@@ -95,7 +95,7 @@ function Carousel({
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [disableNext, visibleSlide]
+    [disableNext, visibleSlide, disableMode, setStep, slides.length]
   );
 
   return (

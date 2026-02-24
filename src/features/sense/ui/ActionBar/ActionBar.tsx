@@ -1,24 +1,21 @@
-import { ActionBar, Button, DenomArr, Input } from 'src/components';
-import { useEffect, useState } from 'react';
-import { useSigningClient } from 'src/contexts/signerClient';
-import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
-import { selectCurrentAddress } from 'src/redux/features/pocket';
-import useWaitForTransaction from 'src/hooks/useWaitForTransaction';
 import { coin } from '@cosmjs/launchpad';
-import { isParticle } from 'src/features/particle/utils';
-import { useBackend } from 'src/contexts/backend/backend';
-import { routes } from 'src/routes';
-import { Link, createSearchParams } from 'react-router-dom';
-import { ibcDenomAtom } from 'src/pages/teleport/bridge/bridge';
-import {
-  sendCyberlink,
-  sendTokensWithMessage,
-} from 'src/services/neuron/neuronApi';
-import { addIfpsMessageOrCid } from 'src/utils/ipfs/helpers';
+import { useEffect, useState } from 'react';
+import { createSearchParams, Link } from 'react-router-dom';
+import { ActionBar, Button, DenomArr, Input } from 'src/components';
 import { BASE_DENOM } from 'src/constants/config';
-import styles from './ActionBar.module.scss';
+import { useBackend } from 'src/contexts/backend/backend';
+import { useSigningClient } from 'src/contexts/signerClient';
+import { isParticle } from 'src/features/particle/utils';
+import useWaitForTransaction from 'src/hooks/useWaitForTransaction';
+import { ibcDenomAtom } from 'src/pages/teleport/bridge/bridge';
+import { selectCurrentAddress } from 'src/redux/features/pocket';
+import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
+import { routes } from 'src/routes';
+import { sendCyberlink, sendTokensWithMessage } from 'src/services/neuron/neuronApi';
+import { addIfpsMessageOrCid } from 'src/utils/ipfs/helpers';
 import { addSenseItem, updateSenseItem } from '../../redux/sense.redux';
-import type { AdviserProps } from '../Sense';
+import { AdviserProps } from '../Sense';
+import styles from './ActionBar.module.scss';
 
 type Props = {
   id: string | undefined;
@@ -80,7 +77,7 @@ function ActionBarWrapper({ id, adviser }: Props) {
     setStep(STEPS.MESSAGE);
     setMessage('');
     setAmount(0);
-  }, [id]);
+  }, []);
 
   async function send() {
     if (!signerIsReady || !address || !ipfsApi || !senseApi) {
@@ -109,13 +106,7 @@ function ActionBarWrapper({ id, adviser }: Props) {
 
       const txHash = await (particle
         ? sendCyberlink(address, messageCid, id, deps)
-        : sendTokensWithMessage(
-            address,
-            id!,
-            formattedAmount,
-            messageCid,
-            deps
-          ));
+        : sendTokensWithMessage(address, id!, formattedAmount, messageCid, deps));
 
       const optimisticMessage = {
         id: id!,
@@ -188,8 +179,7 @@ function ActionBarWrapper({ id, adviser }: Props) {
       if (message.includes('insufficient funds')) {
         message = (
           <div className={styles.error}>
-            sending message needs at least 1{' '}
-            <DenomArr denomValue="boot" onlyImg /> <br />
+            sending message needs at least 1 <DenomArr denomValue="boot" onlyImg /> <br />
             <Link
               to={{
                 pathname: routes.teleport.swap.path,

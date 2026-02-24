@@ -1,15 +1,9 @@
 import { Display } from 'src/components';
-import styles from './TreedItem.module.scss';
 import FetchContent from '../FetchContent/FetchContent';
 import FetchContentFrom from '../FetchContentFrom/FetchContentFrom';
+import styles from './TreedItem.module.scss';
 
-function TreedItem({
-  link,
-  address,
-}: {
-  link: { from: string; to: string };
-  address: string;
-}) {
+function TreedItem({ link, address }: { link: { from: string; to: string }; address: string }) {
   return (
     <Display>
       <div className={styles.wrapper}>

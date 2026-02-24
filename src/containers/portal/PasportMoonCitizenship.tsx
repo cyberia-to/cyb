@@ -1,28 +1,20 @@
 import { useEffect, useState } from 'react';
-import { connect } from 'react-redux';
-import { useNavigate } from 'react-router-dom';
 import { useDevice } from 'src/contexts/device';
 import { useQueryClient } from 'src/contexts/queryClient';
-import {
-  MainContainer,
-  ActionBarSteps,
-  MoonAnimation,
-  Stars,
-} from './components';
+import { useAdviser } from 'src/features/adviser/context';
+import { selectCurrentPassport } from 'src/features/passport/passports.redux';
+import { useAppSelector } from 'src/redux/hooks';
+import { routes } from 'src/routes';
+import { Button } from '../../components';
 import useSetActiveAddress from '../../hooks/useSetActiveAddress';
-import { activePassport, parseRowLog } from './utils';
-import PasportCitizenship from './pasport';
+import ActionBarAddAvatar from './ActionBarAddAvatar';
 import Info from './citizenship/Info';
 import { steps } from './citizenship/utils';
-import STEP_INFO from './gift/utils';
+import { ActionBarSteps, MainContainer, MoonAnimation, Stars } from './components';
 import ActionBarPortalGift from './gift/ActionBarPortalGift';
-import ActionBarAddAvatar from './ActionBarAddAvatar';
-import { Button } from '../../components';
-import { routes } from 'src/routes';
-import { useAppSelector } from 'src/redux/hooks';
-import { selectCurrentPassport } from 'src/features/passport/passports.redux';
-import usePassportByAddress from 'src/features/passport/hooks/usePassportByAddress';
-import { useAdviser } from 'src/features/adviser/context';
+import STEP_INFO from './gift/utils';
+import PasportCitizenship from './pasport';
+import { parseRowLog } from './utils';
 
 const portalAmbient = require('../../sounds/portalAmbient112.mp3');
 
@@ -103,9 +95,7 @@ function PassportMoonCitizenship() {
   useEffect(() => {
     const nickname = citizenship?.extension?.nickname || '';
 
-    const content = (
-      <Info stepCurrent={steps.STEP_CHECK_GIFT} nickname={nickname} />
-    );
+    const content = <Info stepCurrent={steps.STEP_CHECK_GIFT} nickname={nickname} />;
 
     setAdviser(content);
   }, [setAdviser, citizenship]);
@@ -146,18 +136,17 @@ function PassportMoonCitizenship() {
           <Button link={routes.gift.path}>Check gift</Button>
         </ActionBarSteps>
       )}
-      {Math.floor(appStep) !== STEP_INFO.STATE_INIT &&
-        Math.floor(appStep) < STATE_AVATAR && (
-          <ActionBarPortalGift
-            // updateFunc={() => setUpdateFunc((item) => item + 1)}
-            addressActive={addressActive}
-            citizenship={citizenship}
-            updateTxHash={updateTxHash}
-            selectedAddress={selectedAddress}
-            activeStep={appStep}
-            setStepApp={setStepApp}
-          />
-        )}
+      {Math.floor(appStep) !== STEP_INFO.STATE_INIT && Math.floor(appStep) < STATE_AVATAR && (
+        <ActionBarPortalGift
+          // updateFunc={() => setUpdateFunc((item) => item + 1)}
+          addressActive={addressActive}
+          citizenship={citizenship}
+          updateTxHash={updateTxHash}
+          selectedAddress={selectedAddress}
+          activeStep={appStep}
+          setStepApp={setStepApp}
+        />
+      )}
 
       {Math.floor(appStep) === STATE_AVATAR && (
         <ActionBarAddAvatar

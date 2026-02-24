@@ -14,12 +14,8 @@ function useCyberlinksCount(cid: string, neuron) {
 
   return {
     data: {
-      to: toCountQuery.data?.cyberlinks_aggregate?.aggregate?.count as
-        | number
-        | undefined,
-      from: fromCountQuery.data?.cyberlinks_aggregate?.aggregate?.count as
-        | number
-        | undefined,
+      to: toCountQuery.data?.cyberlinks_aggregate?.aggregate?.count as number | undefined,
+      from: fromCountQuery.data?.cyberlinks_aggregate?.aggregate?.count as number | undefined,
     },
     loading: toCountQuery.loading || fromCountQuery.loading,
     error: toCountQuery.error || fromCountQuery.error,

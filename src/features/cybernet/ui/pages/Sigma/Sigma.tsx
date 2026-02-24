@@ -1,24 +1,20 @@
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { Account, AmountDenom } from 'src/components';
-
-import useCurrentAddress from 'src/hooks/useCurrentAddress';
 import Display from 'src/components/containerGradient/Display/Display';
 import DisplayTitle from 'src/components/containerGradient/DisplayTitle/DisplayTitle';
-import { trimString } from 'src/utils/utils';
+import IconsNumber from 'src/components/IconsNumber/IconsNumber';
 import Loader2 from 'src/components/ui/Loader2';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
-import { Link } from 'react-router-dom';
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { routes } from 'src/routes';
+import { CYBERVER_CONTRACTS, CYBERVER_CONTRACTS_LEGACY } from 'src/features/cybernet/constants';
+import useCurrentAddress from 'src/hooks/useCurrentAddress';
 import { AccountInput } from 'src/pages/teleport/components/Inputs';
-import IconsNumber from 'src/components/IconsNumber/IconsNumber';
-import {
-  CYBERVER_CONTRACTS,
-  CYBERVER_CONTRACTS_LEGACY,
-} from 'src/features/cybernet/constants';
+import { routes } from 'src/routes';
+import { trimString } from 'src/utils/utils';
 import { useCybernet } from '../../cybernet.context';
-import styles from './Sigma.module.scss';
 import { useStake } from '../../hooks/useCurrentAccountStake';
 import { cybernetRoutes } from '../../routes';
+import styles from './Sigma.module.scss';
 
 function Item({ contractAddress, callback, address }) {
   const query = useStake({
@@ -40,9 +36,8 @@ function Item({ contractAddress, callback, address }) {
 
   const { contracts } = useCybernet();
 
-  const contractName = contracts.find(
-    (contract) => contract.address === contractAddress
-  )?.metadata?.name;
+  const contractName = contracts.find((contract) => contract.address === contractAddress)?.metadata
+    ?.name;
 
   return (
     <Display
@@ -82,11 +77,7 @@ function Item({ contractAddress, callback, address }) {
                   address={hotkey}
                   avatar
                   markCurrentAddress
-                  link={cybernetRoutes.delegator.getLink(
-                    'pussy',
-                    contractAddress,
-                    hotkey
-                  )}
+                  link={cybernetRoutes.delegator.getLink('pussy', contractAddress, hotkey)}
                 />
 
                 <div>

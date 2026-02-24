@@ -1,5 +1,5 @@
-import BigNumber from 'bignumber.js';
 import { QueryParamsResponse as QueryParamsResponseResources } from '@cybercongress/cyber-js/build/codec/cyber/resources/v1beta1/query';
+import BigNumber from 'bignumber.js';
 import { SelectedState } from './types';
 
 const BASE_VESTING_TIME = 86401;
@@ -27,21 +27,16 @@ export const getMaxTimeMint = (
     return BASE_MAX_MINT_TIME;
   }
 
-  const { halvingPeriodAmpereBlocks, halvingPeriodVoltBlocks } =
-    resourcesParams;
+  const { halvingPeriodAmpereBlocks, halvingPeriodVoltBlocks } = resourcesParams;
 
   const halvingPeriod =
-    selected === SelectedState.millivolt
-      ? halvingPeriodVoltBlocks
-      : halvingPeriodAmpereBlocks;
+    selected === SelectedState.millivolt ? halvingPeriodVoltBlocks : halvingPeriodAmpereBlocks;
 
   const halving = new BigNumber(2).pow(
     new BigNumber(height).dividedBy(halvingPeriod).dp(0, BigNumber.ROUND_FLOOR)
   );
 
-  return new BigNumber(
-    new BigNumber(halvingPeriod).multipliedBy(5).multipliedBy(halving)
-  )
+  return new BigNumber(new BigNumber(halvingPeriod).multipliedBy(5).multipliedBy(halving))
     .dividedBy(BASE_VESTING_TIME)
     .dp(0, BigNumber.ROUND_FLOOR)
     .toNumber();
@@ -71,9 +66,9 @@ export const getAmountResource = (
       ? params.halvingPeriodVoltBlocks
       : params.halvingPeriodAmpereBlocks;
 
-  const cycles = new BigNumber(
-    new BigNumber(valueDays).multipliedBy(BASE_VESTING_TIME)
-  ).dividedBy(baseLength);
+  const cycles = new BigNumber(new BigNumber(valueDays).multipliedBy(BASE_VESTING_TIME)).dividedBy(
+    baseLength
+  );
   const base = new BigNumber(valueH).dividedBy(baseAmount);
   const halving = new BigNumber(0.5).pow(
     new BigNumber(height).dividedBy(halvingPeriod).dp(0, BigNumber.ROUND_FLOOR)

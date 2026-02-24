@@ -1,38 +1,26 @@
-import { useEffect, useState, useMemo } from 'react';
+import { QueryParamsResponse as QueryParamsResponseResources } from '@cybercongress/cyber-js/build/codec/cyber/resources/v1beta1/query';
 import BigNumber from 'bignumber.js';
+import { useEffect, useMemo, useState } from 'react';
+import { DenomArr, Dots, FormatNumberTokens, MainContainer, Tabs, ValueImg } from 'src/components';
+import Display from 'src/components/containerGradient/Display/Display';
+import { DENOM_LIQUID } from 'src/constants/config';
 import { useIbcDenom } from 'src/contexts/ibcDenom';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { useAdviser } from 'src/features/adviser/context';
-import Display from 'src/components/containerGradient/Display/Display';
-import { useAppSelector } from 'src/redux/hooks';
 import { selectCurrentAddress } from 'src/redux/features/pocket';
-import { QueryParamsResponse as QueryParamsResponseResources } from '@cybercongress/cyber-js/build/codec/cyber/resources/v1beta1/query';
-import {
-  Dots,
-  ValueImg,
-  DenomArr,
-  Tabs,
-  MainContainer,
-  FormatNumberTokens,
-} from 'src/components';
+import { useAppSelector } from 'src/redux/hooks';
 import { formatNumber, getDisplayAmount } from 'src/utils/utils';
-import { DENOM_LIQUID } from 'src/constants/config';
-import useGetSlots from './useGetSlots';
 import { TableSlots } from '../energy/ui';
 import ActionBar from './actionBar';
-import styles from './Mint.module.scss';
-import {
-  SLOTS_MAX,
-  getAmountResource,
-  getERatio,
-  getMaxTimeMint,
-} from './utils';
-import { SelectedState } from './types';
-import Statistics from './Statistics/Statistics';
+import ERatio from './components/ERatio/ERatio';
 import RcSlider from './components/Slider/Slider';
 import InfoText from './InfoText/InfoText';
 import LiquidBalances from './LiquidBalances/LiquidBalances';
-import ERatio from './components/ERatio/ERatio';
+import styles from './Mint.module.scss';
+import Statistics from './Statistics/Statistics';
+import { SelectedState } from './types';
+import useGetSlots from './useGetSlots';
+import { getAmountResource, getERatio, getMaxTimeMint, SLOTS_MAX } from './utils';
 
 const returnColorDot = (marks) => {
   return {
@@ -47,10 +35,8 @@ const returnColorDot = (marks) => {
 function Mint() {
   const queryClient = useQueryClient();
   const { tracesDenom } = useIbcDenom();
-  const [updateAddress, setUpdateAddress] = useState(0);
-  const [selected, setSelected] = useState<SelectedState>(
-    SelectedState.milliampere
-  );
+  const [_updateAddress, setUpdateAddress] = useState(0);
+  const [selected, setSelected] = useState<SelectedState>(SelectedState.milliampere);
   const [value, setValue] = useState(0);
   const [valueDays, setValueDays] = useState(1);
   const [height, setHeight] = useState(0);
@@ -66,9 +52,7 @@ function Mint() {
 
   const frozenH =
     originalVesting[DENOM_LIQUID] > 0
-      ? new BigNumber(originalVesting[DENOM_LIQUID])
-          .minus(vested[DENOM_LIQUID])
-          .toNumber()
+      ? new BigNumber(originalVesting[DENOM_LIQUID]).minus(vested[DENOM_LIQUID]).toNumber()
       : 0;
 
   const eRatio = getERatio(frozenH, balanceHydrogen);
@@ -86,8 +70,7 @@ function Mint() {
 
   useEffect(() => {
     const availableSlots =
-      SLOTS_MAX -
-      slotsData.filter((slot) => slot.status === 'Unfreezing').length;
+      SLOTS_MAX - slotsData.filter((slot) => slot.status === 'Unfreezing').length;
 
     setAdviser(
       <p>
@@ -97,9 +80,8 @@ function Mint() {
           <>you have {availableSlots} slots available for investmint</>
         )}
         <br />
-        choose <ValueImg text="milliampere" /> or <ValueImg text="millivolt" />{' '}
-        to mint, the amount of <ValueImg text="hydrogen" /> to invest, and the
-        timeframe
+        choose <ValueImg text="milliampere" /> or <ValueImg text="millivolt" /> to mint, the amount
+        of <ValueImg text="hydrogen" /> to invest, and the timeframe
       </p>
     );
   }, [setAdviser, slotsData]);
@@ -112,18 +94,16 @@ function Mint() {
     queryClient.getBalance(addressActive, DENOM_LIQUID).then((response) => {
       SetBalanceHydrogen(parseFloat(response.amount));
     });
-  }, [queryClient, addressActive, updateAddress]);
+  }, [queryClient, addressActive]);
 
   useEffect(() => {
     if (!queryClient) {
       return;
     }
 
-    queryClient
-      .resourcesParams()
-      .then((response: QueryParamsResponseResources) => {
-        setResourcesParams(response.params);
-      });
+    queryClient.resourcesParams().then((response: QueryParamsResponseResources) => {
+      setResourcesParams(response.params);
+    });
 
     queryClient.getHeight().then((response) => {
       setHeight(response);
@@ -143,9 +123,7 @@ function Mint() {
     }
 
     const [{ coinDecimals }] = tracesDenom(SelectedState.milliampere);
-    const amount = new BigNumber(originalVesting.milliampere)
-      .minus(vested.milliampere)
-      .toNumber();
+    const amount = new BigNumber(originalVesting.milliampere).minus(vested.milliampere).toNumber();
 
     return getDisplayAmount(amount, coinDecimals);
   }, [vested, originalVesting, tracesDenom]);
@@ -156,9 +134,7 @@ function Mint() {
     }
 
     const [{ coinDecimals }] = tracesDenom(SelectedState.millivolt);
-    const amount = new BigNumber(originalVesting.millivolt)
-      .minus(vested.millivolt)
-      .toNumber();
+    const amount = new BigNumber(originalVesting.millivolt).minus(vested.millivolt).toNumber();
     return getDisplayAmount(amount, coinDecimals);
   }, [vested, originalVesting, tracesDenom]);
 

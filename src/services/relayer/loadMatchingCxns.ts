@@ -30,8 +30,7 @@ async function loadMatchingConnections(
   //     }
   //   })
   //   .filter((cxn) => !!cxn);
-  const cxnPairs: { cxnA: IdentifiedConnection; cxnB: IdentifiedConnection }[] =
-    [];
+  const cxnPairs: { cxnA: IdentifiedConnection; cxnB: IdentifiedConnection }[] = [];
   for (const cxnA of cxnsA.connections) {
     for (const cxnB of cxnsB.connections) {
       if (
@@ -93,14 +92,10 @@ async function loadMatchingConnections(
         });
         const lastBlockTime = Math.max(
           txA && txA.height > 0
-            ? await tmA
-                .block(txA.height)
-                .then((b) => b.block.header.time.getTime())
+            ? await tmA.block(txA.height).then((b) => b.block.header.time.getTime())
             : 0,
           txB && txB.height > 0
-            ? await tmB
-                .block(txB.height)
-                .then((b) => b.block.header.time.getTime())
+            ? await tmB.block(txB.height).then((b) => b.block.header.time.getTime())
             : 0
         );
         arbitraryPriority = lastBlockTime;

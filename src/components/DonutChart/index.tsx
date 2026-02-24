@@ -54,7 +54,7 @@ function DonutChart({ data }: Props) {
 
       return [...acc, newObj];
     }, []);
-  }, [data]);
+  }, [data, dashArray, filled, ratio]);
 
   return (
     <div className={styles.donutChart}>

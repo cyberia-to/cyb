@@ -1,7 +1,7 @@
-import { NavLink } from 'react-router-dom';
 import cx from 'classnames';
-import { MenuItem } from 'src/types/menu';
+import { NavLink } from 'react-router-dom';
 import AdviserHoverWrapper from 'src/features/adviser/AdviserHoverWrapper/AdviserHoverWrapper';
+import { MenuItem } from 'src/types/menu';
 import styles from './CircularMenuItem.module.scss';
 
 interface Props {

@@ -2,14 +2,13 @@ import { useState } from 'react';
 import { AmountDenom, Button, InputNumber } from 'src/components';
 
 import ActionBar from 'src/components/actionBar';
-import useExecuteCybernetContract from '../../../useExecuteCybernetContract';
 import { useGetBalance } from 'src/containers/sigma/hooks/utils';
-import { useQueryClient } from 'src/contexts/queryClient';
-import { useAppSelector } from 'src/redux/hooks';
-import { selectCurrentAddress } from 'src/redux/features/pocket';
-import useDelegate from '../../../hooks/useDelegate';
 import useAdviserTexts from 'src/features/adviser/useAdviserTexts';
+import { selectCurrentAddress } from 'src/redux/features/pocket';
+import { useAppSelector } from 'src/redux/hooks';
+import useDelegate from '../../../hooks/useDelegate';
 import useCybernetTexts from '../../../useCybernetTexts';
+import useExecuteCybernetContract from '../../../useExecuteCybernetContract';
 
 enum Steps {
   INITIAL,
@@ -163,8 +162,7 @@ function DelegateActionBar({ address, stakedAmount, onSuccess }: Props) {
                 gap: '0 7px',
               }}
             >
-              Available balance:{' '}
-              <AmountDenom amountValue={availableBalance} denom="pussy" />
+              Available balance: <AmountDenom amountValue={availableBalance} denom="pussy" />
             </p>
           )}
         </div>
@@ -203,8 +201,7 @@ function DelegateActionBar({ address, stakedAmount, onSuccess }: Props) {
               gap: '0 7px',
             }}
           >
-            Available balance:{' '}
-            <AmountDenom amountValue={stakedAmount} denom="pussy" />
+            Available balance: <AmountDenom amountValue={stakedAmount} denom="pussy" />
           </p>
         </div>
       );

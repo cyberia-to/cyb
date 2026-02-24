@@ -1,14 +1,14 @@
 /* eslint-disable import/prefer-default-export */
 import {
-  Observable,
-  switchMap,
-  interval,
-  startWith,
-  tap,
-  retry,
   delay,
   exhaustMap,
+  interval,
+  Observable,
+  retry,
   Subject,
+  startWith,
+  switchMap,
+  tap,
 } from 'rxjs';
 import { switchWhenInitialized } from './withInitializer';
 
@@ -45,13 +45,13 @@ export const createLoopObservable = (
   const source$ = switchWhenInitialized(
     isInitialized$,
     intervalOrRestart$.pipe(
-      tap(() => onStartInterval && onStartInterval()),
+      tap(() => onStartInterval?.()),
       exhaustMap(() =>
         actionObservable$.pipe(
           retry({
             delay: (error) => {
               console.log('retry', error);
-              onError && onError(error);
+              onError?.(error);
               return interval(retryDelayMs);
             },
           })

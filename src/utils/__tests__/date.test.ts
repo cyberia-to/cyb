@@ -1,4 +1,4 @@
-import { numberToUtcDate, dateToUtcNumber, roundMilliseconds } from '../date';
+import { dateToUtcNumber, numberToUtcDate, roundMilliseconds } from '../date';
 
 test('numberToDate should convert timestamp to formatted date string', () => {
   const timestamp = 0;

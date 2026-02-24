@@ -1,19 +1,14 @@
-import { useEffect, useState } from 'react';
 import { Battery, Pane, Text } from '@cybercongress/gravity';
-import { Link } from 'react-router-dom';
+import { useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
+import { Link } from 'react-router-dom';
+import { BASE_DENOM, CHAIN_ID } from 'src/constants/config';
 import { useQueryClient } from 'src/contexts/queryClient';
-import { Networks } from 'src/types/networks';
 import { routes } from 'src/routes';
-import { CHAIN_ID, BASE_DENOM } from 'src/constants/config';
-import Tooltip from '../tooltip/tooltip';
-import {
-  coinDecimals,
-  convertResources,
-  formatCurrency,
-  reduceBalances,
-} from '../../utils/utils';
+import { Networks } from 'src/types/networks';
 import { setBandwidth } from '../../redux/actions/bandwidth';
+import { coinDecimals, convertResources, formatCurrency, reduceBalances } from '../../utils/utils';
+import Tooltip from '../tooltip/tooltip';
 
 const PREFIXES = [
   {
@@ -35,8 +30,7 @@ const PREFIXES = [
 ];
 
 function ContentTooltip({ bwRemained, bwMaxValue, amounPower, countLink }) {
-  let text =
-    'Empty battery. You have no power & energy so you cannot submit cyberlinks. ';
+  let text = 'Empty battery. You have no power & energy so you cannot submit cyberlinks. ';
 
   if (bwMaxValue > 0) {
     text = `You have ${formatCurrency(
@@ -91,29 +85,18 @@ function BandwidthBar({ tooltipPlacement }) {
   const bwRemained = bandwidth.remained;
   const bwMaxValue = bandwidth.maxValue;
 
-  const bwPercent =
-    bwMaxValue > 0 ? Math.floor((bwRemained / bwMaxValue) * 100) : 0;
+  const bwPercent = bwMaxValue > 0 ? Math.floor((bwRemained / bwMaxValue) * 100) : 0;
 
   useEffect(() => {
     const getBandwidth = async () => {
       try {
         const { account } = defaultAccount;
-        if (
-          account !== null &&
-          Object.prototype.hasOwnProperty.call(account, 'cyber') &&
-          queryClient
-        ) {
+        if (account !== null && Object.hasOwn(account, 'cyber') && queryClient) {
           const { bech32: cyberBech32 } = account.cyber;
-          const responseAccountBandwidth = await queryClient.accountBandwidth(
-            cyberBech32
-          );
+          const responseAccountBandwidth = await queryClient.accountBandwidth(cyberBech32);
 
-          if (
-            responseAccountBandwidth !== null &&
-            responseAccountBandwidth.neuronBandwidth
-          ) {
-            const { maxValue, remainedValue } =
-              responseAccountBandwidth.neuronBandwidth;
+          if (responseAccountBandwidth?.neuronBandwidth) {
+            const { maxValue, remainedValue } = responseAccountBandwidth.neuronBandwidth;
             dispatch(setBandwidth(remainedValue, maxValue));
             setCountLink(remainedValue / (priceLink * 1000));
           } else {
@@ -124,14 +107,14 @@ function BandwidthBar({ tooltipPlacement }) {
           dispatch(setBandwidth(0, 0));
           setCountLink(0);
         }
-      } catch (error) {
+      } catch (_error) {
         dispatch(setBandwidth(0, 0));
         setCountLink(0);
       }
     };
     getBandwidth();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [defaultAccount, location.pathname, priceLink, queryClient]);
+  }, [defaultAccount, priceLink, queryClient, dispatch]);
 
   useEffect(() => {
     const getPrice = async () => {
@@ -147,24 +130,18 @@ function BandwidthBar({ tooltipPlacement }) {
     const getAmounPower = async () => {
       try {
         const { account } = defaultAccount;
-        if (
-          account !== null &&
-          Object.prototype.hasOwnProperty.call(account, 'cyber') &&
-          queryClient
-        ) {
+        if (account !== null && Object.hasOwn(account, 'cyber') && queryClient) {
           const { bech32 } = account.cyber;
           const allBalances = await queryClient.getAllBalances(bech32);
           const reduceallBalances = reduceBalances(allBalances);
           if (reduceallBalances.milliampere && reduceallBalances.millivolt) {
             const { milliampere, millivolt } = reduceallBalances;
-            setAmounPower(
-              convertResources(milliampere) * convertResources(millivolt)
-            );
+            setAmounPower(convertResources(milliampere) * convertResources(millivolt));
           }
         } else {
           setAmounPower(0);
         }
-      } catch (error) {
+      } catch (_error) {
         setAmounPower(0);
       }
     };

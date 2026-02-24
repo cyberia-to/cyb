@@ -9,29 +9,30 @@ jobs:
   build_cyb:
     runs-on: ubuntu-latest
 
-    strategy:
-      matrix:
-        node-version: [18.14.x]
-
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v4
 
-      - name: Set up Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v3
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
         with:
-          node-version: ${{ matrix.node-version }}
+          deno-version: v2.x
+
+      - name: Set up Node.js (rspack runtime)
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
 
       - name: Install dependencies
-        run: yarn install
+        run: deno install
 
       - name: Build cyb for IPFS
-        run: yarn build-ipfs
+        run: deno task build-ipfs
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
           CHAIN_ID: 'bostrom'
 
-      - name: Deploy to IPFS 👽
+      - name: Deploy to IPFS
         id: ipfs
         uses: dasein108/ipfs-github-action@v1.1.1
         with:
@@ -50,8 +51,8 @@ jobs:
           to: ${{ secrets.TELEGRAM_TO }}
           token: ${{ secrets.TELEGRAM_TOKEN }}
           message: |
-            ⚙️ ${{ github.actor }} -> ${{ github.event.commits[0].message }}
+            ${{ github.actor }} -> ${{ github.event.commits[0].message }}
 
-            🏷 See changes: https://github.com/${{ github.repository }}/commit/${{github.sha}}
+            See changes: https://github.com/${{ github.repository }}/commit/${{github.sha}}
 
-            👽 IPFS URL: ${{ steps.ipfs.outputs.url }}
+            IPFS URL: ${{ steps.ipfs.outputs.url }}

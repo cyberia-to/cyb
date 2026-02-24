@@ -1,5 +1,5 @@
 import { Keplr } from '@keplr-wallet/types';
-import { RPC_URL, CHAIN_ID, BASE_DENOM, LCD_URL } from 'src/constants/config';
+import { BASE_DENOM, CHAIN_ID, LCD_URL, RPC_URL } from 'src/constants/config';
 
 export const getKeplr = async (): Promise<Keplr | undefined> => {
   if (window.keplr) {
@@ -12,10 +12,7 @@ export const getKeplr = async (): Promise<Keplr | undefined> => {
 
   return new Promise((resolve) => {
     const documentStateChange = (event: Event) => {
-      if (
-        event.target &&
-        (event.target as Document).readyState === 'complete'
-      ) {
+      if (event.target && (event.target as Document).readyState === 'complete') {
         resolve(window.keplr);
         document.removeEventListener('readystatechange', documentStateChange);
       }

@@ -1,7 +1,7 @@
-import { DenomArr } from 'src/components';
-import rectangle from 'images/rectangle.svg';
-import { Link, createSearchParams } from 'react-router-dom';
 import cx from 'classnames';
+import rectangle from 'images/rectangle.svg';
+import { createSearchParams, Link } from 'react-router-dom';
+import { DenomArr } from 'src/components';
 import { SelectedPool } from '../../type';
 import styles from './SwapItem.module.scss';
 
@@ -29,17 +29,9 @@ function FlexRow({ children, reverse }: flexRow) {
 function DenomsText({ item }: Props) {
   return (
     <FlexRow reverse={item.reverse}>
-      <DenomArr
-        denomValue={item.base_currency}
-        onlyText
-        tooltipStatusText={false}
-      />
+      <DenomArr denomValue={item.base_currency} onlyText tooltipStatusText={false} />
       -
-      <DenomArr
-        denomValue={item.target_currency}
-        onlyText
-        tooltipStatusText={false}
-      />
+      <DenomArr denomValue={item.target_currency} onlyText tooltipStatusText={false} />
     </FlexRow>
   );
 }
@@ -47,19 +39,9 @@ function DenomsText({ item }: Props) {
 function DenomsImg({ item }: Props) {
   return (
     <FlexRow reverse={item.reverse}>
-      <DenomArr
-        denomValue={item.base_currency}
-        onlyImg
-        tooltipStatusImg={false}
-        size={30}
-      />
+      <DenomArr denomValue={item.base_currency} onlyImg tooltipStatusImg={false} size={30} />
       <img className={styles.denomsImgImg} src={rectangle} alt="img" />
-      <DenomArr
-        denomValue={item.target_currency}
-        onlyImg
-        tooltipStatusImg={false}
-        size={30}
-      />
+      <DenomArr denomValue={item.target_currency} onlyImg tooltipStatusImg={false} size={30} />
     </FlexRow>
   );
 }

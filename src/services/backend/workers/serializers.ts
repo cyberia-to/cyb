@@ -7,11 +7,7 @@ export type IPFSContentTransferable = Omit<IPFSContent, 'result'> & {
 
 function createAsyncIterable(port: MessagePort): AsyncIterable<Uint8Array> {
   return {
-    async *[Symbol.asyncIterator](): AsyncGenerator<
-      Uint8Array,
-      void,
-      undefined
-    > {
+    async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array, void, undefined> {
       let done = false;
       while (!done) {
         // eslint-disable-next-line no-loop-func
@@ -42,7 +38,7 @@ const IPFSContentTransferHandler: TransferHandler<
   IPFSContentTransferable | null
 > = {
   canHandle: (obj: IPFSContent | undefined) =>
-    obj && obj.result && typeof obj.result[Symbol.asyncIterator] === 'function',
+    obj?.result && typeof obj.result[Symbol.asyncIterator] === 'function',
   serialize(obj: IPFSContent) {
     if (obj === undefined) {
       return [null, []];

@@ -1,8 +1,7 @@
-import Tooltip from 'src/components/tooltip/tooltip';
-
-import useGetCreator from 'src/containers/ipfs/hooks/useGetCreator';
 import dateFormat from 'dateformat';
 import Account from 'src/components/account/account';
+import Tooltip from 'src/components/tooltip/tooltip';
+import useGetCreator from 'src/containers/ipfs/hooks/useGetCreator';
 import { timeSince } from 'src/utils/utils';
 import styles from './Creator.module.scss';
 

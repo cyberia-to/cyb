@@ -1,6 +1,6 @@
 import { Pool } from '@cybercongress/cyber-js/build/codec/tendermint/liquidity/v1beta1/liquidity';
-import { ObjKeyValue } from 'src/types/data';
 import BigNumber from 'bignumber.js';
+import { ObjKeyValue } from 'src/types/data';
 import { MyPoolsT } from './type';
 
 const reduceTextCoin = (text: string) => {
@@ -22,10 +22,7 @@ const reduceTextCoin = (text: string) => {
   }
 };
 
-export function getPoolToken(
-  pool: Pool[],
-  myPoolTokens: ObjKeyValue
-): MyPoolsT[] {
+export function getPoolToken(pool: Pool[], myPoolTokens: ObjKeyValue): MyPoolsT[] {
   const myPools: MyPoolsT[] = [];
 
   pool.forEach((item) => {

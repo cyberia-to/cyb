@@ -1,20 +1,20 @@
-import { useState, useCallback } from 'react';
-import BigNumber from 'bignumber.js';
-import useSetActiveAddress from 'src/hooks/useSetActiveAddress';
-import { useSigningClient } from 'src/contexts/signerClient';
-import { Option } from 'src/types';
 import { Coin } from '@cosmjs/launchpad';
-import { useIbcDenom } from 'src/contexts/ibcDenom';
-import { RootState } from 'src/redux/store';
-import { useNavigate } from 'react-router-dom';
 import {
   Params,
   Pool,
 } from '@cybercongress/cyber-js/build/codec/tendermint/liquidity/v1beta1/liquidity';
+import BigNumber from 'bignumber.js';
+import { useCallback, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useIbcDenom } from 'src/contexts/ibcDenom';
+import { useSigningClient } from 'src/contexts/signerClient';
+import useSetActiveAddress from 'src/hooks/useSetActiveAddress';
 import { useAppSelector } from 'src/redux/hooks';
+import { RootState } from 'src/redux/store';
+import { Option } from 'src/types';
 import { Account, ActionBar as ActionBarCenter } from '../../../components';
 import { LEDGER } from '../../../utils/config';
-import { convertAmountReverce, convertAmount } from '../../../utils/utils';
+import { convertAmount, convertAmountReverce } from '../../../utils/utils';
 
 import ActionBarPingTxs from '../components/actionBarPingTxs';
 import { sortReserveCoinDenoms } from './utils';
@@ -47,8 +47,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
   const { tracesDenom } = useIbcDenom();
   const [stage, setStage] = useState(STAGE_INIT);
   const [txHash, setTxHash] = useState<Option<string>>(undefined);
-  const [errorMessage, setErrorMessage] =
-    useState<Option<string | JSX.Element>>(undefined);
+  const [errorMessage, setErrorMessage] = useState<Option<string | JSX.Element>>(undefined);
 
   const {
     tokenAAmount,
@@ -72,9 +71,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
 
       setStage(STAGE_SUBMITTED);
       const offerCoinFee = coinFunc(
-        Math.ceil(
-          amountTokenA * convertAmount(parseFloat(params.swapFeeRate), 18) * 0.5
-        ),
+        Math.ceil(amountTokenA * convertAmount(parseFloat(params.swapFeeRate), 18) * 0.5),
         tokenA
       );
 
@@ -114,8 +111,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
       } else {
         setErrorMessage(
           <span>
-            Add address <Account margin="0 5px" address={address} /> to your
-            pocket or make active{' '}
+            Add address <Account margin="0 5px" address={address} /> to your pocket or make active{' '}
           </span>
         );
         setStage(STAGE_ERROR);

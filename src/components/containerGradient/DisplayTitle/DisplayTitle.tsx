@@ -1,6 +1,6 @@
 import cx from 'classnames';
-import styles from './DisplayTitle.module.scss';
 import { ColorLamp } from '../types';
+import styles from './DisplayTitle.module.scss';
 
 type Props = {
   title: string | React.ReactNode;
@@ -30,12 +30,7 @@ function DisplayTitle({
 }: Props) {
   const content = (
     <div className={cx(styles.displayTitle, styles[color])}>
-      <div
-        className={cx(
-          styles.displayTitleContent,
-          styles[`displayTitleContent${state}`]
-        )}
-      >
+      <div className={cx(styles.displayTitleContent, styles[`displayTitleContent${state}`])}>
         {image && (
           <div
             className={cx(styles.imageWrapper, {

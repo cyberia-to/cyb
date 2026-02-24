@@ -1,11 +1,6 @@
 import { Pane, Text } from '@cybercongress/gravity';
 import { BASE_DENOM } from 'src/constants/config';
-import {
-  IconStatus,
-  Votes,
-  Deposit,
-  ContainerGradientText,
-} from '../../components';
+import { ContainerGradientText, Deposit, IconStatus, Votes } from '../../components';
 import { formatNumber } from '../../utils/search/utils';
 
 const iconPie = require('../../image/ionicons_svg_ios-pie.svg');
@@ -16,22 +11,12 @@ const toFixedNumber = (number, toFixed) => {
   return Math.floor(number * 10 ** toFixed) / 10 ** toFixed;
 };
 
-function ProposalsDetailProgressBar({
-  proposals,
-  totalDeposit,
-  minDeposit,
-  tallying,
-  tally,
-}) {
+function ProposalsDetailProgressBar({ proposals, totalDeposit, minDeposit, tallying, tally }) {
   const { quorum, threshold, vetoThreshold } = tallying;
   const { yes, abstain, no, noWithVeto, participation } = tally;
 
   return (
-    <Pane
-      display="grid"
-      gridTemplateColumns="repeat(auto-fit, minmax(450px, 1fr))"
-      gridGap={20}
-    >
+    <Pane display="grid" gridTemplateColumns="repeat(auto-fit, minmax(450px, 1fr))" gridGap={20}>
       <ContainerGradientText
         display="flex"
         // alignItems="center"
@@ -40,19 +25,9 @@ function ProposalsDetailProgressBar({
         minHeight={140}
         // height={2}
       >
-        <IconStatus
-          status={proposals?.status || 3}
-          text
-          marginRight={8}
-          marginBottom={20}
-        />
+        <IconStatus status={proposals?.status || 3} text marginRight={8} marginBottom={20} />
 
-        <Pane
-          width="100%"
-          display="flex"
-          alignItems="center"
-          justifyContent="space-between"
-        >
+        <Pane width="100%" display="flex" alignItems="center" justifyContent="space-between">
           <Text marginX={5} color="#fff">
             0
           </Text>
@@ -71,9 +46,7 @@ function ProposalsDetailProgressBar({
               src={participation > quorum * 100 ? iconPieActive : iconPie}
               alt="pie"
             />
-            <Text color="#c7c7c7">
-              Participation {toFixedNumber(quorum * 100, 2)}%
-            </Text>
+            <Text color="#c7c7c7">Participation {toFixedNumber(quorum * 100, 2)}%</Text>
           </Pane>
           <Pane display="flex" alignItems="center" marginRight={15}>
             <img
@@ -81,9 +54,7 @@ function ProposalsDetailProgressBar({
               src={yes > threshold * 100 ? iconPieActive : iconPie}
               alt="pie"
             />
-            <Text color="#c7c7c7">
-              Yes {toFixedNumber(threshold * 100, 2)}%
-            </Text>
+            <Text color="#c7c7c7">Yes {toFixedNumber(threshold * 100, 2)}%</Text>
           </Pane>
           <Pane display="flex" alignItems="center" marginRight={15}>
             <img
@@ -91,9 +62,7 @@ function ProposalsDetailProgressBar({
               src={noWithVeto > vetoThreshold * 100 ? iconPieActive : iconPie}
               alt="pie"
             />
-            <Text color="#c7c7c7">
-              No With Veto {toFixedNumber(vetoThreshold * 100, 2)}%
-            </Text>
+            <Text color="#c7c7c7">No With Veto {toFixedNumber(vetoThreshold * 100, 2)}%</Text>
           </Pane>
         </Pane>
         <Pane display="flex" justifyContent="space-between" alignItems="center">

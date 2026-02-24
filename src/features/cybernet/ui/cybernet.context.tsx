@@ -1,17 +1,10 @@
 import React, { useMemo, useState } from 'react';
-
-import useQueryCybernetContract from './useQueryCybernetContract.refactor';
-import {
-  ContractTypes,
-  ContractWithData,
-  Economy,
-  Metadata,
-  SubnetInfo,
-} from '../types';
 import { matchPath, useLocation, useParams } from 'react-router-dom';
 import { isPussyAddress } from 'src/utils/address';
+import { CYBERVER_CONTRACTS, CYBERVER_CONTRACTS_LEGACY } from '../constants';
+import { ContractTypes, ContractWithData, Economy, Metadata, SubnetInfo } from '../types';
 import { cybernetRoutes } from './routes';
-import { CYBERVER_CONTRACTS_LEGACY, CYBERVER_CONTRACTS } from '../constants';
+import useQueryCybernetContract from './useQueryCybernetContract.refactor';
 
 const CybernetContext = React.createContext<{
   contracts: ContractWithData[];
@@ -74,9 +67,7 @@ function useCybernetContractWithData(address: string) {
 }
 
 function CybernetProvider({ children }: { children: React.ReactNode }) {
-  const [selectedContractAddress, setSelectedContractAddress] = useState(
-    CYBERVER_CONTRACTS[0]
-  );
+  const [selectedContractAddress, setSelectedContractAddress] = useState(CYBERVER_CONTRACTS[0]);
 
   const { nameOrAddress } = useParams();
 
@@ -91,20 +82,14 @@ function CybernetProvider({ children }: { children: React.ReactNode }) {
   const currentContract =
     nameOrAddress &&
     contracts.find(
-      (contract) =>
-        contract.address === nameOrAddress ||
-        contract.metadata?.name === nameOrAddress
+      (contract) => contract.address === nameOrAddress || contract.metadata?.name === nameOrAddress
     );
 
   let address;
 
   if (nameOrAddress && isPussyAddress(nameOrAddress)) {
     address = nameOrAddress;
-  } else if (
-    nameOrAddress &&
-    currentContract &&
-    currentContract.metadata?.name === nameOrAddress
-  ) {
+  } else if (nameOrAddress && currentContract && currentContract.metadata?.name === nameOrAddress) {
     address = currentContract.address;
   }
 

@@ -13,10 +13,7 @@ function RenderAbiQuery({ contractAddress, schema }) {
     }
     setContractResponse(null);
     try {
-      const queryResponseResult = await queryClient.queryContractSmart(
-        contractAddress,
-        formData
-      );
+      const queryResponseResult = await queryClient.queryContractSmart(contractAddress, formData);
       console.log(`queryResponseResult`, queryResponseResult);
       setContractResponse({ result: queryResponseResult, key });
     } catch (e) {

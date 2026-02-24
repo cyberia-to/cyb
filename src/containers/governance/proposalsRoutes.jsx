@@ -1,21 +1,12 @@
-import { Routes, Route } from 'react-router-dom';
-
-import ProposalsDetailTableComments from './ProposalsDetailTableComments';
 import { ProposalStatus } from 'cosmjs-types/cosmos/gov/v1beta1/gov';
-
+import { Navigate, Route, Routes } from 'react-router-dom';
+import ProposalsDetailTableComments from './ProposalsDetailTableComments';
+import ProposalsIdDetailTableVoters from './proposalsDetailTableVoters';
 import ProposalsIdDetail from './proposalsIdDetail';
 import styles from './styles.module.scss';
-import ProposalsIdDetailTableVoters from './proposalsDetailTableVoters';
 import Layout from './tabsLayout';
-import { Navigate } from 'react-router-dom';
 
-function ProposalsRoutes({
-  proposals,
-  tallying,
-  tally,
-  totalDeposit,
-  updateFunc,
-}) {
+function ProposalsRoutes({ proposals, tallying, tally, totalDeposit, updateFunc }) {
   return (
     <Routes>
       <Route path="/" element={<Layout />}>

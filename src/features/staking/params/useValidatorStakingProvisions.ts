@@ -1,9 +1,9 @@
-import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
-import { useCyberClient } from 'src/contexts/queryCyberClient';
 import { fromAscii } from '@cosmjs/encoding';
 import { Decimal } from '@cosmjs/math';
+import { useQuery } from '@tanstack/react-query';
 import BigNumber from 'bignumber.js';
+import { useMemo } from 'react';
+import { useCyberClient } from 'src/contexts/queryCyberClient';
 
 function useValidatorStakingProvisions() {
   const { rpc } = useCyberClient();
@@ -11,8 +11,7 @@ function useValidatorStakingProvisions() {
     queryKey: ['mint', 'annualProvisions'],
     queryFn: () => rpc.cosmos.mint.v1beta1.annualProvisions(),
     enabled: Boolean(rpc),
-    select: (data) =>
-      Decimal.fromAtomics(fromAscii(data.annualProvisions), 18).toString(),
+    select: (data) => Decimal.fromAtomics(fromAscii(data.annualProvisions), 18).toString(),
   });
   const { data: communityTax } = useQuery({
     queryKey: ['distribution', 'params'],

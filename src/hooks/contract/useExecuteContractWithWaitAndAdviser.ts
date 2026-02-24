@@ -1,7 +1,7 @@
+import { Coin } from '@cosmjs/launchpad';
+import useWaitForTransaction from 'src/hooks/useWaitForTransaction';
 import useAdviserTexts from '../../features/adviser/useAdviserTexts';
 import useExecuteContract from './useExecuteContract';
-import useWaitForTransaction from 'src/hooks/useWaitForTransaction';
-import { Coin } from '@cosmjs/launchpad';
 
 export type Props = {
   contractAddress: string;
@@ -17,12 +17,11 @@ function useExecuteContractWithWaitAndAdviser({
   onSuccess,
   successMessage,
 }: Props) {
-  const { isLoading, isReady, error, mutate, transactionHash } =
-    useExecuteContract({
-      contractAddress,
-      query,
-      funds,
-    });
+  const { isLoading, isReady, error, mutate, transactionHash } = useExecuteContract({
+    contractAddress,
+    query,
+    funds,
+  });
 
   const waitForTx = useWaitForTransaction({
     hash: transactionHash,
@@ -35,8 +34,8 @@ function useExecuteContractWithWaitAndAdviser({
     loadingText: isLoading
       ? 'Wallet confirmation'
       : waitForTx.isLoading
-      ? 'Transaction confirmation'
-      : undefined,
+        ? 'Transaction confirmation'
+        : undefined,
     error: e,
     successText: !!waitForTx.data && successMessage,
     txHash: e && transactionHash,

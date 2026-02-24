@@ -1,11 +1,6 @@
-import {
-  cyber,
-  createRpcQueryHooks,
-  useRpcClient,
-} from '@cybercongress/cyber-ts';
-
-import React, { useContext } from 'react';
+import { createRpcQueryHooks, cyber, useRpcClient } from '@cybercongress/cyber-ts';
 import { useQuery } from '@tanstack/react-query';
+import React, { useContext } from 'react';
 import { RPC_URL } from 'src/constants/config';
 
 const QueryClientContext = React.createContext<{
@@ -36,11 +31,7 @@ export function useCyberClient() {
 
 const rpcEndpoint = RPC_URL;
 
-function CyberTsQueryClientProvider({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function CyberTsQueryClientProvider({ children }: { children: React.ReactNode }) {
   const { data, error, isFetching } = useQuery({
     queryKey: ['cyberTsClient', 'connect'],
     queryFn: () => {

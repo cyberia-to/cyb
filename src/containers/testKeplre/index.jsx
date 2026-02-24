@@ -1,32 +1,28 @@
 /* eslint-disable */
 import BigNumber from 'bignumber.js';
-import { reduceBalances, convertAmount } from '../../utils/utils';
-
+import { DenomArr } from '../../components';
+import { convertAmount, reduceBalances } from '../../utils/utils';
 import { MainContainer } from '../portal/components';
-import { DenomArr, Particle } from '../../components';
-import Denom from 'src/components/denom';
 
 // const token = Buffer.from(`anonymas:mouse123west`, 'utf8').toString('base64');
-const token = 'anonymas:mouse123west';
+const _token = 'anonymas:mouse123west';
 
 // const headers = {
 //   authorization: `Basic YW5vbnltYXM6bW91c2UxMjN3ZXN0`,
 // };
 
-const addressTest = 'bostromvaloper1ydc5fy9fjdygvgw36u49yj39fr67pd9m5qexm8';
+const _addressTest = 'bostromvaloper1ydc5fy9fjdygvgw36u49yj39fr67pd9m5qexm8';
 
-const headers = {
+const _headers = {
   'Content-Type': 'application/json',
 };
 
-const bootTocyb =
-  'poolBE0F1D1C7FE3E72D18DF1996AB8E76676852A34313D2772E7ED36B041DCAB182';
-const milliampere = 'milliampere';
+const bootTocyb = 'poolBE0F1D1C7FE3E72D18DF1996AB8E76676852A34313D2772E7ED36B041DCAB182';
+const _milliampere = 'milliampere';
 
-const testDenom =
-  'ibc/8D9262E35CAE362FA74AE05E430550757CF8D842EC1B241F645D3CB7179AFD10';
+const testDenom = 'ibc/8D9262E35CAE362FA74AE05E430550757CF8D842EC1B241F645D3CB7179AFD10';
 
-const slidesTest = [
+const _slidesTest = [
   {
     title: 'STEP_GIFT_INFO',
   },
@@ -44,11 +40,11 @@ const slidesTest = [
   },
 ];
 
-const getPoolsBalance = async (data, client) => {
+const _getPoolsBalance = async (data, client) => {
   const copyObj = { ...data };
   // eslint-disable-next-line no-restricted-syntax
   for (const key in copyObj) {
-    if (Object.hasOwnProperty.call(copyObj, key)) {
+    if (Object.hasOwn(copyObj, key)) {
       const element = copyObj[key];
       const { reserveAccountAddress } = element;
       // eslint-disable-next-line no-await-in-loop
@@ -60,7 +56,7 @@ const getPoolsBalance = async (data, client) => {
   return copyObj;
 };
 
-const testFunc = (responseDataPools, jsCyber) => {
+const _testFunc = (responseDataPools, _jsCyber) => {
   const getTokenIndexer = (wtl) => {
     const tokenIndexer = {};
     if (wtl) {
@@ -71,19 +67,15 @@ const testFunc = (responseDataPools, jsCyber) => {
     return tokenIndexer;
   };
 
-  const calculatePrice = (coinsPair, balances, tracesDenom) => {
+  const _calculatePrice = (coinsPair, balances, tracesDenom) => {
     let price = 0;
     const tokenA = coinsPair[0];
     const tokenB = coinsPair[1];
     const [{ coinDecimals: coinDecimalsA }] = tracesDenom(tokenA);
     const [{ coinDecimals: coinDecimalsB }] = tracesDenom(tokenB);
 
-    const amountA = new BigNumber(
-      convertAmount(balances[tokenA], coinDecimalsA)
-    );
-    const amountB = new BigNumber(
-      convertAmount(balances[tokenB], coinDecimalsB)
-    );
+    const amountA = new BigNumber(convertAmount(balances[tokenA], coinDecimalsA));
+    const amountB = new BigNumber(convertAmount(balances[tokenB], coinDecimalsB));
 
     if (amountA.comparedTo(0) && amountB.comparedTo(0)) {
       price = amountA.dividedBy(amountB).toNumber();
@@ -99,13 +91,11 @@ const testFunc = (responseDataPools, jsCyber) => {
   if (responseDataPools && Object.keys(responseDataPools).length > 0) {
     // eslint-disable-next-line no-restricted-syntax
     for (const key in responseDataPools) {
-      if (Object.hasOwnProperty.call(responseDataPools, key)) {
+      if (Object.hasOwn(responseDataPools, key)) {
         const element = responseDataPools[key];
         const { reserveAccountAddress } = element;
         // eslint-disable-next-line no-await-in-loop
-        fetch(
-          `https://lcd.bostrom.cybernode.ai/bank/balances/${reserveAccountAddress}`
-        )
+        fetch(`https://lcd.bostrom.cybernode.ai/bank/balances/${reserveAccountAddress}`)
           .then((response) => response.json())
           .then((data) => data.result)
           .then((dataBalance) => {

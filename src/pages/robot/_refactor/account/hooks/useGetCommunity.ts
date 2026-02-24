@@ -1,9 +1,7 @@
 import { useEffect, useState } from 'react';
 import useQueueIpfsContent from 'src/hooks/useQueueIpfsContent';
-
-import { fetchCommunity } from 'src/services/community/community';
-
 import { CommunityDto } from 'src/services/CozoDb/types/dto';
+import { fetchCommunity } from 'src/services/community/community';
 import { NeuronAddress, ParticleCid } from 'src/types/base';
 import { makeCancellable } from 'src/utils/async/promise';
 import { removeDublicates } from 'src/utils/list';
@@ -19,7 +17,7 @@ function useGetCommunity(address: string | null, { skip }: { skip?: boolean }) {
   });
 
   // TODO: maybe refactor
-  const [loading, setLoading] = useState({
+  const [loading, _setLoading] = useState({
     following: false,
     followers: false,
     friends: false,
@@ -41,7 +39,7 @@ function useGetCommunity(address: string | null, { skip }: { skip?: boolean }) {
 
     // don't set abortController
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [address]);
+  }, [abortController]);
 
   useEffect(() => {
     if (!address || skip || !fetchParticleAsync || isLoaded) {
@@ -52,9 +50,7 @@ function useGetCommunity(address: string | null, { skip }: { skip?: boolean }) {
       const communityRaw: Map<ParticleCid, CommunityDto> = new Map();
 
       const onResolve = (communityResolved: CommunityDto[]) => {
-        communityResolved.forEach((item) =>
-          communityRaw.set(item.neuron, item)
-        );
+        communityResolved.forEach((item) => communityRaw.set(item.neuron, item));
         // TODO: exclude dublicates when followe and following from 2 sources
         // const allItems = [...state.community.raw, ...items];
 
@@ -82,9 +78,7 @@ function useGetCommunity(address: string | null, { skip }: { skip?: boolean }) {
         fetchParticleAsync,
         onResolve
       )
-        .catch(() =>
-          console.log(`>>>!!! sync community ${address} was cancelled`)
-        )
+        .catch(() => console.log(`>>>!!! sync community ${address} was cancelled`))
         .finally(() => {
           setIsLoaded(true);
         });

@@ -1,9 +1,9 @@
 import { Milkdown } from '@milkdown/react';
 import '@milkdown/theme-nord/style.css';
 import './Editor.css';
-import { RefObject, useImperativeHandle } from 'react';
 import { editorViewCtx, parserCtx } from '@milkdown/kit/core';
 import { Slice } from '@milkdown/kit/prose/model';
+import { RefObject, useImperativeHandle } from 'react';
 import useMilkdownEditor from './hooks/useMilkdownEditor';
 
 export interface MilkdownRef {
@@ -33,13 +33,7 @@ function MilkdownEditor({ content, onChange, milkdownRef }: MilkdownProps) {
           return;
         }
         const { state } = view;
-        view.dispatch(
-          state.tr.replace(
-            0,
-            state.doc.content.size,
-            new Slice(doc.content, 0, 0)
-          )
-        );
+        view.dispatch(state.tr.replace(0, state.doc.content.size, new Slice(doc.content, 0, 0)));
       });
     },
   }));

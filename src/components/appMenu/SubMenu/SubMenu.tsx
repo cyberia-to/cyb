@@ -1,7 +1,7 @@
-import { NavLink } from 'react-router-dom';
-import { MenuItem } from 'src/types/menu';
 import cx from 'classnames';
 import { useMemo } from 'react';
+import { NavLink } from 'react-router-dom';
+import { MenuItem } from 'src/types/menu';
 import { checkIsEmoji } from 'src/utils/emoji';
 import styles from './SubMenu.module.scss';
 
@@ -41,19 +41,12 @@ function SubMenu({ selectedApp, closeMenu }: Props) {
           onClick={closeMenu}
         >
           {/* // clean */}
-          {item.icon && (
-            <>
-              {checkIsEmoji(item.icon) ? (
-                <span>{item.icon}</span>
-              ) : (
-                <img
-                  src={item.icon}
-                  className={styles.icon}
-                  alt={`${item.name} icon`}
-                />
-              )}
-            </>
-          )}
+          {item.icon &&
+            (checkIsEmoji(item.icon) ? (
+              <span>{item.icon}</span>
+            ) : (
+              <img src={item.icon} className={styles.icon} alt={`${item.name} icon`} />
+            ))}
           <span className={styles.nameApp}>{item.name}</span>
         </NavLink>
       ))}

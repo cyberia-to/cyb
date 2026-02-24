@@ -1,31 +1,21 @@
-import { useState, useRef, useEffect } from 'react';
-
-import { RootState } from 'src/redux/store';
-import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
-
-import { useGetPassportByAddress } from 'src/containers/sigma/hooks';
+import { useEffect, useRef, useState } from 'react';
 import { ContainerGradientText } from 'src/components';
-
-import { useSigningClient } from 'src/contexts/signerClient';
-
-import {
-  setEntrypoint,
-  setEntrypointEnabled,
-} from 'src/redux/reducers/scripting';
-
 import Switch from 'src/components/Switch/Switch';
 
-import { saveStringToLocalStorage } from 'src/utils/localStorage';
-
-import { updatePassportParticle } from 'src/services/neuron/neuronApi';
-
+import { useGetPassportByAddress } from 'src/containers/sigma/hooks';
 import { useBackend } from 'src/contexts/backend/backend';
 
-import defaultParticleScript from 'src/services/scripting/rune/default/particle.rn';
-import ScriptingActionBar from './ScriptingActionBar/ScriptingActionBar';
+import { useSigningClient } from 'src/contexts/signerClient';
+import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
+import { setEntrypoint, setEntrypointEnabled } from 'src/redux/reducers/scripting';
+import { RootState } from 'src/redux/store';
 
-import styles from './Soul.module.scss';
+import { updatePassportParticle } from 'src/services/neuron/neuronApi';
+import defaultParticleScript from 'src/services/scripting/rune/default/particle.rn';
+import { saveStringToLocalStorage } from 'src/utils/localStorage';
 import RuneIde, { SoulIdeHandle } from './RuneEditor/SoulIde/SoulIde';
+import ScriptingActionBar from './ScriptingActionBar/ScriptingActionBar';
+import styles from './Soul.module.scss';
 
 const entrypointName = 'particle';
 
@@ -60,17 +50,11 @@ function Soul() {
         signer,
         signingClient,
       })
-        .then((result) => {
-          runeIdeRef.current!.putToLog([
-            '',
-            `☑️ saved as particle into your passport.`,
-          ]);
+        .then((_result) => {
+          runeIdeRef.current!.putToLog(['', `☑️ saved as particle into your passport.`]);
         })
         .catch((error) => {
-          runeIdeRef.current!.putToLog([
-            '',
-            `🚫 particle was not saved: ${error}.`,
-          ]);
+          runeIdeRef.current!.putToLog(['', `🚫 particle was not saved: ${error}.`]);
         });
     }
   };
@@ -105,7 +89,7 @@ function Soul() {
 
   useEffect(() => {
     setCode(currentEntrypoint.script || defaultParticleScript);
-  }, [currentEntrypoint]);
+  }, []);
 
   const onCancelClick = () => {
     setCode(currentEntrypoint.script);
@@ -135,17 +119,11 @@ function Soul() {
   };
 
   if (!signer || !signingClient) {
-    return (
-      <ContainerGradientText>Wallet is not connected.</ContainerGradientText>
-    );
+    return <ContainerGradientText>Wallet is not connected.</ContainerGradientText>;
   }
 
   if (!passport) {
-    return (
-      <ContainerGradientText>
-        Passport required, for this action.
-      </ContainerGradientText>
-    );
+    return <ContainerGradientText>Passport required, for this action.</ContainerGradientText>;
   }
 
   return (
@@ -173,9 +151,7 @@ function Soul() {
         addToLog={(lines) => runeIdeRef.current!.putToLog(lines)}
         nickname={passport.extension.nickname}
         resetToDefault={onResetToDefault}
-        compileAndTest={(name, params) =>
-          runeIdeRef.current!.test(name, params)
-        }
+        compileAndTest={(name, params) => runeIdeRef.current!.test(name, params)}
       />
     </ContainerGradientText>
   );

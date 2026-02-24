@@ -1,20 +1,20 @@
+import { Registry } from '@cosmjs/proto-signing';
+import { Tx } from 'cosmjs-types/cosmos/tx/v1beta1/tx';
+import { MsgExecuteContract } from 'cosmjs-types/cosmwasm/wasm/v1/tx';
 import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-import { Tx } from 'cosmjs-types/cosmos/tx/v1beta1/tx';
-import { Registry } from '@cosmjs/proto-signing';
-import { MsgExecuteContract } from 'cosmjs-types/cosmwasm/wasm/v1/tx';
+import { BASE_DENOM } from 'src/constants/config';
 import { useQueryClient } from 'src/contexts/queryClient';
+import { DenomArr, MainContainer } from '../../../components';
 import { formatNumber, makeTags, trimString } from '../../../utils/utils';
+import { CardCantainer, FlexWrapCantainer } from '../ui/ui';
+import ExecuteContract from './ExecuteContract';
+import ExecuteTable from './ExecuteTable';
 import HistoryInfo from './HistoryInfo';
 import InitializationInfo from './InitializationInfo';
-import ExecuteContract from './ExecuteContract';
 import QueryContract from './QueryContract';
-import { FlexWrapCantainer, CardCantainer } from '../ui/ui';
-import styles from './stylesContractPage.scss';
 import RenderAbi from './renderAbi';
-import ExecuteTable from './ExecuteTable';
-import { DenomArr, MainContainer } from '../../../components';
-import { BASE_DENOM } from 'src/constants/config';
+import styles from './stylesContractPage.scss';
 
 function isStargateMsgExecuteContract(msg) {
   return msg.typeUrl === '/cosmwasm.wasm.v1.MsgExecuteContract' && !!msg.value;
@@ -30,11 +30,7 @@ const getAndSetDetails = async (client, contractAddress, setDetails) => {
   }
 };
 
-const getAndSetContractCodeHistory = async (
-  client,
-  contractAddress,
-  setContractCodeHistory
-) => {
+const getAndSetContractCodeHistory = async (client, contractAddress, setContractCodeHistory) => {
   try {
     const response = await client.getContractCodeHistory(contractAddress);
     console.log(`response getContractCodeHistory`, response);
@@ -44,11 +40,7 @@ const getAndSetContractCodeHistory = async (
   }
 };
 
-const getAndSetInstantiationTxHash = async (
-  client,
-  contractAddress,
-  setInstantiationTxHash
-) => {
+const getAndSetInstantiationTxHash = async (client, contractAddress, setInstantiationTxHash) => {
   try {
     const response = await client.searchTx({
       tags: makeTags(
@@ -81,9 +73,7 @@ const getExecutionFromStargateMsgExecuteContract = (typeRegistry, tx) => {
 };
 
 const getExecutions = async (client, contractAddress, setExecutions) => {
-  const typeRegistry = new Registry([
-    ['/cosmwasm.wasm.v1.MsgExecuteContract', MsgExecuteContract],
-  ]);
+  const typeRegistry = new Registry([['/cosmwasm.wasm.v1.MsgExecuteContract', MsgExecuteContract]]);
 
   const response = await client.searchTx({
     tags: makeTags(
@@ -116,7 +106,7 @@ const getBalance = async (client, contractAddress, setBalance) => {
   }
 };
 
-const useGetInfoContractAddress = (contractAddress, updateFnc) => {
+const useGetInfoContractAddress = (contractAddress, _updateFnc) => {
   const queryClient = useQueryClient();
   const [instantiationTxHash, setInstantiationTxHash] = useState('');
   const [contractCodeHistory, setContractCodeHistory] = useState([]);
@@ -127,16 +117,8 @@ const useGetInfoContractAddress = (contractAddress, updateFnc) => {
   useEffect(() => {
     if (queryClient) {
       getAndSetDetails(queryClient, contractAddress, setDetails);
-      getAndSetContractCodeHistory(
-        queryClient,
-        contractAddress,
-        setContractCodeHistory
-      );
-      getAndSetInstantiationTxHash(
-        queryClient,
-        contractAddress,
-        setInstantiationTxHash
-      );
+      getAndSetContractCodeHistory(queryClient, contractAddress, setContractCodeHistory);
+      getAndSetInstantiationTxHash(queryClient, contractAddress, setInstantiationTxHash);
       getBalance(queryClient, contractAddress, setBalance);
     }
   }, [queryClient, contractAddress]);
@@ -145,7 +127,7 @@ const useGetInfoContractAddress = (contractAddress, updateFnc) => {
     if (queryClient) {
       getExecutions(queryClient, contractAddress, setExecutions);
     }
-  }, [queryClient, contractAddress, updateFnc]);
+  }, [queryClient, contractAddress]);
 
   return {
     balance,
@@ -159,19 +141,12 @@ const useGetInfoContractAddress = (contractAddress, updateFnc) => {
 function ContractPage() {
   const { contractAddress } = useParams();
   const [updateFnc, setUpdateFnc] = useState(0);
-  const {
-    balance,
-    details,
-    executions,
-    instantiationTxHash,
-    contractCodeHistory,
-  } = useGetInfoContractAddress(contractAddress, updateFnc);
+  const { balance, details, executions, instantiationTxHash, contractCodeHistory } =
+    useGetInfoContractAddress(contractAddress, updateFnc);
 
   return (
     <MainContainer>
-      <FlexWrapCantainer
-        style={{ flexDirection: 'column', width: '60%', boxShadow: 'none' }}
-      >
+      <FlexWrapCantainer style={{ flexDirection: 'column', width: '60%', boxShadow: 'none' }}>
         <div className={styles.containerContractPageContainerTitle}>
           <div className={styles.containerContractPageContainerTitleTitle}>
             Contract: {trimString(contractAddress, 12)}
@@ -181,20 +156,13 @@ function ContractPage() {
             {balance.denom && (
               <>
                 &nbsp;
-                <DenomArr
-                  onlyImg
-                  marginContainer="0px 0px 0px 3px"
-                  denomValue={balance.denom}
-                />
+                <DenomArr onlyImg marginContainer="0px 0px 0px 3px" denomValue={balance.denom} />
               </>
             )}
           </div>
         </div>
 
-        <InitializationInfo
-          initTxHash={instantiationTxHash}
-          details={details}
-        />
+        <InitializationInfo initTxHash={instantiationTxHash} details={details} />
         <HistoryInfo contractCodeHistory={contractCodeHistory} />
 
         <QueryContract contractAddress={contractAddress} />

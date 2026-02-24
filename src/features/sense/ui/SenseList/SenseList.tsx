@@ -2,13 +2,10 @@ import cx from 'classnames';
 import Display from 'src/components/containerGradient/Display/Display';
 import Loader2 from 'src/components/ui/Loader2';
 import { isParticle } from 'src/features/particle/utils';
-import {
-  createLLMThread,
-  selectLLMThread,
-} from 'src/features/sense/redux/sense.redux';
+import { createLLMThread, selectLLMThread } from 'src/features/sense/redux/sense.redux';
 import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
 import { v4 as uuidv4 } from 'uuid';
-import type { AdviserProps } from '../Sense';
+import { AdviserProps } from '../Sense';
 import { Filters } from '../types';
 import NewThreadBtn from './NewThreadBtn/NewThreadBtn';
 import styles from './SenseList.module.scss';
@@ -42,8 +39,7 @@ function SenseList({ select, selected, currentFilter }: Props) {
       }
       const particle = isParticle(item);
       return (
-        particle === (filter === Filters.Particle) ||
-        !particle === (filter === Filters.Neuron)
+        particle === (filter === Filters.Particle) || !particle === (filter === Filters.Neuron)
       );
     });
   }
@@ -123,9 +119,7 @@ function SenseList({ select, selected, currentFilter }: Props) {
                       title={thread.title}
                       isLLM
                       content={(() => {
-                        const th = llmThreads.find(
-                          (item) => item.id === thread.id
-                        );
+                        const th = llmThreads.find((item) => item.id === thread.id);
                         const l = th?.messages.length;
 
                         return th?.messages[l - 1]?.text || 'No messages';

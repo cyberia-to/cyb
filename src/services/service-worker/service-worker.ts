@@ -1,9 +1,9 @@
 /* eslint-disable import/no-unused-modules */
 import { clientsClaim, setCacheNameDetails } from 'workbox-core';
+import { ExpirationPlugin } from 'workbox-expiration';
 import { matchPrecache, precacheAndRoute } from 'workbox-precaching';
 import { registerRoute } from 'workbox-routing';
 import { CacheFirst, NetworkFirst } from 'workbox-strategies';
-import { ExpirationPlugin } from 'workbox-expiration';
 import { CustomHeaders, XCybSourceValues } from '../QueueManager/constants';
 
 declare const self: ServiceWorkerGlobalScope;
@@ -69,8 +69,7 @@ registerRoute(
   ({ request }) =>
     request.method === 'GET' &&
     request.destination !== 'document' &&
-    request.headers.get(CustomHeaders.XCybSource) !==
-      XCybSourceValues.sharedWorker &&
+    request.headers.get(CustomHeaders.XCybSource) !== XCybSourceValues.sharedWorker &&
     !(
       request.destination === 'image' ||
       request.destination === 'style' ||

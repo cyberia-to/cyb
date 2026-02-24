@@ -1,18 +1,16 @@
 /* eslint-disable import/no-unused-modules */
 import { Coin, OfflineSigner, StdFee } from '@cosmjs/launchpad';
 import { SigningCyberClient } from '@cybercongress/cyber-js';
+import BigNumber from 'bignumber.js';
+import { DEFAULT_GAS_LIMITS } from 'src/constants/config';
+import { CONTRACT_ADDRESS_PASSPORT } from 'src/containers/portal/utils';
 import { SenseApi } from 'src/contexts/backend/services/senseApi';
 import { CyberLinkSimple, NeuronAddress, ParticleCid } from 'src/types/base';
 import { getNowUtcNumber } from 'src/utils/date';
-
-import { DEFAULT_GAS_LIMITS } from 'src/constants/config';
-import { CONTRACT_ADDRESS_PASSPORT } from 'src/containers/portal/utils';
-import BigNumber from 'bignumber.js';
 import { asyncForEach } from 'src/utils/utils';
 import { LinkDto } from '../CozoDb/types/dto';
-import { throwErrorOrResponse } from './errors';
-
 import Soft3MessageFactory from '../soft.js/api/msgs';
+import { throwErrorOrResponse } from './errors';
 
 const defaultFee = {
   amount: [],
@@ -105,18 +103,9 @@ export const sendTokensWithMessage = async (
   recipient: string,
   offerCoin: Coin[],
   memo: string | ParticleCid,
-  {
-    senseApi,
-    signingClient,
-  }: { signingClient: SigningCyberClient; senseApi: SenseApi }
+  { senseApi, signingClient }: { signingClient: SigningCyberClient; senseApi: SenseApi }
 ) => {
-  const response = await signingClient.sendTokens(
-    address,
-    recipient,
-    offerCoin,
-    'auto',
-    memo
-  );
+  const response = await signingClient.sendTokens(address, recipient, offerCoin, 'auto', memo);
   const result = throwErrorOrResponse(response);
   const { transactionHash } = result;
 
@@ -138,13 +127,7 @@ export const investmint = async (
   length: number,
   signingClient: SigningCyberClient
 ) => {
-  const response = await signingClient.investmint(
-    address,
-    amount,
-    resource,
-    length,
-    'auto'
-  );
+  const response = await signingClient.investmint(address, amount, resource, length, 'auto');
 
   const { transactionHash } = throwErrorOrResponse(response);
   return transactionHash;
@@ -169,10 +152,5 @@ export const updatePassportParticle = async (
       particle,
     },
   };
-  return signingClient.execute(
-    address,
-    CONTRACT_ADDRESS_PASSPORT,
-    msgObject,
-    'auto'
-  );
+  return signingClient.execute(address, CONTRACT_ADDRESS_PASSPORT, msgObject, 'auto');
 };

@@ -1,7 +1,7 @@
-import { useMessagesByAddressQuery } from 'src/generated/graphql';
+import { fromBech32 } from '@cosmjs/encoding';
 import { useState } from 'react';
 import TableTxsInfinite from 'src/components/TableTxsInfinite/TableTxsInfinite';
-import { fromBech32 } from '@cosmjs/encoding';
+import { useMessagesByAddressQuery } from 'src/generated/graphql';
 
 const LIMIT = 10;
 

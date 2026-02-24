@@ -1,13 +1,8 @@
-import { SyncCommunityResult } from 'src/services/community/community';
 import { setDefaultAccount } from 'src/redux/features/pocket';
+import { SyncCommunityResult } from 'src/services/community/community';
 import { IndexedDbWriteMessage } from '../../CozoDb/types/types';
 
-export type SyncEntryName =
-  | 'pin'
-  | 'particles'
-  | 'transactions'
-  | 'resolver'
-  | 'my-friends';
+export type SyncEntryName = 'pin' | 'particles' | 'transactions' | 'resolver' | 'my-friends';
 
 export type ProgressTracking = {
   totalCount: number;
@@ -16,14 +11,7 @@ export type ProgressTracking = {
 };
 
 export type SyncProgress = Partial<{
-  status:
-    | 'active'
-    | 'initialized'
-    | 'listen'
-    | 'estimating'
-    | 'in-progress'
-    | 'error'
-    | 'inactive';
+  status: 'active' | 'initialized' | 'listen' | 'estimating' | 'in-progress' | 'error' | 'inactive';
 
   progress: ProgressTracking;
   done: boolean;
@@ -114,7 +102,6 @@ export const getBroadcastChannemMessageKey = (msg: BroadcastChannelMessage) => {
       return `${type}_${value.entry}`;
     case 'sync_ml_entry':
       return `${type}_${value.entry}`;
-    case 'sync_status':
     default:
       return type;
   }

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useQueryClient } from 'src/contexts/queryClient';
 
 // TODO: move to soft.js
@@ -34,9 +34,7 @@ const getCalculationBalance = (data) => {
 function useGetSourceRoutes(addressActive: string) {
   const queryClient = useQueryClient();
   const [sourceRouted, setSourceRouted] = useState([]);
-  const [destinationRoutes, setDestinationRoutes] = useState<
-    DestinationRoute[] | []
-  >([]);
+  const [destinationRoutes, setDestinationRoutes] = useState<DestinationRoute[] | []>([]);
   const [sourceEnergy, setSourceEnergy] = useState(initValue);
   const [destinationEnergy, setDestinationEnergy] = useState(initValue);
 
@@ -49,9 +47,7 @@ function useGetSourceRoutes(addressActive: string) {
 
       if (queryClient && addressActive !== null) {
         try {
-          const queryResultsourceRoutes = await queryClient.sourceRoutes(
-            addressActive
-          );
+          const queryResultsourceRoutes = await queryClient.sourceRoutes(addressActive);
           if (queryResultsourceRoutes.routes) {
             queryResultsourceRoutes.routes.forEach((item, index) => {
               queryResultsourceRoutes.routes[index].resource = {
@@ -73,7 +69,7 @@ function useGetSourceRoutes(addressActive: string) {
       }
     };
     sourceRoutedGet();
-  }, [queryClient, addressActive, update]);
+  }, [queryClient, addressActive]);
 
   useEffect(() => {
     const sourceRoutedGet = async () => {
@@ -81,8 +77,7 @@ function useGetSourceRoutes(addressActive: string) {
 
       if (queryClient && addressActive !== null) {
         try {
-          const queryResultsourceRoutedEnergy =
-            await queryClient.sourceRoutedEnergy(addressActive);
+          const queryResultsourceRoutedEnergy = await queryClient.sourceRoutedEnergy(addressActive);
           if (queryResultsourceRoutedEnergy.value) {
             const { value } = queryResultsourceRoutedEnergy;
             const sourceRoutedEnergy = getCalculationBalance(value);
@@ -106,17 +101,18 @@ function useGetSourceRoutes(addressActive: string) {
       }
     };
     sourceRoutedGet();
-  }, [queryClient, addressActive, update]);
+  }, [queryClient, addressActive]);
 
   useEffect(() => {
     setDestinationRoutes([]);
     const sourceRoutedGet = async () => {
       if (queryClient && addressActive !== null) {
         try {
-          const queryResultdestinationRoutes =
-            (await queryClient.destinationRoutes(addressActive)) as {
-              routes: DestinationRoute[] | undefined;
-            };
+          const queryResultdestinationRoutes = (await queryClient.destinationRoutes(
+            addressActive
+          )) as {
+            routes: DestinationRoute[] | undefined;
+          };
           if (queryResultdestinationRoutes.routes) {
             queryResultdestinationRoutes.routes.forEach((item, index) => {
               queryResultdestinationRoutes.routes[index].resource = {
@@ -138,7 +134,7 @@ function useGetSourceRoutes(addressActive: string) {
       }
     };
     sourceRoutedGet();
-  }, [queryClient, addressActive, update]);
+  }, [queryClient, addressActive]);
 
   useEffect(() => {
     const sourceRoutedGet = async () => {
@@ -170,7 +166,7 @@ function useGetSourceRoutes(addressActive: string) {
       }
     };
     sourceRoutedGet();
-  }, [queryClient, addressActive, update]);
+  }, [queryClient, addressActive]);
 
   return {
     sourceRouted,

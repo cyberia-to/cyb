@@ -1,40 +1,33 @@
 /* eslint-disable */
-// @ts-expect-error no types
-import { Pane, ActionBar } from '@cybercongress/gravity';
+
+import { ActionBar, Pane } from '@cybercongress/gravity';
 import React, { Component } from 'react';
 import { connect } from 'react-redux';
-import {
-  TransactionSubmitted,
-  Confirmed,
-  StartStageSearchActionBar,
-  TransactionError,
-  ActionBarContentText,
-  Dots,
-  ButtonImgText,
-} from '../../components';
-
-import { LEDGER } from '../../utils/config';
 import { PATTERN_IPFS_HASH } from 'src/constants/patterns';
-import { trimString } from '../../utils/utils';
-import withIpfsAndKeplr from 'src/hocs/withIpfsAndKeplr';
-import { DefaultAccount } from 'src/types/defaultAccount';
-import { BackgroundWorker } from 'src/services/backend/workers/background/worker';
 import { SenseApi } from 'src/contexts/backend/services/senseApi';
+import withIpfsAndKeplr from 'src/hocs/withIpfsAndKeplr';
+import { BackgroundWorker } from 'src/services/backend/workers/background/worker';
 import { sendCyberlink } from 'src/services/neuron/neuronApi';
 import { getTxs } from 'src/services/transactions/lcd';
+import { DefaultAccount } from 'src/types/defaultAccount';
+import {
+  ActionBarContentText,
+  ButtonImgText,
+  Confirmed,
+  Dots,
+  StartStageSearchActionBar,
+  TransactionError,
+  TransactionSubmitted,
+} from '../../components';
+import { LEDGER } from '../../utils/config';
+import { trimString } from '../../utils/utils';
 
 const imgKeplr = require('../../image/keplr-icon.svg');
 const imgLedger = require('../../image/ledger.svg');
 const imgCyber = require('../../image/blue-circle.png');
 
-const {
-  STAGE_INIT,
-  STAGE_READY,
-  STAGE_SUBMITTED,
-  STAGE_CONFIRMING,
-  STAGE_CONFIRMED,
-  STAGE_ERROR,
-} = LEDGER;
+const { STAGE_INIT, STAGE_READY, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED, STAGE_ERROR } =
+  LEDGER;
 
 const STAGE_IPFS_HASH = 3.1;
 const STAGE_KEPLR_APPROVE = 3.2;
@@ -95,10 +88,7 @@ class ActionBarContainer extends Component<Props, any> {
   checkAddressLocalStorage = async () => {
     const { defaultAccount } = this.props;
     const { account } = defaultAccount;
-    if (
-      account !== null &&
-      Object.prototype.hasOwnProperty.call(account, 'cyber')
-    ) {
+    if (account !== null && Object.hasOwn(account, 'cyber')) {
       const { keys, bech32 } = account.cyber;
       if (keys !== 'read-only') {
         this.setState({
@@ -173,7 +163,7 @@ class ActionBarContainer extends Component<Props, any> {
 
         console.log('address', address);
         if (addressLocalStor !== null && addressLocalStor.address === address) {
-          const txHash = await sendCyberlink(address, fromCid, toCid, {
+          const _txHash = await sendCyberlink(address, fromCid, toCid, {
             signingClient,
             senseApi,
           })
@@ -193,11 +183,7 @@ class ActionBarContainer extends Component<Props, any> {
         } else {
           this.setState({
             stage: STAGE_ERROR,
-            errorMessage: `Add address ${trimString(
-              address,
-              9,
-              5
-            )} to your pocket or make active `,
+            errorMessage: `Add address ${trimString(address, 9, 5)} to your pocket or make active `,
           });
         }
       }
@@ -311,15 +297,8 @@ class ActionBarContainer extends Component<Props, any> {
   };
 
   render() {
-    const {
-      contentHash,
-      stage,
-      txHeight,
-      txHash,
-      errorMessage,
-      file,
-      addressLocalStor,
-    } = this.state;
+    const { contentHash, stage, txHeight, txHash, errorMessage, file, addressLocalStor } =
+      this.state;
 
     const { textBtn, placeholder, rankLink } = this.props;
 

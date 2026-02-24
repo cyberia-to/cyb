@@ -1,4 +1,4 @@
-import { useParams, Navigate, Route } from 'react-router-dom';
+import { Navigate, Route, useParams } from 'react-router-dom';
 import Brain from 'src/pages/Brain/Brain';
 import { routes } from 'src/routes';
 

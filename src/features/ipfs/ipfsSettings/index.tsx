@@ -2,6 +2,7 @@ import { Pane } from '@cybercongress/gravity';
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Display, DisplayTitle, Input } from 'src/components';
 
+
 import { useBackend } from 'src/contexts/backend/backend';
 import { AdviserColors } from 'src/features/adviser/Adviser/Adviser';
 import { useAdviser } from 'src/features/adviser/context';
@@ -154,9 +155,7 @@ function IpfsSettings() {
         </div>
 
         {!isIpfsInitialized && (
-          <ComponentLoader
-            style={{ margin: '20px auto 10px', width: '100px' }}
-          />
+          <ComponentLoader style={{ margin: '20px auto 10px', width: '100px' }} />
         )}
         <Pane
           width="100%"

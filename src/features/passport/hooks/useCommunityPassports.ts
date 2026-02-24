@@ -1,10 +1,7 @@
 import { useEffect } from 'react';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
-import {
-  getCommunityPassports,
-  selectCommunityPassports,
-} from '../passports.redux';
+import { getCommunityPassports, selectCommunityPassports } from '../passports.redux';
 
 function useCommunityPassports() {
   const queryClient = useQueryClient();
@@ -19,7 +16,7 @@ function useCommunityPassports() {
     }
 
     dispatch(getCommunityPassports(queryClient));
-  }, [queryClient, dispatch, community]);
+  }, [queryClient, dispatch]);
 
   return communityPassports;
 }

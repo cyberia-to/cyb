@@ -1,23 +1,16 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useSelector } from 'react-redux';
-import { useRobotContext } from 'src/pages/robot/robot.context';
 import InfiniteScroll from 'react-infinite-scroll-component';
-import { RootState } from 'src/redux/store';
-import {
-  NoItems,
-  Dots,
-  SearchSnippet,
-  ContainerGradientText,
-  Display,
-  SearchItem,
-} from '../../components';
-import useGetTweets from './useGetTweets';
-import ActionBarCont from '../market/actionBarContainer';
-import useSetActiveAddress from '../../hooks/useSetActiveAddress';
+import { useSelector } from 'react-redux';
+import Spark from 'src/components/search/Spark/Spark';
 import { CID_TWEET } from 'src/constants/app';
 import { useAdviser } from 'src/features/adviser/context';
-import Spark from 'src/components/search/Spark/Spark';
+import { useRobotContext } from 'src/pages/robot/robot.context';
+import { RootState } from 'src/redux/store';
+import { Display, Dots, NoItems } from '../../components';
+import useSetActiveAddress from '../../hooks/useSetActiveAddress';
+import ActionBarCont from '../market/actionBarContainer';
 import styles from './Taverna.module.scss';
+import useGetTweets from './useGetTweets';
 
 const LOAD_COUNT = 10;
 
@@ -43,7 +36,7 @@ function Taverna() {
 
   useEffect(() => {
     setRankLink(null);
-  }, [update]);
+  }, []);
 
   const onClickRank = async (key: string) => {
     if (rankLink === key) {
@@ -74,7 +67,7 @@ function Taverna() {
             />
           );
         }),
-    [itemsToShow, tweets]
+    [itemsToShow, tweets, onClickRank, rankLink]
   );
 
   if (loadingTweets) {
@@ -96,11 +89,7 @@ function Taverna() {
           loader={<Dots />}
           className={styles.infiniteScroll}
         >
-          {Object.keys(tweets).length > 0 ? (
-            displayedPalettes
-          ) : (
-            <NoItems text="No feeds" />
-          )}
+          {Object.keys(tweets).length > 0 ? displayedPalettes : <NoItems text="No feeds" />}
         </InfiniteScroll>
       </Display>
 

@@ -1,23 +1,18 @@
-import { Observable, Subject, from, startWith, switchMap, tap } from 'rxjs';
+import { from, Observable, Subject, startWith, switchMap, tap } from 'rxjs';
 
 import { SyncEntryName } from 'src/services/backend/types/services';
-
+import { SyncServiceParams } from '../../types';
 import ParticlesResolverQueue from '../ParticlesResolverQueue/ParticlesResolverQueue';
 import { ServiceDeps } from '../types';
-import BaseSync from './BaseSync';
 import { switchWhenInitialized } from '../utils/rxjs/withInitializer';
-import { SyncServiceParams } from '../../types';
+import BaseSync from './BaseSync';
 
 abstract class BaseSyncClient extends BaseSync {
   protected readonly source$: Observable<any>;
 
   protected readonly reloadTrigger$ = new Subject<void>();
 
-  constructor(
-    name: SyncEntryName,
-    deps: ServiceDeps,
-    particlesResolver: ParticlesResolverQueue
-  ) {
+  constructor(name: SyncEntryName, deps: ServiceDeps, particlesResolver: ParticlesResolverQueue) {
     super(name, deps, particlesResolver);
 
     const source$ = switchWhenInitialized(
@@ -56,9 +51,7 @@ abstract class BaseSyncClient extends BaseSync {
     this.source$ = source$;
   }
 
-  protected abstract createClientObservable(
-    timestampFrom: number
-  ): Observable<any>;
+  protected abstract createClientObservable(timestampFrom: number): Observable<any>;
 
   protected abstract createInitObservable(): Observable<number>;
 
@@ -68,10 +61,7 @@ abstract class BaseSyncClient extends BaseSync {
     console.log(`>>> ${this.name} client restart`);
   }
 
-  protected abstract onUpdate(
-    data: any,
-    params: SyncServiceParams
-  ): Promise<void>;
+  protected abstract onUpdate(data: any, params: SyncServiceParams): Promise<void>;
 
   public start() {
     this.source$.subscribe(() => {

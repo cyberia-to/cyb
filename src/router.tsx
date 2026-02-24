@@ -7,10 +7,13 @@ import {
   Routes,
   useParams,
 } from 'react-router-dom';
+import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import App from './containers/application/App';
 import Block from './containers/blok';
 import BlockDetails from './containers/blok/blockDetails';
 import ForceQuitter from './containers/forceGraph/forceQuitter';
+import GovernanceRoutes from './containers/governance/GovernanceRoutes';
+import Help from './containers/help';
 import Home from './containers/home/home';
 import Ipfs from './containers/ipfs/ipfs';
 import Market from './containers/market';
@@ -22,51 +25,38 @@ import Oracle from './containers/oracle';
 import ParamNetwork from './containers/parameters';
 import PortalCitizenship from './containers/portal';
 import PortalGift from './containers/portal/gift';
+import MainPartal from './containers/portal/mainPortal';
 import Release from './containers/portal/release';
+import SigmaWrapper from './containers/sigma/SigmaWrapper';
 import Story from './containers/story/story';
 import Temple from './containers/temple/Temple';
 import TestKeplr from './containers/testKeplre';
 import TrollBoxx from './containers/trollBox';
 import Txs from './containers/txs';
 import TxsDetails from './containers/txs/txsDetails';
-import ValidatorsDetails from './containers/validator';
-import Validators from './containers/Validators/Validators';
-// import IpfsSettings from './features/ipfs/ipfsSettings';
-import Help from './containers/help';
-import MainPartal from './containers/portal/mainPortal';
-import {
-  CodePage,
-  Codes,
-  ContractPage,
-  DashboardPage,
-} from './containers/wasm';
-
-import SigmaWrapper from './containers/sigma/SigmaWrapper';
 import Warp from './containers/warp/Warp';
 import WarpDashboardPools from './containers/warp/WarpDashboardPools';
+import { CodePage, Codes, ContractPage, DashboardPage } from './containers/wasm';
+import { AnalyticsProvider } from './contexts/analytics';
+import StudioWrapper from './features/studio/StudioWrapper';
 import Keys from './pages/Keys/Keys';
 import OracleLanding from './pages/oracle/landing/OracleLanding';
 import Learn from './pages/oracle/Learn/Learn';
+import OracleLanding from './pages/oracle/landing/OracleLanding';
+import Map from './pages/Portal/Map/Map';
 import ToOracleAsk from './pages/redirects/ToOracleAsk';
 import Robot from './pages/robot/Robot';
 import Mining from './pages/Mining/Mining';
-import Social from './pages/Social/Social';
-import Teleport from './pages/teleport/Teleport';
-import { routes } from './routes';
 // import Cybernet from './features/cybernet/ui/Cybernet';
-
-// import Cybernet from './features/cybernet/ui/Cybernet';
-import GovernanceRoutes from './containers/governance/GovernanceRoutes';
-import StudioWrapper from './features/studio/StudioWrapper';
-import Map from './pages/Portal/Map/Map';
 import FreestyleIde from './pages/robot/Soul/RuneEditor/FreestyleIde/FreestyleIde';
 import Filtering from './pages/Settings/Filtering/Filtering';
 import Settings from './pages/Settings/Settings';
 import Sign from './pages/Sign/Sign';
-import BrainRoutes from './routing/Brain';
+import Social from './pages/Social/Social';
 import Sphere from './pages/Sphere/Sphere';
-import { AnalyticsProvider } from './contexts/analytics';
-import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
+import Teleport from './pages/teleport/Teleport';
+import { routes } from './routes';
+import BrainRoutes from './routing/Brain';
 
 type WrappedRouterProps = {
   children: React.ReactNode;
@@ -123,11 +113,15 @@ function AppRouter() {
             <Route index element={<OracleLanding />} />
             <Route path="/ide" element={<FreestyleIde />} />
 
-            <Route path="/robot/*" element={<ErrorBoundary><Robot /></ErrorBoundary>} />
             <Route
-              path="/ipfs"
-              element={<Navigate to={routes.settings.path} />}
+              path="/robot/*"
+              element={
+                <ErrorBoundary>
+                  <Robot />
+                </ErrorBoundary>
+              }
             />
+            <Route path="/ipfs" element={<Navigate to={routes.settings.path} />} />
 
             <Route path="/sign" element={<Sign />} />
 
@@ -142,31 +136,36 @@ function AppRouter() {
             <Route path="/ipfs/:query" element={<ToOracleAsk />} />
             <Route path={routes.oracle.ask.path} element={<Ipfs />} />
 
-            <Route
-              path="/oracle"
-              element={<Navigate to={routes.oracle.path} />}
-            />
+            <Route path="/oracle" element={<Navigate to={routes.oracle.path} />} />
 
-            <Route
-              path="/search"
-              element={<Navigate to={routes.oracle.path} />}
-            />
+            <Route path="/search" element={<Navigate to={routes.oracle.path} />} />
             <Route path="/search/:query" element={<ToOracleAsk />} />
 
             <Route path={routes.mining.path} element={<Mining />} />
 
-            <Route path="/senate/*" element={<ErrorBoundary><GovernanceRoutes /></ErrorBoundary>} />
+            <Route
+              path="/senate/*"
+              element={
+                <ErrorBoundary>
+                  <GovernanceRoutes />
+                </ErrorBoundary>
+              }
+            />
 
             {/* old links - start */}
             <Route path="/halloffame" element={<Navigate to="/sphere" />} />
-            <Route
-              path="/halloffame/:status"
-              element={<ValidatorsRedirect />}
-            />
+            <Route path="/halloffame/:status" element={<ValidatorsRedirect />} />
             <Route path="/mint" element={<Navigate to={routes.hfr.path} />} />
             {/* old links - end */}
 
-            <Route path="/sphere/*" element={<ErrorBoundary><Sphere /></ErrorBoundary>} />
+            <Route
+              path="/sphere/*"
+              element={
+                <ErrorBoundary>
+                  <Sphere />
+                </ErrorBoundary>
+              }
+            />
             {/* <Route path="/sphere/:chainId/*" element={<Sphere />} /> */}
 
             <Route path="/episode-1" element={<Story />} />
@@ -179,10 +178,7 @@ function AppRouter() {
               <Route path="tx/:txHash" element={<TxsDetails />} />
 
               <Route path="contract/:address" element={<RedirectToRobot />} />
-              <Route
-                path="contract/:address/:tab"
-                element={<RedirectToRobot />}
-              />
+              <Route path="contract/:address/:tab" element={<RedirectToRobot />} />
 
               {/* <Route path="hero/:address/" element={<ValidatorsDetails />} />
             <Route path="hero/:address/:tab" element={<ValidatorsDetails />} /> */}
@@ -198,7 +194,14 @@ function AppRouter() {
             <Route path="/token/:tab" element={<Market />} />
             <Route path="/particles" element={<Objects />} />
 
-            <Route path="/teleport/*" element={<ErrorBoundary><Teleport /></ErrorBoundary>} />
+            <Route
+              path="/teleport/*"
+              element={
+                <ErrorBoundary>
+                  <Teleport />
+                </ErrorBoundary>
+              }
+            />
 
             <Route path="/warp" element={<WarpDashboardPools />} />
             <Route path="/warp/:tab" element={<Warp />} />
@@ -213,10 +216,7 @@ function AppRouter() {
             <Route path="/libs" element={<Codes />} />
             <Route path="/libs/:codeId" element={<CodePage />} />
             <Route path="/contracts" element={<DashboardPage />} />
-            <Route
-              path="/contracts/:contractAddress"
-              element={<ContractPage />}
-            />
+            <Route path="/contracts/:contractAddress" element={<ContractPage />} />
 
             <Route path="/help" element={<Help />} />
 
@@ -231,7 +231,14 @@ function AppRouter() {
 
             <Route path="/keys" element={<Keys />} />
 
-            <Route path="/settings/*" element={<ErrorBoundary><Settings /></ErrorBoundary>} />
+            <Route
+              path="/settings/*"
+              element={
+                <ErrorBoundary>
+                  <Settings />
+                </ErrorBoundary>
+              }
+            />
 
             <Route path={routes.social.path} element={<Social />} />
 

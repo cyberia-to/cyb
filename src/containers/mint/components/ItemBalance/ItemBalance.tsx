@@ -11,11 +11,7 @@ function ItemBalance({ text, amount, demon }: Props) {
   return (
     <div className={styles.wrapper}>
       <span className={styles.text}>{text}</span>
-      <FormatNumberTokens
-        value={amount}
-        text={demon}
-        styleValue={{ fontSize: '16px' }}
-      />
+      <FormatNumberTokens value={amount} text={demon} styleValue={{ fontSize: '16px' }} />
     </div>
   );
 }

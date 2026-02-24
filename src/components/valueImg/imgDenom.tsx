@@ -1,20 +1,20 @@
-import { useEffect, useState, useCallback } from 'react';
+import tocyb from 'images/boot.png';
 
 import eth from 'images/Ethereum_logo_2014.svg';
 import pool from 'images/gravitydexPool.png';
-import ibc from 'images/ibc-unauth.png';
-import voltImg from 'images/lightning2.png';
-import amperImg from 'images/light.png';
 import hydrogen from 'images/hydrogen.svg';
-import tocyb from 'images/boot.png';
+import ibc from 'images/ibc-unauth.png';
 import boot from 'images/large-green.png';
 import defaultImg from 'images/large-orange-circle.png';
+import amperImg from 'images/light.png';
+import voltImg from 'images/lightning2.png';
+import { useCallback, useEffect, useState } from 'react';
 import useQueueIpfsContent from 'src/hooks/useQueueIpfsContent';
 import { checkIsEmoji } from 'src/utils/emoji';
-import Tooltip from '../tooltip/tooltip';
 import { trimString } from '../../utils/utils';
-import styles from './TextDenom.module.scss';
+import Tooltip from '../tooltip/tooltip';
 import lp from './images/lp.png';
+import styles from './TextDenom.module.scss';
 
 // maybe reuse enum from DenomArr
 const nativeImageMap = {
@@ -75,10 +75,7 @@ function ImgDenom({
   );
 
   useEffect(() => {
-    if (
-      infoDenom &&
-      Object.prototype.hasOwnProperty.call(infoDenom, 'coinImageCid')
-    ) {
+    if (infoDenom && Object.hasOwn(infoDenom, 'coinImageCid')) {
       const { coinImageCid, path, native } = infoDenom;
       if (coinImageCid && fetchWithDetails) {
         getImgFromIpfsByCid(coinImageCid);

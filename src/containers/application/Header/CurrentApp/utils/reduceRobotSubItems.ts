@@ -6,10 +6,7 @@ import { MenuItem, MenuItems } from 'src/types/menu';
 import { Networks } from 'src/types/networks';
 import getMenuItems from 'src/utils/appsMenu/appsMenu';
 
-const reduceRobotSubItems = (
-  passport: Nullable<Citizenship>,
-  address: Option<string>
-) => {
+const reduceRobotSubItems = (passport: Nullable<Citizenship>, address: Option<string>) => {
   const passportChain = CHAIN_ID === Networks.BOSTROM && passport;
 
   let linkApp: string;

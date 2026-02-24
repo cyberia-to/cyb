@@ -90,26 +90,16 @@ function Electricity() {
     if (block) {
       run();
     }
-  }, [block]);
+  }, [block, run]);
 
   return (
     <div className={styles.electricity}>
       <div className={styles.line}>
         <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 2050 80">
           <g id="lightningContainer">
-            <rect
-              className={styles.electricityLineRect}
-              width="2050"
-              height="80"
-            />
+            <rect className={styles.electricityLineRect} width="2050" height="80" />
             {stage && (
-              <g
-                id="lightningG"
-                width="2050"
-                height="80"
-                transform="translate(0, 40)"
-                opacity="1"
-              >
+              <g id="lightningG" width="2050" height="80" transform="translate(0, 40)" opacity="1">
                 <path
                   id="lightning0"
                   stroke="rgba(0,238,255,0.1)"

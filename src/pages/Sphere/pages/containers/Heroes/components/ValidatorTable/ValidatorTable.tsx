@@ -1,11 +1,11 @@
-import { useCallback, useMemo, useState } from 'react';
+import BigNumber from 'bignumber.js';
 import _ from 'lodash';
+import { useCallback, useMemo, useState } from 'react';
 import { Display, Tabs } from 'src/components';
 import Table from 'src/components/Table/Table';
-import BigNumber from 'bignumber.js';
 import { ValidatorTableData } from '../../../../../types/tableData';
-import renderColumnsData from './utils/mapValidatorTable';
 import ValidatorTableByGroup from './ui/ValidatorTableByGroup/ValidatorTableByGroup';
+import renderColumnsData from './utils/mapValidatorTable';
 
 enum TabsKey {
   power = 'power',
@@ -40,15 +40,12 @@ function ValidatorTable({
   const dataBySelected = useMemo(() => {
     if (selected === TabsKey.bond) {
       return data.filter(
-        (item) =>
-          item.delegation && new BigNumber(item.delegation.amount).comparedTo(0)
+        (item) => item.delegation && new BigNumber(item.delegation.amount).comparedTo(0)
       );
     }
 
     if (selected === TabsKey.apr) {
-      return data
-        .filter((item) => !item.jailed)
-        .sort((itemA, itemB) => itemB.apr - itemA.apr);
+      return data.filter((item) => !item.jailed).sort((itemA, itemB) => itemB.apr - itemA.apr);
     }
 
     return data;
@@ -76,11 +73,7 @@ function ValidatorTable({
       />
       <Table data={[]} columns={columns} enableSorting={false} hideBody />
       {selected === TabsKey.power ? (
-        <ValidatorTableByGroup
-          data={dataGroup}
-          columns={columns}
-          onSelect={onSelectRow}
-        />
+        <ValidatorTableByGroup data={dataGroup} columns={columns} onSelect={onSelectRow} />
       ) : (
         <Display noPadding>
           <Table

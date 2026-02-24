@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useState } from 'react';
-import useQueueIpfsContent from 'src/hooks/useQueueIpfsContent';
-import { Option } from 'src/types';
-
-import { PATTERN_CYBER } from 'src/constants/patterns';
 import { CYBER_CONGRESS_ADDRESS } from 'src/constants/app';
 import { BECH32_PREFIX } from 'src/constants/config';
+
+import { PATTERN_CYBER } from 'src/constants/patterns';
+import useQueueIpfsContent from 'src/hooks/useQueueIpfsContent';
 import { getFollows, getTweet } from 'src/services/transactions/lcd';
+import { Option } from 'src/types';
 import { fromBech32 } from '../../utils/utils';
 
 interface Tweet {
@@ -36,13 +36,9 @@ const useGetTweets = (addressActive: Option<string>) => {
           ? (await fetchParticleAsync(cid))?.result?.textPreview
           : undefined;
 
-        if (addressResolve && addressResolve.match(PATTERN_CYBER)) {
+        if (addressResolve?.match(PATTERN_CYBER)) {
           const responseTweet = await getTweet(addressResolve);
-          if (
-            responseTweet &&
-            responseTweet.txs &&
-            responseTweet.txs.length > 0
-          ) {
+          if (responseTweet?.txs && responseTweet.txs.length > 0) {
             setTweetData((items) => [...items, ...responseTweet.txs]);
           }
         }
@@ -57,21 +53,14 @@ const useGetTweets = (addressActive: Option<string>) => {
     (async () => {
       setLoadingTweets(true);
       let responseFollows = null;
-      if (addressActive && addressActive.match(PATTERN_CYBER)) {
+      if (addressActive?.match(PATTERN_CYBER)) {
         responseFollows = await getFollows(addressActive);
         if (responseFollows !== null && responseFollows.total_count > 0) {
           getFollow(responseFollows);
         }
       }
-      if (
-        !addressActive ||
-        !responseFollows ||
-        Number(responseFollows.total_count) === 0
-      ) {
-        const cyberCongressAddress = fromBech32(
-          CYBER_CONGRESS_ADDRESS,
-          BECH32_PREFIX
-        );
+      if (!addressActive || !responseFollows || Number(responseFollows.total_count) === 0) {
+        const cyberCongressAddress = fromBech32(CYBER_CONGRESS_ADDRESS, BECH32_PREFIX);
 
         const responseTwit = await getTweet(cyberCongressAddress);
         if (responseTwit && responseTwit.total_count > 0) {

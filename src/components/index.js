@@ -1,54 +1,52 @@
-import {
-  TransactionSubmitted,
-  Confirmed,
-  StartStageSearchActionBar,
-  ActionBarSend,
-  RewardsDelegators,
-  TransactionError,
-  ActionBarContentText,
-  ConnectAddress,
-} from './ledger/stageActionBar';
+import AmountDenom from './AmountDenom/AmountDenom';
+import AvailableAmount from './AvailableAmount/AvailableAmount';
 import Account from './account/account';
-import CardTemplate from './cardTemplate/cardTemplate';
-import StatusTooltip from './statusTooltip';
-import MsgType from './msgType/msgType';
-import TextTable from './text/textTable';
-import Vitalik from './vitalik';
+import ActionBar from './actionBar';
 import BandwidthBar from './BandwidthBar';
 import ButtonImgText from './Button/buttonImgText';
-import Rank from './Rank/rank';
-import NoItems from './ui/noItems';
-import ValueImg from './valueImg';
-import NumberCurrency from './numberCurrency';
-import SearchSnippet from './searchSnippet';
-import DenomArr from './denom/denomArr';
-import Tooltip from './tooltip/tooltip';
-import ActionBar from './actionBar';
-import Particle from './particle';
-import SearchItem from './SearchItem/searchItem';
-import { Input, InputNumber } from './Input';
-import Select, { OptionSelect } from './Select';
-import Button from './btnGrd';
-import ContainerGradient, {
-  ContainerGradientText,
-} from './containerGradient/ContainerGradient';
-import MainContainer from './MainContainer';
-import ButtonIcon from './buttons/ButtonIcon';
-import Loading from './ui/Loading';
-import DonutChart from './DonutChart';
-import AvailableAmount from './AvailableAmount/AvailableAmount';
-import FormatNumberTokens from './FormatNumberTokens/FormatNumberTokens';
-import AmountDenom from './AmountDenom/AmountDenom';
 import ButtonSwap from './ButtonSwap';
-import Slider from './Slider/Slider';
+import Button from './btnGrd';
+import ButtonIcon from './buttons/ButtonIcon';
 import CreatedAt from './CreatedAt/CreatedAt';
-import Tabs from './Tabs/Tabs';
-import Time from './time/time';
-import Row, { RowsContainer } from './Row/Row';
+import CardTemplate from './cardTemplate/cardTemplate';
+import ContainerGradient, { ContainerGradientText } from './containerGradient/ContainerGradient';
 import Display from './containerGradient/Display/Display';
 import DisplayTitle from './containerGradient/DisplayTitle/DisplayTitle';
-import { Color } from './LinearGradientContainer/LinearGradientContainer';
+import DonutChart from './DonutChart';
 import Dot from './Dot/Dot';
+import DenomArr from './denom/denomArr';
+import FormatNumberTokens from './FormatNumberTokens/FormatNumberTokens';
+import { Input, InputNumber } from './Input';
+import { Color } from './LinearGradientContainer/LinearGradientContainer';
+import {
+  ActionBarContentText,
+  ActionBarSend,
+  Confirmed,
+  ConnectAddress,
+  RewardsDelegators,
+  StartStageSearchActionBar,
+  TransactionError,
+  TransactionSubmitted,
+} from './ledger/stageActionBar';
+import MainContainer from './MainContainer';
+import MsgType from './msgType/msgType';
+import NumberCurrency from './numberCurrency';
+import Particle from './particle';
+import Rank from './Rank/rank';
+import Row, { RowsContainer } from './Row/Row';
+import SearchItem from './SearchItem/searchItem';
+import Select, { OptionSelect } from './Select';
+import Slider from './Slider/Slider';
+import SearchSnippet from './searchSnippet';
+import StatusTooltip from './statusTooltip';
+import Tabs from './Tabs/Tabs';
+import TextTable from './text/textTable';
+import Time from './time/time';
+import Tooltip from './tooltip/tooltip';
+import Loading from './ui/Loading';
+import NoItems from './ui/noItems';
+import ValueImg from './valueImg';
+import Vitalik from './vitalik';
 
 const BtnGrd = Button;
 
@@ -107,10 +105,10 @@ export {
   Dot,
 };
 
+export { Card, CardStatisics, ContainerCard } from './statistics/item';
 export { Dots } from './ui/Dots';
-export { ContainerCard, Card, CardStatisics } from './statistics/item';
 export { Loading };
 export { FormatNumber } from './formatNumber/formatNumber';
+export { Deposit, IconStatus, Item, Votes } from './governance/governance';
+export { Cid, LinkWindow } from './link/link';
 export { Copy } from './ui/copy';
-export { Votes, IconStatus, Deposit, Item } from './governance/governance';
-export { LinkWindow, Cid } from './link/link';

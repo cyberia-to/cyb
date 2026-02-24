@@ -1,5 +1,5 @@
 import { Citizenship } from 'src/types/citizenship';
-import { KeyValueString, TabularKeyValues } from 'src/types/data';
+import { KeyValueString } from 'src/types/data';
 import { JsonRecord } from 'src/utils/localStorage';
 
 type ParamsContext = {

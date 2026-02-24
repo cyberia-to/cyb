@@ -1,22 +1,19 @@
 import { of } from 'rxjs';
-
-import { fetchCyberlinksIterable } from 'src/services/backend/services/indexer/cyberlinks';
-import { fetchTransactionsIterable } from '../../../indexer/transactions';
-import { CybIpfsNode } from 'src/services/ipfs/types';
-
-import DbApi, {
-  mockPutSyncStatus,
-  mockGetSyncStatus,
-} from 'src/services/backend/services/dataSource/indexedDb/__mocks__/dbApiWrapperMock';
-import { createAsyncIterable } from 'src/utils/async/iterable';
 import { CID_TWEET } from 'src/constants/app';
+import DbApi, {
+  mockGetSyncStatus,
+  mockPutSyncStatus,
+} from 'src/services/backend/services/dataSource/indexedDb/__mocks__/dbApiWrapperMock';
+import { fetchCyberlinksIterable } from 'src/services/backend/services/indexer/cyberlinks';
 import { EntryType } from 'src/services/CozoDb/types/entities';
+import { CybIpfsNode } from 'src/services/ipfs/types';
+import { createAsyncIterable } from 'src/utils/async/iterable';
 import { dateToUtcNumber } from 'src/utils/date';
-
+import { fetchTransactionsIterable } from '../../../indexer/transactions';
+import { CYBER_LINK_TRANSACTION_TYPE } from '../../../indexer/types';
 import ParticlesResolverQueue from '../ParticlesResolverQueue/ParticlesResolverQueue';
 import { ServiceDeps } from '../types';
 import SyncTransactionsLoop from './SyncTransactionsLoop';
-import { CYBER_LINK_TRANSACTION_TYPE } from '../../../indexer/types';
 
 jest.mock('src/services/backend/services/dataSource/blockchain/requests');
 jest.mock('src/services/backend/services/dataSource/indexedDb/dbApiWrapper');
@@ -61,10 +58,7 @@ describe('SyncTransactionsLoop', () => {
     };
     mockSyncQueue = new ParticlesResolverQueue(mockServiceDeps);
 
-    syncTransactionsLoop = new SyncTransactionsLoop(
-      mockServiceDeps,
-      mockSyncQueue
-    );
+    syncTransactionsLoop = new SyncTransactionsLoop(mockServiceDeps, mockSyncQueue);
   });
 
   it('should call fetchTransactionsIterable and putSyncStatus correctly', (done) => {
