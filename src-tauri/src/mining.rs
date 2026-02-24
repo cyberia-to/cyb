@@ -3,7 +3,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 use tauri::State;
-use uhash_core::UniversalHash;
+use uhash_core::{lithium_header, UniversalHash};
 
 pub struct MiningState {
     mining: AtomicBool,
@@ -16,7 +16,6 @@ pub struct MiningState {
 pub struct FoundProof {
     pub hash: String,
     pub nonce: u64,
-    pub timestamp: u64,
 }
 
 impl MiningState {
@@ -43,11 +42,25 @@ fn meets_difficulty(hash: &[u8], difficulty: u32) -> bool {
     leading_zeros >= difficulty
 }
 
+fn decode_hex_32(label: &str, hex_str: &str) -> Result<[u8; 32], String> {
+    let raw = hex::decode(hex_str).map_err(|e| format!("invalid {} hex: {}", label, e))?;
+    if raw.len() != 32 {
+        return Err(format!(
+            "{} must be exactly 32 bytes (got {})",
+            label,
+            raw.len()
+        ));
+    }
+    let mut out = [0u8; 32];
+    out.copy_from_slice(&raw);
+    Ok(out)
+}
+
 #[tauri::command]
 pub fn start_mining(
-    seed: String,
     address: String,
-    timestamp: u64,
+    block_hash_hex: String,
+    cyberlinks_merkle_hex: String,
     difficulty: u32,
     threads: Option<u32>,
     state: State<Arc<MiningState>>,
@@ -55,6 +68,18 @@ pub fn start_mining(
     if state.mining.load(Ordering::SeqCst) {
         return serde_json::json!({ "success": false, "error": "Already mining" });
     }
+
+    let block_hash = match decode_hex_32("block_hash", &block_hash_hex) {
+        Ok(b) => b,
+        Err(e) => return serde_json::json!({ "success": false, "error": e }),
+    };
+    let cyberlinks_merkle = match decode_hex_32("cyberlinks_merkle", &cyberlinks_merkle_hex) {
+        Ok(b) => b,
+        Err(e) => return serde_json::json!({ "success": false, "error": e }),
+    };
+
+    // Pre-compute the 32-byte header: SHA256(address || block_hash || cyberlinks_merkle)
+    let header = lithium_header(&address, &block_hash, &cyberlinks_merkle);
 
     state.mining.store(true, Ordering::SeqCst);
     state.hash_count.store(0, Ordering::SeqCst);
@@ -71,23 +96,16 @@ pub fn start_mining(
 
     for thread_id in 0..num_threads {
         let mining_flag = state_clone.clone();
-        let seed = seed.clone();
-        let address = address.clone();
 
         std::thread::spawn(move || {
             let mut hasher = UniversalHash::new();
             let mut nonce: u64 = thread_id as u64;
 
-            // Decode hex seed to raw bytes (matches contract's binary input format)
-            let seed_bytes = hex::decode(&seed).unwrap_or_else(|_| seed.as_bytes().to_vec());
-
             while mining_flag.mining.load(Ordering::Relaxed) {
-                // Build input identically to contract: seed_bytes || address_bytes || timestamp_le || nonce_le
-                let mut input = Vec::with_capacity(seed_bytes.len() + address.len() + 16);
-                input.extend_from_slice(&seed_bytes);
-                input.extend_from_slice(address.as_bytes());
-                input.extend_from_slice(&timestamp.to_le_bytes());
-                input.extend_from_slice(&nonce.to_le_bytes());
+                // Lithium v1 input: header(32) || nonce_le(8) = 40 bytes
+                let mut input = [0u8; 40];
+                input[..32].copy_from_slice(&header);
+                input[32..].copy_from_slice(&nonce.to_le_bytes());
                 let hash = hasher.hash(&input);
 
                 mining_flag.hash_count.fetch_add(1, Ordering::Relaxed);
@@ -96,10 +114,8 @@ pub fn start_mining(
                     let proof = FoundProof {
                         hash: hex::encode(hash),
                         nonce,
-                        timestamp,
                     };
                     mining_flag.pending_proofs.lock().unwrap().push(proof);
-                    // Continue mining — don't stop
                 }
 
                 nonce += num_threads as u64;

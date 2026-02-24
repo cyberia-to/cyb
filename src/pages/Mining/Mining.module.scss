@@ -238,3 +238,99 @@
   text-align: right;
   font-size: 12px;
 }
+
+// Section box (staking, referral, emission)
+.sectionBox {
+  display: grid;
+  gap: 12px;
+  padding: 15px;
+  border: 1px solid rgba(54, 214, 174, 0.2);
+  border-radius: 4px;
+}
+
+.sectionTitle {
+  color: #777;
+  font-size: 12px;
+  text-transform: uppercase;
+  font-weight: bold;
+}
+
+// Staking / referral actions
+.stakingActions {
+  display: grid;
+  gap: 10px;
+}
+
+.stakingRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.stakingInput {
+  flex: 1;
+  background: transparent;
+  border: 1px solid rgba(54, 214, 174, 0.3);
+  border-radius: 4px;
+  padding: 8px 12px;
+  color: #ccc;
+  font-size: 14px;
+  outline: none;
+
+  &:focus {
+    border-color: #36d6ae;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+  }
+
+  &::placeholder {
+    color: #555;
+  }
+}
+
+.stakingBtn {
+  background: rgba(54, 214, 174, 0.15);
+  border: 1px solid rgba(54, 214, 174, 0.4);
+  border-radius: 4px;
+  padding: 8px 16px;
+  color: #36d6ae;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    background: rgba(54, 214, 174, 0.25);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+.stakingStatus {
+  font-size: 13px;
+  color: #999;
+  word-break: break-all;
+}
+
+// Referral section
+.referralRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}
+
+.referralLabel {
+  color: #777;
+  white-space: nowrap;
+}
+
+.referralValue {
+  color: #36d6ae;
+  font-family: monospace;
+  font-size: 13px;
+}

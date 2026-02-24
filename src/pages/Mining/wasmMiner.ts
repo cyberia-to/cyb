@@ -9,9 +9,9 @@ export interface WasmMiningStatus {
 type WorkerMessage =
   | { type: 'ready' }
   | { type: 'progress'; totalHashes: number }
-  | { type: 'proof'; hash: string; nonce: number; timestamp: number; totalHashes: number };
+  | { type: 'proof'; hash: string; nonce: number; totalHashes: number };
 
-export type FoundProof = { hash: string; nonce: number; timestamp: number };
+export type FoundProof = { hash: string; nonce: number };
 
 export class WasmMiner {
   private workers: Worker[] = [];
@@ -66,14 +66,13 @@ export class WasmMiner {
           this.pendingProofs.push({
             hash: msg.hash,
             nonce: msg.nonce,
-            timestamp: msg.timestamp,
           });
         }
       };
     });
   }
 
-  start(seed: string, address: string, timestamp: number, difficulty: number): void {
+  start(address: string, blockHash: string, dataHash: string, difficulty: number): void {
     this.pendingProofs = [];
     this.workerHashes = this.workers.map(() => 0);
     this.startTime = Date.now();
@@ -84,9 +83,9 @@ export class WasmMiner {
         type: 'start',
         threadId: i,
         numThreads: this.numThreads,
-        seed,
         address,
-        timestamp,
+        blockHash,
+        dataHash,
         difficulty,
       });
     });

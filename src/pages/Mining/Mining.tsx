@@ -18,17 +18,22 @@ import type {
   RelayProofRequest,
   RelayProofResponse,
   SubmitErrorKind,
-  SubmitProofMsg,
+  SubmitLithiumProofMsg,
 } from 'src/types/miningProofTx';
 import useLiBalance from './hooks/useLiBalance';
 import useRewardEstimate from './hooks/useRewardEstimate';
 import useHashrateSamples from './hooks/useHashrateSamples';
 import useMinerStats from './hooks/useMinerStats';
 import usePeerEstimate from './hooks/usePeerEstimate';
+import useLatestBlock from './hooks/useLatestBlock';
+import useEmissionInfo from './hooks/useEmissionInfo';
+import useBurnStats from './hooks/useBurnStats';
 import HashrateHero from './components/HashrateHero';
 import StatCard from './components/StatCard';
 import ProofLogEntry from './components/ProofLogEntry';
 import ThreadSelector from './components/ThreadSelector';
+import StakingSection from './components/StakingSection';
+import ReferralSection, { loadReferrer } from './components/ReferralSection';
 import MiningActionBar from './MiningActionBar';
 import { WasmMiner } from './wasmMiner';
 import styles from './Mining.module.scss';
@@ -87,7 +92,7 @@ function formatElapsed(seconds: number): string {
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
 }
 
-type Proof = { hash: string; nonce: number; timestamp: number };
+type Proof = { hash: string; nonce: number };
 
 // Min seconds between submissions (roughly one Bostrom block)
 const SUBMIT_COOLDOWN_MS = 6_000;
@@ -96,6 +101,12 @@ function formatHashrate(hps: number): string {
   if (hps >= 1_000_000) return `${(hps / 1_000_000).toFixed(1)} MH/s`;
   if (hps >= 1_000) return `${(hps / 1_000).toFixed(1)} KH/s`;
   return `${hps.toFixed(0)} H/s`;
+}
+
+function formatLi(amount: string | undefined): string {
+  if (!amount) return '0';
+  const val = Number(amount) / 1_000_000;
+  return val < 0.01 ? val.toFixed(4) : formatNumber(val);
 }
 
 function normalizeErrorText(error: unknown): string {
@@ -125,7 +136,7 @@ function classifySubmitError(error: unknown): SubmitErrorKind {
 
   const message = normalizeErrorText(error).toLowerCase();
   if (
-    /does not exist on chain|account .*not found|unknown address|code\\s*[:=]\\s*5/.test(
+    /does not exist on chain|account .*not found|unknown address|code\s*[:=]\s*5/.test(
       message
     )
   ) {
@@ -151,14 +162,22 @@ function classifySubmitError(error: unknown): SubmitErrorKind {
 
 async function relayProof(
   proof: Proof,
-  minerAddress: string
+  minerAddress: string,
+  blockHash: string,
+  dataHash: string,
+  epochId: number,
+  referrer: string | undefined
 ): Promise<string | null> {
   try {
     const payload: RelayProofRequest = {
       hash: proof.hash,
       nonce: Number(proof.nonce),
-      timestamp: Number(proof.timestamp),
       miner_address: minerAddress,
+      block_hash: blockHash,
+      cyberlinks_merkle: dataHash,
+      epoch_id: epochId,
+      timestamp: Math.floor(Date.now() / 1000),
+      referrer: referrer || undefined,
     };
     const res = await fetch(UHASH_RELAY_URL, {
       method: 'POST',
@@ -178,7 +197,6 @@ function Mining() {
   const address = useAppSelector(selectCurrentAddress);
   const { signer, signingClient } = useSigningClient();
 
-  const { data: seedData } = useQueryContract(UHASH_CONTRACT, { seed: {} });
   const { data: epochData } = useQueryContract(UHASH_CONTRACT, {
     epoch_status: {},
   });
@@ -192,7 +210,6 @@ function Mining() {
     proof_stats: {},
   });
 
-  const seed = (seedData as any)?.seed as string | undefined;
   const difficulty = (difficultyData as any)?.current as number | undefined;
   const epochStatus = epochData as LithiumEpochStatus | undefined;
   const targetStats = targetData as LithiumTargetResponse | undefined;
@@ -213,6 +230,10 @@ function Mining() {
   const minerEpochProofCount =
     address && epochId !== undefined ? minerEpochStats?.proof_count ?? 0 : 0;
 
+  const latestBlock = useLatestBlock();
+  const { emission } = useEmissionInfo();
+  const { burnStats } = useBurnStats();
+
   const [miningStatus, setMiningStatus] = useState<MiningStatus | null>(null);
   const [autoMining, setAutoMining] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -221,13 +242,19 @@ function Mining() {
     Math.max(1, (navigator.hardwareConcurrency || 4) - 1)
   );
   const [sessionLiMined, setSessionLiMined] = useState(loadSessionLi);
+  const [referrer, setReferrer] = useState(() => loadReferrer());
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoMiningRef = useRef(false);
   const wasmMinerRef = useRef<WasmMiner | null>(null);
   const isNative = isTauri();
 
-  // Proof submission queue: accumulates proofs, submits best one at a time
+  // Track current block/epoch so proof submission uses the values from when mining started
+  const blockHashRef = useRef<string>('');
+  const dataHashRef = useRef<string>('');
+  const epochIdRef = useRef<number>(0);
+
+  // Proof submission queue
   const proofQueueRef = useRef<Proof[]>([]);
   const submittingRef = useRef(false);
   const lastSubmitTimeRef = useRef(0);
@@ -236,10 +263,8 @@ function Mining() {
   const elapsed = miningStatus?.elapsed_secs ?? 0;
 
   const { balance: liBalance, refetch: refreshBalance } = useLiBalance(address);
-  const { rewardPerProof, estimatedLiPerHour } = useRewardEstimate(
-    difficulty,
-    hashrate
-  );
+  const { rewardPerProof, grossRewardPerProof, miningFraction, estimatedLiPerHour } =
+    useRewardEstimate(difficulty, hashrate);
   const samples = useHashrateSamples(hashrate, autoMining);
   const { uniqueMiners } = useMinerStats();
   const { networkHashrate, similarDevices } = usePeerEstimate(hashrate);
@@ -270,20 +295,29 @@ function Mining() {
   }, []);
 
   const startMiningRound = useCallback(async () => {
-    if (!seed || !difficulty || !address) {
-      console.log('[Mining] Cannot start: missing seed/difficulty/address');
+    if (!difficulty || !address || !latestBlock) {
+      console.log('[Mining] Cannot start: missing difficulty/address/block');
       return;
     }
 
+    const { blockHash, dataHash } = latestBlock;
+    blockHashRef.current = blockHash;
+    dataHashRef.current = dataHash;
+    epochIdRef.current = epochId ?? 0;
+
     try {
-      const timestamp = Math.floor(Date.now() / 1000);
-      console.log('[Mining] Starting mining round, difficulty:', difficulty);
+      console.log(
+        '[Mining] Starting lithium mining, difficulty:',
+        difficulty,
+        'block:',
+        blockHash.slice(0, 16)
+      );
 
       if (isNative) {
         await invoke('start_mining', {
-          seed,
           address,
-          timestamp,
+          blockHashHex: blockHash,
+          cyberlinksMerkleHex: dataHash,
           difficulty,
           threads: threadCount,
         });
@@ -293,14 +327,14 @@ function Mining() {
           await miner.init();
           wasmMinerRef.current = miner;
         }
-        wasmMinerRef.current.start(seed, address, timestamp, difficulty);
+        wasmMinerRef.current.start(address, blockHash, dataHash, difficulty);
       }
     } catch (err) {
       console.error('[Mining] Failed to start mining', err);
     }
-  }, [seed, difficulty, address, threadCount, isNative]);
+  }, [difficulty, address, latestBlock, epochId, threadCount, isNative]);
 
-  // Submit a single proof to chain — handles new-account fallback
+  // Submit a single proof to chain
   const submitSingleProof = useCallback(
     async (proof: Proof) => {
       if (!signer || !signingClient || !address) {
@@ -309,16 +343,21 @@ function Mining() {
       }
 
       const [account] = await signer.getAccounts();
-      const msg: SubmitProofMsg = {
-        submit_proof: {
+      const msg: SubmitLithiumProofMsg = {
+        submit_lithium_proof: {
           hash: proof.hash,
           nonce: Number(proof.nonce),
-          timestamp: Number(proof.timestamp),
+          miner_address: address,
+          block_hash: blockHashRef.current,
+          cyberlinks_merkle: dataHashRef.current,
+          epoch_id: epochIdRef.current,
+          timestamp: Math.floor(Date.now() / 1000),
+          referrer: referrer || undefined,
         },
       };
 
       console.log(
-        '[Mining] Submitting proof:',
+        '[Mining] Submitting lithium proof:',
         `${proof.hash.slice(0, 16)}...`
       );
 
@@ -334,17 +373,21 @@ function Mining() {
       } catch (executeErr: any) {
         const kind = classifySubmitError(executeErr);
 
-        // New accounts don't exist on-chain yet — relay the proof instead
         if (kind === 'account_not_found') {
           console.log('[Mining] Account not on chain, relaying proof...');
-          const txHash = await relayProof(proof, account.address);
+          const txHash = await relayProof(
+            proof,
+            account.address,
+            blockHashRef.current,
+            dataHashRef.current,
+            epochIdRef.current,
+            referrer
+          );
           if (txHash) {
             console.log('[Mining] Proof relayed! TX:', txHash);
-            // Wait for relay TX to be included (creates account via LI mint)
             await new Promise<void>((resolve) => {
               setTimeout(resolve, 7000);
             });
-            // Return early — proof was already submitted via relay
             setProofLog((prev) => [
               {
                 hash: proof.hash,
@@ -374,35 +417,28 @@ function Mining() {
         '[Mining] Proof submitted! TX:',
         result.transactionHash,
         'events:',
-        result.events?.length,
-        'types:',
-        result.events?.map((e: any) => e.type)
+        result.events?.length
       );
 
-      // Extract actual reward from wasm event
+      // Extract actual miner reward from wasm event
       let actualReward = 0;
       if (result.events) {
         const wasmEvent = result.events.find(
           (e: { type: string }) => e.type === 'wasm'
         );
         if (wasmEvent) {
-          console.log(
-            '[Mining] wasm attrs:',
-            wasmEvent.attributes?.map((a: any) => `${a.key}=${a.value}`)
-          );
           const rewardAttr = wasmEvent.attributes?.find(
-            (a: { key: string }) => a.key === 'reward'
+            (a: { key: string }) =>
+              a.key === 'miner_reward' || a.key === 'reward'
           );
           if (rewardAttr?.value) {
             actualReward = Number(rewardAttr.value) / 1_000_000;
           }
         }
       }
-      // Fallback: use contract estimate if events didn't have reward
       if (actualReward === 0) {
         actualReward = rewardPerProof || 0;
       }
-      console.log('[Mining] reward:', actualReward);
 
       setProofLog((prev) => [
         {
@@ -416,34 +452,27 @@ function Mining() {
       refreshBalance();
       setSessionLiMined((prev) => prev + actualReward);
     },
-    [signer, signingClient, address, refreshBalance, rewardPerProof]
+    [signer, signingClient, address, referrer, refreshBalance, rewardPerProof]
   );
 
-  // Process the proof queue: pick best proof, wait for cooldown, submit sequentially
+  // Process the proof queue
   const processQueue = useCallback(async () => {
     if (submittingRef.current) {
       return;
-    } // already processing
+    }
     if (proofQueueRef.current.length === 0) {
       return;
     }
 
-    // Enforce cooldown between submissions (one per block)
     const now = Date.now();
     const elapsed_ = now - lastSubmitTimeRef.current;
     if (elapsed_ < SUBMIT_COOLDOWN_MS) {
-      console.log(
-        `[Mining] Cooldown: ${((SUBMIT_COOLDOWN_MS - elapsed_) / 1000).toFixed(
-          1
-        )}s remaining`
-      );
       return;
     }
 
     submittingRef.current = true;
     setSubmitting(true);
 
-    // Pick the best proof (lowest hash = most work = highest reward)
     const queue = proofQueueRef.current;
     let bestIdx = 0;
     for (let i = 1; i < queue.length; i++) {
@@ -453,7 +482,6 @@ function Mining() {
     }
     const best = queue[bestIdx];
 
-    // Clear the queue — discard inferior proofs
     const discarded = queue.length - 1;
     proofQueueRef.current = [];
     if (discarded > 0) {
@@ -484,7 +512,7 @@ function Mining() {
     }
   }, [submitSingleProof]);
 
-  // Poll mining status and enqueue proofs for sequential submission
+  // Poll mining status and enqueue proofs
   const startPolling = useCallback(() => {
     stopPolling();
     pollRef.current = setInterval(async () => {
@@ -499,7 +527,6 @@ function Mining() {
         }
         setMiningStatus(status);
 
-        // Drain new proofs into the queue
         if (status.pending_proofs > 0 && autoMiningRef.current) {
           let proofs: Proof[];
           if (isNative) {
@@ -518,7 +545,6 @@ function Mining() {
           }
         }
 
-        // Try to process the queue (respects cooldown + sequential lock)
         processQueue();
       } catch (err) {
         console.error('[Mining] Poll error', err);
@@ -537,7 +563,7 @@ function Mining() {
     };
   }, [stopPolling, isNative]);
 
-  // On mount: detect if mining is still active in the backend and resume UI (Tauri only)
+  // On mount: detect if mining is still active in the backend (Tauri only)
   useEffect(() => {
     if (!isNative) {
       return undefined;
@@ -594,6 +620,8 @@ function Mining() {
       navigator.clipboard.writeText(address);
     }
   }, [address]);
+
+  const canMine = !!difficulty && !!address && !!latestBlock;
 
   return (
     <MainContainer>
@@ -659,6 +687,38 @@ function Mining() {
             <span>{formatNumber(liBalance)} LI</span>
           </div>
 
+          {/* Emission info */}
+          {emission && (
+            <div className={styles.sectionBox}>
+              <span className={styles.sectionTitle}>Emission (per window)</span>
+              <div className={styles.statsGrid}>
+                <StatCard
+                  label="Mining"
+                  value={formatLi(emission.mining_emission)}
+                  suffix="LI"
+                />
+                <StatCard
+                  label="Staking"
+                  value={formatLi(emission.staking_emission)}
+                  suffix="LI"
+                />
+                <StatCard
+                  label="Referral"
+                  value={formatLi(emission.referral_emission)}
+                  suffix="LI"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Burn stats */}
+          {burnStats && (
+            <div className={styles.balanceRow}>
+              <span>Total Burned</span>
+              <span>{formatLi(burnStats.total_burned)} LI</span>
+            </div>
+          )}
+
           {/* Network info + thread selector */}
           <div className={styles.networkRow}>
             <div>
@@ -670,6 +730,9 @@ function Mining() {
                 ? `~${similarDevices} similar devices`
                 : '\u2014'}{' '}
               · {uniqueMiners} all-time miners
+              {latestBlock && (
+                <> · Block: {latestBlock.height}</>
+              )}
             </div>
             <ThreadSelector
               value={threadCount}
@@ -678,6 +741,15 @@ function Mining() {
               disabled={autoMining}
             />
           </div>
+
+          {/* Staking section */}
+          <StakingSection />
+
+          {/* Referral section */}
+          <ReferralSection
+            referrer={referrer}
+            onReferrerChange={setReferrer}
+          />
 
           {/* Submitting indicator */}
           {submitting && (
@@ -707,9 +779,9 @@ function Mining() {
       </Display>
 
       <MiningActionBar
-        seed={seed}
         difficulty={difficulty}
         address={address}
+        blockReady={!!latestBlock}
         autoMining={autoMining}
         submitting={submitting}
         miningStatus={miningStatus}

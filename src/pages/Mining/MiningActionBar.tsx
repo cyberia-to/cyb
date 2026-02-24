@@ -6,17 +6,13 @@ type MiningStatus = {
   hashrate: number;
   total_hashes: number;
   elapsed_secs: number;
-  found_proof: {
-    hash: string;
-    nonce: number;
-    timestamp: number;
-  } | null;
+  pending_proofs: number;
 };
 
 type Props = {
-  seed: string | undefined;
   difficulty: number | undefined;
   address: string | undefined;
+  blockReady: boolean;
   autoMining: boolean;
   submitting: boolean;
   miningStatus: MiningStatus | null;
@@ -25,16 +21,16 @@ type Props = {
 };
 
 function MiningActionBar({
-  seed,
   difficulty,
   address,
+  blockReady,
   autoMining,
   submitting,
   miningStatus,
   onStartMining,
   onStopMining,
 }: Props) {
-  const canMine = seed && difficulty && address;
+  const canMine = blockReady && difficulty && address;
   const isMining = miningStatus?.mining;
 
   if (submitting) {
@@ -63,7 +59,7 @@ function MiningActionBar({
 
   const missingParts = [
     !address && 'wallet',
-    !seed && 'seed (loading...)',
+    !blockReady && 'block data (loading...)',
     !difficulty && 'difficulty (loading...)',
   ].filter(Boolean);
 

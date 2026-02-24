@@ -1,16 +1,15 @@
-import init, { Miner } from 'uhash-web';
+import init, { LithiumMiner } from 'uhash-web';
 
-let miner: Miner | null = null;
+let miner: LithiumMiner | null = null;
 let mining = false;
 let totalHashes = 0;
 let currentNonce = 0;
 let numThreads = 1;
-let timestamp = 0;
 const BATCH_SIZE = 100;
 
 type InMessage =
   | { type: 'init' }
-  | { type: 'start'; threadId: number; numThreads: number; seed: string; address: string; timestamp: number; difficulty: number }
+  | { type: 'start'; threadId: number; numThreads: number; address: string; blockHash: string; dataHash: string; difficulty: number }
   | { type: 'stop' };
 
 self.onmessage = async (e: MessageEvent<InMessage>) => {
@@ -25,10 +24,9 @@ self.onmessage = async (e: MessageEvent<InMessage>) => {
     case 'start': {
       const msg = e.data as Extract<InMessage, { type: 'start' }>;
       numThreads = msg.numThreads;
-      timestamp = msg.timestamp;
       currentNonce = msg.threadId;
       totalHashes = 0;
-      miner = new Miner(msg.seed, msg.address, msg.timestamp, msg.difficulty);
+      miner = new LithiumMiner(msg.address, msg.blockHash, msg.dataHash, msg.difficulty);
       mining = true;
       mine();
       break;
@@ -52,7 +50,6 @@ function mine() {
       type: 'proof',
       hash: result.hash,
       nonce: result.nonce,
-      timestamp,
       totalHashes,
     });
   }

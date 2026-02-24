@@ -1,3 +1,5 @@
+// === Legacy (SubmitProof) ===
+
 export type SubmitProofPayload = {
   hash: string;
   nonce: number;
@@ -8,8 +10,32 @@ export type SubmitProofMsg = {
   submit_proof: SubmitProofPayload;
 };
 
-export type RelayProofRequest = SubmitProofPayload & {
+// === Lithium v1 (SubmitLithiumProof) ===
+
+export type SubmitLithiumProofMsg = {
+  submit_lithium_proof: {
+    hash: string;
+    nonce: number;
+    miner_address: string;
+    block_hash: string;
+    cyberlinks_merkle: string;
+    epoch_id: number;
+    timestamp: number;
+    referrer?: string;
+  };
+};
+
+// === Relay ===
+
+export type RelayProofRequest = {
+  hash: string;
+  nonce: number;
   miner_address: string;
+  block_hash: string;
+  cyberlinks_merkle: string;
+  epoch_id: number;
+  timestamp: number;
+  referrer?: string;
 };
 
 export type RelayProofResponse = {
@@ -18,11 +44,15 @@ export type RelayProofResponse = {
   error?: string;
 };
 
+// === Error classification ===
+
 export type SubmitErrorKind =
   | 'account_not_found'
   | 'transport'
   | 'contract'
   | 'unknown';
+
+// === Contract query response types ===
 
 export type LithiumEpochStatus = {
   epoch_id: number;
@@ -47,4 +77,32 @@ export type LithiumMinerEpochStatsResponse = {
   address: string;
   epoch_id: number;
   proof_count: number;
+};
+
+export type LithiumEmissionInfoResponse = {
+  epoch_id: number;
+  mining_emission: string;
+  staking_emission: string;
+  referral_emission: string;
+  total_emission: string;
+};
+
+export type LithiumReferralInfoResponse = {
+  address: string;
+  referrer: string | null;
+  referral_rewards: string;
+  referrals_count: number;
+};
+
+export type LithiumStakeInfoResponse = {
+  address: string;
+  staked_amount: string;
+  pending_unbonding: string;
+  pending_unbonding_until: number;
+  claimable_rewards: string;
+};
+
+export type BurnStatsResponse = {
+  total_burned: string;
+  globally_enforced: boolean;
 };
