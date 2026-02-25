@@ -9,7 +9,8 @@
 .PHONY: install-ios install-android
 .PHONY: test lint icons
 .PHONY: download-kubo
-.PHONY: macos-release
+.PHONY: macos-release ios-release
+.PHONY: setup-android-signing android-release
 
 # ============================================================================
 # Configuration
@@ -61,7 +62,7 @@ help: ## Show this help
 	@grep -E '^(dev|dev-tauri|web):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Build:"
-	@grep -E '^(build-web|build-tauri|wasm|macos|macos-release|linux|ios|android|build):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}'
+	@grep -E '^(build-web|build-tauri|wasm|macos|macos-release|linux|ios|ios-release|android|android-release|build):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Install:"
 	@grep -E '^install[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}'
@@ -304,6 +305,32 @@ else
 	@echo -e "$(RED)[Error]$(NC) macOS builds require macOS"
 endif
 
+# Apple Distribution signing config (for iOS App Store)
+APPLE_DISTRIBUTION_IDENTITY ?= $(shell security find-identity -v -p codesigning 2>/dev/null | grep 'Apple Distribution' | head -1 | sed 's/.*"\(.*\)"/\1/')
+APPLE_TEAM_ID ?= 38BRD9SJV7
+
+ios-release: setup-node setup-rust setup-ios ## Build signed iOS .ipa for App Store
+ifdef IS_MACOS
+	@if [ -z "$(APPLE_DISTRIBUTION_IDENTITY)" ]; then \
+		echo -e "$(RED)[Error]$(NC) No Apple Distribution certificate found in Keychain"; \
+		echo -e "$(YELLOW)[Hint]$(NC) Install from Apple Developer portal or use Xcode automatic signing"; \
+		exit 1; \
+	fi
+	@echo -e "$(BLUE)[Build]$(NC) iOS release (signed for App Store Connect)..."
+	@echo -e "$(BLUE)[Build]$(NC) Identity: $(APPLE_DISTRIBUTION_IDENTITY)"
+	@cd $(TAURI_DIR) && [ -d "gen/apple" ] || npx @tauri-apps/cli ios init
+	@if [ -f "$(TAURI_DIR)/gen/apple/cyb.xcodeproj/project.pbxproj" ]; then \
+		grep -q 'export PATH=.*cargo' $(TAURI_DIR)/gen/apple/cyb.xcodeproj/project.pbxproj || \
+		sed -i '' 's/shellScript = "cargo/shellScript = "export PATH=\\"$$HOME\/.cargo\/bin:$$PATH\\" \&\& cargo/g' \
+			$(TAURI_DIR)/gen/apple/cyb.xcodeproj/project.pbxproj; \
+	fi
+	@npx @tauri-apps/cli ios build --export-method app-store-connect
+	@echo -e "$(GREEN)[Done]$(NC) iOS .ipa built (signed for App Store Connect)"
+	@echo -e "  Upload with: xcrun altool --upload-app -f <ipa-path> --apiKey $(APPLE_API_KEY) --apiIssuer $(APPLE_API_ISSUER)"
+else
+	@echo -e "$(RED)[Error]$(NC) iOS builds require macOS with Xcode"
+endif
+
 linux: setup-node setup-rust setup-linux download-kubo ## Build Linux app (.deb, .AppImage)
 ifdef IS_LINUX
 	@echo -e "$(BLUE)[Build]$(NC) Linux..."
@@ -339,6 +366,45 @@ android: setup-node setup-rust setup-android ## Build Android app (.apk, aarch64
 		npx @tauri-apps/cli android build --target aarch64 2>&1 | grep -v "WebSocket" || true
 	@echo -e "$(GREEN)[Done]$(NC) Android APK: $(TAURI_DIR)/gen/android/app/build/outputs/apk/"
 
+ANDROID_KEYSTORE ?= $(HOME)/.android/cyb-release.keystore
+ANDROID_KEY_ALIAS ?= cyb-release
+
+setup-android-signing: ## Generate Android release keystore + key.properties
+	@if [ -f "$(ANDROID_KEYSTORE)" ]; then \
+		echo -e "$(YELLOW)[Skip]$(NC) Keystore already exists: $(ANDROID_KEYSTORE)"; \
+	else \
+		echo -e "$(BLUE)[Setup]$(NC) Generating release keystore..."; \
+		mkdir -p $(HOME)/.android; \
+		keytool -genkeypair -v \
+			-keystore "$(ANDROID_KEYSTORE)" \
+			-alias "$(ANDROID_KEY_ALIAS)" \
+			-keyalg RSA -keysize 2048 -validity 10000 \
+			-storepass changeit -keypass changeit \
+			-dname "CN=Cyb,O=Cyberia,C=US"; \
+		echo -e "$(GREEN)[Done]$(NC) Keystore: $(ANDROID_KEYSTORE)"; \
+		echo -e "$(YELLOW)[Important]$(NC) Change the default passwords! Edit key.properties after generation."; \
+	fi
+	@echo -e "$(BLUE)[Setup]$(NC) Writing key.properties..."
+	@echo "storeFile=$(ANDROID_KEYSTORE)" > $(TAURI_DIR)/gen/android/key.properties
+	@echo "storePassword=changeit" >> $(TAURI_DIR)/gen/android/key.properties
+	@echo "keyAlias=$(ANDROID_KEY_ALIAS)" >> $(TAURI_DIR)/gen/android/key.properties
+	@echo "keyPassword=changeit" >> $(TAURI_DIR)/gen/android/key.properties
+	@echo -e "$(GREEN)[Done]$(NC) key.properties written to $(TAURI_DIR)/gen/android/key.properties"
+
+android-release: setup-node setup-rust setup-android ## Build signed Android APK
+	@if [ ! -f "$(TAURI_DIR)/gen/android/key.properties" ]; then \
+		echo -e "$(RED)[Error]$(NC) key.properties not found. Run 'make setup-android-signing' first."; \
+		exit 1; \
+	fi
+	@echo -e "$(BLUE)[Build]$(NC) Android release (signed APK)..."
+	@cd $(TAURI_DIR) && [ -d "gen/android" ] || \
+		JAVA_HOME=$(JAVA_HOME) ANDROID_HOME=$(ANDROID_HOME) NDK_HOME=$(NDK_HOME) \
+		npx @tauri-apps/cli android init
+	@echo "sdk.dir=$(ANDROID_HOME)" > $(TAURI_DIR)/gen/android/local.properties
+	@JAVA_HOME=$(JAVA_HOME) ANDROID_HOME=$(ANDROID_HOME) NDK_HOME=$(NDK_HOME) \
+		npx @tauri-apps/cli android build --target aarch64 --apk 2>&1 | grep -v "WebSocket" || true
+	@echo -e "$(GREEN)[Done]$(NC) Signed APK: $(TAURI_DIR)/gen/android/app/build/outputs/apk/"
+
 # ============================================================================
 # Install Targets
 # ============================================================================
@@ -348,7 +414,7 @@ ifdef IS_MACOS
 	@echo -e "$(BLUE)[Install]$(NC) iOS..."
 	@IPA=$$(find $(TAURI_DIR)/gen/apple/build -name "*.ipa" 2>/dev/null | head -1); \
 	if [ -f "$$IPA" ]; then \
-		DEVICE=$$(xcrun devicectl list devices 2>/dev/null | grep -o '[0-9A-F\-]\{36\}' | head -1); \
+		DEVICE=$$(xcrun devicectl list devices 2>/dev/null | grep 'available' | awk '{for(i=1;i<=NF;i++) if($$i ~ /^[0-9A-F][0-9A-F0-9-]*[0-9A-F]$$/ && length($$i)==36) print $$i}' | head -1); \
 		if [ -n "$$DEVICE" ]; then \
 			xcrun devicectl device install app --device "$$DEVICE" "$$IPA"; \
 			echo -e "$(GREEN)[Done]$(NC) iOS app installed"; \
@@ -356,7 +422,7 @@ ifdef IS_MACOS
 			echo -e "$(RED)[Error]$(NC) No iOS device connected"; \
 		fi \
 	else \
-		echo -e "$(RED)[Error]$(NC) iOS build not found. Run 'make ios' first."; \
+		echo -e "$(RED)[Error]$(NC) iOS build not found. Run 'make ios' or 'make ios-release' first."; \
 	fi
 else
 	@echo -e "$(RED)[Error]$(NC) iOS install requires macOS"

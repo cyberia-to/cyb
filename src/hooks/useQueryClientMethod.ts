@@ -38,6 +38,7 @@ function useQueryClientMethod<T extends keyof CyberClient>(
       enabled: !!queryClient,
       keepPreviousData: true,
       refetchInterval: 15_000,
+      staleTime: 10_000,
     }
   );
 

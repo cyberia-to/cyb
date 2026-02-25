@@ -36,7 +36,7 @@ export async function initIpfsNode(options: IpfsOptsType): Promise<CybIpfsNode> 
   const instance = new EnhancedClass();
   console.log('[Worker] initIpfsNode before init', { instance });
 
-  await instance.init({ url: restOptions.urlOpts });
+  await instance.init({ url: restOptions.urlOpts, userGateway: restOptions.userGateway });
   console.log('[Worker] initIpfsNode after instance init');
 
   // Swarm connection is best-effort — don't block initialization

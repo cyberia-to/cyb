@@ -29,14 +29,18 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'yarn'
+          node-version: 22
 
-      - name: Install Node dependencies
-        run: yarn install
+      - name: Install dependencies
+        run: deno install
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -158,11 +162,15 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
 
+      - name: Set up Deno
+        uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
-          cache: 'yarn'
+          node-version: 22
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -174,8 +182,8 @@ jobs:
         with:
           workspaces: './src-tauri -> target'
 
-      - name: Install Node dependencies
-        run: yarn install
+      - name: Install dependencies
+        run: deno install
 
       - name: Install Tauri CLI
         run: cargo install tauri-cli

@@ -35,7 +35,7 @@ export interface CatOptions extends AbortOptions {
   offset?: number;
 }
 
-export type InitOptions = { url: string };
+export type InitOptions = { url: string; userGateway?: string };
 
 export interface IpfsNodeFeatures {
   tcp: boolean;

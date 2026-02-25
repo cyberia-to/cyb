@@ -29,14 +29,17 @@ class KuboNode implements IpfsNode {
     return this._isStarted;
   }
 
-  private async initConfig() {
-    const response = await this.node!.config.get('Addresses.Gateway');
-    if (!response) {
-      return { gatewayUrl: CYBER_GATEWAY_URL };
+  private async initConfig(userGateway?: string) {
+    try {
+      const response = await this.node!.config.get('Addresses.Gateway');
+      if (response) {
+        const address = multiaddr(response as string).nodeAddress();
+        return { gatewayUrl: `http://${address.address}:${address.port}` };
+      }
+    } catch (err) {
+      console.warn('🔋 ipfs config.get failed (using gateway fallback):', (err as Error)?.message);
     }
-    const address = multiaddr(response as string).nodeAddress();
-
-    return { gatewayUrl: `http://${address.address}:${address.port}` };
+    return { gatewayUrl: userGateway || CYBER_GATEWAY_URL };
   }
 
   async init(options?: InitOptions) {
@@ -46,7 +49,7 @@ class KuboNode implements IpfsNode {
     console.log('🔋 ipfs KuboNode initialized', this.node);
 
     console.log('🔋 ipfs config init');
-    this._config = await this.initConfig();
+    this._config = await this.initConfig(options?.userGateway);
     console.log('🔋 ipfs config initialized', this._config);
 
     if (typeof window !== 'undefined') {
