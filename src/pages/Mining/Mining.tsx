@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Display, DisplayTitle, MainContainer, Dots } from 'src/components';
 import Pill from 'src/components/Pill/Pill';
 import useQueryContract from 'src/hooks/contract/useQueryContract';
-import { LITIUM_MINE_CONTRACT, UHASH_RELAY_URL } from 'src/constants/mining';
+import { LITIUM_MINE_CONTRACT, UHASH_RELAY_URL, SUBMIT_COOLDOWN_MS } from 'src/constants/mining';
 import { isTauri } from 'src/utils/tauri';
 import { trimString } from 'src/utils/utils';
 import { compactLi, formatLi } from './utils/formatLi';
@@ -93,9 +93,6 @@ function formatElapsed(seconds: number): string {
 }
 
 type Proof = { hash: string; nonce: number };
-
-// Min seconds between submissions (roughly one Bostrom block)
-const SUBMIT_COOLDOWN_MS = 6_000;
 
 function formatHashrate(hps: number): string {
   if (hps >= 1_000_000) return `${(hps / 1_000_000).toFixed(1)} MH/s`;
@@ -263,6 +260,8 @@ function Mining() {
   const proofQueueRef = useRef<Proof[]>([]);
   const submittingRef = useRef(false);
   const lastSubmitTimeRef = useRef(0);
+  // Rolling hashrate snapshots for Tauri backend (WASM handles this internally)
+  const hashSnapshotsRef = useRef<{ time: number; hashes: number }[]>([]);
 
   const hashrate = miningStatus?.hashrate ?? 0;
   const elapsed = miningStatus?.elapsed_secs ?? 0;
@@ -272,8 +271,21 @@ function Mining() {
   const { rewardPerProof, grossRewardPerProof, miningFraction, estimatedLiPerHour } =
     useRewardEstimate(difficulty, hashrate);
   const samples = useHashrateSamples(hashrate, autoMining);
-  const { uniqueMiners } = useMinerStats();
-  const { networkHashrate, similarDevices } = usePeerEstimate(hashrate);
+  const { uniqueMiners, totalProofs, avgDifficulty } = useMinerStats();
+  const { networkHashrate, similarDevices, minProfitable, dataUpdatedAt } = usePeerEstimate(hashrate);
+
+  // Countdown to next contract data refresh (15s refetch interval)
+  const [refreshCountdown, setRefreshCountdown] = useState(15);
+  useEffect(() => {
+    if (!dataUpdatedAt) return;
+    const tick = () => {
+      const elapsed_ = (Date.now() - dataUpdatedAt) / 1000;
+      setRefreshCountdown(Math.max(0, Math.ceil(15 - elapsed_)));
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [dataUpdatedAt]);
 
   // Keep autoMining ref in sync with state and persist to localStorage
   useEffect(() => {
@@ -549,6 +561,25 @@ function Mining() {
         let status: MiningStatus;
         if (isNative) {
           status = (await invoke('get_mining_status')) as MiningStatus;
+          // Compute 30s rolling hashrate on JS side (Rust reports lifetime avg)
+          const now = Date.now();
+          hashSnapshotsRef.current.push({ time: now, hashes: status.total_hashes });
+          const cutoff = now - 30_000;
+          hashSnapshotsRef.current = hashSnapshotsRef.current.filter(
+            (s) => s.time >= cutoff
+          );
+          if (hashSnapshotsRef.current.length >= 2) {
+            const oldest = hashSnapshotsRef.current[0];
+            const newest =
+              hashSnapshotsRef.current[hashSnapshotsRef.current.length - 1];
+            const dt = (newest.time - oldest.time) / 1000;
+            if (dt > 0.5) {
+              status = {
+                ...status,
+                hashrate: (newest.hashes - oldest.hashes) / dt,
+              };
+            }
+          }
         } else if (wasmMinerRef.current) {
           status = wasmMinerRef.current.getStatus();
         } else {
@@ -661,6 +692,7 @@ function Mining() {
   const handleStartMining = useCallback(async () => {
     setAutoMining(true);
     setSessionLiMined(0);
+    hashSnapshotsRef.current = [];
     await startMiningRound();
     startPolling();
   }, [startMiningRound, startPolling]);
@@ -747,7 +779,7 @@ function Mining() {
           {/* Emission info */}
           {emission && (
             <div className={styles.sectionBox}>
-              <span className={styles.sectionTitle}>Emission (per window)</span>
+              <span className={styles.sectionTitle}>Emission (per epoch)</span>
               <div className={styles.statsGrid}>
                 <StatCard
                   label="Mining"
@@ -779,7 +811,11 @@ function Mining() {
           {/* Network info + thread selector */}
           <div className={styles.networkRow}>
             <div>
-              Difficulty: {difficulty ?? '...'} · Epoch: {epochId ?? '...'} ·
+              Difficulty: {difficulty ?? '...'}{difficulty !== undefined && ' bits'}
+              {minProfitable > 0 && difficulty !== undefined && difficulty < minProfitable && (
+                <span style={{ color: '#f5a623' }}> (min profitable: {minProfitable})</span>
+              )}
+              {' '}· Epoch: {epochId ?? '...'} ·
               Proofs: {proofStats?.proof_count ?? '...'}/
               {targetSolutions ?? '...'} · My proofs: {minerEpochProofCount} ·
               Net: {formatHashrate(networkHashrate)} ·{' '}
@@ -790,6 +826,7 @@ function Mining() {
               {latestBlock && (
                 <> · Block: {latestBlock.height}</>
               )}
+              {' '}· <span style={{ opacity: 0.6 }}>refresh {refreshCountdown}s</span>
             </div>
             <ThreadSelector
               value={threadCount}

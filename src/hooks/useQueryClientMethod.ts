@@ -19,7 +19,7 @@ function useQueryClientMethod<T extends keyof CyberClient>(
   }
   const stableParams = stableParamsRef.current;
 
-  const { isLoading, data, error, refetch } = useQuery<
+  const { isLoading, data, error, refetch, dataUpdatedAt } = useQuery<
     unknown,
     unknown,
     Awaited<ReturnType<CyberClient[T]>>
@@ -47,6 +47,7 @@ function useQueryClientMethod<T extends keyof CyberClient>(
     data,
     loading: isLoading,
     refetch,
+    dataUpdatedAt,
   };
 }
 

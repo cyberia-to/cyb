@@ -7,3 +7,6 @@ export const LITIUM_REFER_CONTRACT = 'bostrom1m8a0jzyyu794cmd5clkt37kr0kkqvxyra2
 export const LI_DENOM = `factory/${LITIUM_CORE_CONTRACT}/li`;
 
 export const UHASH_RELAY_URL = 'https://bostrom.cybernode.ai/relay';
+
+// Min milliseconds between proof submissions (roughly one Bostrom block)
+export const SUBMIT_COOLDOWN_MS = 6_000;

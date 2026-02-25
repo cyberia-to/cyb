@@ -13,6 +13,10 @@ type WorkerMessage =
 
 export type FoundProof = { hash: string; nonce: number };
 
+type HashSnapshot = { time: number; hashes: number };
+
+const ROLLING_WINDOW_MS = 30_000;
+
 export class WasmMiner {
   private workers: Worker[] = [];
   private workerHashes: number[] = [];
@@ -20,6 +24,7 @@ export class WasmMiner {
   private startTime = 0;
   private pendingProofs: FoundProof[] = [];
   private numThreads: number;
+  private hashSnapshots: HashSnapshot[] = [];
 
   constructor(numThreads: number) {
     this.numThreads = numThreads;
@@ -77,6 +82,7 @@ export class WasmMiner {
     this.workerHashes = this.workers.map(() => 0);
     this.startTime = Date.now();
     this.mining = true;
+    this.hashSnapshots = [];
 
     this.workers.forEach((worker, i) => {
       worker.postMessage({
@@ -104,10 +110,35 @@ export class WasmMiner {
 
   getStatus(): WasmMiningStatus {
     const totalHashes = this.workerHashes.reduce((a, b) => a + b, 0);
+    const now = Date.now();
     const elapsedSecs = this.mining || totalHashes > 0
-      ? (Date.now() - this.startTime) / 1000
+      ? (now - this.startTime) / 1000
       : 0;
-    const hashrate = elapsedSecs > 0 ? totalHashes / elapsedSecs : 0;
+
+    // Update rolling window snapshots (called every ~500ms from poll)
+    if (this.mining) {
+      this.hashSnapshots.push({ time: now, hashes: totalHashes });
+      const cutoff = now - ROLLING_WINDOW_MS;
+      this.hashSnapshots = this.hashSnapshots.filter(
+        (s) => s.time >= cutoff
+      );
+    }
+
+    // 30s rolling hashrate from snapshots
+    let hashrate = 0;
+    if (this.hashSnapshots.length >= 2) {
+      const oldest = this.hashSnapshots[0];
+      const newest = this.hashSnapshots[this.hashSnapshots.length - 1];
+      const dt = (newest.time - oldest.time) / 1000;
+      if (dt > 0.5) {
+        hashrate = (newest.hashes - oldest.hashes) / dt;
+      }
+    }
+
+    // Fallback to lifetime average during warmup (<1s of data)
+    if (hashrate === 0 && elapsedSecs > 0) {
+      hashrate = totalHashes / elapsedSecs;
+    }
 
     return {
       mining: this.mining,
