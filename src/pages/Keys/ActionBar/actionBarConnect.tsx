@@ -46,6 +46,13 @@ function ActionBarConnect({
 
   const dispatch = useDispatch();
 
+  const clearState = () => {
+    setStage(STAGE_INIT);
+    setValueInputAddres('');
+    setConnectMethod('');
+    setValidAddressAddedUser(true);
+  };
+
   useEffect(() => {
     if (addAddress === false && stage === STAGE_ADD_ADDRESS_OK) {
       clearState();
@@ -75,13 +82,6 @@ function ActionBarConnect({
         onClickAddAddressUser();
         break;
     }
-  };
-
-  const clearState = () => {
-    setStage(STAGE_INIT);
-    setValueInputAddres('');
-    setConnectMethod('');
-    setValidAddressAddedUser(true);
   };
 
   const onClickAddAddressUser = () => {
