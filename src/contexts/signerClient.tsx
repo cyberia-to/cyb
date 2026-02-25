@@ -151,52 +151,44 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
     };
   }, [initSigner]);
 
+  // Tauri or web without Keplr: auto-generate mnemonic on first launch,
+  // restore saved mnemonic on subsequent launches.
+  // addAddressPocket deduplicates — won't re-register or override default account.
   useEffect(() => {
     (async () => {
-      if (process.env.IS_TAURI || !window.keplr) {
-        console.log('Init signing client');
-        try {
-          let mnemonic = getMnemonic();
+      if (!process.env.IS_TAURI && window.keplr) return;
 
-          // Auto-generate mnemonic for new users (mobile/Tauri)
-          if (!mnemonic) {
-            const { generateMnemonic } = await import(
-              'src/utils/offlineSigner'
-            );
-            mnemonic = await generateMnemonic();
-            setMnemonic(mnemonic);
-            console.log('Auto-generated new wallet');
-          }
-
-          const mnemonicSigner = await getOfflineSignerFromMnemonic(mnemonic);
-          const accounts = await mnemonicSigner.getAccounts();
-          const { address } = accounts[0];
-          const pk = Buffer.from(accounts[0].pubkey).toString('hex');
-
-          // Register account in Redux so selectCurrentAddress works
-          dispatch(
-            addAddressPocket({
-              bech32: address,
-              keys: 'keplr',
-              pk,
-              name: 'Account 1',
-            })
-          );
-
-          const clientJs = await createClient(mnemonicSigner);
-
-          window.signer = mnemonicSigner;
-          window.signingClient = clientJs;
-
-          console.log('Signer is set');
-
-          setSigner(mnemonicSigner);
-          setSigningClient(clientJs);
-          setSignerReady(true);
-          console.log('Signing client init success');
-        } catch (e) {
-          console.error('Failed to init signer client:', e);
+      try {
+        let mnemonic = getMnemonic();
+        if (!mnemonic) {
+          const { generateMnemonic } = await import('src/utils/offlineSigner');
+          mnemonic = await generateMnemonic();
+          setMnemonic(mnemonic);
+          console.log('Auto-generated new wallet');
         }
+
+        const mnemonicSigner = await getOfflineSignerFromMnemonic(mnemonic);
+        const mnemonicAccounts = await mnemonicSigner.getAccounts();
+        const { address } = mnemonicAccounts[0];
+        const pk = Buffer.from(mnemonicAccounts[0].pubkey).toString('hex');
+
+        // Register account (deduplicates if already exists)
+        dispatch(
+          addAddressPocket({
+            bech32: address,
+            keys: 'keplr',
+            pk,
+            name: 'Account 1',
+          })
+        );
+
+        const clientJs = await createClient(mnemonicSigner);
+        setSigner(mnemonicSigner);
+        setSigningClient(clientJs);
+        setSignerReady(true);
+        console.log('Signing client init success');
+      } catch (e) {
+        console.error('Failed to init signer client:', e);
       }
     })();
   }, []);
