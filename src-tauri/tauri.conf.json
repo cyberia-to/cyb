@@ -4,8 +4,8 @@
   "version": "0.1.7",
   "identifier": "ai.cyb.app",
   "build": {
-    "beforeBuildCommand": "yarn build:tauri",
-    "beforeDevCommand": "yarn start:tauri",
+    "beforeBuildCommand": "deno task build-tauri",
+    "beforeDevCommand": "IS_TAURI=true IS_DEV=true deno task start",
     "devUrl": "http://localhost:3001",
     "frontendDist": "../build"
   },

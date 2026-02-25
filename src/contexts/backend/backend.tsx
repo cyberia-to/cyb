@@ -211,6 +211,39 @@ function BackendProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (process.env.IS_TAURI && !isMobileTauri) {
       console.log('[Backend] need initialize IPFS for TAURI env');
+
+      const connectIpfsClient = async (): Promise<boolean> => {
+        const retries = 5;
+        const delays = [2000, 5000, 10000, 15000, 30000];
+        for (let attempt = 0; attempt < retries; attempt++) {
+          try {
+            // eslint-disable-next-line no-await-in-loop
+            await backgroundWorkerInstance.ipfsApi.start(getIpfsOpts());
+            setIpfsError(null);
+            console.log(
+              attempt > 0
+                ? `[Backend] IPFS client connected after ${attempt + 1} attempts`
+                : '[Backend] IPFS client connected'
+            );
+            return true;
+          } catch (err) {
+            if (attempt < retries - 1) {
+              const delay = delays[attempt] || delays[delays.length - 1];
+              console.warn(
+                `[Backend] IPFS client connect failed (attempt ${attempt + 1}/${retries}), retrying in ${delay / 1000}s...`,
+                err
+              );
+              // eslint-disable-next-line no-await-in-loop
+              await new Promise((r) => setTimeout(r, delay));
+            } else {
+              setIpfsError(err);
+              console.error(`[Backend] IPFS client failed after ${retries} attempts:`, err);
+            }
+          }
+        }
+        return false;
+      };
+
       (async () => {
         try {
           // Poll until IPFS daemon is running (started by Rust side)
@@ -234,17 +267,16 @@ function BackendProvider({ children }: { children: React.ReactNode }) {
           setNeedPFSInitialize(false);
           console.log('[Backend] IPFS is ready for TAURI');
 
-          // Reconnect the ipfs client now that daemon is up
-          backgroundWorkerInstance.ipfsApi
-            .start(getIpfsOpts())
-            .then(() => {
-              setIpfsError(null);
-              console.log('[Backend] IPFS client reconnected');
-            })
-            .catch((err) => {
-              setIpfsError(err);
-              console.log(`[Backend] IPFS reconnect error: ${err}`);
-            });
+          const connected = await connectIpfsClient();
+
+          // If initial connection failed, keep retrying every 30s
+          if (!connected) {
+            const retryInterval = setInterval(async () => {
+              console.log('[Backend] Retrying IPFS connection...');
+              const ok = await connectIpfsClient();
+              if (ok) clearInterval(retryInterval);
+            }, 30_000);
+          }
         } catch (error) {
           console.error('Failed to initialize IPFS for Tauri', error);
           setNeedPFSInitialize(false);

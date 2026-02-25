@@ -1,10 +1,10 @@
 import useQueryContract from 'src/hooks/contract/useQueryContract';
-import { UHASH_CONTRACT } from 'src/constants/mining';
+import { LITIUM_MINE_CONTRACT } from 'src/constants/mining';
 
 const WINDOW_DURATION_S = 600; // 10-minute rolling window
 
 function usePeerEstimate(localHashrate: number) {
-  const { data, loading } = useQueryContract(UHASH_CONTRACT, {
+  const { data, loading } = useQueryContract(LITIUM_MINE_CONTRACT, {
     difficulty: {},
   });
 

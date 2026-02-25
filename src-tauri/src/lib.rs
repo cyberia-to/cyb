@@ -166,7 +166,6 @@ pub fn run() {
 
                             println!("[CYB.AI] Showing main window...");
                             main_window.show().unwrap();
-                            #[cfg(debug_assertions)]
                             main_window.open_devtools();
                             let _ = splashscreen_window.close();
                             println!("[CYB.AI] App ready!");

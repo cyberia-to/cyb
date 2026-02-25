@@ -1,16 +1,14 @@
 import { useCallback, useState } from 'react';
-import { useSigningClient } from 'src/contexts/signerClient';
-import { useAppSelector } from 'src/redux/hooks';
-import { selectCurrentAddress } from 'src/redux/features/pocket';
-import { UHASH_CONTRACT, LI_DENOM } from 'src/constants/mining';
+import { LITIUM_STAKE_CONTRACT, LI_DENOM } from 'src/constants/mining';
 import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
+import useAutoSigner from '../hooks/useAutoSigner';
 import useStakeInfo from '../hooks/useStakeInfo';
+import { compactLi } from '../utils/formatLi';
 import styles from '../Mining.module.scss';
 
 function StakingSection() {
-  const address = useAppSelector(selectCurrentAddress);
-  const { signer, signingClient } = useSigningClient();
-  const { stakeInfo } = useStakeInfo(address);
+  const { signer, signingClient, address } = useAutoSigner();
+  const { stakeInfo, refetch } = useStakeInfo(address);
 
   const [stakeAmount, setStakeAmount] = useState('');
   const [unstakeAmount, setUnstakeAmount] = useState('');
@@ -39,20 +37,22 @@ function StakingSection() {
         const [account] = await signer.getAccounts();
         const result = await signingClient.execute(
           account.address,
-          UHASH_CONTRACT,
+          LITIUM_STAKE_CONTRACT,
           msg,
           Soft3MessageFactory.fee(8),
           '',
           funds
         );
         setStatus(`OK: ${result.transactionHash.slice(0, 12)}...`);
+        // Wait for next block then refetch staking data
+        setTimeout(() => refetch(), 7000);
       } catch (err: any) {
         setStatus(`Error: ${err?.message?.slice(0, 80) || 'Failed'}`);
       } finally {
         setBusy(false);
       }
     },
-    [signer, signingClient, address]
+    [signer, signingClient, address, refetch]
   );
 
   const handleStake = useCallback(() => {
@@ -85,21 +85,21 @@ function StakingSection() {
         <div className={styles.statCard}>
           <span className={styles.statCardLabel}>Staked</span>
           <span className={styles.statCardValue}>
-            {stakedLi.toFixed(2)}
+            {compactLi(stakedLi)}
             <span className={styles.statCardSuffix}> LI</span>
           </span>
         </div>
         <div className={styles.statCard}>
           <span className={styles.statCardLabel}>Claimable</span>
           <span className={styles.statCardValue}>
-            {claimableRewards.toFixed(4)}
+            {compactLi(claimableRewards)}
             <span className={styles.statCardSuffix}> LI</span>
           </span>
         </div>
         <div className={styles.statCard}>
           <span className={styles.statCardLabel}>Unbonding</span>
           <span className={styles.statCardValue}>
-            {pendingUnbonding.toFixed(2)}
+            {compactLi(pendingUnbonding)}
             <span className={styles.statCardSuffix}> LI</span>
           </span>
         </div>
@@ -108,7 +108,8 @@ function StakingSection() {
       <div className={styles.stakingActions}>
         <div className={styles.stakingRow}>
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             placeholder="Amount LI"
             value={stakeAmount}
             onChange={(e) => setStakeAmount(e.target.value)}
@@ -126,7 +127,8 @@ function StakingSection() {
         </div>
         <div className={styles.stakingRow}>
           <input
-            type="number"
+            type="text"
+            inputMode="decimal"
             placeholder="Amount LI"
             value={unstakeAmount}
             onChange={(e) => setUnstakeAmount(e.target.value)}

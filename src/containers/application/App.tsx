@@ -104,6 +104,9 @@ function App() {
       );
 
       adviserContext.setIsOpen(true);
+    } else if (!ipfsError) {
+      // Clear the IPFS error message when connection recovers
+      adviserContext.setAdviser(null);
     }
   }, [ipfsError, location.pathname, adviserContext.setAdviser, adviserContext.setIsOpen]);
 

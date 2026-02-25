@@ -1,9 +1,9 @@
 import useQueryContract from 'src/hooks/contract/useQueryContract';
-import { UHASH_CONTRACT } from 'src/constants/mining';
+import { LITIUM_CORE_CONTRACT } from 'src/constants/mining';
 import type { BurnStatsResponse } from 'src/types/miningProofTx';
 
 function useBurnStats() {
-  const { data, loading } = useQueryContract(UHASH_CONTRACT, {
+  const { data, loading } = useQueryContract(LITIUM_CORE_CONTRACT, {
     burn_stats: {},
   });
 

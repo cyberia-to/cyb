@@ -154,7 +154,7 @@
     "rxjs": "^7.8.0",
     "three": "^0.168.0",
     "tone": "^14.7.77",
-    "uhash-web": "^0.1.0",
+    "uhash-web": "^0.4.2",
     "unist-builder": "^4.0.0",
     "workbox-core": "^7.1.0",
     "workbox-expiration": "^7.1.0",

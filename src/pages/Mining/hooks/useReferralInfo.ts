@@ -1,21 +1,81 @@
-import useQueryContract from 'src/hooks/contract/useQueryContract';
-import { UHASH_CONTRACT } from 'src/constants/mining';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { LITIUM_REFER_CONTRACT } from 'src/constants/mining';
+import { useQueryClient as useCyberQueryClient } from 'src/contexts/queryClient';
 import type { LithiumReferralInfoResponse } from 'src/types/miningProofTx';
 
-function useReferralInfo(address: string | undefined) {
-  const { data, loading } = useQueryContract(
-    UHASH_CONTRACT,
-    address
-      ? { lithium_referral_info: { address } }
-      : { lithium_emission_info: {} } // dummy query when no address
-  );
+type ReferrerOfResponse = {
+  miner: string;
+  referrer: string | null;
+};
 
-  const info =
-    address && data ? (data as LithiumReferralInfoResponse) : undefined;
+const POLL_INTERVAL = 15_000;
+
+function useReferralInfo(address: string | undefined) {
+  const queryClient = useCyberQueryClient();
+  const [referralInfo, setReferralInfo] = useState<LithiumReferralInfoResponse | undefined>();
+  const [loading, setLoading] = useState(false);
+  const [counter, setCounter] = useState(0);
+  const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const fetchInfo = useCallback(async () => {
+    if (!queryClient || !address) {
+      setReferralInfo(undefined);
+      return;
+    }
+    setLoading(true);
+    try {
+      const [infoData, referrerData] = await Promise.all([
+        queryClient.queryContractSmart(
+          LITIUM_REFER_CONTRACT,
+          { referral_info: { address } }
+        ).catch(() => null),
+        queryClient.queryContractSmart(
+          LITIUM_REFER_CONTRACT,
+          { referrer_of: { miner: address } }
+        ).catch(() => null),
+      ]);
+
+      const rawInfo = infoData as Omit<LithiumReferralInfoResponse, 'referrer'> | null;
+      const referrerOf = referrerData as ReferrerOfResponse | null;
+
+      if (rawInfo) {
+        setReferralInfo({
+          ...rawInfo,
+          referrer: referrerOf?.referrer ?? null,
+        });
+      } else {
+        setReferralInfo(undefined);
+      }
+    } catch {
+      setReferralInfo(undefined);
+    } finally {
+      setLoading(false);
+    }
+  }, [queryClient, address]);
+
+  useEffect(() => {
+    fetchInfo();
+  }, [fetchInfo, counter]);
+
+  // Periodic polling
+  useEffect(() => {
+    if (!queryClient || !address) return undefined;
+    intervalRef.current = setInterval(() => {
+      fetchInfo();
+    }, POLL_INTERVAL);
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+    };
+  }, [queryClient, address, fetchInfo]);
+
+  const refetch = useCallback(() => {
+    setCounter((c) => c + 1);
+  }, []);
 
   return {
-    referralInfo: info,
+    referralInfo,
     loading,
+    refetch,
   };
 }
 

@@ -9,6 +9,7 @@
 .PHONY: install-ios install-android
 .PHONY: test lint icons
 .PHONY: download-kubo
+.PHONY: macos-release
 
 # ============================================================================
 # Configuration
@@ -60,7 +61,7 @@ help: ## Show this help
 	@grep -E '^(dev|dev-tauri|web):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Build:"
-	@grep -E '^(build-web|build-tauri|wasm|macos|linux|ios|android|build):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}'
+	@grep -E '^(build-web|build-tauri|wasm|macos|macos-release|linux|ios|android|build):.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}'
 	@echo ""
 	@echo "Install:"
 	@grep -E '^install[a-zA-Z_-]*:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "  $(BLUE)%-20s$(NC) %s\n", $$1, $$2}'
@@ -77,8 +78,8 @@ help: ## Show this help
 
 setup: setup-node setup-rust ## Setup web + Tauri dev environment
 
-setup-node: ## Install Node.js and Yarn dependencies
-	@echo -e "$(BLUE)[Setup]$(NC) Node.js & Yarn..."
+setup-node: ## Install Node.js and Deno dependencies
+	@echo -e "$(BLUE)[Setup]$(NC) Node.js & Deno..."
 ifdef IS_MACOS
 	@command -v node >/dev/null || (echo -e "$(RED)[Error]$(NC) Node.js not found. Install via: brew install node" && exit 1)
 else
@@ -86,8 +87,8 @@ else
 		curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && \
 		sudo apt-get install -y nodejs)
 endif
-	@command -v yarn >/dev/null || npm install -g yarn
-	@yarn install
+	@command -v deno >/dev/null || (echo -e "$(RED)[Error]$(NC) Deno not found. Install via: brew install deno" && exit 1)
+	@deno install
 	@echo -e "$(GREEN)[Done]$(NC) Node.js ready ($$(node -v))"
 
 setup-rust: ## Install Rust toolchain + Tauri CLI
@@ -186,7 +187,7 @@ setup-all: setup setup-java setup-android setup-ios setup-linux ## Setup everyth
 
 dev: setup-node ## Start web dev server (browser, port 3001)
 	@echo -e "$(BLUE)[Dev]$(NC) Starting web dev server at https://localhost:3001"
-	@yarn start
+	@deno task start
 
 dev-tauri: setup-node setup-rust download-kubo ## Start Tauri dev server (native desktop)
 	@echo -e "$(BLUE)[Dev]$(NC) Starting Tauri dev server..."
@@ -239,7 +240,7 @@ build: build-web ## Build web production bundle
 
 build-web: setup-node ## Build web production bundle
 	@echo -e "$(BLUE)[Build]$(NC) Web production..."
-	@yarn build
+	@deno task build
 	@echo -e "$(GREEN)[Done]$(NC) Web: $(PROJECT_ROOT)/build/"
 
 build-tauri: setup-node setup-rust download-kubo ## Build Tauri production bundle (current platform)
@@ -252,6 +253,53 @@ ifdef IS_MACOS
 	@echo -e "$(BLUE)[Build]$(NC) macOS..."
 	@npx @tauri-apps/cli build
 	@echo -e "$(GREEN)[Done]$(NC) macOS: $(TAURI_DIR)/target/release/bundle/dmg/"
+else
+	@echo -e "$(RED)[Error]$(NC) macOS builds require macOS"
+endif
+
+# Apple signing/notarization config (auto-detected from Keychain)
+APPLE_SIGNING_IDENTITY ?= $(shell security find-identity -v -p codesigning 2>/dev/null | grep 'Developer ID Application' | head -1 | sed 's/.*"\(.*\)"/\1/')
+PKG_SIGNING_IDENTITY ?= $(shell security find-identity -v -p basic 2>/dev/null | grep 'Developer ID Installer' | head -1 | sed 's/.*"\(.*\)"/\1/')
+APPLE_API_KEY ?= $(shell ls ~/.appstoreconnect/private_keys/AuthKey_*.p8 2>/dev/null | head -1 | sed 's/.*AuthKey_\(.*\)\.p8/\1/')
+APPLE_API_KEY_PATH ?= $(HOME)/.appstoreconnect/private_keys/AuthKey_$(APPLE_API_KEY).p8
+APPLE_API_ISSUER ?= 7936a589-39b5-4a72-8ca0-417f7998b96c
+
+macos-release: setup-node setup-rust download-kubo ## Build, sign, notarize macOS .app + .dmg + .pkg
+ifdef IS_MACOS
+	@if [ -z "$(APPLE_SIGNING_IDENTITY)" ]; then \
+		echo -e "$(RED)[Error]$(NC) No Developer ID Application certificate found in Keychain"; \
+		exit 1; \
+	fi
+	@if [ -z "$(APPLE_API_KEY)" ]; then \
+		echo -e "$(RED)[Error]$(NC) No API key found in ~/.appstoreconnect/private_keys/"; \
+		exit 1; \
+	fi
+	@if [ -z "$(APPLE_API_ISSUER)" ]; then \
+		echo -e "$(RED)[Error]$(NC) APPLE_API_ISSUER not set. Get it from App Store Connect > Integrations"; \
+		echo "  Usage: make macos-release APPLE_API_ISSUER=your-uuid"; \
+		exit 1; \
+	fi
+	@echo -e "$(BLUE)[Build]$(NC) macOS release (sign + notarize)..."
+	@echo -e "$(BLUE)[Build]$(NC) Identity: $(APPLE_SIGNING_IDENTITY)"
+	@echo -e "$(BLUE)[Build]$(NC) API Key: $(APPLE_API_KEY)"
+	@APPLE_SIGNING_IDENTITY="$(APPLE_SIGNING_IDENTITY)" \
+		APPLE_API_KEY="$(APPLE_API_KEY)" \
+		APPLE_API_ISSUER="$(APPLE_API_ISSUER)" \
+		APPLE_API_KEY_PATH="$(APPLE_API_KEY_PATH)" \
+		cargo tauri build --target aarch64-apple-darwin --config '{"build":{"beforeBuildCommand":""}}'
+	@echo -e "$(GREEN)[Done]$(NC) Signed + notarized .app and .dmg"
+	@echo -e "$(BLUE)[Build]$(NC) Building .pkg..."
+	@PKG_SIGNING_IDENTITY="$(PKG_SIGNING_IDENTITY)" \
+		APPLE_API_KEY="$(APPLE_API_KEY)" \
+		APPLE_API_ISSUER="$(APPLE_API_ISSUER)" \
+		APPLE_API_KEY_PATH="$(APPLE_API_KEY_PATH)" \
+		$(TAURI_DIR)/scripts/macos-pkg.sh \
+			--app-path "$(TAURI_DIR)/target/aarch64-apple-darwin/release/bundle/macos/cyb.app" \
+			--output-dir "$(TAURI_DIR)/target/aarch64-apple-darwin/release/bundle/pkg"
+	@echo -e "$(GREEN)[Done]$(NC) macOS release complete:"
+	@echo -e "  .app: $(TAURI_DIR)/target/aarch64-apple-darwin/release/bundle/macos/cyb.app"
+	@echo -e "  .dmg: $(TAURI_DIR)/target/aarch64-apple-darwin/release/bundle/dmg/"
+	@echo -e "  .pkg: $(TAURI_DIR)/target/aarch64-apple-darwin/release/bundle/pkg/"
 else
 	@echo -e "$(RED)[Error]$(NC) macOS builds require macOS"
 endif
@@ -345,10 +393,10 @@ icons: ## Generate all app icons using Tauri's icon generator (usage: make icons
 # ============================================================================
 
 test: setup-node ## Run tests
-	@yarn test
+	@deno task test
 
-lint: setup-node ## Run ESLint
-	@yarn lint
+lint: setup-node ## Run linter
+	@deno task lint
 
 clean: ## Clean build artifacts
 	@rm -rf $(PROJECT_ROOT)/build

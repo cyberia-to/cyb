@@ -5,11 +5,23 @@ use std::time::Instant;
 use tauri::State;
 use uhash_core::{lithium_header, UniversalHash};
 
+/// Parameters passed to start_mining, stored for JS resume after component remount.
+#[derive(Clone, Serialize, Default)]
+pub struct MiningParams {
+    pub address: String,
+    pub block_hash_hex: String,
+    pub cyberlinks_merkle_hex: String,
+    pub difficulty: u32,
+    pub epoch_id: u64,
+    pub block_timestamp: u64,
+}
+
 pub struct MiningState {
     mining: AtomicBool,
     hash_count: AtomicU64,
     start_time: Mutex<Option<Instant>>,
     pending_proofs: Mutex<Vec<FoundProof>>,
+    params: Mutex<Option<MiningParams>>,
 }
 
 #[derive(Clone, Serialize)]
@@ -25,6 +37,7 @@ impl MiningState {
             hash_count: AtomicU64::new(0),
             start_time: Mutex::new(None),
             pending_proofs: Mutex::new(Vec::new()),
+            params: Mutex::new(None),
         }
     }
 }
@@ -62,6 +75,8 @@ pub fn start_mining(
     block_hash_hex: String,
     cyberlinks_merkle_hex: String,
     difficulty: u32,
+    epoch_id: Option<u64>,
+    block_timestamp: Option<u64>,
     threads: Option<u32>,
     state: State<Arc<MiningState>>,
 ) -> serde_json::Value {
@@ -80,6 +95,16 @@ pub fn start_mining(
 
     // Pre-compute the 32-byte header: SHA256(address || block_hash || cyberlinks_merkle)
     let header = lithium_header(&address, &block_hash, &cyberlinks_merkle);
+
+    // Store params so JS can restore refs after component remount
+    *state.params.lock().unwrap() = Some(MiningParams {
+        address: address.clone(),
+        block_hash_hex: block_hash_hex.clone(),
+        cyberlinks_merkle_hex: cyberlinks_merkle_hex.clone(),
+        difficulty,
+        epoch_id: epoch_id.unwrap_or(0),
+        block_timestamp: block_timestamp.unwrap_or(0),
+    });
 
     state.mining.store(true, Ordering::SeqCst);
     state.hash_count.store(0, Ordering::SeqCst);
@@ -129,6 +154,7 @@ pub fn start_mining(
 #[tauri::command]
 pub fn stop_mining(state: State<Arc<MiningState>>) -> serde_json::Value {
     state.mining.store(false, Ordering::SeqCst);
+    *state.params.lock().unwrap() = None;
 
     let elapsed = state
         .start_time
@@ -171,14 +197,24 @@ pub fn get_mining_status(state: State<Arc<MiningState>>) -> serde_json::Value {
     };
 
     let pending_count = state.pending_proofs.lock().unwrap().len();
+    let params = state.params.lock().unwrap();
 
-    serde_json::json!({
+    let mut result = serde_json::json!({
         "mining": is_mining,
         "total_hashes": count,
         "elapsed_secs": elapsed,
         "hashrate": hashrate,
         "pending_proofs": pending_count
-    })
+    });
+
+    if let Some(ref p) = *params {
+        result["block_hash_hex"] = serde_json::json!(p.block_hash_hex);
+        result["cyberlinks_merkle_hex"] = serde_json::json!(p.cyberlinks_merkle_hex);
+        result["epoch_id"] = serde_json::json!(p.epoch_id);
+        result["block_timestamp"] = serde_json::json!(p.block_timestamp);
+    }
+
+    result
 }
 
 #[tauri::command]

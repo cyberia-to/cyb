@@ -5,6 +5,7 @@ type BlockInfo = {
   blockHash: string;
   dataHash: string;
   height: number;
+  timestamp: number; // unix seconds from block header
 };
 
 const REFETCH_INTERVAL_MS = 6_000; // ~1 Bostrom block
@@ -16,7 +17,9 @@ function useLatestBlock(): BlockInfo | undefined {
   useEffect(() => {
     async function fetchBlock() {
       try {
-        const res = await fetch(`${RPC_URL}/block`);
+        const url = `${RPC_URL}/block`;
+        console.log('[useLatestBlock] Fetching:', url);
+        const res = await fetch(url);
         const json = await res.json();
         const result = json.result ?? json;
 
@@ -27,9 +30,13 @@ function useLatestBlock(): BlockInfo | undefined {
         const height: number = Number(
           result.block?.header?.height ?? 0
         );
+        const timeStr: string = result.block?.header?.time ?? '';
+        const timestamp = timeStr
+          ? Math.floor(new Date(timeStr).getTime() / 1000)
+          : 0;
 
-        if (blockHash && height > 0) {
-          setBlock({ blockHash, dataHash, height });
+        if (blockHash && height > 0 && timestamp > 0) {
+          setBlock({ blockHash, dataHash, height, timestamp });
         }
       } catch (err) {
         console.error('[useLatestBlock] fetch error:', err);

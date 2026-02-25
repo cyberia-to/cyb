@@ -104,5 +104,4 @@ export type LithiumStakeInfoResponse = {
 
 export type BurnStatsResponse = {
   total_burned: string;
-  globally_enforced: boolean;
 };

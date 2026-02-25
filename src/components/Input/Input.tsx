@@ -56,6 +56,15 @@ const Input = React.forwardRef<HTMLInputElement, Props>(
       }
 
       if (focused) {
+        // Don't steal focus from other input/textarea elements
+        const active = document.activeElement;
+        if (
+          active &&
+          active !== ref.current &&
+          (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA')
+        ) {
+          return;
+        }
         ref.current.focus();
       } else {
         ref.current.blur();

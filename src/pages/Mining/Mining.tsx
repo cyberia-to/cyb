@@ -3,12 +3,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { Display, DisplayTitle, MainContainer, Dots } from 'src/components';
 import Pill from 'src/components/Pill/Pill';
 import useQueryContract from 'src/hooks/contract/useQueryContract';
-import { useSigningClient } from 'src/contexts/signerClient';
-import { selectCurrentAddress } from 'src/redux/features/pocket';
-import { useAppSelector } from 'src/redux/hooks';
-import { UHASH_CONTRACT, UHASH_RELAY_URL } from 'src/constants/mining';
+import { LITIUM_MINE_CONTRACT, UHASH_RELAY_URL } from 'src/constants/mining';
 import { isTauri } from 'src/utils/tauri';
-import { trimString, formatNumber } from 'src/utils/utils';
+import { trimString } from 'src/utils/utils';
+import { compactLi, formatLi } from './utils/formatLi';
 import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 import type {
   LithiumEpochStatus,
@@ -20,6 +18,7 @@ import type {
   SubmitErrorKind,
   SubmitLithiumProofMsg,
 } from 'src/types/miningProofTx';
+import useAutoSigner from './hooks/useAutoSigner';
 import useLiBalance from './hooks/useLiBalance';
 import useRewardEstimate from './hooks/useRewardEstimate';
 import useHashrateSamples from './hooks/useHashrateSamples';
@@ -33,7 +32,7 @@ import StatCard from './components/StatCard';
 import ProofLogEntry from './components/ProofLogEntry';
 import ThreadSelector from './components/ThreadSelector';
 import StakingSection from './components/StakingSection';
-import ReferralSection, { loadReferrer } from './components/ReferralSection';
+import ReferralSection, { loadReferrer, saveReferrer } from './components/ReferralSection';
 import MiningActionBar from './MiningActionBar';
 import { WasmMiner } from './wasmMiner';
 import styles from './Mining.module.scss';
@@ -56,6 +55,7 @@ type ProofLogEntry_ = {
 
 const PROOF_LOG_KEY = 'mining_proof_log';
 const SESSION_LI_KEY = 'mining_session_li';
+const MINING_ACTIVE_KEY = 'mining_active';
 
 function loadProofLog(): ProofLogEntry_[] {
   try {
@@ -103,11 +103,6 @@ function formatHashrate(hps: number): string {
   return `${hps.toFixed(0)} H/s`;
 }
 
-function formatLi(amount: string | undefined): string {
-  if (!amount) return '0';
-  const val = Number(amount) / 1_000_000;
-  return val < 0.01 ? val.toFixed(4) : formatNumber(val);
-}
 
 function normalizeErrorText(error: unknown): string {
   if (!error) {
@@ -166,7 +161,8 @@ async function relayProof(
   blockHash: string,
   dataHash: string,
   epochId: number,
-  referrer: string | undefined
+  referrer: string | undefined,
+  blockTimestamp: number
 ): Promise<string | null> {
   try {
     const payload: RelayProofRequest = {
@@ -176,7 +172,7 @@ async function relayProof(
       block_hash: blockHash,
       cyberlinks_merkle: dataHash,
       epoch_id: epochId,
-      timestamp: Math.floor(Date.now() / 1000),
+      timestamp: blockTimestamp,
       referrer: referrer || undefined,
     };
     const res = await fetch(UHASH_RELAY_URL, {
@@ -194,19 +190,18 @@ async function relayProof(
 }
 
 function Mining() {
-  const address = useAppSelector(selectCurrentAddress);
-  const { signer, signingClient } = useSigningClient();
+  const { signer, signingClient, address } = useAutoSigner();
 
-  const { data: epochData } = useQueryContract(UHASH_CONTRACT, {
+  const { data: epochData } = useQueryContract(LITIUM_MINE_CONTRACT, {
     epoch_status: {},
   });
-  const { data: difficultyData } = useQueryContract(UHASH_CONTRACT, {
+  const { data: difficultyData } = useQueryContract(LITIUM_MINE_CONTRACT, {
     difficulty: {},
   });
-  const { data: targetData } = useQueryContract(UHASH_CONTRACT, {
+  const { data: targetData } = useQueryContract(LITIUM_MINE_CONTRACT, {
     target: {},
   });
-  const { data: proofStatsData } = useQueryContract(UHASH_CONTRACT, {
+  const { data: proofStatsData } = useQueryContract(LITIUM_MINE_CONTRACT, {
     proof_stats: {},
   });
 
@@ -219,7 +214,7 @@ function Mining() {
     targetStats?.target_solutions ?? epochStatus?.target_solutions;
 
   const { data: minerEpochData } = useQueryContract(
-    UHASH_CONTRACT,
+    LITIUM_MINE_CONTRACT,
     address && epochId !== undefined
       ? { lithium_miner_epoch_stats: { address, epoch_id: epochId } }
       : { epoch_status: {} }
@@ -242,7 +237,16 @@ function Mining() {
     Math.max(1, (navigator.hardwareConcurrency || 4) - 1)
   );
   const [sessionLiMined, setSessionLiMined] = useState(loadSessionLi);
-  const [referrer, setReferrer] = useState(() => loadReferrer());
+  const [referrer, setReferrer] = useState(() => {
+    // Check URL ?ref= param first, then localStorage
+    const params = new URLSearchParams(window.location.search);
+    const refParam = params.get('ref');
+    if (refParam) {
+      saveReferrer(refParam);
+      return refParam;
+    }
+    return loadReferrer();
+  });
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoMiningRef = useRef(false);
@@ -253,6 +257,7 @@ function Mining() {
   const blockHashRef = useRef<string>('');
   const dataHashRef = useRef<string>('');
   const epochIdRef = useRef<number>(0);
+  const blockTimestampRef = useRef<number>(0);
 
   // Proof submission queue
   const proofQueueRef = useRef<Proof[]>([]);
@@ -261,6 +266,7 @@ function Mining() {
 
   const hashrate = miningStatus?.hashrate ?? 0;
   const elapsed = miningStatus?.elapsed_secs ?? 0;
+  const canMine = !!difficulty && !!address && !!latestBlock;
 
   const { balance: liBalance, refetch: refreshBalance } = useLiBalance(address);
   const { rewardPerProof, grossRewardPerProof, miningFraction, estimatedLiPerHour } =
@@ -269,9 +275,14 @@ function Mining() {
   const { uniqueMiners } = useMinerStats();
   const { networkHashrate, similarDevices } = usePeerEstimate(hashrate);
 
-  // Keep autoMining ref in sync with state
+  // Keep autoMining ref in sync with state and persist to localStorage
   useEffect(() => {
     autoMiningRef.current = autoMining;
+    try {
+      localStorage.setItem(MINING_ACTIVE_KEY, autoMining ? '1' : '');
+    } catch {
+      // ignore
+    }
   }, [autoMining]);
 
   // Persist proof log and session LI to localStorage
@@ -300,10 +311,11 @@ function Mining() {
       return;
     }
 
-    const { blockHash, dataHash } = latestBlock;
+    const { blockHash, dataHash, timestamp: blockTimestamp } = latestBlock;
     blockHashRef.current = blockHash;
     dataHashRef.current = dataHash;
     epochIdRef.current = epochId ?? 0;
+    blockTimestampRef.current = blockTimestamp;
 
     try {
       console.log(
@@ -319,6 +331,8 @@ function Mining() {
           blockHashHex: blockHash,
           cyberlinksMerkleHex: dataHash,
           difficulty,
+          epochId: epochId ?? 0,
+          blockTimestamp: blockTimestamp,
           threads: threadCount,
         });
       } else {
@@ -342,6 +356,13 @@ function Mining() {
         return;
       }
 
+      // Safety: don't submit if block data refs aren't populated
+      if (!blockHashRef.current || !blockTimestampRef.current) {
+        console.warn('[Mining] Skipping submit: block refs not populated yet',
+          { blockHash: blockHashRef.current, timestamp: blockTimestampRef.current });
+        return;
+      }
+
       const [account] = await signer.getAccounts();
       const msg: SubmitLithiumProofMsg = {
         submit_lithium_proof: {
@@ -351,7 +372,7 @@ function Mining() {
           block_hash: blockHashRef.current,
           cyberlinks_merkle: dataHashRef.current,
           epoch_id: epochIdRef.current,
-          timestamp: Math.floor(Date.now() / 1000),
+          timestamp: blockTimestampRef.current,
           referrer: referrer || undefined,
         },
       };
@@ -365,7 +386,7 @@ function Mining() {
       try {
         result = await signingClient.execute(
           account.address,
-          UHASH_CONTRACT,
+          LITIUM_MINE_CONTRACT,
           msg,
           Soft3MessageFactory.fee(8),
           ''
@@ -381,7 +402,8 @@ function Mining() {
             blockHashRef.current,
             dataHashRef.current,
             epochIdRef.current,
-            referrer
+            referrer,
+            blockTimestampRef.current
           );
           if (txHash) {
             console.log('[Mining] Proof relayed! TX:', txHash);
@@ -403,37 +425,44 @@ function Mining() {
           }
           throw new Error('Proof relay failed — account does not exist');
         }
-        if (kind === 'transport') {
-          throw new Error(
-            `Submit transport error: ${normalizeErrorText(executeErr)}`
-          );
-        }
         throw new Error(
           `Submit ${kind} error: ${normalizeErrorText(executeErr)}`
         );
+      }
+
+      // Collect all events from both result.events and result.logs[].events[]
+      const allEvents: { type: string; attributes?: { key: string; value: string }[] }[] = [];
+      if (result.events?.length) {
+        allEvents.push(...result.events);
+      }
+      if ((result as any).logs) {
+        for (const log of (result as any).logs) {
+          if (log.events?.length) {
+            allEvents.push(...log.events);
+          }
+        }
       }
 
       console.log(
         '[Mining] Proof submitted! TX:',
         result.transactionHash,
         'events:',
-        result.events?.length
+        allEvents.length
       );
 
       // Extract actual miner reward from wasm event
       let actualReward = 0;
-      if (result.events) {
-        const wasmEvent = result.events.find(
-          (e: { type: string }) => e.type === 'wasm'
+      const wasmEvent = allEvents.find(
+        (e) => e.type === 'wasm' && e.attributes?.some(
+          (a) => a.key === 'miner_reward' || a.key === 'reward'
+        )
+      );
+      if (wasmEvent) {
+        const rewardAttr = wasmEvent.attributes?.find(
+          (a) => a.key === 'miner_reward' || a.key === 'reward'
         );
-        if (wasmEvent) {
-          const rewardAttr = wasmEvent.attributes?.find(
-            (a: { key: string }) =>
-              a.key === 'miner_reward' || a.key === 'reward'
-          );
-          if (rewardAttr?.value) {
-            actualReward = Number(rewardAttr.value) / 1_000_000;
-          }
+        if (rewardAttr?.value) {
+          actualReward = Number(rewardAttr.value) / 1_000_000;
         }
       }
       if (actualReward === 0) {
@@ -563,33 +592,71 @@ function Mining() {
     };
   }, [stopPolling, isNative]);
 
-  // On mount: detect if mining is still active in the backend (Tauri only)
+  // On mount: resume mining if it was active before reload
   useEffect(() => {
-    if (!isNative) {
-      return undefined;
+    if (isNative) {
+      // Tauri: check backend mining state and restore refs from stored params
+      let cancelled = false;
+      (async () => {
+        try {
+          const status = (await invoke('get_mining_status')) as MiningStatus & {
+            block_hash_hex?: string;
+            cyberlinks_merkle_hex?: string;
+            epoch_id?: number;
+            block_timestamp?: number;
+          };
+          if (cancelled) return;
+          if (status.mining) {
+            console.log('[Mining] Detected active mining on mount, resuming UI');
+            // Restore refs from Rust-stored params
+            if (status.block_hash_hex) {
+              blockHashRef.current = status.block_hash_hex;
+            }
+            if (status.cyberlinks_merkle_hex) {
+              dataHashRef.current = status.cyberlinks_merkle_hex;
+            }
+            if (status.epoch_id !== undefined) {
+              epochIdRef.current = status.epoch_id;
+            }
+            if (status.block_timestamp !== undefined) {
+              blockTimestampRef.current = status.block_timestamp;
+            }
+            console.log('[Mining] Restored refs:', {
+              blockHash: blockHashRef.current.slice(0, 16),
+              epochId: epochIdRef.current,
+              blockTimestamp: blockTimestampRef.current,
+            });
+            setMiningStatus(status);
+            setAutoMining(true);
+            startPolling();
+          }
+        } catch {
+          // not in Tauri or mining not initialized
+        }
+      })();
+      return () => { cancelled = true; };
     }
-    let cancelled = false;
-    (async () => {
-      try {
-        const status = (await invoke('get_mining_status')) as MiningStatus;
-        if (cancelled) {
-          return;
-        }
-        if (status.mining) {
-          console.log('[Mining] Detected active mining on mount, resuming UI');
-          setMiningStatus(status);
-          setAutoMining(true);
-          startPolling();
-        }
-      } catch {
-        // not in Tauri or mining not initialized
+
+    // WASM: check localStorage flag and auto-restart
+    try {
+      if (localStorage.getItem(MINING_ACTIVE_KEY)) {
+        console.log('[Mining] Resuming WASM mining after reload');
+        setAutoMining(true);
       }
-    })();
-    return () => {
-      cancelled = true;
-    };
+    } catch {
+      // ignore
+    }
+    return undefined;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // Auto-start WASM mining when autoMining is true but workers aren't running yet
+  // (happens after reload when deps become ready)
+  useEffect(() => {
+    if (!autoMining || isNative || wasmMinerRef.current || !canMine) return;
+    console.log('[Mining] Dependencies ready, starting WASM miners');
+    startMiningRound().then(() => startPolling());
+  }, [autoMining, canMine, startMiningRound, startPolling, isNative]);
 
   const handleStartMining = useCallback(async () => {
     setAutoMining(true);
@@ -620,8 +687,6 @@ function Mining() {
       navigator.clipboard.writeText(address);
     }
   }, [address]);
-
-  const canMine = !!difficulty && !!address && !!latestBlock;
 
   return (
     <MainContainer>
@@ -659,11 +724,7 @@ function Mining() {
           <div className={styles.statsGrid}>
             <StatCard
               label="LI Mined"
-              value={
-                sessionLiMined < 0.1
-                  ? sessionLiMined.toFixed(4)
-                  : sessionLiMined.toFixed(2)
-              }
+              value={compactLi(sessionLiMined)}
               suffix="LI"
             />
             <StatCard
@@ -672,11 +733,7 @@ function Mining() {
             />
             <StatCard
               label="Est. LI/hr"
-              value={`~${
-                estimatedLiPerHour < 1
-                  ? estimatedLiPerHour.toFixed(2)
-                  : estimatedLiPerHour.toFixed(0)
-              }`}
+              value={`~${compactLi(estimatedLiPerHour)}`}
             />
             <StatCard label="Elapsed" value={formatElapsed(elapsed)} />
           </div>
@@ -684,7 +741,7 @@ function Mining() {
           {/* LI Balance row */}
           <div className={styles.balanceRow}>
             <span>LI Balance</span>
-            <span>{formatNumber(liBalance)} LI</span>
+            <span>{compactLi(liBalance)} LI</span>
           </div>
 
           {/* Emission info */}

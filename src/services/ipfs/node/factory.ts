@@ -36,13 +36,12 @@ export async function initIpfsNode(options: IpfsOptsType): Promise<CybIpfsNode> 
   const instance = new EnhancedClass();
   console.log('[Worker] initIpfsNode before init', { instance });
 
-  try {
-    await instance.init({ url: restOptions.urlOpts });
-  } catch (error) {
-    console.log('[Worker] initIpfsNode instance init failed', error);
-  }
+  await instance.init({ url: restOptions.urlOpts });
   console.log('[Worker] initIpfsNode after instance init');
 
-  await instance.reconnectToSwarm();
+  // Swarm connection is best-effort — don't block initialization
+  await instance.reconnectToSwarm().catch((err) => {
+    console.warn('[Worker] reconnectToSwarm failed (non-fatal):', err?.message);
+  });
   return instance;
 }

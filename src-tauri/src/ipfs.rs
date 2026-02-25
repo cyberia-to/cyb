@@ -3,7 +3,11 @@ use serde::Serialize;
 #[cfg(desktop)]
 use std::path::PathBuf;
 #[cfg(desktop)]
-use std::process::Command;
+use std::process::{Command, Stdio};
+#[cfg(desktop)]
+use std::sync::Mutex;
+#[cfg(desktop)]
+use std::process::Child;
 
 #[derive(Debug, Serialize)]
 pub enum IpfsError {
@@ -98,6 +102,30 @@ fn get_target_triple() -> &'static str {
     }
 }
 
+/// Holds the IPFS daemon child process so it isn't dropped (which closes
+/// stdout/stderr pipes and can cause SIGPIPE → daemon crash).
+#[cfg(desktop)]
+static IPFS_CHILD: Mutex<Option<Child>> = Mutex::new(None);
+
+#[cfg(desktop)]
+fn spawn_ipfs_daemon(ipfs_binary: &PathBuf, repo_str: &str) -> Result<(), IpfsError> {
+    let child = Command::new(ipfs_binary)
+        .env("IPFS_PATH", repo_str)
+        .arg("daemon")
+        .arg("--migrate=true")
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .map_err(|e| IpfsError::Other(e.to_string()))?;
+
+    println!("[IPFS] Daemon spawned (pid {})", child.id());
+
+    if let Ok(mut guard) = IPFS_CHILD.lock() {
+        *guard = Some(child);
+    }
+    Ok(())
+}
+
 #[cfg(desktop)]
 #[tauri::command]
 pub async fn start_ipfs() -> Result<(), IpfsError> {
@@ -139,15 +167,47 @@ pub async fn start_ipfs() -> Result<(), IpfsError> {
         return Ok(());
     }
 
-    // Start the daemon
-    Command::new(&ipfs_binary)
-        .env("IPFS_PATH", &repo_str)
-        .arg("daemon")
-        .arg("--migrate=true")
-        .spawn()
-        .map_err(|e| IpfsError::Other(e.to_string()))?;
+    spawn_ipfs_daemon(&ipfs_binary, &repo_str)?;
 
-    println!("[IPFS] Daemon spawned");
+    // Spawn a watchdog that restarts the daemon if it exits unexpectedly
+    let binary_clone = ipfs_binary.clone();
+    let repo_clone = repo_str.clone();
+    tokio::spawn(async move {
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+
+            // Check if child process is still alive
+            let exited = if let Ok(mut guard) = IPFS_CHILD.lock() {
+                match guard.as_mut() {
+                    Some(child) => match child.try_wait() {
+                        Ok(Some(status)) => {
+                            println!("[IPFS] Daemon exited with {status}, restarting...");
+                            true
+                        }
+                        Ok(None) => false, // still running
+                        Err(e) => {
+                            println!("[IPFS] Failed to check daemon status: {e}");
+                            false
+                        }
+                    },
+                    None => {
+                        // No child handle but check via pgrep
+                        !is_ipfs_running_inner()
+                    }
+                }
+            } else {
+                false
+            };
+
+            if exited {
+                if let Err(e) = spawn_ipfs_daemon(&binary_clone, &repo_clone) {
+                    eprintln!("[IPFS] Watchdog: failed to restart daemon: {:?}", e);
+                }
+            }
+        }
+    });
+
+    println!("[IPFS] Daemon spawned with watchdog");
     Ok(())
 }
 

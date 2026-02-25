@@ -1,8 +1,8 @@
 import useQueryContract from 'src/hooks/contract/useQueryContract';
-import { UHASH_CONTRACT } from 'src/constants/mining';
+import { LITIUM_MINE_CONTRACT } from 'src/constants/mining';
 
 function useMinerStats() {
-  const { data, loading } = useQueryContract(UHASH_CONTRACT, { stats: {} });
+  const { data, loading } = useQueryContract(LITIUM_MINE_CONTRACT, { stats: {} });
 
   const stats = data as
     | {

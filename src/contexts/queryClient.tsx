@@ -21,8 +21,13 @@ function QueryClientProvider({ children }: { children: React.ReactNode }) {
   } = useQuery({
     queryKey: ['cyberClient', 'connect'],
     queryFn: async () => {
-      return CyberClient.connect(RPC_URL);
+      console.log('[QueryClient] Connecting to RPC:', RPC_URL);
+      const c = await CyberClient.connect(RPC_URL);
+      console.log('[QueryClient] Connected successfully');
+      return c;
     },
+    retry: 3,
+    retryDelay: (attempt) => Math.min(2000 * 2 ** attempt, 15000),
   });
 
   if (isFetching) {

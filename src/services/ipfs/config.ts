@@ -23,7 +23,7 @@ const isTauriDesktop = !!process.env.IS_TAURI && !isTauriMobile;
 const defaultIpfsOpts: IpfsOptsType = {
   ipfsNodeType: IPFSNodes.EXTERNAL,
   urlOpts: isTauriDesktop
-    ? '/ip4/127.0.0.1/tcp/5001'
+    ? 'http://127.0.0.1:5001'
     : 'https://io.cybernode.ai',
   userGateway: isTauriDesktop
     ? 'http://127.0.0.1:8080'
@@ -31,6 +31,11 @@ const defaultIpfsOpts: IpfsOptsType = {
 };
 
 export const getIpfsOpts = (): IpfsOptsType => {
+  // In desktop Tauri, always use local Kubo — ignore localStorage overrides
+  if (isTauriDesktop) {
+    return defaultIpfsOpts;
+  }
+
   const stored = safeLocalStorage.getJSON<Partial<IpfsOptsType>>('ipfsState', {});
   const ipfsOpts = { ...defaultIpfsOpts, ...stored };
 

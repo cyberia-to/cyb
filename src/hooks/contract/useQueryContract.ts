@@ -1,7 +1,8 @@
 import useQueryClientMethod from '../useQueryClientMethod';
 
 function useQueryContract(address: string, query: any) {
-  return useQueryClientMethod('queryContractSmart', [address, query]);
+  const result = useQueryClientMethod('queryContractSmart', [address, query]);
+  return result;
 }
 
 export default useQueryContract;

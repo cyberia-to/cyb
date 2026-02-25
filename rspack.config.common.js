@@ -185,6 +185,8 @@ const config = {
       'process.env.BASE_DENOM': JSON.stringify(process.env.BASE_DENOM),
       'process.env.DENOM_LIQUID': JSON.stringify(process.env.DENOM_LIQUID),
       'process.env.BECH32_PREFIX': JSON.stringify(process.env.BECH32_PREFIX),
+      'process.env.IS_TAURI': JSON.stringify(process.env.IS_TAURI),
+      'process.env.IS_DEV': JSON.stringify(process.env.IS_DEV),
     }),
     providePlugin,
   ],

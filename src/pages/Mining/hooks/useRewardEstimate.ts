@@ -1,12 +1,12 @@
 import useQueryContract from 'src/hooks/contract/useQueryContract';
-import { UHASH_CONTRACT } from 'src/constants/mining';
+import { LITIUM_MINE_CONTRACT } from 'src/constants/mining';
 
 function useRewardEstimate(
   difficulty: number | undefined,
   hashrate: number
 ) {
   const { data } = useQueryContract(
-    UHASH_CONTRACT,
+    LITIUM_MINE_CONTRACT,
     difficulty !== undefined
       ? { calculate_reward: { difficulty_bits: difficulty } }
       : { epoch_status: {} } // dummy query when no difficulty
