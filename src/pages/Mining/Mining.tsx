@@ -56,6 +56,7 @@ type ProofLogEntry_ = {
 const PROOF_LOG_KEY = 'mining_proof_log';
 const SESSION_LI_KEY = 'mining_session_li';
 const MINING_ACTIVE_KEY = 'mining_active';
+const MINING_ADDRESS_KEY = 'mining_active_address';
 
 function loadProofLog(): ProofLogEntry_[] {
   try {
@@ -247,6 +248,7 @@ function Mining() {
 
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const autoMiningRef = useRef(false);
+  const miningAddressRef = useRef<string | undefined>(undefined);
   const wasmMinerRef = useRef<WasmMiner | null>(null);
   const isNative = isTauri();
 
@@ -292,6 +294,11 @@ function Mining() {
     autoMiningRef.current = autoMining;
     try {
       localStorage.setItem(MINING_ACTIVE_KEY, autoMining ? '1' : '');
+      if (autoMining && miningAddressRef.current) {
+        localStorage.setItem(MINING_ADDRESS_KEY, miningAddressRef.current);
+      } else if (!autoMining) {
+        localStorage.removeItem(MINING_ADDRESS_KEY);
+      }
     } catch {
       // ignore
     }
@@ -376,6 +383,10 @@ function Mining() {
       }
 
       const [account] = await signer.getAccounts();
+      if (account.address !== address) {
+        console.warn('[Mining] Signer address mismatch:', account.address, '!==', address);
+        return;
+      }
       const msg: SubmitLithiumProofMsg = {
         submit_lithium_proof: {
           hash: proof.hash,
@@ -671,8 +682,16 @@ function Mining() {
     // WASM: check localStorage flag and auto-restart
     try {
       if (localStorage.getItem(MINING_ACTIVE_KEY)) {
-        console.log('[Mining] Resuming WASM mining after reload');
-        setAutoMining(true);
+        const savedAddr = localStorage.getItem(MINING_ADDRESS_KEY);
+        if (savedAddr && address && savedAddr !== address) {
+          console.warn('[Mining] Saved mining address does not match current, skipping resume');
+          localStorage.removeItem(MINING_ACTIVE_KEY);
+          localStorage.removeItem(MINING_ADDRESS_KEY);
+        } else {
+          console.log('[Mining] Resuming WASM mining after reload');
+          miningAddressRef.current = savedAddr || address;
+          setAutoMining(true);
+        }
       }
     } catch {
       // ignore
@@ -690,12 +709,13 @@ function Mining() {
   }, [autoMining, canMine, startMiningRound, startPolling, isNative]);
 
   const handleStartMining = useCallback(async () => {
+    miningAddressRef.current = address;
     setAutoMining(true);
     setSessionLiMined(0);
     hashSnapshotsRef.current = [];
     await startMiningRound();
     startPolling();
-  }, [startMiningRound, startPolling]);
+  }, [startMiningRound, startPolling, address]);
 
   const handleStopMining = useCallback(async () => {
     setAutoMining(false);
@@ -713,6 +733,15 @@ function Mining() {
     }
     stopPolling();
   }, [stopPolling, isNative]);
+
+  // Stop mining when account switches away from the address that started it
+  useEffect(() => {
+    if (!autoMining) return;
+    if (miningAddressRef.current && address !== miningAddressRef.current) {
+      console.warn('[Mining] Account switched, stopping mining');
+      handleStopMining();
+    }
+  }, [address, autoMining, handleStopMining]);
 
   const handleCopyAddress = useCallback(() => {
     if (address) {

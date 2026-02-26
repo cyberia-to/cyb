@@ -163,7 +163,6 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
         if (!mnemonic) {
           const { generateMnemonic } = await import('src/utils/offlineSigner');
           mnemonic = await generateMnemonic();
-          setMnemonic(mnemonic);
           console.log('Auto-generated new wallet');
         }
 
@@ -172,11 +171,14 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
         const { address } = mnemonicAccounts[0];
         const pk = Buffer.from(mnemonicAccounts[0].pubkey).toString('hex');
 
+        // Store mnemonic with per-address key
+        setMnemonic(mnemonic, address);
+
         // Register account (deduplicates if already exists)
         dispatch(
           addAddressPocket({
             bech32: address,
-            keys: 'keplr',
+            keys: 'wallet',
             pk,
             name: 'Account 1',
           })
@@ -192,6 +194,33 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
       }
     })();
   }, []);
+
+  // Auto-switch signer when defaultAccount changes to a local wallet
+  useEffect(() => {
+    (async () => {
+      const keys = defaultAccount.account?.cyber?.keys;
+      const bech32 = defaultAccount.account?.cyber?.bech32;
+      if (keys !== 'wallet' || !bech32) return;
+
+      const mnemonic = getMnemonic(bech32);
+      if (!mnemonic) return;
+
+      try {
+        const localSigner = await getOfflineSignerFromMnemonic(mnemonic);
+        const [account] = await localSigner.getAccounts();
+        if (account.address !== bech32) {
+          console.warn('[Signer] Mnemonic derives different address, skipping');
+          return;
+        }
+        const clientJs = await createClient(localSigner);
+        setSigner(localSigner);
+        setSigningClient(clientJs);
+        console.log('[Signer] Switched to local account:', bech32);
+      } catch (e) {
+        console.error('[Signer] Failed to switch to local account:', e);
+      }
+    })();
+  }, [defaultAccount]);
 
   const getSignClientByChainId = useCallback(
     async (chainId: Networks.BOSTROM | Networks.SPACE_PUSSY) => {

@@ -284,7 +284,7 @@ class ActionBarContainer extends Component<Props, any> {
       });
     }
 
-    if (addressLocalStor.keys === 'keplr') {
+    if (addressLocalStor.keys === 'keplr' || addressLocalStor.keys === 'wallet') {
       this.onClickInitKeplr();
     }
   };
@@ -292,7 +292,7 @@ class ActionBarContainer extends Component<Props, any> {
   onClickInit = () => {
     const { addressLocalStor } = this.state;
 
-    if (addressLocalStor.keys === 'keplr') {
+    if (addressLocalStor.keys === 'keplr' || addressLocalStor.keys === 'wallet') {
       this.onClickInitKeplr();
     }
   };
@@ -328,7 +328,7 @@ class ActionBarContainer extends Component<Props, any> {
                 </Pane>
               }
               onClick={() => this.onClickBtnRank()}
-              img={keys === 'ledger' ? imgLedger : process.env.IS_TAURI ? imgWallet : imgKeplr}
+              img={keys === 'ledger' ? imgLedger : (keys === 'wallet' || process.env.IS_TAURI) ? imgWallet : imgKeplr}
             />
           </ActionBarContentText>
         </ActionBar>

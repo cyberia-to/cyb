@@ -142,16 +142,17 @@ function ActionBarConnect({
 
   const connectKeplrFromMnemonic = async (name: string, mnemonic: string) => {
     const offlineSigner = await getOfflineSigner(mnemonic);
-    setMnemonic(mnemonic);
 
     if (offlineSigner) {
       setSigner(offlineSigner);
       const [{ address, pubkey: pubKey }] = await offlineSigner.getAccounts();
       const pk = toHex(pubKey);
 
+      setMnemonic(mnemonic, address);
+
       const accounts: AccountValue = {
         pk,
-        keys: 'keplr',
+        keys: 'wallet',
         path: HDPATH,
         name,
         bech32: address,

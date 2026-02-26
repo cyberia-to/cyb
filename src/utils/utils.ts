@@ -430,8 +430,17 @@ export {
   accountsKeplr,
 };
 
-export const getMnemonic = () =>
-  localStorage.getItem(localStorageKeys.signer.mnemonic);
+export const getMnemonic = (bech32?: string): string | null => {
+  if (bech32) {
+    const perAddr = localStorage.getItem(`cyb:mnemonic:${bech32}`);
+    if (perAddr) return perAddr;
+  }
+  return localStorage.getItem(localStorageKeys.signer.mnemonic);
+};
 
-export const setMnemonic = (mnemonic: string) =>
+export const setMnemonic = (mnemonic: string, bech32?: string) => {
   localStorage.setItem(localStorageKeys.signer.mnemonic, mnemonic);
+  if (bech32) {
+    localStorage.setItem(`cyb:mnemonic:${bech32}`, mnemonic);
+  }
+};

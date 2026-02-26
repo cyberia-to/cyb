@@ -228,7 +228,10 @@ export const addAddressPocket = (accounts: AccountValue) => (dispatch: Dispatch)
   if (Object.keys(pocketAccount).length > 0) {
     dispatch(setAccounts(pocketAccount));
     if (accounts.keys !== 'read-only') {
-      dispatch(setDefaultAccount({ name: key, account: cyberAccounts }));
+      const currentPocket = localStorage.getItem(localStorageKeys.pocket.POCKET);
+      if (!currentPocket) {
+        dispatch(setDefaultAccount({ name: key, account: cyberAccounts }));
+      }
     }
   }
 };
