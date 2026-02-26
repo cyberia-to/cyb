@@ -579,12 +579,14 @@ function ActionBarPortalGift({
           disabled: selectMethod === '',
         }}
       >
-        <ButtonIcon
-          onClick={() => setSelectMethod('keplr')}
-          active={selectMethod === 'keplr'}
-          img={imgKeplr}
-          text="keplr"
-        />
+        {!process.env.IS_TAURI && (
+          <ButtonIcon
+            onClick={() => setSelectMethod('keplr')}
+            active={selectMethod === 'keplr'}
+            img={imgKeplr}
+            text="keplr"
+          />
+        )}
         <ButtonIcon
           onClick={() => onClickMMSigner()}
           active={selectMethod === 'MetaMask'}

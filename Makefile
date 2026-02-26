@@ -283,6 +283,8 @@ ifdef IS_MACOS
 	@echo -e "$(BLUE)[Build]$(NC) macOS release (sign + notarize)..."
 	@echo -e "$(BLUE)[Build]$(NC) Identity: $(APPLE_SIGNING_IDENTITY)"
 	@echo -e "$(BLUE)[Build]$(NC) API Key: $(APPLE_API_KEY)"
+	@echo -e "$(BLUE)[Build]$(NC) Building web frontend with IS_TAURI..."
+	@deno task build-tauri
 	@APPLE_SIGNING_IDENTITY="$(APPLE_SIGNING_IDENTITY)" \
 		APPLE_API_KEY="$(APPLE_API_KEY)" \
 		APPLE_API_ISSUER="$(APPLE_API_ISSUER)" \

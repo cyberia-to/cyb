@@ -24,6 +24,7 @@ import { trimString } from '../../utils/utils';
 
 const imgKeplr = require('../../image/keplr-icon.svg');
 const imgLedger = require('../../image/ledger.svg');
+const imgWallet = require('../../image/wallet-outline.svg');
 const imgCyber = require('../../image/blue-circle.png');
 
 const { STAGE_INIT, STAGE_READY, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED, STAGE_ERROR } =
@@ -327,7 +328,7 @@ class ActionBarContainer extends Component<Props, any> {
                 </Pane>
               }
               onClick={() => this.onClickBtnRank()}
-              img={keys === 'ledger' ? imgLedger : imgKeplr}
+              img={keys === 'ledger' ? imgLedger : process.env.IS_TAURI ? imgWallet : imgKeplr}
             />
           </ActionBarContentText>
         </ActionBar>

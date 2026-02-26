@@ -284,7 +284,7 @@ export function ConnectAddress({
       onClickBack={onClickBack}
     >
       <Pane display="flex" alignItems="center" justifyContent="center" flex={1}>
-        {signer && (
+        {signer && !process.env.IS_TAURI && (
           <ButtonIcon
             onClick={() => selectMethodFunc(KEY_TYPE.keplr)}
             active={selectMethod === KEY_TYPE.keplr}

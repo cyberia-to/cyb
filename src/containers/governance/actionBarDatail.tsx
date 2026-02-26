@@ -28,6 +28,7 @@ import {
 import { LEDGER } from '../../utils/config';
 
 const imgKeplr = require('../../image/keplr-icon.svg');
+const imgWallet = require('../../image/wallet-outline.svg');
 const imgCyber = require('../../image/blue-circle.png');
 
 const { STAGE_INIT, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED, STAGE_ERROR } = LEDGER;
@@ -216,7 +217,7 @@ function ActionBarDetail({ proposals, id, update }: Props) {
             </Pane>
           }
           onClick={() => generateTxKeplr()}
-          img={imgKeplr}
+          img={process.env.IS_TAURI ? imgWallet : imgKeplr}
         />
       </ActionBar>
     );
