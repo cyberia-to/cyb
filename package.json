@@ -113,6 +113,7 @@
     "dateformat": "^3.0.3",
     "dexie": "^3.0.2",
     "dompurify": "^3.3.1",
+    "eruda": "^3.4.3",
     "ethers": "^5.0.26",
     "file-saver": "^2.0.5",
     "file-type": "^18.2.1",

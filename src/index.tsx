@@ -93,6 +93,47 @@ function Providers({ children }: { children: React.ReactNode }) {
   );
 }
 
+// Tauri debugging: F12/Cmd+Opt+I toggles native devtools, shake/4-finger-tap toggles eruda
+if (process.env.IS_TAURI) {
+  // Desktop: F12 or Cmd+Opt+I → native devtools via Tauri command
+  window.addEventListener('keydown', (e) => {
+    const isMac = navigator.platform.includes('Mac');
+    const isF12 = e.key === 'F12';
+    const isCmdOptI = e.key === 'i' && (isMac ? e.metaKey : e.ctrlKey) && e.altKey;
+    if (isF12 || isCmdOptI) {
+      e.preventDefault();
+      import('@tauri-apps/api/core').then(({ invoke }) => invoke('toggle_devtools'));
+    }
+  });
+
+  const toggleEruda = () => {
+    import('eruda').then((eruda) => {
+      if (!(window as any)._eruda) {
+        eruda.default.init();
+        (window as any)._eruda = true;
+      } else {
+        eruda.default.destroy();
+        (window as any)._eruda = false;
+      }
+    });
+  };
+
+  // Mobile: shake → eruda in-app console
+  if ('DeviceMotionEvent' in window) {
+    let lastToggle = 0;
+    window.addEventListener('devicemotion', (e) => {
+      const acc = e.accelerationIncludingGravity;
+      if (!acc) return;
+      const force = Math.sqrt(acc.x! ** 2 + acc.y! ** 2 + acc.z! ** 2);
+      if (force > 30 && Date.now() - lastToggle > 2000) {
+        lastToggle = Date.now();
+        toggleEruda();
+      }
+    });
+  }
+
+}
+
 root.render(
   <Providers>
     <Helmet>

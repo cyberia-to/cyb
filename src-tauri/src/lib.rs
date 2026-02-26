@@ -16,8 +16,9 @@ use mining::MiningState;
 #[cfg(desktop)]
 use server::start_server;
 use tauri::generate_handler;
+use tauri::Manager;
 #[cfg(desktop)]
-use tauri::{Manager, WebviewWindow};
+use tauri::WebviewWindow;
 
 #[cfg(desktop)]
 use utils::update_splash_message;
@@ -89,12 +90,22 @@ async fn init_ipfs_with_progress(splash: &WebviewWindow) {
     println!("[CYB.AI] IPFS initialization complete!");
 }
 
+#[tauri::command]
+fn toggle_devtools(window: tauri::WebviewWindow) {
+    if window.is_devtools_open() {
+        window.close_devtools();
+    } else {
+        window.open_devtools();
+    }
+}
+
 #[cfg(desktop)]
 fn build_tauri_app() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .manage(Arc::new(MiningState::new()))
         .invoke_handler(generate_handler![
+            toggle_devtools,
             get_ipfs_mode,
             start_ipfs,
             stop_ipfs,
@@ -116,6 +127,7 @@ fn build_tauri_app() -> tauri::Builder<tauri::Wry> {
         .plugin(tauri_plugin_shell::init())
         .manage(Arc::new(MiningState::new()))
         .invoke_handler(generate_handler![
+            toggle_devtools,
             get_ipfs_mode,
             start_ipfs,
             stop_ipfs,
@@ -166,7 +178,9 @@ pub fn run() {
 
                             println!("[CYB.AI] Showing main window...");
                             main_window.show().unwrap();
-                            main_window.open_devtools();
+                            if cfg!(debug_assertions) {
+                                main_window.open_devtools();
+                            }
                             let _ = splashscreen_window.close();
                             println!("[CYB.AI] App ready!");
                         });

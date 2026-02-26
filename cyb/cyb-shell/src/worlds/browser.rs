@@ -21,6 +21,10 @@ impl Plugin for BrowserWorldPlugin {
             .add_systems(
                 Update,
                 browser_update.run_if(in_state(WorldState::Browser)),
+            )
+            .add_systems(
+                Update,
+                toggle_devtools.run_if(in_state(WorldState::Browser)),
             );
     }
 }
@@ -99,6 +103,36 @@ fn browser_update(world: &mut World) {
     }
 
     world.insert_non_send_resource(wv);
+}
+
+/// Toggle devtools with F12 or Cmd+Option+I (debug builds only)
+fn toggle_devtools(
+    wv: Option<NonSend<WryWebView>>,
+    keys: Res<ButtonInput<KeyCode>>,
+) {
+    if !cfg!(debug_assertions) {
+        return;
+    }
+    let Some(wv) = wv else { return };
+
+    let f12 = keys.just_pressed(KeyCode::F12);
+
+    let cmd_opt_i = keys.just_pressed(KeyCode::KeyI) && {
+        #[cfg(target_os = "macos")]
+        let modifier = keys.pressed(KeyCode::SuperLeft) || keys.pressed(KeyCode::SuperRight);
+        #[cfg(not(target_os = "macos"))]
+        let modifier = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::ControlRight);
+        modifier && (keys.pressed(KeyCode::AltLeft) || keys.pressed(KeyCode::AltRight))
+    };
+
+    if f12 || cmd_opt_i {
+        info!("Toggling devtools");
+        if wv.webview.is_devtools_open() {
+            wv.webview.close_devtools();
+        } else {
+            wv.webview.open_devtools();
+        }
+    }
 }
 
 fn destroy_webview(world: &mut World) {
