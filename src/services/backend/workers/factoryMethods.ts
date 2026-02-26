@@ -43,7 +43,7 @@ export function installTransferHandlers() {
         subscribe: (observer: Remote<Observer<unknown>>) =>
           value.subscribe({
             next: (next: unknown) => observer.next(next).then(),
-            error: (error: unknown) => observer.error(error).then(),
+            error: (error: unknown) => observer.error(typeof error === 'string' ? error : String(error)).then(),
             complete: () => observer.complete().then(),
           }),
       });

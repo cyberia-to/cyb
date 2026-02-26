@@ -29,9 +29,10 @@ export function createNodeWebsocketObservable(address: NeuronAddress, query: str
       subscriber.next(message.result);
     };
 
-    ws.onerror = (event) => {
-      log(`node ws ${address} error`, { error: event });
-      subscriber.error(event);
+    ws.onerror = () => {
+      const msg = `node ws ${address} error`;
+      log(msg);
+      subscriber.error(msg);
     };
 
     ws.onclose = () => {
