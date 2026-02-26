@@ -1,4 +1,4 @@
-@import 'src/style/mixins';
+@use 'src/style/mixins' as *;
 
 .wrapper {
   width: 300px;

@@ -7,11 +7,11 @@ use bevy::prelude::*;
 
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum WorldState {
-    Ui,       // Cmd+1
-    Game,     // Cmd+2
-    Terminal, // Cmd+3
     #[default]
-    Browser,  // Cmd+4 (default: loads cyb-ts)
+    Terminal, // Cmd+1 (default)
+    Browser,  // Cmd+2 (cyb)
+    Ui,       // Cmd+3
+    Game,     // Cmd+4
 }
 
 pub struct WorldsPlugin;

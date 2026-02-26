@@ -1,6 +1,5 @@
-@import '../saber/index.module.scss';
-
-@import '../Display/Display.module.scss';
+@use '../saber/index.module.scss' as *;
+@use '../Display/variables.module' as *;
 
 .noPaddingWrapper {
   position: relative;

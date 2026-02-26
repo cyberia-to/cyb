@@ -31,6 +31,10 @@ fn setup_game_scene(
 
     commands.spawn((
         Camera3d::default(),
+        Camera {
+            clear_color: ClearColorConfig::Custom(bevy::color::Color::BLACK),
+            ..default()
+        },
         Transform::from_xyz(0.0, 2.0, 5.0).looking_at(Vec3::ZERO, Vec3::Y),
         GameSceneMarker,
     ));
@@ -55,9 +59,13 @@ fn setup_game_scene(
     ));
 }
 
-fn cleanup_game_scene(mut commands: Commands, query: Query<Entity, With<GameSceneMarker>>) {
-    for entity in &query {
-        commands.entity(entity).despawn();
+fn cleanup_game_scene(world: &mut World) {
+    let entities: Vec<Entity> = world
+        .query_filtered::<Entity, With<GameSceneMarker>>()
+        .iter(world)
+        .collect();
+    for entity in entities {
+        world.despawn(entity);
     }
 }
 

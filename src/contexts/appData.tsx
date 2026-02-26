@@ -68,7 +68,7 @@ function DataProvider({ children }: { children: React.ReactNode }) {
       id: '1',
       jsonrpc: '2.0',
     });
-  }, [cyber, cyber?.connected]);
+  }, [cyber?.connected, cyber?.sendMessage, cyber?.subscriptions]);
 
   useEffect(() => {
     if (!cyber?.message?.result) {

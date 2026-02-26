@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["cyb-shell", "cyb-ui", "cyb-services"]
-exclude = ["vendor/rio-backend", "vendor/copa"]
+exclude = ["vendor/rio-backend", "vendor/copa", "vendor/nushell"]
 
 [workspace.dependencies]
 bevy = "0.18.0"

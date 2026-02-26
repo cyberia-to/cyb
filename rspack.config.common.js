@@ -118,6 +118,10 @@ const config = {
     assetModuleFilename: '[name].[hash:10][ext]',
     clean: true,
   },
+  node: {
+    __dirname: false,
+    __filename: false,
+  },
   resolve: {
     fallback: resolveFallback,
     extensions: resolveExtensions,
@@ -279,7 +283,15 @@ const config = {
               },
             },
           },
-          'sass-loader',
+          {
+            loader: 'sass-loader',
+            options: {
+              api: 'modern',
+              sassOptions: {
+                loadPaths: [path.resolve(__dirname)],
+              },
+            },
+          },
         ],
       },
       {

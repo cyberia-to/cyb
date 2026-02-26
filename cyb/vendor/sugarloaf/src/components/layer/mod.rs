@@ -273,7 +273,10 @@ impl LayerBrush {
             usage: wgpu::BufferUsages::INDEX,
         });
 
-        let texture_atlas = Atlas::new(device, context.adapter_info.backend, context);
+        let backend = context.adapter_info.as_ref()
+            .map(|info| info.backend)
+            .unwrap_or(wgpu::Backend::Metal);
+        let texture_atlas = Atlas::new(device, backend, context);
 
         let texture = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("image texture atlas bind group"),

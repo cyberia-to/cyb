@@ -1,4 +1,4 @@
-@import '../../../../components/atoms/glass/mixins';
+@use '../../../../components/atoms/glass/mixins' as *;
 
 .hoverInfo {
   @include glassBackground;

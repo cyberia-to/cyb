@@ -1,6 +1,6 @@
 // TODO: component is need be removed (use Display)
 
-@import './saber/index.module.scss';
+@use './saber/index.module.scss' as *;
 
 @mixin linear-gradient($route) {
   background: linear-gradient(

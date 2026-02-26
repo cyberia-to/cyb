@@ -1,4 +1,4 @@
-@import 'src/style/mixins';
+@use 'src/style/mixins' as *;
 
 .container {
   display: grid;

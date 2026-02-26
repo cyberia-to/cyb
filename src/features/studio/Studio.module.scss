@@ -1,4 +1,4 @@
-@import '../../layouts/variables.module';
+@use '../../layouts/variables.module' as *;
 
 $controlPanelHeight: 60px;
 

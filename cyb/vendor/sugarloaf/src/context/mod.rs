@@ -3,14 +3,10 @@ use crate::SugarloafRenderer;
 
 pub struct Context<'a> {
     pub device: wgpu::Device,
-    pub surface: wgpu::Surface<'a>,
     pub queue: wgpu::Queue,
     pub format: wgpu::TextureFormat,
     pub size: SugarloafWindowSize,
     pub scale: f32,
-    alpha_mode: wgpu::CompositeAlphaMode,
-    pub adapter_info: wgpu::AdapterInfo,
-    surface_caps: wgpu::SurfaceCapabilities,
     pub supports_f16: bool,
     pub colorspace: Colorspace,
     pub max_texture_dimension_2d: u32,
@@ -19,6 +15,11 @@ pub struct Context<'a> {
     pub offscreen_texture: Option<wgpu::Texture>,
     /// Read-back buffer for copying offscreen texture to CPU.
     pub readback_buffer: Option<wgpu::Buffer>,
+    // --- Fields only present in standalone mode (own surface) ---
+    surface: Option<wgpu::Surface<'a>>,
+    alpha_mode: Option<wgpu::CompositeAlphaMode>,
+    pub adapter_info: Option<wgpu::AdapterInfo>,
+    surface_caps: Option<wgpu::SurfaceCapabilities>,
 }
 
 #[inline]
@@ -107,20 +108,11 @@ fn get_macos_texture_format(colorspace: Colorspace) -> wgpu::TextureFormat {
 }
 
 impl Context<'_> {
+    /// Create a Context that owns its own wgpu Instance/Device/Queue/Surface (standalone mode).
     pub fn new<'a>(
         sugarloaf_window: SugarloafWindow,
         renderer_config: SugarloafRenderer,
     ) -> Context<'a> {
-        // The backend can be configured using the `WGPU_BACKEND`
-        // environment variable. If the variable is not set, the primary backend
-        // will be used. The following values are allowed:
-        // - `vulkan`
-        // - `metal`
-        // - `dx12`
-        // - `dx11`
-        // - `gl`
-        // - `webgpu`
-        // - `primary`
         let backend = wgpu::Backends::from_env().unwrap_or(renderer_config.backend);
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
             backends: backend,
@@ -218,8 +210,6 @@ impl Context<'_> {
         // Configure view formats for wide color gamut support
         let view_formats = match renderer_config.colorspace {
             Colorspace::DisplayP3 | Colorspace::Rec2020 => {
-                // For wide color gamut, we may want to support additional view formats
-                // This allows the surface to be viewed in different formats
                 vec![format]
             }
             Colorspace::Srgb => {
@@ -251,21 +241,54 @@ impl Context<'_> {
         Context {
             device,
             queue,
-            surface,
             format,
-            alpha_mode,
             size: SugarloafWindowSize {
                 width: size.width,
                 height: size.height,
             },
             scale,
-            adapter_info,
-            surface_caps,
             supports_f16,
             colorspace: renderer_config.colorspace,
             max_texture_dimension_2d,
             offscreen_texture: None,
             readback_buffer: None,
+            surface: Some(surface),
+            alpha_mode: Some(alpha_mode),
+            adapter_info: Some(adapter_info),
+            surface_caps: Some(surface_caps),
+        }
+    }
+
+    /// Create a Context using an externally-provided Device and Queue (embedded mode).
+    /// No wgpu Instance, Surface, or Adapter is created — the caller owns the GPU stack.
+    pub fn new_external(
+        device: wgpu::Device,
+        queue: wgpu::Queue,
+        format: wgpu::TextureFormat,
+        size: SugarloafWindowSize,
+        scale: f32,
+    ) -> Context<'static> {
+        let supports_f16 = device.features().contains(wgpu::Features::SHADER_F16);
+        let max_texture_dimension_2d = device.limits().max_texture_dimension_2d;
+
+        tracing::info!("Sugarloaf external context: format={:?}, f16={}, max_tex={}",
+            format, supports_f16, max_texture_dimension_2d);
+
+        Context {
+            device,
+            queue,
+            format,
+            size,
+            scale,
+            supports_f16,
+            colorspace: Colorspace::default(),
+            max_texture_dimension_2d,
+            offscreen_texture: None,
+            readback_buffer: None,
+            surface: None,
+            alpha_mode: None,
+            adapter_info: None,
+            surface_caps: None,
         }
     }
 
@@ -376,37 +399,46 @@ impl Context<'_> {
         (value + 255) & !255
     }
 
+    /// Get the owned surface (standalone mode only).
+    pub fn surface(&self) -> Option<&wgpu::Surface<'_>> {
+        self.surface.as_ref()
+    }
+
     pub fn resize(&mut self, width: u32, height: u32) {
         self.size.width = width as f32;
         self.size.height = height as f32;
 
-        // Configure view formats for wide color gamut support
-        let view_formats = match self.colorspace {
-            Colorspace::DisplayP3 | Colorspace::Rec2020 => {
-                vec![self.format]
-            }
-            Colorspace::Srgb => {
-                vec![]
-            }
-        };
+        if let (Some(ref surface), Some(ref surface_caps), Some(alpha_mode)) =
+            (&self.surface, &self.surface_caps, self.alpha_mode)
+        {
+            // Configure view formats for wide color gamut support
+            let view_formats = match self.colorspace {
+                Colorspace::DisplayP3 | Colorspace::Rec2020 => {
+                    vec![self.format]
+                }
+                Colorspace::Srgb => {
+                    vec![]
+                }
+            };
 
-        self.surface.configure(
-            &self.device,
-            &wgpu::SurfaceConfiguration {
-                usage: Self::get_texture_usage(&self.surface_caps),
-                format: self.format,
-                width,
-                height,
-                view_formats,
-                alpha_mode: self.alpha_mode,
-                present_mode: wgpu::PresentMode::Fifo,
-                desired_maximum_frame_latency: 2,
-            },
-        );
+            surface.configure(
+                &self.device,
+                &wgpu::SurfaceConfiguration {
+                    usage: Self::get_texture_usage(surface_caps),
+                    format: self.format,
+                    width,
+                    height,
+                    view_formats,
+                    alpha_mode,
+                    present_mode: wgpu::PresentMode::Fifo,
+                    desired_maximum_frame_latency: 2,
+                },
+            );
+        }
     }
 
-    pub fn surface_caps(&self) -> &wgpu::SurfaceCapabilities {
-        &self.surface_caps
+    pub fn surface_caps(&self) -> Option<&wgpu::SurfaceCapabilities> {
+        self.surface_caps.as_ref()
     }
 
     pub fn supports_f16(&self) -> bool {

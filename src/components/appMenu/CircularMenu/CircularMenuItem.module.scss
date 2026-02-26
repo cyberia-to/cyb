@@ -1,4 +1,4 @@
-@import '../../../style/mixins.scss';
+@use '../../../style/mixins.scss' as *;
 
 .menuItem {
   box-shadow: 0px 0px 13px #ffffff54;

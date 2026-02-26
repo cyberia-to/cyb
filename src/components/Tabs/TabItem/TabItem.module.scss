@@ -1,4 +1,4 @@
-@import '../../containerGradient/saber/index.module.scss';
+@use '../../containerGradient/saber/index.module.scss' as *;
 
 @mixin active-saber($position) {
   $color-saber: 'white';

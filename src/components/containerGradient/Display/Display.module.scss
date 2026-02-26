@@ -1,6 +1,6 @@
-@import '../saber/index.module';
-@import './variables.module';
-@import '../../../style/mixins';
+@use '../saber/index.module' as *;
+@use './variables.module' as *;
+@use '../../../style/mixins' as *;
 
 .wrapper {
   // TODO: remove this

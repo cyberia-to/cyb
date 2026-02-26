@@ -1,4 +1,4 @@
-@import '../../../layouts/variables.module';
+@use '../../../layouts/variables.module' as *;
 
 $mobile-breakpoint: 1279px;
 

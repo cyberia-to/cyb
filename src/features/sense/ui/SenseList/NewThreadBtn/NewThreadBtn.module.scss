@@ -1,4 +1,4 @@
-@import 'src/style/mixins';
+@use 'src/style/mixins' as *;
 
 // TODO: FIXME: reuse styles from senseItem
 .btn {

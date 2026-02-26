@@ -26,7 +26,11 @@ impl FiltersBrush {
             return;
         }
 
-        let usage_caps = ctx.surface_caps().usages;
+        let Some(caps) = ctx.surface_caps() else {
+            tracing::warn!("Filter chains not supported in external mode (no surface caps)");
+            return;
+        };
+        let usage_caps = caps.usages;
 
         if !usage_caps.contains(wgpu::TextureUsages::COPY_DST)
             || !usage_caps.contains(wgpu::TextureUsages::COPY_SRC)
@@ -137,7 +141,8 @@ impl FiltersBrush {
             return;
         }
 
-        let usage_caps = ctx.surface_caps().usages;
+        let Some(caps) = ctx.surface_caps() else { return; };
+        let usage_caps = caps.usages;
 
         if !usage_caps.contains(wgpu::TextureUsages::COPY_SRC)
             || !usage_caps.contains(wgpu::TextureUsages::COPY_DST)

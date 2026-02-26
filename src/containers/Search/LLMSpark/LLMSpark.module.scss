@@ -1,4 +1,4 @@
-@import '../../../components/containerGradient/saber/index.module';
+@use '../../../components/containerGradient/saber/index.module' as *;
 
 .wrapper {
   position: relative;

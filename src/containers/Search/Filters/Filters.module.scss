@@ -1,4 +1,4 @@
-@import '../../../components/containerGradient/saber/index.module.scss';
+@use '../../../components/containerGradient/saber/index.module.scss' as *;
 
 .header {
   margin: 10px 0 -5px;

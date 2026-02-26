@@ -165,6 +165,32 @@ impl Sugarloaf<'_> {
         Ok(instance)
     }
 
+    /// Create a Sugarloaf instance with a pre-built Context (external device/queue mode).
+    pub fn new_with_context<'a>(
+        ctx: Context<'a>,
+        font_library: &FontLibrary,
+        layout: RootStyle,
+    ) -> Result<Sugarloaf<'a>, Box<SugarloafWithErrors<'a>>> {
+        let layer_brush = LayerBrush::new(&ctx);
+        let quad_brush = QuadBrush::new(&ctx);
+        let rich_text_brush = RichTextBrush::new(&ctx);
+        let state = SugarState::new(layout, font_library, &None);
+
+        let instance = Sugarloaf {
+            state,
+            layer_brush,
+            quad_brush,
+            ctx,
+            background_color: Some(wgpu::Color::BLACK),
+            background_image: None,
+            rich_text_brush,
+            graphics: Graphics::default(),
+            filters_brush: None,
+        };
+
+        Ok(instance)
+    }
+
     #[inline]
     pub fn update_font(&mut self, font_library: &FontLibrary) {
         tracing::info!("requested a font change");
@@ -176,9 +202,12 @@ impl Sugarloaf<'_> {
         self.rich_text_brush.clear_atlas();
 
         // Clear the layer atlas to remove old cached images
+        let backend = self.ctx.adapter_info.as_ref()
+            .map(|info| info.backend)
+            .unwrap_or(wgpu::Backend::Metal);
         self.layer_brush.clear_atlas(
             &self.ctx.device,
-            self.ctx.adapter_info.backend,
+            backend,
             &self.ctx,
         );
 
@@ -361,6 +390,11 @@ impl Sugarloaf<'_> {
 
     #[inline]
     pub fn render(&mut self) {
+        if self.ctx.surface().is_none() {
+            tracing::warn!("render() called on external-mode Sugarloaf (no surface). Use render_to_view() instead.");
+            return;
+        }
+
         self.state.compute_dimensions(&mut self.rich_text_brush);
         self.state.compute_updates(
             &mut self.rich_text_brush,
@@ -369,7 +403,7 @@ impl Sugarloaf<'_> {
             &mut self.graphics,
         );
 
-        match self.ctx.surface.get_current_texture() {
+        match self.ctx.surface().unwrap().get_current_texture() {
             Ok(frame) => {
                 let mut encoder = self.ctx.device.create_command_encoder(
                     &wgpu::CommandEncoderDescriptor { label: None },
@@ -583,6 +617,125 @@ impl Sugarloaf<'_> {
             self.quad_brush
                 .render(&mut self.ctx, &self.state, &mut rpass);
             self.rich_text_brush.render(&mut self.ctx, &mut rpass);
+        }
+
+        if self.graphics.bottom_layer.is_some()
+            || self.graphics.has_graphics_on_top_layer()
+        {
+            self.layer_brush.end_frame();
+            self.graphics.clear_top_layer();
+        }
+
+        self.ctx.queue.submit(Some(encoder.finish()));
+        self.reset();
+    }
+
+    /// Render into an externally-provided TextureView.
+    /// The caller is responsible for acquiring the surface texture and presenting it.
+    /// This method creates an encoder, runs all render passes, and submits to the queue.
+    pub fn render_to_view(&mut self, view: &wgpu::TextureView) {
+        self.state.compute_dimensions(&mut self.rich_text_brush);
+        self.state.compute_updates(
+            &mut self.rich_text_brush,
+            &mut self.quad_brush,
+            &mut self.ctx,
+            &mut self.graphics,
+        );
+
+        let mut encoder = self.ctx.device.create_command_encoder(
+            &wgpu::CommandEncoderDescriptor { label: Some("sugarloaf_external_render") },
+        );
+
+        if let Some(layer) = &self.graphics.bottom_layer {
+            self.layer_brush
+                .prepare(&mut encoder, &mut self.ctx, &[&layer.data]);
+        }
+
+        if self.graphics.has_graphics_on_top_layer() {
+            for request in &self.graphics.top_layer {
+                if let Some(entry) = self.graphics.get(&request.id) {
+                    self.layer_brush.prepare_with_handle(
+                        &mut encoder,
+                        &mut self.ctx,
+                        &entry.handle,
+                        &Rectangle {
+                            width: request.width.unwrap_or(entry.width),
+                            height: request.height.unwrap_or(entry.height),
+                            x: request.pos_x,
+                            y: request.pos_y,
+                        },
+                    );
+                }
+            }
+        }
+
+        {
+            let load = if let Some(background_color) = self.background_color {
+                wgpu::LoadOp::Clear(background_color)
+            } else {
+                wgpu::LoadOp::Load
+            };
+
+            let mut rpass =
+                encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    label: Some("sugarloaf_external_pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view,
+                        resolve_target: None,
+                        depth_slice: None,
+                        ops: wgpu::Operations {
+                            load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                });
+
+            if self.graphics.bottom_layer.is_some() {
+                self.layer_brush.render(0, &mut rpass, None);
+            }
+
+            if self.graphics.has_graphics_on_top_layer() {
+                let range_request = if self.graphics.bottom_layer.is_some() {
+                    1..(self.graphics.top_layer.len() + 1)
+                } else {
+                    0..self.graphics.top_layer.len()
+                };
+                for request in range_request {
+                    self.layer_brush.render(request, &mut rpass, None);
+                }
+            }
+            self.quad_brush
+                .render(&mut self.ctx, &self.state, &mut rpass);
+            self.rich_text_brush.render(&mut self.ctx, &mut rpass);
+        }
+
+        // Visual bell overlay
+        if let Some(bell_overlay) = self.state.visual_bell_overlay {
+            let mut overlay_pass =
+                encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                    label: Some("visual_bell"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        depth_slice: None,
+                        view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: None,
+                });
+
+            self.quad_brush.render_single(
+                &mut self.ctx,
+                &bell_overlay,
+                &mut overlay_pass,
+            );
         }
 
         if self.graphics.bottom_layer.is_some()

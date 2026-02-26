@@ -1,4 +1,4 @@
-@import '../../../../layouts/variables.module';
+@use '../../../../layouts/variables.module' as *;
 
 $robot-max-height: calc(100vh - $reservedTopHeight - $actionBarHeight);
 

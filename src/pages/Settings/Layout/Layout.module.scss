@@ -1,4 +1,4 @@
-@import '../../../layouts/variables.module.scss';
+@use '../../../layouts/variables.module.scss' as *;
 
 $size-columns: 200px;
 

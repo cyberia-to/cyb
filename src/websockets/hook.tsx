@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 export type Socket = {
   connected: boolean;
@@ -35,8 +35,8 @@ function useWebSocket(url: string): Socket {
     };
   }, [url]);
 
-  function sendMessage(message: object) {
-    if (!connected || !webSocketRef.current) {
+  const sendMessage = useCallback((message: object) => {
+    if (!webSocketRef.current || webSocketRef.current.readyState !== WebSocket.OPEN) {
       return;
     }
 
@@ -51,14 +51,14 @@ function useWebSocket(url: string): Socket {
     }
 
     webSocketRef.current.send(JSON.stringify(message));
-  }
+  }, []);
 
-  return {
+  return useMemo(() => ({
     connected,
     message,
     sendMessage,
     subscriptions: subscriptions.current,
-  };
+  }), [connected, message, sendMessage]);
 }
 
 export default useWebSocket;

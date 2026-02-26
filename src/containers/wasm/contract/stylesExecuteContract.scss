@@ -1,4 +1,4 @@
-@import '../globalStyle.scss';
+@use '../globalStyle.scss' as *;
 
 .containerExecuteContract {
   @include displayFlexGap;

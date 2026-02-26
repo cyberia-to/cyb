@@ -1,4 +1,4 @@
-@import '../../layouts/variables.module.scss';
+@use '../../layouts/variables.module.scss' as *;
 
 .wrapper {
   width: 62%;

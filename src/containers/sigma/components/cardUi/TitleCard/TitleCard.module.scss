@@ -1,4 +1,4 @@
-@import 'src/style/mixins.scss';
+@use 'src/style/mixins.scss' as *;
 
 .container {
   font-size: 20px;
