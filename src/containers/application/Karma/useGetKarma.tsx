@@ -11,8 +11,7 @@ export const useGetKarma = (address: string) => {
         const response = await queryClient!.karma(address);
 
         return response.karma;
-      } catch (error) {
-        console.error('error', error);
+      } catch {
         return null;
       }
     },

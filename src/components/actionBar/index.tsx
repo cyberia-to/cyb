@@ -41,12 +41,8 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
   const { signerReady } = useSigningClient();
   const location = useLocation();
 
-  const { defaultAccount, commander } = useAppSelector((store) => {
-    return {
-      defaultAccount: store.pocket.defaultAccount,
-      commander: store.commander,
-    };
-  });
+  const defaultAccount = useAppSelector((store) => store.pocket.defaultAccount);
+  const commander = useAppSelector((store) => store.commander);
 
   const address = useAppSelector(selectCurrentAddress);
   const { passport } = usePassportByAddress(address);

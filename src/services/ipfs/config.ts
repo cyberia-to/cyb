@@ -30,6 +30,15 @@ const defaultIpfsOpts: IpfsOptsType = {
     : 'https://gateway.ipfs.cybernode.ai',
 };
 
+function isValidUrl(url: string): boolean {
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const getIpfsOpts = (): IpfsOptsType => {
   // In desktop Tauri, always use local Kubo — ignore localStorage overrides
   if (isTauriDesktop) {
@@ -41,6 +50,12 @@ export const getIpfsOpts = (): IpfsOptsType => {
 
   // Always use EXTERNAL — Tauri uses local Kubo, browser uses cybernode
   ipfsOpts.ipfsNodeType = IPFSNodes.EXTERNAL;
+
+  // Discard stale local/multiaddr URLs from previous Tauri sessions
+  if (ipfsOpts.urlOpts && !isValidUrl(ipfsOpts.urlOpts)) {
+    ipfsOpts.urlOpts = defaultIpfsOpts.urlOpts;
+    ipfsOpts.userGateway = defaultIpfsOpts.userGateway;
+  }
 
   safeLocalStorage.setJSON('ipfsState', ipfsOpts);
 

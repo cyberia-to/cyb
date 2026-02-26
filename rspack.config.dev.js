@@ -63,9 +63,6 @@ module.exports = merge(commonConfig, {
   plugins: [
     new ReactRefreshPlugin({ overlay: false }),
     new rspack.DefinePlugin({
-      ...commonConfig.plugins.find(
-        (plugin) => plugin.constructor.name === 'DefinePlugin'
-      ).definitions,
       'process.env.IS_DEV': JSON.stringify(true),
     }),
   ],

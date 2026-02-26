@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { useLocation } from 'react-router-dom';
 import { useGetKarma } from 'src/containers/application/Karma/useGetKarma';
@@ -45,14 +45,15 @@ function useMenuCounts(address: string | null) {
 
   const { total: unreadSenseTotal } = useAppSelector(selectUnreadCounts);
 
-  async function getTweetCount() {
+  const getTweetCount = useCallback(async () => {
+    if (!address) return;
     try {
       const response = await getTweet(address);
       setTweetsCount(response?.pagination?.total || 0);
-    } catch (error) {
-      console.error(error);
+    } catch {
+      // expected for new accounts
     }
-  }
+  }, [address]);
 
   useEffect(() => {
     if (!address) {
@@ -79,62 +80,62 @@ function useMenuCounts(address: string | null) {
   const { resultGol } = useGetGol(address);
   const badges = Object.keys(resultGol).length ? Object.keys(resultGol).length - 1 : 0;
 
-  async function getCyberlinksCount() {
-    try {
-      const response = await getCyberlinksTotal(address);
-      setCyberlinksCount(response);
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
-  async function getSequence() {
-    try {
-      const response = await queryClient?.getSequence(address);
-      setSequence(response?.sequence || 0);
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
-  async function getEnergy() {
-    try {
-      const allBalances = await queryClient?.getAllBalances(address);
-      const balances = reduceBalances(allBalances);
-
-      if (balances.milliampere && balances.millivolt) {
-        const { milliampere, millivolt } = balances;
-        setEnergy(convertResources(milliampere) * convertResources(millivolt));
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
-  async function getFollow() {
-    try {
-      const addressHash = await getIpfsHash(address);
-      const response = await getFollowers(addressHash);
-
-      if (response?.pagination?.total) {
-        setFollowers(response.pagination.total);
-      }
-    } catch (error) {
-      console.error(error);
-    }
-  }
-
   useEffect(() => {
-    if (!address) {
+    if (!address || !queryClient) {
       return;
     }
 
-    getCyberlinksCount();
-    getFollow();
-    getSequence();
+    async function fetchCyberlinksCount() {
+      try {
+        const response = await getCyberlinksTotal(address!);
+        setCyberlinksCount(response);
+      } catch {
+        // expected for new accounts
+      }
+    }
+
+    async function fetchFollow() {
+      try {
+        const addressHash = await getIpfsHash(address);
+        const response = await getFollowers(addressHash);
+
+        if (response?.pagination?.total) {
+          setFollowers(response.pagination.total);
+        }
+      } catch {
+        // expected for new accounts
+      }
+    }
+
+    async function fetchSequence() {
+      try {
+        const response = await queryClient!.getSequence(address!);
+        setSequence(response?.sequence || 0);
+      } catch {
+        // expected for accounts not on chain
+      }
+    }
+
+    async function fetchEnergy() {
+      try {
+        const allBalances = await queryClient!.getAllBalances(address!);
+        const balances = reduceBalances(allBalances);
+
+        if (balances.milliampere && balances.millivolt) {
+          const { milliampere, millivolt } = balances;
+          setEnergy(convertResources(milliampere) * convertResources(millivolt));
+        }
+      } catch {
+        // expected for new accounts
+      }
+    }
+
+    fetchCyberlinksCount();
+    fetchFollow();
+    fetchSequence();
     getTweetCount();
-    getEnergy();
-  }, [address, getCyberlinksCount, getEnergy, getFollow, getSequence, getTweetCount]);
+    fetchEnergy();
+  }, [address, queryClient, getTweetCount]);
 
   return {
     log: tweetsCount,

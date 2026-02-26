@@ -68,6 +68,72 @@ const balanceFetcher = (address, client) => {
   return client.getAllBalances(address);
 };
 
+function getCalculationBalance(data) {
+  const balances = {};
+  if (Object.keys(data).length > 0) {
+    data.forEach((item) => {
+      balances[item.denom] = parseFloat(item.amount);
+    });
+  }
+
+  return balances;
+}
+
+function getVestingPeriodsData(data, startTime) {
+  const tempData: Slot[] = [];
+  let length = parseFloat(startTime);
+  const vestedAmount = {
+    ...initStateVested,
+  };
+
+  if (data.length > 0) {
+    data.forEach((item) => {
+      const obj: Slot = {};
+      length += parseFloat(item.length);
+      const lengthMs = length * MILLISECONDS_IN_SECOND;
+      obj.length = length * MILLISECONDS_IN_SECOND;
+      const d = new Date();
+      if (lengthMs < Date.parse(d)) {
+        const time = Date.parse(d) - lengthMs;
+        obj.status = 'Liquid';
+        obj.time = `${timeSince(time)} ago`;
+      } else {
+        const time = lengthMs - Date.parse(d);
+        obj.status = 'Unfreezing';
+        obj.time = `${timeSince(time)} left`;
+      }
+      // obj.status = 'empty';
+      item.amount.forEach((itemAmount) => {
+        const amount = {};
+        if (itemAmount.denom === 'millivolt' || itemAmount.denom === 'milliampere') {
+          amount[itemAmount.denom] = parseFloat(itemAmount.amount);
+        } else {
+          amount[itemAmount.denom] = parseFloat(itemAmount.amount);
+        }
+        if (obj.amount) {
+          obj.amount = { ...obj.amount, ...amount };
+        } else {
+          obj.amount = amount;
+        }
+      });
+      if (obj.status !== 'Unfreezing') {
+        if (obj.amount[DENOM_LIQUID]) {
+          vestedAmount[DENOM_LIQUID] += obj.amount[DENOM_LIQUID];
+        }
+        if (obj.amount.milliampere) {
+          vestedAmount.milliampere += obj.amount.milliampere;
+        }
+        if (obj.amount.millivolt) {
+          vestedAmount.millivolt += obj.amount.millivolt;
+        }
+      }
+      tempData.push(obj);
+    });
+  }
+
+  return { tempData, vestedAmount };
+}
+
 function useGetSlots(addressActive) {
   const queryClient = useQueryClient();
   const [slotsData, setSlotsData] = useState<Slot[]>([]);
@@ -91,72 +157,6 @@ function useGetSlots(addressActive) {
     }
   );
 
-  const getCalculationBalance = (data) => {
-    const balances = {};
-    if (Object.keys(data).length > 0) {
-      data.forEach((item) => {
-        balances[item.denom] = parseFloat(item.amount);
-      });
-    }
-
-    return balances;
-  };
-
-  const getVestingPeriodsData = (data, startTime) => {
-    const tempData: Slot[] = [];
-    let length = parseFloat(startTime);
-    const vestedAmount = {
-      ...initStateVested,
-    };
-
-    if (data.length > 0) {
-      data.forEach((item) => {
-        const obj: Slot = {};
-        length += parseFloat(item.length);
-        const lengthMs = length * MILLISECONDS_IN_SECOND;
-        obj.length = length * MILLISECONDS_IN_SECOND;
-        const d = new Date();
-        if (lengthMs < Date.parse(d)) {
-          const time = Date.parse(d) - lengthMs;
-          obj.status = 'Liquid';
-          obj.time = `${timeSince(time)} ago`;
-        } else {
-          const time = lengthMs - Date.parse(d);
-          obj.status = 'Unfreezing';
-          obj.time = `${timeSince(time)} left`;
-        }
-        // obj.status = 'empty';
-        item.amount.forEach((itemAmount) => {
-          const amount = {};
-          if (itemAmount.denom === 'millivolt' || itemAmount.denom === 'milliampere') {
-            amount[itemAmount.denom] = parseFloat(itemAmount.amount);
-          } else {
-            amount[itemAmount.denom] = parseFloat(itemAmount.amount);
-          }
-          if (obj.amount) {
-            obj.amount = { ...obj.amount, ...amount };
-          } else {
-            obj.amount = amount;
-          }
-        });
-        if (obj.status !== 'Unfreezing') {
-          if (obj.amount[DENOM_LIQUID]) {
-            vestedAmount[DENOM_LIQUID] += obj.amount[DENOM_LIQUID];
-          }
-          if (obj.amount.milliampere) {
-            vestedAmount.milliampere += obj.amount.milliampere;
-          }
-          if (obj.amount.millivolt) {
-            vestedAmount.millivolt += obj.amount.millivolt;
-          }
-        }
-        tempData.push(obj);
-      });
-    }
-
-    return { tempData, vestedAmount };
-  };
-
   const getBalacesResource = useCallback(() => {
     setBalacesResource(initBalacesResource);
     if (dataGetAllBalances && dataGetAllBalances !== null) {
@@ -176,7 +176,7 @@ function useGetSlots(addressActive) {
     } else {
       setBalacesResource(initBalacesResource);
     }
-  }, [dataGetAllBalances, getCalculationBalance]);
+  }, [dataGetAllBalances]);
 
   function update() {
     refetchGetAllBalances();
@@ -228,7 +228,7 @@ function useGetSlots(addressActive) {
       }
     };
     getAuth();
-  }, [dataAuthAccounts, getCalculationBalance, getVestingPeriodsData]);
+  }, [dataAuthAccounts]);
 
   useEffect(() => {
     getBalacesResource();
