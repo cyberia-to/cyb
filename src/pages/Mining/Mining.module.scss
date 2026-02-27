@@ -172,6 +172,31 @@
   }
 }
 
+.backendSelect {
+  background: transparent;
+  border: 1px solid rgba(54, 214, 174, 0.3);
+  border-radius: 4px;
+  padding: 4px 8px;
+  color: #ccc;
+  font-size: 13px;
+  cursor: pointer;
+  outline: none;
+
+  &:focus {
+    border-color: #36d6ae;
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  option {
+    background: #1a1a2e;
+    color: #ccc;
+  }
+}
+
 // Submitting indicator
 .submitting {
   display: flex;

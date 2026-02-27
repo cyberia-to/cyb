@@ -37,6 +37,14 @@ endif
 export NDK_HOME ?= $(ANDROID_HOME)/ndk/26.1.10909125
 export PATH := $(JAVA_HOME)/bin:$(ANDROID_HOME)/platform-tools:$(HOME)/.cargo/bin:$(PATH)
 
+# GPU feature flags per platform
+ifdef IS_MACOS
+  CARGO_GPU_FEATURES := --features gpu-metal
+endif
+ifdef IS_LINUX
+  CARGO_GPU_FEATURES := --features gpu-cuda,gpu-wgpu
+endif
+
 # Colors
 BLUE := \033[0;34m
 GREEN := \033[0;32m
@@ -251,8 +259,8 @@ build-tauri: setup-node setup-rust download-kubo ## Build Tauri production bundl
 
 macos: setup-node setup-rust download-kubo ## Build macOS app (.dmg)
 ifdef IS_MACOS
-	@echo -e "$(BLUE)[Build]$(NC) macOS..."
-	@npx @tauri-apps/cli build
+	@echo -e "$(BLUE)[Build]$(NC) macOS (GPU: Metal)..."
+	@npx @tauri-apps/cli build -- $(CARGO_GPU_FEATURES)
 	@echo -e "$(GREEN)[Done]$(NC) macOS: $(TAURI_DIR)/target/release/bundle/dmg/"
 else
 	@echo -e "$(RED)[Error]$(NC) macOS builds require macOS"
@@ -289,7 +297,7 @@ ifdef IS_MACOS
 		APPLE_API_KEY="$(APPLE_API_KEY)" \
 		APPLE_API_ISSUER="$(APPLE_API_ISSUER)" \
 		APPLE_API_KEY_PATH="$(APPLE_API_KEY_PATH)" \
-		cargo tauri build --target aarch64-apple-darwin --config '{"build":{"beforeBuildCommand":""}}'
+		cargo tauri build --target aarch64-apple-darwin --config '{"build":{"beforeBuildCommand":""}}' -- $(CARGO_GPU_FEATURES)
 	@echo -e "$(GREEN)[Done]$(NC) Signed + notarized .app and .dmg"
 	@echo -e "$(BLUE)[Build]$(NC) Building .pkg..."
 	@PKG_SIGNING_IDENTITY="$(PKG_SIGNING_IDENTITY)" \
@@ -326,7 +334,7 @@ ifdef IS_MACOS
 		sed -i '' 's/shellScript = "cargo/shellScript = "export PATH=\\"$$HOME\/.cargo\/bin:$$PATH\\" \&\& cargo/g' \
 			$(TAURI_DIR)/gen/apple/cyb.xcodeproj/project.pbxproj; \
 	fi
-	@npx @tauri-apps/cli ios build --export-method app-store-connect
+	@npx @tauri-apps/cli ios build --export-method app-store-connect -- --features gpu-metal
 	@echo -e "$(GREEN)[Done]$(NC) iOS .ipa built (signed for App Store Connect)"
 	@echo -e "  Upload with: xcrun altool --upload-app -f <ipa-path> --apiKey $(APPLE_API_KEY) --apiIssuer $(APPLE_API_ISSUER)"
 else
@@ -335,8 +343,8 @@ endif
 
 linux: setup-node setup-rust setup-linux download-kubo ## Build Linux app (.deb, .AppImage)
 ifdef IS_LINUX
-	@echo -e "$(BLUE)[Build]$(NC) Linux..."
-	@npx @tauri-apps/cli build
+	@echo -e "$(BLUE)[Build]$(NC) Linux (GPU: CUDA + WGPU)..."
+	@npx @tauri-apps/cli build -- $(CARGO_GPU_FEATURES)
 	@echo -e "$(GREEN)[Done]$(NC) Linux .deb: $(TAURI_DIR)/target/release/bundle/deb/"
 	@echo -e "$(GREEN)[Done]$(NC) Linux .AppImage: $(TAURI_DIR)/target/release/bundle/appimage/"
 else
@@ -352,7 +360,7 @@ ifdef IS_MACOS
 		sed -i '' 's/shellScript = "cargo/shellScript = "export PATH=\\"$$HOME\/.cargo\/bin:$$PATH\\" \&\& cargo/g' \
 			$(TAURI_DIR)/gen/apple/cyb.xcodeproj/project.pbxproj; \
 	fi
-	@npx @tauri-apps/cli ios build
+	@npx @tauri-apps/cli ios build -- --features gpu-metal
 	@echo -e "$(GREEN)[Done]$(NC) iOS: $(TAURI_DIR)/gen/apple/build/"
 else
 	@echo -e "$(RED)[Error]$(NC) iOS builds require macOS with Xcode"

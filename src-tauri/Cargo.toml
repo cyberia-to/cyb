@@ -24,7 +24,8 @@ serde = { version = "1.0.210", features = ["derive"] }
 tauri = { version = "2.10", features = ["devtools"] }
 tauri-plugin-shell = "2"
 tokio = { version = "1.40.0", features = ["full"] }
-uhash-core = { git = "https://github.com/cyberia-to/universal-hash.git", tag = "v0.4.1" }
+uhash-core = "0.4.3"
+uhash-prover = { version = "0.4.3", default-features = false, features = ["cpu"] }
 hex = "0.4"
 dirs = "5.0.1"
 
@@ -42,3 +43,6 @@ opt-level = 3
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
+gpu-metal = ["uhash-prover/metal-backend"]
+gpu-cuda = ["uhash-prover/cuda-backend"]
+gpu-wgpu = ["uhash-prover/gpu-wgpu"]

@@ -31,6 +31,7 @@ import HashrateHero from './components/HashrateHero';
 import StatCard from './components/StatCard';
 import ProofLogEntry from './components/ProofLogEntry';
 import ThreadSelector from './components/ThreadSelector';
+import BackendSelector from './components/BackendSelector';
 import StakingSection from './components/StakingSection';
 import ReferralSection, { loadReferrer, saveReferrer } from './components/ReferralSection';
 import MiningActionBar from './MiningActionBar';
@@ -43,6 +44,7 @@ type MiningStatus = {
   total_hashes: number;
   elapsed_secs: number;
   pending_proofs: number;
+  backend?: string;
 };
 
 type ProofLogEntry_ = {
@@ -234,6 +236,8 @@ function Mining() {
   const [threadCount, setThreadCount] = useState(() =>
     Math.max(1, (navigator.hardwareConcurrency || 4) - 1)
   );
+  const [backend, setBackend] = useState<string>('auto');
+  const [availableBackends, setAvailableBackends] = useState<string[]>(['cpu']);
   const [sessionLiMined, setSessionLiMined] = useState(loadSessionLi);
   const [referrer, setReferrer] = useState(() => {
     // Check URL ?ref= param first, then localStorage
@@ -251,6 +255,18 @@ function Mining() {
   const miningAddressRef = useRef<string | undefined>(undefined);
   const wasmMinerRef = useRef<WasmMiner | null>(null);
   const isNative = isTauri();
+
+  // Fetch available backends on mount (Tauri only)
+  useEffect(() => {
+    if (!isNative) return;
+    invoke('get_mining_params')
+      .then((params: any) => {
+        if (params?.available_backends) {
+          setAvailableBackends(params.available_backends);
+        }
+      })
+      .catch(() => {});
+  }, [isNative]);
 
   // Track current block/epoch so proof submission uses the values from when mining started
   const blockHashRef = useRef<string>('');
@@ -353,6 +369,7 @@ function Mining() {
           epochId: epochId ?? 0,
           blockTimestamp: blockTimestamp,
           threads: threadCount,
+          backend,
         });
       } else {
         if (!wasmMinerRef.current) {
@@ -365,7 +382,7 @@ function Mining() {
     } catch (err) {
       console.error('[Mining] Failed to start mining', err);
     }
-  }, [difficulty, address, latestBlock, epochId, threadCount, isNative]);
+  }, [difficulty, address, latestBlock, epochId, threadCount, backend, isNative]);
 
   // Submit a single proof to chain
   const submitSingleProof = useCallback(
@@ -857,12 +874,25 @@ function Mining() {
               )}
               {' '}· <span style={{ opacity: 0.6 }}>refresh {refreshCountdown}s</span>
             </div>
-            <ThreadSelector
-              value={threadCount}
-              onChange={setThreadCount}
-              max={navigator.hardwareConcurrency || 4}
-              disabled={autoMining}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+              {isNative && availableBackends.length > 1 && (
+                <BackendSelector
+                  value={backend}
+                  onChange={setBackend}
+                  availableBackends={availableBackends}
+                  activeBackend={miningStatus?.backend}
+                  disabled={autoMining}
+                />
+              )}
+              {(backend === 'auto' || backend === 'cpu') && (
+                <ThreadSelector
+                  value={threadCount}
+                  onChange={setThreadCount}
+                  max={navigator.hardwareConcurrency || 4}
+                  disabled={autoMining}
+                />
+              )}
+            </div>
           </div>
 
           {/* Staking section */}
