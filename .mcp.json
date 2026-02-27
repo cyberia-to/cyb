@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "bostrom": {
+      "command": "npx",
+      "args": ["bostrom-mcp@0.3.0"]
+    }
+  }
+}

@@ -12,7 +12,7 @@ type ConfigResponse = {
   period_duration: number;
   difficulty: number;
   base_reward: string;
-  alpha_permille: number;
+  alpha_micros: number;
   lithium_epoch_duration_blocks: number;
   target_proofs_per_window: number;
 };

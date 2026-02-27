@@ -81,6 +81,7 @@ export type LithiumMinerEpochStatsResponse = {
 
 export type LithiumEmissionInfoResponse = {
   epoch_id: number;
+  alpha_micros: number;
   mining_emission: string;
   staking_emission: string;
   referral_emission: string;

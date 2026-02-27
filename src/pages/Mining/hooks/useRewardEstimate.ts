@@ -12,8 +12,8 @@ function useRewardEstimate(
       : { epoch_status: {} } // dummy query when no difficulty
   );
 
-  // Query config for alpha_permille (staking/mining split).
-  // calculate_reward response does NOT include alpha_permille,
+  // Query config for alpha_micros (staking/mining split).
+  // calculate_reward response does NOT include alpha_micros,
   // so we must get it from config separately.
   const { data: configData } = useQueryContract(LITIUM_MINE_CONTRACT, {
     config: {},
@@ -24,11 +24,11 @@ function useRewardEstimate(
       ? Number((data as any).gross_reward ?? 0) / 1_000_000
       : 0;
 
-  // Lithium v1 reward split: mining gets (1000 - alpha_permille) / 1000
+  // Lithium reward split: mining gets (1_000_000 - alpha_micros) / 1_000_000
   // and of the mining portion, 10% goes to referral if referrer is set.
   // Show the miner-received amount (worst case with referral deduction).
-  const alphaPermille = (configData as any)?.alpha_permille ?? 0;
-  const miningFraction = (1000 - Number(alphaPermille)) / 1000;
+  const alphaMicros = (configData as any)?.alpha_micros ?? 0;
+  const miningFraction = (1_000_000 - Number(alphaMicros)) / 1_000_000;
   const referralCut = 0.1; // 10% of mining portion
   const minerReward = grossReward * miningFraction * (1 - referralCut);
 
