@@ -12,6 +12,9 @@ function useStakeInfo(address: string | undefined) {
   const [counter, setCounter] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Store latest fetch function in a ref to avoid interval churn
+  const fetchRef = useRef<() => void>(() => {});
+
   const fetchStakeInfo = useCallback(async () => {
     if (!queryClient || !address) {
       setStakeInfo(undefined);
@@ -32,20 +35,14 @@ function useStakeInfo(address: string | undefined) {
     }
   }, [queryClient, address]);
 
+  fetchRef.current = fetchStakeInfo;
+
   useEffect(() => {
     fetchStakeInfo();
   }, [fetchStakeInfo, counter]);
 
-  // Periodic polling
-  useEffect(() => {
-    if (!queryClient || !address) return undefined;
-    intervalRef.current = setInterval(() => {
-      fetchStakeInfo();
-    }, POLL_INTERVAL);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [queryClient, address, fetchStakeInfo]);
+  // Periodic polling disabled — manual refetch via refetch() callback
+  void intervalRef;
 
   const refetch = useCallback(() => {
     setCounter((c) => c + 1);

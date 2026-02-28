@@ -7,6 +7,10 @@ let currentNonce = 0;
 let numThreads = 1;
 const BATCH_SIZE = 100;
 
+// Throttle progress messages: max 2 per second
+const PROGRESS_INTERVAL_MS = 500;
+let lastProgressTime = 0;
+
 type InMessage =
   | { type: 'init' }
   | { type: 'start'; threadId: number; numThreads: number; address: string; blockHash: string; dataHash: string; difficulty: number }
@@ -26,6 +30,7 @@ self.onmessage = async (e: MessageEvent<InMessage>) => {
       numThreads = msg.numThreads;
       currentNonce = msg.threadId;
       totalHashes = 0;
+      lastProgressTime = 0;
       miner = new LithiumMiner(msg.address, msg.blockHash, msg.dataHash, msg.difficulty);
       mining = true;
       mine();
@@ -41,21 +46,34 @@ self.onmessage = async (e: MessageEvent<InMessage>) => {
 function mine() {
   if (!mining || !miner) return;
 
-  const result = JSON.parse(miner.mine_batch(currentNonce, numThreads, BATCH_SIZE));
-  totalHashes += result.count;
-  currentNonce += numThreads * BATCH_SIZE;
+  // Run multiple batches before yielding to keep CPU busy but allow message processing
+  const batchesPerYield = 10;
+  for (let b = 0; b < batchesPerYield; b++) {
+    if (!mining || !miner) return;
 
-  if (result.found) {
-    self.postMessage({
-      type: 'proof',
-      hash: result.hash,
-      nonce: result.nonce,
-      totalHashes,
-    });
+    const result = JSON.parse(miner.mine_batch(currentNonce, numThreads, BATCH_SIZE));
+    totalHashes += result.count;
+    currentNonce += numThreads * BATCH_SIZE;
+
+    if (result.found) {
+      self.postMessage({
+        type: 'proof',
+        hash: result.hash,
+        nonce: result.nonce,
+        totalHashes,
+      });
+    }
   }
 
   if (mining) {
-    self.postMessage({ type: 'progress', totalHashes });
-    setTimeout(mine, 0);
+    // Throttle progress messages to avoid flooding the main thread
+    const now = performance.now();
+    if (now - lastProgressTime >= PROGRESS_INTERVAL_MS) {
+      self.postMessage({ type: 'progress', totalHashes });
+      lastProgressTime = now;
+    }
+
+    // Use setTimeout to yield to the event loop so 'stop' messages can be processed
+    setTimeout(mine, 1);
   }
 }

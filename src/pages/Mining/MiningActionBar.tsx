@@ -1,5 +1,7 @@
 import ActionBar from 'src/components/actionBar';
 import { Dots } from 'src/components';
+import BackendSelector from './components/BackendSelector';
+import ThreadSelector from './components/ThreadSelector';
 
 type MiningStatus = {
   mining: boolean;
@@ -18,6 +20,15 @@ type Props = {
   miningStatus: MiningStatus | null;
   onStartMining: () => void;
   onStopMining: () => void;
+  // Backend & thread selectors
+  backend: string;
+  onBackendChange: (v: string) => void;
+  availableBackends: string[];
+  activeBackend?: string;
+  threadCount: number;
+  onThreadCountChange: (v: number) => void;
+  maxThreads: number;
+  isNative: boolean;
 };
 
 function MiningActionBar({
@@ -29,48 +40,67 @@ function MiningActionBar({
   miningStatus,
   onStartMining,
   onStopMining,
+  backend,
+  onBackendChange,
+  availableBackends,
+  activeBackend,
+  threadCount,
+  onThreadCountChange,
+  maxThreads,
+  isNative,
 }: Props) {
   const canMine = blockReady && difficulty && address;
-  const isMining = miningStatus?.mining;
+  const isMining = miningStatus?.mining || autoMining;
+  const disabled = isMining;
 
-  if (submitting) {
-    return (
-      <ActionBar
-        button={{
-          text: 'Stop Mining',
-          onClick: onStopMining,
-        }}
-        text={<>Submitting proof<Dots /></>}
+  const selectors = (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
+      {isNative && availableBackends.length > 1 && (
+        <BackendSelector
+          value={backend}
+          onChange={onBackendChange}
+          availableBackends={availableBackends}
+          activeBackend={activeBackend}
+          disabled={disabled}
+        />
+      )}
+      <ThreadSelector
+        value={threadCount}
+        onChange={onThreadCountChange}
+        max={maxThreads}
+        disabled={disabled}
       />
-    );
-  }
+    </span>
+  );
 
-  if (isMining || autoMining) {
-    return (
-      <ActionBar
-        button={{
-          text: 'Stop Mining',
-          onClick: onStopMining,
-        }}
-        text={`${miningStatus?.hashrate.toFixed(0) || 0} H/s | auto-submit on`}
-      />
-    );
+  // Status text: always a single line, fixed structure
+  let statusText: React.ReactNode = null;
+  if (isMining) {
+    statusText = submitting
+      ? <> Submitting proof<Dots /></>
+      : <> {miningStatus?.hashrate.toFixed(0) || 0} H/s</>;
+  } else if (!canMine) {
+    const missingParts = [
+      !address && 'wallet',
+      !blockReady && 'block data',
+      !difficulty && 'difficulty',
+    ].filter(Boolean);
+    statusText = <> Waiting: {missingParts.join(', ')}...</>;
   }
-
-  const missingParts = [
-    !address && 'wallet',
-    !blockReady && 'block data (loading...)',
-    !difficulty && 'difficulty (loading...)',
-  ].filter(Boolean);
 
   return (
     <ActionBar
       button={{
-        text: 'Start Mining',
-        onClick: onStartMining,
-        disabled: !canMine,
+        text: isMining ? 'Stop Mining' : 'Start Mining',
+        onClick: isMining ? onStopMining : onStartMining,
+        disabled: !isMining && !canMine,
       }}
-      text={!canMine ? `Waiting for: ${missingParts.join(', ')}` : 'Auto-submit enabled'}
+      text={
+        <>
+          {selectors}
+          {statusText}
+        </>
+      }
     />
   );
 }

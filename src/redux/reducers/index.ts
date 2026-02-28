@@ -12,6 +12,7 @@ import currentAccountReducer from '../features/currentAccount';
 import ibcDenomReducer from '../features/ibcDenom';
 import pocketReducer from '../features/pocket';
 import warpReducer from '../features/warp';
+import miningReducer from '../features/mining';
 import backendReducer from './backend';
 import bandwidthReducer from './bandwidth';
 import golReducer from './gol';
@@ -26,6 +27,7 @@ const rootReducer = {
   commander: commanderReducer,
   sense: senseReducer,
   warp: warpReducer,
+  mining: miningReducer,
   ibcDenom: ibcDenomReducer,
   scripting: scriptingReducer,
   hub: hubReducer,

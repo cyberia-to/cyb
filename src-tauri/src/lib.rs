@@ -18,6 +18,8 @@ use server::start_server;
 use tauri::generate_handler;
 use tauri::Manager;
 #[cfg(desktop)]
+use tauri::RunEvent;
+#[cfg(desktop)]
 use tauri::WebviewWindow;
 
 #[cfg(desktop)]
@@ -161,7 +163,7 @@ pub fn run() {
                     println!("[CYB.AI] Server is started!");
                 });
 
-                build_tauri_app()
+                let app = build_tauri_app()
                     .setup(|app| {
                         println!("[CYB.AI] Starting setup...");
 
@@ -187,8 +189,33 @@ pub fn run() {
 
                         Ok(())
                     })
-                    .run(tauri::generate_context!())
-                    .expect("error while running tauri application");
+                    .build(tauri::generate_context!())
+                    .expect("error while building tauri application");
+
+                app.run(|_app_handle, event| {
+                    if let RunEvent::Exit = event {
+                        println!("[CYB.AI] App exiting — cleaning up...");
+
+                        // Stop IPFS daemon
+                        if let Err(e) = stop_ipfs() {
+                            eprintln!("[CYB.AI] Failed to stop IPFS: {}", e);
+                        }
+                        // Kill IPFS child process directly if shutdown command didn't work
+                        if let Ok(mut guard) = ipfs::IPFS_CHILD.lock() {
+                            if let Some(ref mut child) = *guard {
+                                let _ = child.kill();
+                                let _ = child.wait();
+                                println!("[CYB.AI] IPFS child process killed");
+                            }
+                            *guard = None;
+                        }
+
+                        // Stop mining (releases GPU/CPU resources)
+                        let state = _app_handle.state::<Arc<MiningState>>();
+                        state.mining.store(false, std::sync::atomic::Ordering::SeqCst);
+                        println!("[CYB.AI] Mining stopped");
+                    }
+                });
             });
     }
 

@@ -15,7 +15,6 @@ function useLiBalance(address: string | undefined) {
     },
     {
       enabled: !!queryClient && !!address,
-      refetchInterval: 30_000,
     }
   );
 

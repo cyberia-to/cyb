@@ -1,5 +1,8 @@
 import { useCallback, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { LITIUM_STAKE_CONTRACT, LI_DENOM } from 'src/constants/mining';
+import { routes } from 'src/routes';
+import { trimString } from 'src/utils/utils';
 import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 import useAutoSigner from '../hooks/useAutoSigner';
 import useStakeInfo from '../hooks/useStakeInfo';
@@ -13,7 +16,7 @@ function StakingSection() {
   const [stakeAmount, setStakeAmount] = useState('');
   const [unstakeAmount, setUnstakeAmount] = useState('');
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState<{ ok: boolean; txHash?: string; error?: string } | null>(null);
 
   const stakedLi = stakeInfo
     ? Number(stakeInfo.staked_amount) / 1_000_000
@@ -32,7 +35,7 @@ function StakingSection() {
     async (msg: Record<string, unknown>, funds?: { amount: string; denom: string }[]) => {
       if (!signer || !signingClient || !address) return;
       setBusy(true);
-      setStatus('');
+      setStatus(null);
       try {
         const [account] = await signer.getAccounts();
         const result = await signingClient.execute(
@@ -43,11 +46,10 @@ function StakingSection() {
           '',
           funds
         );
-        setStatus(`OK: ${result.transactionHash.slice(0, 12)}...`);
-        // Wait for next block then refetch staking data
+        setStatus({ ok: true, txHash: result.transactionHash });
         setTimeout(() => refetch(), 7000);
       } catch (err: any) {
-        setStatus(`Error: ${err?.message?.slice(0, 80) || 'Failed'}`);
+        setStatus({ ok: false, error: err?.message?.slice(0, 120) || 'Failed' });
       } finally {
         setBusy(false);
       }
@@ -166,7 +168,19 @@ function StakingSection() {
         </div>
       </div>
 
-      {status && <div className={styles.stakingStatus}>{status}</div>}
+      {status && (
+        <div className={styles.stakingStatus}>
+          {status.ok && status.txHash ? (
+            <Link to={routes.txExplorer.getLink(status.txHash)} style={{ color: '#36d6ae' }}>
+              TX: {trimString(status.txHash, 10, 6)}
+            </Link>
+          ) : status.error ? (
+            <span style={{ color: '#ef4444' }} title={status.error}>
+              Error: {status.error.slice(0, 80)}
+            </span>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

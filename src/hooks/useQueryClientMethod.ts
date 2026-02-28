@@ -5,7 +5,8 @@ import { useQueryClient } from 'src/contexts/queryClient';
 
 function useQueryClientMethod<T extends keyof CyberClient>(
   methodName: T,
-  params?: Parameters<CyberClient[T]>
+  params?: Parameters<CyberClient[T]>,
+  options?: { refetchInterval?: number | false }
 ) {
   const queryClient = useQueryClient();
 
@@ -18,6 +19,8 @@ function useQueryClientMethod<T extends keyof CyberClient>(
     stableParamsRef.current = params;
   }
   const stableParams = stableParamsRef.current;
+
+  const refetchInterval = options?.refetchInterval ?? false;
 
   const { isLoading, data, error, refetch, dataUpdatedAt } = useQuery<
     unknown,
@@ -37,8 +40,8 @@ function useQueryClientMethod<T extends keyof CyberClient>(
     {
       enabled: !!queryClient,
       keepPreviousData: true,
-      refetchInterval: 15_000,
-      staleTime: 10_000,
+      refetchInterval,
+      staleTime: typeof refetchInterval === 'number' ? refetchInterval - 1000 : Infinity,
     }
   );
 

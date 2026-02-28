@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Display, DisplayTitle, MainContainer, Dots } from 'src/components';
+import { Display, DisplayTitle, MainContainer } from 'src/components';
 import Pill from 'src/components/Pill/Pill';
 import useQueryContract from 'src/hooks/contract/useQueryContract';
 import { LITIUM_MINE_CONTRACT, UHASH_RELAY_URL, SUBMIT_COOLDOWN_MS } from 'src/constants/mining';
@@ -30,11 +30,12 @@ import useBurnStats from './hooks/useBurnStats';
 import HashrateHero from './components/HashrateHero';
 import StatCard from './components/StatCard';
 import ProofLogEntry from './components/ProofLogEntry';
-import ThreadSelector from './components/ThreadSelector';
-import BackendSelector from './components/BackendSelector';
 import StakingSection from './components/StakingSection';
 import ReferralSection, { loadReferrer, saveReferrer } from './components/ReferralSection';
+import SimulatorSection from './components/SimulatorSection';
 import MiningActionBar from './MiningActionBar';
+import { useDispatch } from 'react-redux';
+import { setMiningActive } from 'src/redux/features/mining';
 import { WasmMiner } from './wasmMiner';
 import styles from './Mining.module.scss';
 
@@ -190,18 +191,19 @@ async function relayProof(
 }
 
 function Mining() {
+  const dispatch = useDispatch();
   const { signer, signingClient, address } = useAutoSigner();
 
-  const { data: epochData } = useQueryContract(LITIUM_MINE_CONTRACT, {
+  const { data: epochData, refetch: refetchEpoch } = useQueryContract(LITIUM_MINE_CONTRACT, {
     epoch_status: {},
   });
-  const { data: difficultyData } = useQueryContract(LITIUM_MINE_CONTRACT, {
+  const { data: difficultyData, refetch: refetchDifficulty } = useQueryContract(LITIUM_MINE_CONTRACT, {
     difficulty: {},
   });
   const { data: targetData } = useQueryContract(LITIUM_MINE_CONTRACT, {
     target: {},
   });
-  const { data: proofStatsData } = useQueryContract(LITIUM_MINE_CONTRACT, {
+  const { data: proofStatsData, refetch: refetchProofStats } = useQueryContract(LITIUM_MINE_CONTRACT, {
     proof_stats: {},
   });
 
@@ -225,7 +227,7 @@ function Mining() {
   const minerEpochProofCount =
     address && epochId !== undefined ? minerEpochStats?.proof_count ?? 0 : 0;
 
-  const latestBlock = useLatestBlock();
+  const { block: latestBlock, refetchBlock } = useLatestBlock();
   const { emission } = useEmissionInfo();
   const { burnStats } = useBurnStats();
 
@@ -236,9 +238,10 @@ function Mining() {
   const [threadCount, setThreadCount] = useState(() =>
     Math.max(1, (navigator.hardwareConcurrency || 4) - 1)
   );
-  const [backend, setBackend] = useState<string>('auto');
+  const [backend, setBackend] = useState<string>('cpu');
   const [availableBackends, setAvailableBackends] = useState<string[]>(['cpu']);
   const [sessionLiMined, setSessionLiMined] = useState(loadSessionLi);
+  const [simOpen, setSimOpen] = useState(false);
   const [referrer, setReferrer] = useState(() => {
     // Check URL ?ref= param first, then localStorage
     const params = new URLSearchParams(window.location.search);
@@ -290,24 +293,35 @@ function Mining() {
     useRewardEstimate(difficulty, hashrate);
   const samples = useHashrateSamples(hashrate, autoMining);
   const { uniqueMiners, totalProofs, avgDifficulty } = useMinerStats();
-  const { networkHashrate, similarDevices, minProfitable, dataUpdatedAt } = usePeerEstimate(hashrate);
+  const { networkHashrate, similarDevices, minProfitable } = usePeerEstimate(hashrate);
 
-  // Countdown to next contract data refresh (15s refetch interval)
-  const [refreshCountdown, setRefreshCountdown] = useState(15);
+  // Single 30s interval to refetch contract data — avoids react-query's
+  // internal setInterval which causes timer cascade in WebKit
+  const [refreshCountdown, setRefreshCountdown] = useState(30);
+  const lastRefetchRef = useRef(Date.now());
+
   useEffect(() => {
-    if (!dataUpdatedAt) return;
-    const tick = () => {
-      const elapsed_ = (Date.now() - dataUpdatedAt) / 1000;
-      setRefreshCountdown(Math.max(0, Math.ceil(15 - elapsed_)));
-    };
-    tick();
-    const id = setInterval(tick, 1000);
-    return () => clearInterval(id);
-  }, [dataUpdatedAt]);
+    const REFETCH_INTERVAL = 30_000;
+    const TICK = 1000;
+    const timer = setInterval(() => {
+      const elapsed_ = Date.now() - lastRefetchRef.current;
+      const remaining = Math.max(0, Math.ceil((REFETCH_INTERVAL - elapsed_) / 1000));
+      setRefreshCountdown(remaining);
+      if (elapsed_ >= REFETCH_INTERVAL) {
+        lastRefetchRef.current = Date.now();
+        refetchEpoch();
+        refetchDifficulty();
+        refetchProofStats();
+        refetchBlock();
+      }
+    }, TICK);
+    return () => clearInterval(timer);
+  }, [refetchEpoch, refetchDifficulty, refetchProofStats, refetchBlock]);
 
-  // Keep autoMining ref in sync with state and persist to localStorage
+  // Keep autoMining ref in sync with state, persist to localStorage, and update Redux
   useEffect(() => {
     autoMiningRef.current = autoMining;
+    dispatch(setMiningActive(autoMining));
     try {
       localStorage.setItem(MINING_ACTIVE_KEY, autoMining ? '1' : '');
       if (autoMining && miningAddressRef.current) {
@@ -318,7 +332,7 @@ function Mining() {
     } catch {
       // ignore
     }
-  }, [autoMining]);
+  }, [autoMining, dispatch]);
 
   // Persist proof log and session LI to localStorage
   useEffect(() => {
@@ -581,21 +595,25 @@ function Mining() {
     }
   }, [submitSingleProof]);
 
+  // Store processQueue in a ref so the poll interval never needs to be recreated
+  const processQueueRef = useRef(processQueue);
+  processQueueRef.current = processQueue;
+
   // Poll mining status and enqueue proofs
   const startPolling = useCallback(() => {
     stopPolling();
-    pollRef.current = setInterval(async () => {
+    pollRef.current = setInterval(async () => {  // eslint-disable-line
       try {
         let status: MiningStatus;
         if (isNative) {
           status = (await invoke('get_mining_status')) as MiningStatus;
           // Compute 30s rolling hashrate on JS side (Rust reports lifetime avg)
           const now = Date.now();
-          hashSnapshotsRef.current.push({ time: now, hashes: status.total_hashes });
           const cutoff = now - 30_000;
-          hashSnapshotsRef.current = hashSnapshotsRef.current.filter(
-            (s) => s.time >= cutoff
-          );
+          while (hashSnapshotsRef.current.length > 0 && hashSnapshotsRef.current[0].time < cutoff) {
+            hashSnapshotsRef.current.shift();
+          }
+          hashSnapshotsRef.current.push({ time: now, hashes: status.total_hashes });
           if (hashSnapshotsRef.current.length >= 2) {
             const oldest = hashSnapshotsRef.current[0];
             const newest =
@@ -626,25 +644,32 @@ function Mining() {
           }
 
           if (proofs.length > 0) {
-            proofQueueRef.current.push(...proofs);
+            const MAX_QUEUE = 50;
+            if (proofQueueRef.current.length < MAX_QUEUE) {
+              proofQueueRef.current.push(...proofs.slice(0, MAX_QUEUE - proofQueueRef.current.length));
+            }
             console.log(
               `[Mining] ${proofs.length} proof(s) queued, total pending: ${proofQueueRef.current.length}`
             );
           }
         }
 
-        processQueue();
+        processQueueRef.current();
       } catch (err) {
         console.error('[Mining] Poll error', err);
       }
-    }, 500);
-  }, [stopPolling, processQueue, isNative]);
+    }, 1000);
+  }, [stopPolling, isNative]);
 
-  // Cleanup on unmount
+  // Cleanup on unmount — stop mining in ALL backends to release CPU/GPU
   useEffect(() => {
     return () => {
       stopPolling();
-      if (!isNative && wasmMinerRef.current) {
+      if (isNative) {
+        // Stop Tauri mining thread + release GPU solver
+        invoke('stop_mining').catch(() => {});
+      }
+      if (wasmMinerRef.current) {
         wasmMinerRef.current.destroy();
         wasmMinerRef.current = null;
       }
@@ -770,7 +795,7 @@ function Mining() {
     <MainContainer>
       <Display title={<DisplayTitle title="Mining" />}>
         <div className={styles.wrapper}>
-          {/* Header: wallet + status */}
+          {/* Header: wallet + status + simulator toggle */}
           <div className={styles.header}>
             <div className={styles.walletInfo}>
               {address ? trimString(address, 12, 6) : 'No wallet'}
@@ -785,11 +810,23 @@ function Mining() {
                 </button>
               )}
             </div>
-            <Pill
-              color={autoMining ? 'green' : 'black'}
-              text={autoMining ? 'Mining' : 'Idle'}
-            />
+            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+              <button
+                type="button"
+                className={styles.simToggleBtn}
+                onClick={() => setSimOpen((v) => !v)}
+              >
+                {simOpen ? 'Hide Simulator' : 'Simulator'}
+              </button>
+              <Pill
+                color={autoMining ? 'green' : 'black'}
+                text={autoMining ? 'Mining' : 'Idle'}
+              />
+            </div>
           </div>
+
+          {/* Simulator (collapsible) */}
+          <SimulatorSection open={simOpen} />
 
           {/* Hero: big hashrate + sparkline */}
           <HashrateHero
@@ -854,42 +891,50 @@ function Mining() {
             </div>
           )}
 
-          {/* Network info + thread selector */}
-          <div className={styles.networkRow}>
-            <div>
-              Difficulty: {difficulty ?? '...'}{difficulty !== undefined && ' bits'}
-              {minProfitable > 0 && difficulty !== undefined && difficulty < minProfitable && (
-                <span style={{ color: '#f5a623' }}> (min profitable: {minProfitable})</span>
-              )}
-              {' '}· Epoch: {epochId ?? '...'} ·
-              Proofs: {proofStats?.proof_count ?? '...'}/
-              {targetSolutions ?? '...'} · My proofs: {minerEpochProofCount} ·
-              Net: {formatHashrate(networkHashrate)} ·{' '}
-              {similarDevices > 0
-                ? `~${similarDevices} similar devices`
-                : '\u2014'}{' '}
-              · {uniqueMiners} all-time miners
-              {latestBlock && (
-                <> · Block: {latestBlock.height}</>
-              )}
-              {' '}· <span style={{ opacity: 0.6 }}>refresh {refreshCountdown}s</span>
+          {/* Network info */}
+          <div className={styles.sectionBox}>
+            <div className={styles.networkHeader}>
+              <span className={styles.sectionTitle}>Network</span>
+              <span className={styles.refreshBadge}>refresh {refreshCountdown}s</span>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
-              {isNative && availableBackends.length > 1 && (
-                <BackendSelector
-                  value={backend}
-                  onChange={setBackend}
-                  availableBackends={availableBackends}
-                  activeBackend={miningStatus?.backend}
-                  disabled={autoMining}
-                />
-              )}
-              {(backend === 'auto' || backend === 'cpu') && (
-                <ThreadSelector
-                  value={threadCount}
-                  onChange={setThreadCount}
-                  max={navigator.hardwareConcurrency || 4}
-                  disabled={autoMining}
+            <div className={styles.statsGrid}>
+              <StatCard
+                label="Difficulty"
+                value={difficulty !== undefined ? `${difficulty}` : '...'}
+                suffix={difficulty !== undefined ? (
+                  minProfitable > 0 && difficulty < minProfitable
+                    ? `bits (min: ${minProfitable})`
+                    : 'bits'
+                ) : undefined}
+              />
+              <StatCard
+                label="Epoch"
+                value={epochId ?? '...'}
+              />
+              <StatCard
+                label="Proofs"
+                value={`${proofStats?.proof_count ?? '...'} / ${targetSolutions ?? '...'}`}
+              />
+              <StatCard
+                label="My proofs"
+                value={minerEpochProofCount}
+              />
+              <StatCard
+                label="Net hashrate"
+                value={formatHashrate(networkHashrate)}
+              />
+              <StatCard
+                label="Similar devices"
+                value={similarDevices > 0 ? `~${similarDevices}` : '\u2014'}
+              />
+              <StatCard
+                label="All-time miners"
+                value={uniqueMiners}
+              />
+              {latestBlock && (
+                <StatCard
+                  label="Block"
+                  value={latestBlock.height}
                 />
               )}
             </div>
@@ -904,30 +949,33 @@ function Mining() {
             onReferrerChange={setReferrer}
           />
 
-          {/* Submitting indicator */}
-          {submitting && (
-            <div className={styles.submitting}>
-              Submitting proof
-              <Dots />
-            </div>
-          )}
-
-          {/* Proof log */}
-          {proofLog.length > 0 && (
-            <div className={styles.proofLog}>
-              <span className={styles.proofLogTitle}>Recent Proofs</span>
-              {proofLog.map((entry, i) => (
-                <ProofLogEntry
-                  key={`${entry.timestamp}-${i}`}
-                  index={proofLog.length - i}
-                  hash={entry.hash}
-                  txHash={entry.txHash}
-                  error={entry.error}
-                  timestamp={entry.timestamp}
-                />
-              ))}
-            </div>
-          )}
+          {/* Proof summary */}
+          {proofLog.length > 0 && (() => {
+            const accepted = proofLog.filter((p) => p.txHash).length;
+            const failed = proofLog.filter((p) => p.error).length;
+            const total = accepted + failed;
+            const rate = total > 0 ? ((accepted / total) * 100).toFixed(0) : '—';
+            const last = proofLog[0];
+            return (
+              <div className={styles.sectionBox}>
+                <span className={styles.sectionTitle}>Proofs</span>
+                <div className={styles.statsGrid}>
+                  <StatCard label="Accepted" value={accepted} />
+                  <StatCard label="Failed" value={failed} />
+                  <StatCard label="Success rate" value={`${rate}%`} />
+                </div>
+                {last && (
+                  <ProofLogEntry
+                    index={proofLog.length}
+                    hash={last.hash}
+                    txHash={last.txHash}
+                    error={last.error}
+                    timestamp={last.timestamp}
+                  />
+                )}
+              </div>
+            );
+          })()}
         </div>
       </Display>
 
@@ -940,6 +988,14 @@ function Mining() {
         miningStatus={miningStatus}
         onStartMining={handleStartMining}
         onStopMining={handleStopMining}
+        backend={backend}
+        onBackendChange={setBackend}
+        availableBackends={availableBackends}
+        activeBackend={miningStatus?.backend}
+        threadCount={threadCount}
+        onThreadCountChange={setThreadCount}
+        maxThreads={navigator.hardwareConcurrency || 4}
+        isNative={isNative}
       />
     </MainContainer>
   );

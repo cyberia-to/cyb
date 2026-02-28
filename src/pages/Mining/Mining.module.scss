@@ -108,6 +108,10 @@
   color: #36d6ae;
   font-size: 24px;
   font-weight: bold;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .statCardSuffix {
@@ -138,15 +142,18 @@
   }
 }
 
-// Network info + thread selector row
-.networkRow {
+// Network header + controls
+.networkHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 20px;
-  font-size: 14px;
-  color: #999;
 }
+
+.refreshBadge {
+  font-size: 11px;
+  color: #555;
+}
+
 
 // Thread selector
 .threadSelector {
@@ -197,14 +204,6 @@
   }
 }
 
-// Submitting indicator
-.submitting {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 14px;
-  color: #777;
-}
 
 // Proof log
 .proofLog {
@@ -358,4 +357,149 @@
   color: #36d6ae;
   font-family: monospace;
   font-size: 13px;
+}
+
+// Simulator toggle button
+.simToggleBtn {
+  background: rgba(54, 214, 174, 0.1);
+  border: 1px solid rgba(54, 214, 174, 0.3);
+  border-radius: 4px;
+  padding: 4px 12px;
+  color: #36d6ae;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover {
+    background: rgba(54, 214, 174, 0.2);
+  }
+}
+
+// Simulator section
+.simulatorSection {
+  display: grid;
+  gap: 16px;
+  padding: 16px;
+  border: 1px solid rgba(54, 214, 174, 0.2);
+  border-radius: 4px;
+  background: rgba(54, 214, 174, 0.03);
+}
+
+.simSliders {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+
+  @media (max-width: 900px) {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
+  }
+}
+
+.simInputRow {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.simInputHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.simInputLabel {
+  font-size: 12px;
+  color: #777;
+  white-space: nowrap;
+}
+
+.simInputFieldWrap {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.simInputField {
+  width: 80px;
+  background: transparent !important;
+  border: 1px solid rgba(54, 214, 174, 0.25) !important;
+  border-radius: 3px;
+  padding: 2px 6px;
+  color: #36d6ae;
+  font-size: 13px;
+  font-family: monospace;
+  text-align: right;
+  outline: none !important;
+  box-shadow: none !important;
+
+  &:focus,
+  &:focus-visible,
+  &:active {
+    border: 1px solid #36d6ae !important;
+    outline: none !important;
+    box-shadow: none !important;
+  }
+}
+
+.simInputSuffix {
+  font-size: 11px;
+  color: #666;
+  white-space: nowrap;
+}
+
+.simRange {
+  width: 100%;
+  accent-color: #36d6ae;
+  cursor: pointer;
+  touch-action: none;
+}
+
+// Legend
+.simLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  font-size: 12px;
+  color: #999;
+}
+
+.simLegendItem {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.simLegendDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+// Split bar
+.simSplitBar {
+  display: flex;
+  height: 24px;
+  border-radius: 4px;
+  overflow: hidden;
+  font-size: 11px;
+  line-height: 24px;
+}
+
+.simSplitSegment {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding: 0 4px;
+  transition: width 0.15s ease;
 }

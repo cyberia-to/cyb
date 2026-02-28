@@ -28,7 +28,7 @@ pub struct MiningParams {
 }
 
 pub struct MiningState {
-    mining: AtomicBool,
+    pub mining: AtomicBool,
     hash_count: AtomicU64,
     start_time: Mutex<Option<Instant>>,
     pending_proofs: Mutex<Vec<FoundProof>>,

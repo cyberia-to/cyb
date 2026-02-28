@@ -105,7 +105,7 @@ fn get_target_triple() -> &'static str {
 /// Holds the IPFS daemon child process so it isn't dropped (which closes
 /// stdout/stderr pipes and can cause SIGPIPE → daemon crash).
 #[cfg(desktop)]
-static IPFS_CHILD: Mutex<Option<Child>> = Mutex::new(None);
+pub static IPFS_CHILD: Mutex<Option<Child>> = Mutex::new(None);
 
 #[cfg(desktop)]
 fn spawn_ipfs_daemon(ipfs_binary: &PathBuf, repo_str: &str) -> Result<(), IpfsError> {

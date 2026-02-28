@@ -17,12 +17,56 @@ const DEFAULT_CAMERA_DISTANCE = 1300;
 const CAMERA_ZOOM_IN_EFFECT_DURATION = 5000;
 const CAMERA_ZOOM_IN_EFFECT_DELAY = 500;
 
+// D3-timer creates setInterval(poke, 1000) on every animation frame,
+// and WebKit accumulates them causing 85% CPU.
+// This hook intercepts setInterval before ForceGraph3D mounts,
+// tracks all IDs, and periodically sweeps them to prevent accumulation.
+function useIntervalSweep() {
+  const trackedIds = useRef<ReturnType<typeof setInterval>[]>([]);
+  const origRef = useRef<typeof window.setInterval | null>(null);
+
+  useEffect(() => {
+    const real = window.setInterval.bind(window);
+    origRef.current = window.setInterval;
+
+    (window as any).setInterval = (...args: any[]) => {
+      const id = real(...args);
+      trackedIds.current.push(id);
+      return id;
+    };
+
+    // Aggressively sweep accumulated D3 timer intervals every 100ms.
+    // D3-timer sleep() creates a new setInterval(poke, 1000) on every animation frame.
+    // WebKit accumulates hundreds of these, causing 85% CPU.
+    // Keep only the 2 most recent (the app needs some legitimate intervals).
+    const sweepInterval = real(() => {
+      if (trackedIds.current.length > 5) {
+        const toSweep = trackedIds.current.splice(0, trackedIds.current.length - 2);
+        toSweep.forEach((id) => clearInterval(id));
+      }
+    }, 100);
+
+    return () => {
+      clearInterval(sweepInterval);
+      if (origRef.current) {
+        window.setInterval = origRef.current;
+        origRef.current = null;
+      }
+      trackedIds.current.forEach((id) => clearInterval(id));
+      trackedIds.current = [];
+    };
+  }, []);
+}
+
 function CyberlinksGraph({ data, size, minVersion }: Props) {
   const [isRendering, setRendering] = useState(true);
   const [touched, setTouched] = useState(false);
   const [hoverNode, setHoverNode] = useState(null);
 
-  const fgRef = useRef();
+  const fgRef = useRef<any>();
+
+  // Prevent D3 timer setInterval cascade from consuming 85% CPU
+  useIntervalSweep();
 
   // debug, remove later
   useEffect(() => {
@@ -78,29 +122,37 @@ function CyberlinksGraph({ data, size, minVersion }: Props) {
     };
   }, []);
 
-  // orbit camera
+  // orbit camera using requestAnimationFrame (avoids 10ms setInterval CPU drain)
   useEffect(() => {
     if (!fgRef.current || touched || isRendering) {
       return;
     }
 
     let angle = 0;
+    let rafId: number | null = null;
+    let lastTime = 0;
 
-    let interval = null;
+    const orbit = (time: number) => {
+      if (time - lastTime >= 33) { // ~30fps
+        lastTime = time;
+        if (fgRef.current) {
+          fgRef.current.cameraPosition({
+            x: DEFAULT_CAMERA_DISTANCE * Math.sin(angle),
+            z: DEFAULT_CAMERA_DISTANCE * Math.cos(angle),
+          });
+          angle += Math.PI / 900; // same visual speed at 30fps
+        }
+      }
+      rafId = requestAnimationFrame(orbit);
+    };
 
     const timeout = setTimeout(() => {
-      interval = setInterval(() => {
-        fgRef.current.cameraPosition({
-          x: DEFAULT_CAMERA_DISTANCE * Math.sin(angle),
-          z: DEFAULT_CAMERA_DISTANCE * Math.cos(angle),
-        });
-        angle += Math.PI / 3000;
-      }, 10);
+      rafId = requestAnimationFrame(orbit);
     }, CAMERA_ZOOM_IN_EFFECT_DURATION + CAMERA_ZOOM_IN_EFFECT_DELAY);
 
     return () => {
       clearTimeout(timeout);
-      clearInterval(interval);
+      if (rafId !== null) cancelAnimationFrame(rafId);
     };
   }, [touched, isRendering]);
 

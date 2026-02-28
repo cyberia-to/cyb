@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { useSelector } from 'react-redux';
 import { Link } from 'react-router-dom';
 import CircularMenu from 'src/components/appMenu/CircularMenu/CircularMenu';
 import MobileMenu from 'src/components/appMenu/MobileMenu/MobileMenu';
@@ -9,6 +10,7 @@ import CyberlinksGraphContainer from 'src/features/cyberlinks/CyberlinksGraph/Cy
 import TimeFooter from 'src/features/TimeFooter/TimeFooter';
 import TimeHistory from 'src/features/TimeHistory/TimeHistory';
 import useCurrentAddress from 'src/hooks/useCurrentAddress';
+import type { RootState } from 'src/redux/store';
 import { routes } from 'src/routes';
 import { Networks } from 'src/types/networks';
 import SenseButton from '../features/sense/ui/SenseButton/SenseButton';
@@ -23,6 +25,7 @@ function MainLayout({ children }: { children: JSX.Element }) {
   const { viewportWidth } = useDevice();
   const ref = useRef<HTMLDivElement>(null);
   const [isRenderGraph, setIsRenderGraph] = useState(false);
+  const isMiningActive = useSelector((state: RootState) => state.mining.active);
 
   const graphSize = Math.min(viewportWidth * 0.13, 220);
   const isMobile = viewportWidth <= Number(stylesOracle.mobileBreakpoint.replace('px', ''));
@@ -63,7 +66,7 @@ function MainLayout({ children }: { children: JSX.Element }) {
         {isMobile ? <MobileMenu /> : <CircularMenu circleSize={graphSize} />}
         {!isMobile && (
           <Link to={link} className={stylesOracle.graphWrapper} style={{ bottom: '0px' }}>
-            {isRenderGraph && (
+            {isRenderGraph && !isMiningActive && (
               <CyberlinksGraphContainer
                 size={graphSize}
                 minVersion

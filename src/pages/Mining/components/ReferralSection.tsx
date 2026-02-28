@@ -1,5 +1,8 @@
 import { useCallback, useState } from 'react';
+import { Link } from 'react-router-dom';
 import { LITIUM_REFER_CONTRACT } from 'src/constants/mining';
+import { routes } from 'src/routes';
+import { trimString } from 'src/utils/utils';
 import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 import useAutoSigner from '../hooks/useAutoSigner';
 import useReferralInfo from '../hooks/useReferralInfo';
@@ -35,7 +38,7 @@ function ReferralSection({ referrer, onReferrerChange }: Props) {
 
   const [inputValue, setInputValue] = useState(() => loadReferrer());
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState('');
+  const [status, setStatus] = useState<{ type: 'tx'; ok: boolean; txHash?: string; error?: string } | { type: 'info'; text: string } | null>(null);
 
   const boundReferrer = referralInfo?.referrer ?? null;
   const referralRewards = referralInfo
@@ -47,18 +50,18 @@ function ReferralSection({ referrer, onReferrerChange }: Props) {
     const trimmed = inputValue.trim();
     if (!trimmed) return;
     if (address && trimmed === address) {
-      setStatus('Cannot refer yourself.');
+      setStatus({ type: 'info', text: 'Cannot refer yourself.' });
       return;
     }
     saveReferrer(trimmed);
     onReferrerChange(trimmed);
-    setStatus('Referrer saved. Will be included in your next proof submission.');
+    setStatus({ type: 'info', text: 'Referrer saved. Will be included in your next proof submission.' });
   }, [inputValue, onReferrerChange, address]);
 
   const handleClaimReferralRewards = useCallback(async () => {
     if (!signer || !signingClient || !address) return;
     setBusy(true);
-    setStatus('');
+    setStatus(null);
     try {
       const [account] = await signer.getAccounts();
       const result = await signingClient.execute(
@@ -68,11 +71,10 @@ function ReferralSection({ referrer, onReferrerChange }: Props) {
         Soft3MessageFactory.fee(8),
         ''
       );
-      setStatus(`OK: ${result.transactionHash.slice(0, 12)}...`);
-      // Wait for next block then refetch referral data
+      setStatus({ type: 'tx', ok: true, txHash: result.transactionHash });
       setTimeout(() => refetch(), 7000);
     } catch (err: any) {
-      setStatus(`Error: ${err?.message?.slice(0, 80) || 'Failed'}`);
+      setStatus({ type: 'tx', ok: false, error: err?.message?.slice(0, 120) || 'Failed' });
     } finally {
       setBusy(false);
     }
@@ -81,7 +83,7 @@ function ReferralSection({ referrer, onReferrerChange }: Props) {
   const handleCopyLink = useCallback(() => {
     if (address) {
       navigator.clipboard.writeText(`${window.location.origin}/mining?ref=${address}`);
-      setStatus('Referral link copied!');
+      setStatus({ type: 'info', text: 'Referral link copied!' });
     }
   }, [address]);
 
@@ -155,7 +157,21 @@ function ReferralSection({ referrer, onReferrerChange }: Props) {
         </button>
       </div>
 
-      {status && <div className={styles.stakingStatus}>{status}</div>}
+      {status && (
+        <div className={styles.stakingStatus}>
+          {status.type === 'tx' && status.ok && status.txHash ? (
+            <Link to={routes.txExplorer.getLink(status.txHash)} style={{ color: '#36d6ae' }}>
+              TX: {trimString(status.txHash, 10, 6)}
+            </Link>
+          ) : status.type === 'tx' && status.error ? (
+            <span style={{ color: '#ef4444' }} title={status.error}>
+              Error: {status.error.slice(0, 80)}
+            </span>
+          ) : status.type === 'info' ? (
+            status.text
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

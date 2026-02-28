@@ -9,7 +9,6 @@ type Props = {
 };
 
 const BACKEND_LABELS: Record<string, string> = {
-  auto: 'Auto',
   cpu: 'CPU',
   metal: 'Metal GPU',
   cuda: 'CUDA GPU',
@@ -35,7 +34,6 @@ function BackendSelector({
         disabled={disabled}
         className={styles.backendSelect}
       >
-        <option value="auto">Auto</option>
         {availableBackends.map((b) => (
           <option key={b} value={b}>
             {BACKEND_LABELS[b] || b}

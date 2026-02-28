@@ -28,14 +28,13 @@ async function fetchLatestBlock(): Promise<BlockInfo | undefined> {
   return undefined;
 }
 
-function useLatestBlock(): BlockInfo | undefined {
-  const { data } = useQuery(['latestBlock'], fetchLatestBlock, {
-    refetchInterval: 6_000,
-    staleTime: 5_000,
+function useLatestBlock() {
+  const { data, refetch } = useQuery(['latestBlock'], fetchLatestBlock, {
+    staleTime: Infinity,
     keepPreviousData: true,
   });
 
-  return data;
+  return { block: data, refetchBlock: refetch };
 }
 
 export default useLatestBlock;

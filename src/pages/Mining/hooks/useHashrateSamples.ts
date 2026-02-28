@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import { useRef, useMemo } from 'react';
 
 function useHashrateSamples(
   hashrate: number,
@@ -6,24 +6,26 @@ function useHashrateSamples(
   maxSamples = 60
 ) {
   const samplesRef = useRef<number[]>([]);
-  const [, setTick] = useState(0);
+  const prevActiveRef = useRef(isActive);
 
-  useEffect(() => {
-    if (!isActive) return;
-    if (hashrate <= 0) return;
+  // Clear samples when mining stops
+  if (prevActiveRef.current && !isActive) {
+    samplesRef.current = [];
+  }
+  prevActiveRef.current = isActive;
 
-    samplesRef.current = [...samplesRef.current.slice(-(maxSamples - 1)), hashrate];
-    setTick((t) => t + 1);
-  }, [hashrate, isActive, maxSamples]);
-
-  useEffect(() => {
-    if (!isActive) {
-      samplesRef.current = [];
-      setTick((t) => t + 1);
+  // Append sample during render (no setTick / forced re-render needed —
+  // the parent already re-renders when hashrate changes)
+  if (isActive && hashrate > 0) {
+    const arr = samplesRef.current;
+    if (arr.length >= maxSamples) {
+      arr.shift();
     }
-  }, [isActive]);
+    arr.push(hashrate);
+  }
 
-  return samplesRef.current;
+  // Return stable reference — the array is mutated in place
+  return useMemo(() => samplesRef.current, [isActive, hashrate]);
 }
 
 export default useHashrateSamples;

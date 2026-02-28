@@ -17,6 +17,9 @@ function useReferralInfo(address: string | undefined) {
   const [counter, setCounter] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Store latest fetch function in a ref to avoid interval churn
+  const fetchRef = useRef<() => void>(() => {});
+
   const fetchInfo = useCallback(async () => {
     if (!queryClient || !address) {
       setReferralInfo(undefined);
@@ -53,20 +56,14 @@ function useReferralInfo(address: string | undefined) {
     }
   }, [queryClient, address]);
 
+  fetchRef.current = fetchInfo;
+
   useEffect(() => {
     fetchInfo();
   }, [fetchInfo, counter]);
 
-  // Periodic polling
-  useEffect(() => {
-    if (!queryClient || !address) return undefined;
-    intervalRef.current = setInterval(() => {
-      fetchInfo();
-    }, POLL_INTERVAL);
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-    };
-  }, [queryClient, address, fetchInfo]);
+  // Periodic polling disabled — manual refetch via refetch() callback
+  void intervalRef;
 
   const refetch = useCallback(() => {
     setCounter((c) => c + 1);
