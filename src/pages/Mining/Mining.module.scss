@@ -300,17 +300,15 @@
   color: #ccc;
   font-size: 14px;
   outline: none;
+  min-height: 36px;
 
   &:focus {
     border-color: #36d6ae;
+    box-shadow: 0 0 0 1px rgba(54, 214, 174, 0.4);
   }
 
   &:disabled {
     opacity: 0.5;
-  }
-
-  &::placeholder {
-    color: #555;
   }
 }
 
