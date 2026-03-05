@@ -14,10 +14,10 @@
         default-src 'self';
         script-src 'self' 'unsafe-eval' 'unsafe-inline' https://plausible.io;
         style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
-        img-src 'self' data: blob: https://*.cybernode.ai https://gateway.ipfs.cybernode.ai https://keybase.io https://s3.amazonaws.com https://robohash.org;
+        img-src 'self' data: blob: https:;
         font-src 'self' data: https://fonts.gstatic.com;
         connect-src 'self' ipc: https://*.cybernode.ai wss://*.cybernode.ai https://rpc-osmosis.ecostake.com https://rpc.cosmoshub-4.bronbro.io:443 https://rpc-juno.itastakers.com https://gravitychain.io:26657 https://rpc.mainnet.desmos.network https://rpc.evmos-9001-2.bronbro.io https://keybase.io https://api.github.com https://plausible.io https://titan.cybernode.ai https://*.libp2p.io wss://*.libp2p.io https://io.cybernode.ai https://openrouter.ai http://127.0.0.1:5001 http://127.0.0.1:8080 http://localhost:5001 http://localhost:8080;
-        frame-src https://*.cybernode.ai https://gateway.ipfs.cybernode.ai;
+        frame-src blob: https://*.cybernode.ai https://gateway.ipfs.cybernode.ai;
         worker-src 'self' blob:;
         base-uri 'self';
         form-action 'self';

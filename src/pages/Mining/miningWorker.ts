@@ -1,6 +1,6 @@
-import init, { LithiumMiner } from 'uhash-web';
+import init, { ChallengeMiner } from 'uhash-web';
 
-let miner: LithiumMiner | null = null;
+let miner: ChallengeMiner | null = null;
 let mining = false;
 let totalHashes = 0;
 let currentNonce = 0;
@@ -13,7 +13,7 @@ let lastProgressTime = 0;
 
 type InMessage =
   | { type: 'init' }
-  | { type: 'start'; threadId: number; numThreads: number; address: string; blockHash: string; dataHash: string; difficulty: number }
+  | { type: 'start'; threadId: number; numThreads: number; challenge: string; difficulty: number }
   | { type: 'stop' };
 
 self.onmessage = async (e: MessageEvent<InMessage>) => {
@@ -31,7 +31,7 @@ self.onmessage = async (e: MessageEvent<InMessage>) => {
       currentNonce = msg.threadId;
       totalHashes = 0;
       lastProgressTime = 0;
-      miner = new LithiumMiner(msg.address, msg.blockHash, msg.dataHash, msg.difficulty);
+      miner = new ChallengeMiner(msg.challenge, msg.difficulty);
       mining = true;
       mine();
       break;

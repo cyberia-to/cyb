@@ -77,7 +77,7 @@ export class WasmMiner {
     });
   }
 
-  start(address: string, blockHash: string, dataHash: string, difficulty: number): void {
+  start(challenge: string, difficulty: number): void {
     this.pendingProofs = [];
     this.workerHashes = this.workers.map(() => 0);
     this.startTime = Date.now();
@@ -89,9 +89,7 @@ export class WasmMiner {
         type: 'start',
         threadId: i,
         numThreads: this.numThreads,
-        address,
-        blockHash,
-        dataHash,
+        challenge,
         difficulty,
       });
     });

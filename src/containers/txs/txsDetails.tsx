@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router-dom';
 import { MainContainer } from 'src/components';
 import { useDevice } from 'src/contexts/device';
 import { useAdviser } from 'src/features/adviser/context';
+import ActionBar from 'src/components/actionBar';
 import ActionBarContainer from '../Search/ActionBarContainer';
 import { getTxs } from './api/data';
 import { mapResponseDataGetTxs } from './api/mapping';
@@ -13,6 +14,7 @@ import { ValueInformation } from './type';
 function TxsDetails() {
   const { isMobile: mobile } = useDevice();
   const { txHash } = useParams();
+  const navigate = useNavigate();
   const [msgs, setMsgs] = useState();
   const [information, setInformation] = useState<ValueInformation>();
   const { setAdviser } = useAdviser();
@@ -39,7 +41,7 @@ function TxsDetails() {
         <InformationTxs data={information} />
         {msgs && <Msgs data={msgs} />}
       </MainContainer>
-      {!mobile && <ActionBarContainer valueSearchInput={txHash} keywordHash={txHash} />}
+      <ActionBar onClickBack={() => navigate(-1)} />
     </>
   );
 }

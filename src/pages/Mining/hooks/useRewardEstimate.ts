@@ -1,36 +1,47 @@
 import useQueryContract from 'src/hooks/contract/useQueryContract';
 import { LITIUM_MINE_CONTRACT, SUBMIT_COOLDOWN_MS } from 'src/constants/mining';
+import type {
+  RewardCalculationResponse,
+  EmissionInfoResponse,
+} from 'src/generated/lithium/LitiumMine.types';
 
 function useRewardEstimate(
   difficulty: number | undefined,
-  hashrate: number
+  hashrate: number,
+  emission?: EmissionInfoResponse
 ) {
   const { data } = useQueryContract(
     LITIUM_MINE_CONTRACT,
-    difficulty !== undefined
+    difficulty !== undefined && difficulty > 0
       ? { calculate_reward: { difficulty_bits: difficulty } }
-      : { epoch_status: {} } // dummy query when no difficulty
+      : { config: {} } // dummy query when no difficulty
   );
 
-  // Query config for alpha_micros (staking/mining split).
-  // calculate_reward response does NOT include alpha_micros,
-  // so we must get it from config separately.
-  const { data: configData } = useQueryContract(LITIUM_MINE_CONTRACT, {
-    config: {},
-  });
+  const rewardResp = data as RewardCalculationResponse | undefined;
 
+  // Contract returns gross_reward = base_rate * d — the TOTAL reward before split.
+  // The actual split in execute_submit_proof:
+  //   staking_reward = gross * S^alpha
+  //   pow_reward     = gross - staking_reward
+  //   referral       = pow_reward * 10%
+  //   miner_reward   = pow_reward - referral
   const grossReward =
-    difficulty !== undefined && data
-      ? Number((data as any).gross_reward ?? 0) / 1_000_000
+    difficulty !== undefined && rewardResp
+      ? Number(rewardResp.gross_reward ?? 0) / 1_000_000
       : 0;
 
-  // Lithium reward split: mining gets (1_000_000 - alpha_micros) / 1_000_000
-  // and of the mining portion, 10% goes to referral if referrer is set.
-  // Show the miner-received amount (worst case with referral deduction).
-  const alphaMicros = (configData as any)?.alpha_micros ?? 0;
-  const miningFraction = (1_000_000 - Number(alphaMicros)) / 1_000_000;
-  const referralCut = 0.1; // 10% of mining portion
-  const minerReward = grossReward * miningFraction * (1 - referralCut);
+  // Compute PoW share from emission_info: powShare = mining_rate / gross_rate
+  // This equals (1 - S^alpha) — the fraction of reward going to PoW (mining + referral)
+  let powShare = 1; // default: assume 100% PoW if no emission data
+  if (emission) {
+    const grossRate = Number(emission.gross_rate);
+    if (grossRate > 0) {
+      powShare = Number(emission.mining_rate) / grossRate;
+    }
+  }
+
+  const referralCut = 0.1;
+  const minerReward = grossReward * powShare * (1 - referralCut);
 
   // Cap estimated proofs/hr by the submission cooldown
   const maxProofsPerHour = 3600 / (SUBMIT_COOLDOWN_MS / 1000);
@@ -48,7 +59,6 @@ function useRewardEstimate(
   return {
     rewardPerProof: minerReward,
     grossRewardPerProof: grossReward,
-    miningFraction,
     estimatedLiPerHour,
     loading: !data,
   };

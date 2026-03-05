@@ -24,8 +24,8 @@ serde = { version = "1.0.210", features = ["derive"] }
 tauri = { version = "2.10", features = ["devtools"] }
 tauri-plugin-shell = "2"
 tokio = { version = "1.40.0", features = ["full"] }
-uhash-core = "0.4.3"
-uhash-prover = { version = "0.4.3", default-features = false, features = ["cpu"] }
+uhash-core = "0.5.1"
+uhash-prover = { version = "0.5.1", default-features = false, features = ["cpu"] }
 hex = "0.4"
 dirs = "5.0.1"
 
@@ -43,6 +43,6 @@ opt-level = 3
 
 [features]
 custom-protocol = ["tauri/custom-protocol"]
-gpu-metal = ["uhash-prover/metal-backend"]
-gpu-cuda = ["uhash-prover/cuda-backend"]
+gpu-metal = ["uhash-prover/gpu-metal"]
+gpu-cuda = ["uhash-prover/gpu-cuda"]
 gpu-wgpu = ["uhash-prover/gpu-wgpu"]

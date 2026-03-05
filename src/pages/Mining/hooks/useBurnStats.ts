@@ -1,9 +1,9 @@
 import useQueryContract from 'src/hooks/contract/useQueryContract';
 import { LITIUM_CORE_CONTRACT } from 'src/constants/mining';
-import type { BurnStatsResponse } from 'src/types/miningProofTx';
+import type { BurnStatsResponse } from 'src/generated/lithium/LitiumCore.types';
 
 function useBurnStats() {
-  const { data, loading } = useQueryContract(LITIUM_CORE_CONTRACT, {
+  const { data, loading, refetch } = useQueryContract(LITIUM_CORE_CONTRACT, {
     burn_stats: {},
   });
 
@@ -12,6 +12,7 @@ function useBurnStats() {
   return {
     burnStats: stats,
     loading,
+    refetch,
   };
 }
 

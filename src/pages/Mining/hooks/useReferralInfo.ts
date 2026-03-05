@@ -1,18 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { LITIUM_REFER_CONTRACT } from 'src/constants/mining';
 import { useQueryClient as useCyberQueryClient } from 'src/contexts/queryClient';
-import type { LithiumReferralInfoResponse } from 'src/types/miningProofTx';
+import type {
+  ReferralInfoResponse,
+  ReferrerOfResponse,
+} from 'src/generated/lithium/LitiumRefer.types';
 
-type ReferrerOfResponse = {
-  miner: string;
-  referrer: string | null;
-};
+type ReferralInfoWithReferrer = ReferralInfoResponse & { referrer: string | null };
 
 const POLL_INTERVAL = 15_000;
 
 function useReferralInfo(address: string | undefined) {
   const queryClient = useCyberQueryClient();
-  const [referralInfo, setReferralInfo] = useState<LithiumReferralInfoResponse | undefined>();
+  const [referralInfo, setReferralInfo] = useState<ReferralInfoWithReferrer | undefined>();
   const [loading, setLoading] = useState(false);
   const [counter, setCounter] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -38,7 +38,7 @@ function useReferralInfo(address: string | undefined) {
         ).catch(() => null),
       ]);
 
-      const rawInfo = infoData as Omit<LithiumReferralInfoResponse, 'referrer'> | null;
+      const rawInfo = infoData as Omit<ReferralInfoWithReferrer, 'referrer'> | null;
       const referrerOf = referrerData as ReferrerOfResponse | null;
 
       if (rawInfo) {

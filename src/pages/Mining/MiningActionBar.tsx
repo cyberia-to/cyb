@@ -12,7 +12,8 @@ type MiningStatus = {
 };
 
 type Props = {
-  difficulty: number | undefined;
+  difficulty: number;
+  minDifficulty: number;
   address: string | undefined;
   blockReady: boolean;
   autoMining: boolean;
@@ -20,6 +21,7 @@ type Props = {
   miningStatus: MiningStatus | null;
   onStartMining: () => void;
   onStopMining: () => void;
+  onDifficultyChange: (v: number) => void;
   // Backend & thread selectors
   backend: string;
   onBackendChange: (v: string) => void;
@@ -33,6 +35,7 @@ type Props = {
 
 function MiningActionBar({
   difficulty,
+  minDifficulty,
   address,
   blockReady,
   autoMining,
@@ -40,6 +43,7 @@ function MiningActionBar({
   miningStatus,
   onStartMining,
   onStopMining,
+  onDifficultyChange,
   backend,
   onBackendChange,
   availableBackends,
@@ -49,12 +53,59 @@ function MiningActionBar({
   maxThreads,
   isNative,
 }: Props) {
-  const canMine = blockReady && difficulty && address;
+  const canMine = blockReady && difficulty >= minDifficulty && address;
   const isMining = miningStatus?.mining || autoMining;
   const disabled = isMining;
 
   const selectors = (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
+      {/* Difficulty selector */}
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 12 }}>
+        <span style={{ color: '#888' }}>d:</span>
+        <button
+          type="button"
+          onClick={() => { if (difficulty > minDifficulty) onDifficultyChange(difficulty - 1); }}
+          disabled={!!disabled || difficulty <= minDifficulty}
+          style={{
+            background: 'transparent',
+            border: '1px solid rgba(54, 214, 174, 0.3)',
+            borderRadius: 3,
+            color: '#36d6ae',
+            fontSize: 12,
+            cursor: 'pointer',
+            padding: '0 4px',
+            lineHeight: '18px',
+          }}
+        >
+          −
+        </button>
+        <span style={{
+          minWidth: 24,
+          textAlign: 'center',
+          color: '#36d6ae',
+          fontFamily: 'monospace',
+          fontSize: 12,
+        }}>
+          {difficulty}
+        </span>
+        <button
+          type="button"
+          onClick={() => { if (difficulty < 64) onDifficultyChange(difficulty + 1); }}
+          disabled={!!disabled || difficulty >= 64}
+          style={{
+            background: 'transparent',
+            border: '1px solid rgba(54, 214, 174, 0.3)',
+            borderRadius: 3,
+            color: '#36d6ae',
+            fontSize: 12,
+            cursor: 'pointer',
+            padding: '0 4px',
+            lineHeight: '18px',
+          }}
+        >
+          +
+        </button>
+      </span>
       {isNative && availableBackends.length > 1 && (
         <BackendSelector
           value={backend}
@@ -64,12 +115,15 @@ function MiningActionBar({
           disabled={disabled}
         />
       )}
-      <ThreadSelector
-        value={threadCount}
-        onChange={onThreadCountChange}
-        max={maxThreads}
-        disabled={disabled}
-      />
+      {(!isNative || backend === 'cpu') && (
+        <ThreadSelector
+          value={threadCount}
+          onChange={onThreadCountChange}
+          max={maxThreads}
+          total={navigator.hardwareConcurrency || 4}
+          disabled={disabled}
+        />
+      )}
     </span>
   );
 
@@ -83,7 +137,7 @@ function MiningActionBar({
     const missingParts = [
       !address && 'wallet',
       !blockReady && 'block data',
-      !difficulty && 'difficulty',
+      difficulty < minDifficulty && `difficulty < ${minDifficulty}`,
     ].filter(Boolean);
     statusText = <> Waiting: {missingParts.join(', ')}...</>;
   }

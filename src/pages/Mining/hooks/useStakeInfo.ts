@@ -1,13 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { LITIUM_STAKE_CONTRACT } from 'src/constants/mining';
 import { useQueryClient as useCyberQueryClient } from 'src/contexts/queryClient';
-import type { LithiumStakeInfoResponse } from 'src/types/miningProofTx';
+import type { StakeInfoResponse } from 'src/generated/lithium/LitiumStake.types';
 
 const POLL_INTERVAL = 15_000;
 
 function useStakeInfo(address: string | undefined) {
   const queryClient = useCyberQueryClient();
-  const [stakeInfo, setStakeInfo] = useState<LithiumStakeInfoResponse | undefined>();
+  const [stakeInfo, setStakeInfo] = useState<StakeInfoResponse | undefined>();
   const [loading, setLoading] = useState(false);
   const [counter, setCounter] = useState(0);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -26,7 +26,7 @@ function useStakeInfo(address: string | undefined) {
         LITIUM_STAKE_CONTRACT,
         { stake_info: { address } }
       );
-      setStakeInfo(data as LithiumStakeInfoResponse);
+      setStakeInfo(data as StakeInfoResponse);
     } catch {
       // contract may not have entry for this address yet
       setStakeInfo(undefined);

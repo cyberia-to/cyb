@@ -4,14 +4,15 @@ type Props = {
   value: number;
   onChange: (n: number) => void;
   max: number;
+  total: number;
   disabled?: boolean;
 };
 
-function ThreadSelector({ value, onChange, max, disabled }: Props) {
+function ThreadSelector({ value, onChange, max, total, disabled }: Props) {
   return (
     <div className={styles.threadSelector}>
       <span className={styles.threadLabel}>
-        {value} / {max} cores
+        {value}/{total} cores
       </span>
       <input
         type="range"

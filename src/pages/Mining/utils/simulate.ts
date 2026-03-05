@@ -1,6 +1,13 @@
 /**
- * Simulation engine for Lithium mining parameters.
+ * Simulation engine for Lithium mining — adaptive hybrid economics.
  * Pure function: SimParams → SimResult.
+ *
+ * In the new model:
+ * - No epochs — continuous sliding window
+ * - Client-chosen difficulty d → reward = base_rate * d
+ * - base_rate = (G * R_pow_share) / D_rate
+ * - G = emission_rate + fee_rate * (1 - beta)
+ * - R_pow_share = 1 - S^alpha
  */
 
 import {
@@ -18,32 +25,35 @@ export type SimParams = {
   networkHashrate: number; // H/s
   yourHashrate: number; // H/s (personal)
   stakedPercent: number; // 0-100
-  dailyTransfers: number; // for burn projection
-  difficultyBits: number; // independent input
-  targetSolutions: number; // proofs per epoch target
-  epochSeconds: number; // epoch duration
+  dailyTransfers: number; // for fee projection
+  difficultyBits: number; // client-chosen difficulty
   liPrice: number; // USD per LI
+  alpha: number; // PID alpha [0.3, 0.7]
+  beta: number; // PID beta [0.0, 0.9]
+  gasCostUboot: number; // gas cost per proof in uboot
 };
 
 export type SimResult = {
   components: ComponentRate[];
-  emissionPerEpoch: number;
+  emissionPerHour: number;
   emissionPerSecond: number;
   miningPercent: number;
   stakingPercent: number;
   referralPercent: number;
   alpha: number;
   difficultyBits: number;
-  equilibriumDifficulty: number;
+  baseRate: number;
   rewardPerProof: number;
   totalMinted: number;
   mintedPercent: number;
-  dailyBurn: number;
+  dailyFeeBurn: number;
   netDailyInflation: number;
-  // Per-split emission (human LI per epoch)
-  miningEmissionPerEpoch: number;
-  stakingEmissionPerEpoch: number;
-  referralEmissionPerEpoch: number;
+  gasCostPerProofLi: number;
+  netRewardPerProof: number;
+  // Per-split emission (human LI per hour)
+  miningEmissionPerHour: number;
+  stakingEmissionPerHour: number;
+  referralEmissionPerHour: number;
   // Personal stats
   yourProofsPerDay: number;
   yourLiPerDay: number;
@@ -55,29 +65,27 @@ export type SimResult = {
 };
 
 const REFERRAL_SHARE = 0.1; // 10%
-const BURN_PER_TRANSFER = 0.5;
+const FEE_PER_TRANSFER = 0.01; // 1% fee per transfer
+const AVERAGE_TRANSFER_AMOUNT = 50; // average LI per transfer (assumption)
 
-function computeSplit(alpha: number) {
-  const referralPercent = REFERRAL_SHARE * 100;
-  const nonRef = 1 - REFERRAL_SHARE;
-  const stakingFraction = nonRef * (alpha / 2);
-  const miningFraction = nonRef - stakingFraction;
+function computeSplit(stakedFraction: number, alpha: number) {
+  // R_pow_share = 1 - S^alpha (PoW share)
+  // R_pos_share = S^alpha (PoS share)
+  const sAlpha = stakedFraction > 0 && alpha > 0 ? Math.pow(stakedFraction, alpha) : 0;
+  const powShare = 1 - sAlpha;
+  const posShare = sAlpha;
+
+  // Referral comes from PoW share
+  const referralPercent = powShare * REFERRAL_SHARE * 100;
+  const miningPercent = powShare * (1 - REFERRAL_SHARE) * 100;
+  const stakingPercent = posShare * 100;
   return {
-    miningPercent: miningFraction * 100,
-    stakingPercent: stakingFraction * 100,
+    miningPercent,
+    stakingPercent,
     referralPercent,
+    powShare,
+    posShare,
   };
-}
-
-function calcEquilibriumDifficulty(
-  networkHashrate: number,
-  epochSeconds: number,
-  targetSolutions: number
-): number {
-  if (networkHashrate <= 0 || targetSolutions <= 0) return 0;
-  const hashesPerEpoch = networkHashrate * epochSeconds;
-  if (hashesPerEpoch <= targetSolutions) return 0;
-  return Math.max(0, Math.floor(Math.log2(hashesPerEpoch / targetSolutions)));
 }
 
 export function simulate(params: SimParams): SimResult {
@@ -88,39 +96,56 @@ export function simulate(params: SimParams): SimResult {
   const totalMintedAtomic = totalEmittedAtomic(elapsedSeconds);
 
   const emissionPerSecond = atomicToHuman(totalRateAtomic);
-  const emissionPerEpoch = emissionPerSecond * params.epochSeconds;
 
-  const alpha = Math.max(0, Math.min(1, params.stakedPercent / 100));
-  const { miningPercent, stakingPercent, referralPercent } =
-    computeSplit(alpha);
+  const stakedFraction = Math.max(0, Math.min(1, params.stakedPercent / 100));
+  const alpha = params.alpha;
+  const beta = params.beta;
 
-  const difficultyBits = params.difficultyBits;
-  const equilibriumDifficulty = calcEquilibriumDifficulty(
-    params.networkHashrate,
-    params.epochSeconds,
-    params.targetSolutions
-  );
+  const { miningPercent, stakingPercent, referralPercent, powShare } =
+    computeSplit(stakedFraction, alpha);
 
-  // Per-split emission
-  const miningEmissionPerEpoch = emissionPerEpoch * (miningPercent / 100);
-  const stakingEmissionPerEpoch = emissionPerEpoch * (stakingPercent / 100);
-  const referralEmissionPerEpoch = emissionPerEpoch * (referralPercent / 100);
+  // Fee estimation
+  const dailyFeeVolume = params.dailyTransfers * AVERAGE_TRANSFER_AMOUNT * FEE_PER_TRANSFER;
+  const feeRatePerSecond = dailyFeeVolume / SECONDS_PER_DAY;
 
-  // Reward per proof = epoch_emission * mining_fraction / target_solutions
-  const rewardPerProof =
-    params.targetSolutions > 0
-      ? miningEmissionPerEpoch / params.targetSolutions
-      : 0;
+  // Gross rate G = emission + fees * (1 - beta)
+  const grossRatePerSecond = emissionPerSecond + feeRatePerSecond * (1 - beta);
+
+  // D_rate estimation: all network hashrate is computing at the same difficulty
+  // D_rate = proofRate * avgDifficulty
+  // proofRate = networkHashrate / 2^difficulty
+  const hashesPerProof = params.difficultyBits > 0 ? 2 ** params.difficultyBits : 1;
+  const networkProofRate = params.networkHashrate / hashesPerProof; // proofs/sec
+  const dRate = networkProofRate * params.difficultyBits; // difficulty bits/sec
+
+  // base_rate = (G * R_pow_share) / D_rate
+  const baseRate = dRate > 0
+    ? (grossRatePerSecond * powShare) / dRate
+    : 0;
+
+  // reward per proof = base_rate * d (minus referral cut for miner)
+  const grossRewardPerProof = baseRate * params.difficultyBits;
+  const rewardPerProof = grossRewardPerProof * (1 - REFERRAL_SHARE);
+
+  // Per-split emission (per hour for readability)
+  const emissionPerHour = emissionPerSecond * 3600;
+  const miningEmissionPerHour = emissionPerHour * (miningPercent / 100);
+  const stakingEmissionPerHour = emissionPerHour * (stakingPercent / 100);
+  const referralEmissionPerHour = emissionPerHour * (referralPercent / 100);
 
   const totalMinted = atomicToHuman(totalMintedAtomic);
   const mintedPercent = (totalMintedAtomic / LI_TOTAL_SUPPLY_ATOMIC) * 100;
 
-  const dailyBurn = params.dailyTransfers * BURN_PER_TRANSFER;
+  const dailyFeeBurn = dailyFeeVolume * beta; // beta portion is burned
   const dailyEmission = emissionPerSecond * SECONDS_PER_DAY;
-  const netDailyInflation = dailyEmission - dailyBurn;
+  const netDailyInflation = dailyEmission - dailyFeeBurn;
+
+  // Gas cost per proof (uboot → LI conversion: approximate, price-dependent)
+  // For display we show the raw uboot cost; if liPrice > 0 we can show USD equiv
+  const gasCostPerProofLi = params.gasCostUboot / 1_000_000; // uboot to BOOT (6 decimals)
+  const netRewardPerProof = Math.max(0, rewardPerProof - gasCostPerProofLi * params.liPrice);
 
   // Personal stats
-  const hashesPerProof = difficultyBits > 0 ? 2 ** difficultyBits : 1;
   const yourProofsPerSecond =
     hashesPerProof > 0 ? params.yourHashrate / hashesPerProof : 0;
   const yourProofsPerDay = yourProofsPerSecond * SECONDS_PER_DAY;
@@ -137,22 +162,24 @@ export function simulate(params: SimParams): SimResult {
 
   return {
     components,
-    emissionPerEpoch,
+    emissionPerHour,
     emissionPerSecond,
     miningPercent,
     stakingPercent,
     referralPercent,
     alpha,
-    difficultyBits,
-    equilibriumDifficulty,
+    difficultyBits: params.difficultyBits,
+    baseRate,
     rewardPerProof,
     totalMinted,
     mintedPercent,
-    dailyBurn,
+    dailyFeeBurn,
     netDailyInflation,
-    miningEmissionPerEpoch,
-    stakingEmissionPerEpoch,
-    referralEmissionPerEpoch,
+    gasCostPerProofLi,
+    netRewardPerProof,
+    miningEmissionPerHour,
+    stakingEmissionPerHour,
+    referralEmissionPerHour,
     yourProofsPerDay,
     yourLiPerDay,
     yourLiPerMonth,

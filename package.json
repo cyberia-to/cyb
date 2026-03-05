@@ -57,7 +57,8 @@
     "uint8arrays": "^4.0.3",
     "unist-util-visit": "^5.0.0",
     "uuid": "^8.3.2",
-    "webpack-merge": "^5.7.3"
+    "webpack-merge": "^5.7.3",
+    "@cosmwasm/ts-codegen": "^1.11.0"
   },
   "dependencies": {
     "@ai-sdk/openai": "^0.0.63",
@@ -155,7 +156,7 @@
     "rxjs": "^7.8.0",
     "three": "^0.168.0",
     "tone": "^14.7.77",
-    "uhash-web": "^0.4.2",
+    "uhash-web": "^0.5.1",
     "unist-builder": "^4.0.0",
     "workbox-core": "^7.1.0",
     "workbox-expiration": "^7.1.0",
@@ -163,5 +164,8 @@
     "workbox-routing": "^7.1.0",
     "workbox-strategies": "^7.1.0",
     "zod": "^3.23.0"
+  },
+  "scripts": {
+    "gen:lithium": "node scripts/generate-lithium-clients.mjs"
   }
 }

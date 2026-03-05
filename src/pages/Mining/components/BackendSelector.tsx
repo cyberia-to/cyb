@@ -1,4 +1,6 @@
-import styles from '../Mining.module.scss';
+import Select, { SelectOption } from 'src/components/Select';
+import { Color } from 'src/components/LinearGradientContainer/LinearGradientContainer';
+import { useMemo } from 'react';
 
 type Props = {
   value: string;
@@ -22,25 +24,30 @@ function BackendSelector({
   activeBackend,
   disabled,
 }: Props) {
+  const options: SelectOption[] = useMemo(
+    () =>
+      availableBackends.map((b) => ({
+        value: b,
+        text: BACKEND_LABELS[b] || b,
+      })),
+    [availableBackends]
+  );
+
+  const currentLabel = BACKEND_LABELS[value] || value;
+  const suffix =
+    activeBackend && value === 'auto' ? ` (${activeBackend})` : '';
+
   return (
-    <div className={styles.threadSelector}>
-      <span className={styles.threadLabel}>
-        Backend
-        {activeBackend && value === 'auto' ? ` (${activeBackend})` : ''}
-      </span>
-      <select
-        value={value}
-        onChange={(e) => onChange(e.target.value)}
-        disabled={disabled}
-        className={styles.backendSelect}
-      >
-        {availableBackends.map((b) => (
-          <option key={b} value={b}>
-            {BACKEND_LABELS[b] || b}
-          </option>
-        ))}
-      </select>
-    </div>
+    <Select
+      valueSelect={value}
+      onChangeSelect={onChange}
+      options={options}
+      currentValue={`${currentLabel}${suffix}`}
+      color={Color.Green}
+      disabled={disabled}
+      width="140px"
+      small
+    />
   );
 }
 

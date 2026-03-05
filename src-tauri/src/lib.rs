@@ -1,6 +1,7 @@
 #[cfg(desktop)]
 mod db;
 mod ipfs;
+mod metrics;
 mod mining;
 #[cfg(desktop)]
 mod server;
@@ -120,6 +121,8 @@ fn build_tauri_app() -> tauri::Builder<tauri::Wry> {
             mining::take_proofs,
             mining::mining_benchmark,
             mining::get_mining_params,
+            mining::report_proof_submitted,
+            mining::report_proof_failed,
         ])
 }
 
@@ -142,6 +145,8 @@ fn build_tauri_app() -> tauri::Builder<tauri::Wry> {
             mining::take_proofs,
             mining::mining_benchmark,
             mining::get_mining_params,
+            mining::report_proof_submitted,
+            mining::report_proof_failed,
         ])
 }
 

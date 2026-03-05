@@ -77,6 +77,7 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
     !location.pathname.includes(routes.gift.path) &&
     !location.pathname.includes('/brain') && // both full and robot
     !location.pathname.includes('/mining') &&
+    !location.pathname.includes('/network/bostrom/tx') &&
     (!isMobile || process.env.IS_TAURI)
   ) {
     return (

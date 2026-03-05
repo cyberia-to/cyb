@@ -18,6 +18,8 @@
       {
         "label": "main",
         "fullscreen": false,
+        "maximized": true,
+        "visible": false,
         "height": 760,
         "resizable": true,
         "title": "BOSTROM cyb.ai",
@@ -26,9 +28,11 @@
       {
         "label": "splashscreen",
         "fullscreen": false,
+        "visible": false,
         "height": 760,
         "resizable": false,
         "decorations": false,
+        "center": true,
         "title": "BOSTROM cyb.ai",
         "width": 1200,
         "url": "splashscreen.html"

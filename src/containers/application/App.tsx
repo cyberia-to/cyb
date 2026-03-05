@@ -19,6 +19,7 @@ import { initPocket } from 'src/redux/features/pocket';
 import { useAppDispatch } from 'src/redux/hooks';
 import { routes } from 'src/routes';
 import { signerModalHandler } from 'src/services/signer/signer-modal-handler';
+import useMiningMonitor from 'src/hooks/useMiningMonitor';
 import { initCyblog } from 'src/utils/logging/bootstrap';
 import AdviserContainer from '../../features/adviser/AdviserContainer';
 import { setFocus } from './Header/Commander/commander.redux';
@@ -39,6 +40,7 @@ function App() {
   const location = useLocation();
   const adviserContext = useAdviser();
   useSenseManager();
+  useMiningMonitor();
 
   const { ipfsError } = useBackend();
 

@@ -1,10 +1,11 @@
-// Modular Lithium contract addresses (deployed on Bostrom)
-export const LITIUM_CORE_CONTRACT = 'bostrom1wsgx32y0tx5rk6g89ffr8hg2wucnpwp650e9nrdm80jeyku5u4zq5ashgz';
-export const LITIUM_MINE_CONTRACT = 'bostrom1vsfzcplds5z9xxl0llczeskxjxuddckksjm2u5ft2xt03qg28ups04mfes';
-export const LITIUM_STAKE_CONTRACT = 'bostrom1z0s6rxw8eq4wy25kaucy5jydlphlpzpglsle5n7nx2gaqd60rmgqs67tnz';
-export const LITIUM_REFER_CONTRACT = 'bostrom1m8a0jzyyu794cmd5clkt37kr0kkqvxyra23gnqcg5929n63ryhpss3986d';
+// Modular Lithium contract addresses (deployed on Bostrom 2026-03-04)
+export const LITIUM_CORE_CONTRACT = 'bostrom1y9dqawhtk0m3sgglh2jgeu9y5zq5vmh5udmnw2unsm6j0j2nrskqe00ulm';
+export const LITIUM_MINE_CONTRACT = 'bostrom123wr6faa62xxrft6t5wmpqmh9g0chvu7ddedggx0lkecmgef7thsls9my2';
+export const LITIUM_STAKE_CONTRACT = 'bostrom1yagpj5dmr9fxj7qs08kdz2cpptf9va7jqwgx5257qjul2z6yq46sslqruy';
+export const LITIUM_REFER_CONTRACT = 'bostrom1yvf9a2w6ydr79c4ufaj6wmk6sdw6xmct6ztn600chadjzek8639s34qxft';
+export const LITIUM_WRAP_CONTRACT = 'bostrom1r5e285vff6mdyzhnh2aprcf3k9dujtjk5qqg30mqpd09cqde7tds3ue902';
 
-export const LI_DENOM = `factory/${LITIUM_CORE_CONTRACT}/li`;
+export const LI_DENOM = `factory/${LITIUM_WRAP_CONTRACT}/li`;
 
 export const UHASH_RELAY_URL = 'https://bostrom.cybernode.ai/relay';
 

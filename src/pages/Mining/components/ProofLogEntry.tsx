@@ -9,6 +9,7 @@ type Props = {
   hash: string;
   txHash?: string;
   error?: string;
+  status?: 'submitted' | 'pending' | 'success' | 'failed';
   timestamp: number;
 };
 
@@ -19,7 +20,24 @@ function timeAgo(timestamp: number): string {
   return `${Math.floor(diff / 3600)}h ago`;
 }
 
-function ProofLogEntry({ index, hash, txHash, error, timestamp }: Props) {
+function StatusPill({ status, error }: { status?: string; error?: string }) {
+  switch (status) {
+    case 'success':
+      return <Pill color="green" text="OK" />;
+    case 'failed':
+      return <Pill color="red" text="FAIL" />;
+    case 'pending':
+      return <Pill color="yellow" text="PENDING" />;
+    case 'submitted':
+      return <Pill color="yellow" text="SENT" />;
+    default:
+      // Legacy entries without status field
+      if (error) return <Pill color="red" text="FAIL" />;
+      return <Pill color="green" text="OK" />;
+  }
+}
+
+function ProofLogEntry({ index, hash, txHash, error, status, timestamp }: Props) {
   return (
     <div className={styles.proofEntry}>
       <span className={styles.proofEntryIndex}>#{index}</span>
@@ -27,13 +45,13 @@ function ProofLogEntry({ index, hash, txHash, error, timestamp }: Props) {
       <span className={styles.proofEntryStatus}>
         {txHash ? (
           <Link to={routes.txExplorer.getLink(txHash)}>
-            {trimString(txHash, 8, 4)} <Pill color="green" text="OK" />
+            {trimString(txHash, 8, 4)} <StatusPill status={status} error={error} />
           </Link>
-        ) : error ? (
-          <span title={error}>
-            {error.slice(0, 30)} <Pill color="red" text="FAIL" />
+        ) : (
+          <span title={error || ''}>
+            {error ? error.slice(0, 30) : ''} <StatusPill status={status} error={error} />
           </span>
-        ) : null}
+        )}
       </span>
       <span className={styles.proofEntryTime}>{timeAgo(timestamp)}</span>
     </div>

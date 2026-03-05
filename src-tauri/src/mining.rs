@@ -1,9 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::State;
-use uhash_core::lithium_header;
 use uhash_prover::cpu::ParallelCpuSolver;
 use uhash_prover::Solver;
 
@@ -20,20 +19,33 @@ use uhash_prover::wgpu_solver::WgpuSolver;
 #[derive(Clone, Serialize, Default)]
 pub struct MiningParams {
     pub address: String,
-    pub block_hash_hex: String,
-    pub cyberlinks_merkle_hex: String,
+    pub challenge_hex: String,
     pub difficulty: u32,
-    pub epoch_id: u64,
     pub block_timestamp: u64,
 }
 
+/// Rolling window snapshot for smooth hashrate calculation.
+#[derive(Clone, Copy)]
+pub(crate) struct HashSnapshot {
+    time: Instant,
+    count: u64,
+}
+
+const HASHRATE_WINDOW_SECS: f64 = 5.0;
+const MAX_SNAPSHOTS: usize = 64;
+
 pub struct MiningState {
     pub mining: AtomicBool,
-    hash_count: AtomicU64,
-    start_time: Mutex<Option<Instant>>,
-    pending_proofs: Mutex<Vec<FoundProof>>,
-    params: Mutex<Option<MiningParams>>,
-    active_backend: Mutex<String>,
+    pub(crate) hash_count: AtomicU64,
+    pub(crate) batch_count: AtomicU64,
+    pub(crate) total_batch_time_us: AtomicU64,
+    pub(crate) proofs_submitted: AtomicU64,
+    pub(crate) proofs_failed: AtomicU64,
+    pub(crate) start_time: Mutex<Option<Instant>>,
+    pub(crate) pending_proofs: Mutex<Vec<FoundProof>>,
+    pub(crate) params: Mutex<Option<MiningParams>>,
+    pub(crate) active_backend: Mutex<String>,
+    pub(crate) hash_snapshots: Mutex<Vec<HashSnapshot>>,
 }
 
 #[derive(Clone, Serialize)]
@@ -43,14 +55,61 @@ pub struct FoundProof {
 }
 
 impl MiningState {
+    /// Record a hash count snapshot and return the rolling hashrate (H/s).
+    fn record_snapshot(&self) -> f64 {
+        let now = Instant::now();
+        let count = self.hash_count.load(Ordering::Relaxed);
+        let mut snaps = self.hash_snapshots.lock().unwrap();
+        snaps.push(HashSnapshot { time: now, count });
+        // Trim old entries beyond the window
+        let cutoff = now - Duration::from_secs_f64(HASHRATE_WINDOW_SECS);
+        snaps.retain(|s| s.time >= cutoff);
+        // Rate = (newest - oldest count) / (newest - oldest time)
+        if snaps.len() < 2 {
+            return 0.0;
+        }
+        let oldest = snaps[0];
+        let newest = snaps[snaps.len() - 1];
+        let dt = newest.time.duration_since(oldest.time).as_secs_f64();
+        if dt < 0.1 {
+            return 0.0;
+        }
+        (newest.count - oldest.count) as f64 / dt
+    }
+
+    /// Get the rolling hashrate without recording a new snapshot.
+    fn rolling_hashrate(&self) -> f64 {
+        let now = Instant::now();
+        let snaps = self.hash_snapshots.lock().unwrap();
+        if snaps.len() < 2 {
+            // Fall back to cumulative
+            let count = self.hash_count.load(Ordering::Relaxed);
+            let elapsed = self.start_time.lock().unwrap()
+                .map(|t| t.elapsed().as_secs_f64())
+                .unwrap_or(0.0);
+            return if elapsed > 0.0 { count as f64 / elapsed } else { 0.0 };
+        }
+        let cutoff = now - Duration::from_secs_f64(HASHRATE_WINDOW_SECS);
+        let oldest = snaps.iter().find(|s| s.time >= cutoff).unwrap_or(&snaps[0]);
+        let newest = &snaps[snaps.len() - 1];
+        let dt = newest.time.duration_since(oldest.time).as_secs_f64();
+        if dt < 0.1 { return 0.0; }
+        (newest.count - oldest.count) as f64 / dt
+    }
+
     pub fn new() -> Self {
         Self {
             mining: AtomicBool::new(false),
             hash_count: AtomicU64::new(0),
+            batch_count: AtomicU64::new(0),
+            total_batch_time_us: AtomicU64::new(0),
+            proofs_submitted: AtomicU64::new(0),
+            proofs_failed: AtomicU64::new(0),
             start_time: Mutex::new(None),
             pending_proofs: Mutex::new(Vec::new()),
             params: Mutex::new(None),
             active_backend: Mutex::new(String::new()),
+            hash_snapshots: Mutex::new(Vec::with_capacity(MAX_SNAPSHOTS)),
         }
     }
 }
@@ -192,10 +251,8 @@ fn decode_hex_32(label: &str, hex_str: &str) -> Result<[u8; 32], String> {
 #[tauri::command]
 pub fn start_mining(
     address: String,
-    block_hash_hex: String,
-    cyberlinks_merkle_hex: String,
+    challenge_hex: String,
     difficulty: u32,
-    epoch_id: Option<u64>,
     block_timestamp: Option<u64>,
     threads: Option<u32>,
     backend: Option<String>,
@@ -205,16 +262,12 @@ pub fn start_mining(
         return serde_json::json!({ "success": false, "error": "Already mining" });
     }
 
-    let block_hash = match decode_hex_32("block_hash", &block_hash_hex) {
-        Ok(b) => b,
-        Err(e) => return serde_json::json!({ "success": false, "error": e }),
-    };
-    let cyberlinks_merkle = match decode_hex_32("cyberlinks_merkle", &cyberlinks_merkle_hex) {
+    let challenge = match decode_hex_32("challenge", &challenge_hex) {
         Ok(b) => b,
         Err(e) => return serde_json::json!({ "success": false, "error": e }),
     };
 
-    let header = lithium_header(&address, &block_hash, &cyberlinks_merkle);
+    let header = challenge;
 
     let num_threads = threads.unwrap_or_else(|| {
         std::thread::available_parallelism()
@@ -228,19 +281,24 @@ pub fn start_mining(
         Err(e) => return serde_json::json!({ "success": false, "error": e }),
     };
 
+    let address_for_metrics = address.clone();
+
     // Store params so JS can restore refs after component remount
     *state.params.lock().unwrap() = Some(MiningParams {
         address,
-        block_hash_hex,
-        cyberlinks_merkle_hex,
+        challenge_hex,
         difficulty,
-        epoch_id: epoch_id.unwrap_or(0),
         block_timestamp: block_timestamp.unwrap_or(0),
     });
 
     *state.active_backend.lock().unwrap() = backend_name.to_string();
     state.mining.store(true, Ordering::SeqCst);
     state.hash_count.store(0, Ordering::SeqCst);
+    state.batch_count.store(0, Ordering::SeqCst);
+    state.total_batch_time_us.store(0, Ordering::SeqCst);
+    state.hash_snapshots.lock().unwrap().clear();
+    state.proofs_submitted.store(0, Ordering::SeqCst);
+    state.proofs_failed.store(0, Ordering::SeqCst);
     *state.start_time.lock().unwrap() = Some(Instant::now());
     state.pending_proofs.lock().unwrap().clear();
 
@@ -248,33 +306,114 @@ pub fn start_mining(
 
     let state_clone = state.inner().clone();
 
+    let is_gpu = backend_name != "cpu";
+
     std::thread::spawn(move || {
         let mut nonce: u64 = 0;
+        let mut local_batch_count: u64 = 0;
+        let mut local_batch_time_us: u64 = 0;
+        let mut consecutive_errors: u32 = 0;
+        let mut metrics = crate::metrics::MetricsReporter::new(&address_for_metrics);
+
+        println!(
+            "[Mining] Started: backend={}, lanes={}, difficulty={}, gpu_yield={}",
+            backend_name, lanes, difficulty, is_gpu
+        );
 
         while state_clone.mining.load(Ordering::Relaxed) {
+            let batch_start = Instant::now();
             match solver.find_proof_batch(&header, nonce, lanes, difficulty) {
                 Ok((Some((found_nonce, hash)), actual)) => {
+                    consecutive_errors = 0;
+                    let batch_us = batch_start.elapsed().as_micros() as u64;
+                    local_batch_time_us += batch_us;
+                    local_batch_count += 1;
+                    state_clone.batch_count.fetch_add(1, Ordering::Relaxed);
+                    state_clone.total_batch_time_us.fetch_add(batch_us, Ordering::Relaxed);
                     let proof = FoundProof {
                         hash: hex::encode(hash),
                         nonce: found_nonce,
                     };
+                    println!(
+                        "[Mining] PROOF FOUND! nonce={}, hash={}..., batch_time={}ms",
+                        found_nonce,
+                        &hex::encode(&hash)[..16],
+                        batch_us / 1000
+                    );
                     state_clone.pending_proofs.lock().unwrap().push(proof);
                     state_clone
                         .hash_count
                         .fetch_add(actual as u64, Ordering::Relaxed);
                 }
                 Ok((None, actual)) => {
+                    consecutive_errors = 0;
+                    let batch_us = batch_start.elapsed().as_micros() as u64;
+                    local_batch_time_us += batch_us;
+                    local_batch_count += 1;
+                    state_clone.batch_count.fetch_add(1, Ordering::Relaxed);
+                    state_clone.total_batch_time_us.fetch_add(batch_us, Ordering::Relaxed);
                     state_clone
                         .hash_count
                         .fetch_add(actual as u64, Ordering::Relaxed);
+
+                    // Record snapshot for rolling hashrate
+                    let rolling_hr = state_clone.record_snapshot();
+
+                    // Log every 10 batches
+                    if local_batch_count % 10 == 0 {
+                        let avg_ms = local_batch_time_us as f64 / local_batch_count as f64 / 1000.0;
+                        let total_h = state_clone.hash_count.load(Ordering::Relaxed);
+                        println!(
+                            "[Mining] batch={}, lanes={}, avg_batch={:.1}ms, hashes={}, hashrate={:.0} H/s",
+                            local_batch_count, lanes, avg_ms, total_h, rolling_hr
+                        );
+                    }
                 }
                 Err(e) => {
-                    eprintln!("[Mining] Solver error: {}", e);
-                    break;
+                    consecutive_errors += 1;
+                    eprintln!(
+                        "[Mining] Solver error (attempt {}): {}",
+                        consecutive_errors, e
+                    );
+                    if consecutive_errors >= 5 {
+                        eprintln!("[Mining] Too many consecutive errors, stopping");
+                        break;
+                    }
+                    std::thread::sleep(Duration::from_millis(100 * consecutive_errors as u64));
+                    continue;
                 }
             }
             nonce = nonce.saturating_add(lanes as u64);
+
+            // Yield between GPU batches to prevent thermal throttling
+            if is_gpu {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+
+            // Push metrics in batches (checks internally if enough time elapsed)
+            if local_batch_count % 100 == 0 {
+                metrics.maybe_push(&state_clone, backend_name);
+            }
         }
+
+        // Flush final metrics on stop
+        metrics.flush(&state_clone, backend_name);
+
+        let total_h = state_clone.hash_count.load(Ordering::Relaxed);
+        let elapsed = state_clone
+            .start_time
+            .lock()
+            .unwrap()
+            .map(|t| t.elapsed().as_secs_f64())
+            .unwrap_or(1.0);
+        println!(
+            "[Mining] Stopped: {} batches, {} hashes in {:.1}s, avg {:.0} H/s, avg_batch={:.1}ms",
+            local_batch_count,
+            total_h,
+            elapsed,
+            total_h as f64 / elapsed,
+            local_batch_time_us as f64 / local_batch_count.max(1) as f64 / 1000.0
+        );
     });
 
     serde_json::json!({
@@ -326,15 +465,20 @@ pub fn get_mining_status(state: State<Arc<MiningState>>) -> serde_json::Value {
         .map(|t| t.elapsed().as_secs_f64())
         .unwrap_or(0.0);
 
-    let hashrate = if elapsed > 0.0 {
-        count as f64 / elapsed
-    } else {
-        0.0
-    };
+    let hashrate = state.rolling_hashrate();
 
     let pending_count = state.pending_proofs.lock().unwrap().len();
     let params = state.params.lock().unwrap();
     let backend = state.active_backend.lock().unwrap().clone();
+    let batches = state.batch_count.load(Ordering::Relaxed);
+    let batch_time_us = state.total_batch_time_us.load(Ordering::Relaxed);
+    let avg_batch_ms = if batches > 0 {
+        batch_time_us as f64 / batches as f64 / 1000.0
+    } else {
+        0.0
+    };
+    let proofs_submitted = state.proofs_submitted.load(Ordering::Relaxed);
+    let proofs_failed = state.proofs_failed.load(Ordering::Relaxed);
 
     let mut result = serde_json::json!({
         "mining": is_mining,
@@ -342,13 +486,15 @@ pub fn get_mining_status(state: State<Arc<MiningState>>) -> serde_json::Value {
         "elapsed_secs": elapsed,
         "hashrate": hashrate,
         "pending_proofs": pending_count,
-        "backend": backend
+        "backend": backend,
+        "batch_count": batches,
+        "avg_batch_ms": avg_batch_ms,
+        "proofs_submitted": proofs_submitted,
+        "proofs_failed": proofs_failed
     });
 
     if let Some(ref p) = *params {
-        result["block_hash_hex"] = serde_json::json!(p.block_hash_hex);
-        result["cyberlinks_merkle_hex"] = serde_json::json!(p.cyberlinks_merkle_hex);
-        result["epoch_id"] = serde_json::json!(p.epoch_id);
+        result["challenge_hex"] = serde_json::json!(p.challenge_hex);
         result["block_timestamp"] = serde_json::json!(p.block_timestamp);
     }
 
@@ -359,6 +505,16 @@ pub fn get_mining_status(state: State<Arc<MiningState>>) -> serde_json::Value {
 pub fn take_proofs(state: State<Arc<MiningState>>) -> serde_json::Value {
     let proofs: Vec<FoundProof> = std::mem::take(&mut *state.pending_proofs.lock().unwrap());
     serde_json::json!(proofs)
+}
+
+#[tauri::command]
+pub fn report_proof_submitted(state: State<Arc<MiningState>>) {
+    state.proofs_submitted.fetch_add(1, Ordering::Relaxed);
+}
+
+#[tauri::command]
+pub fn report_proof_failed(state: State<Arc<MiningState>>) {
+    state.proofs_failed.fetch_add(1, Ordering::Relaxed);
 }
 
 #[tauri::command]
