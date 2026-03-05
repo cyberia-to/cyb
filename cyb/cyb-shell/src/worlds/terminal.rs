@@ -1171,14 +1171,25 @@ fn render_terminal(world: &mut World) {
     }; // NonSend borrow released here
 
     // Phase 2: update Bevy Image data (borrows Assets<Image>)
-    if let Some(pixels) = pixels {
-        let mut images = world.resource_mut::<Assets<Image>>();
-        if let Some(image) = images.get_mut(&image_handle) {
-            if let Some(ref mut data) = image.data {
-                if data.len() == pixels.len() {
-                    data.copy_from_slice(&pixels);
+    match pixels {
+        Some(ref px) => {
+            let mut images = world.resource_mut::<Assets<Image>>();
+            if let Some(image) = images.get_mut(&image_handle) {
+                if let Some(ref mut data) = image.data {
+                    if data.len() == px.len() {
+                        data.copy_from_slice(px);
+                    } else {
+                        warn!("Terminal pixel size mismatch: image={} pixels={}", data.len(), px.len());
+                    }
+                } else {
+                    warn!("Terminal image has no data field");
                 }
+            } else {
+                warn!("Terminal image handle not found in assets");
             }
+        }
+        None => {
+            warn!("Terminal offscreen readback returned None");
         }
     }
 }

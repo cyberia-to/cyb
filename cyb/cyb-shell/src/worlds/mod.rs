@@ -1,17 +1,17 @@
-pub mod browser;
-pub mod game;
+pub mod interface;
+pub mod legacy;
+pub mod portal;
 pub mod terminal;
-pub mod ui;
 
 use bevy::prelude::*;
 
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum WorldState {
     #[default]
-    Terminal, // Cmd+1 (default)
-    Browser,  // Cmd+2 (cyb)
-    Ui,       // Cmd+3
-    Game,     // Cmd+4
+    Terminal,  // Cmd+1 (nushell)
+    Portal,    // Cmd+2 (Leptos WASM)
+    Legacy,    // Cmd+3 (cyb-ts React)
+    Interface, // Cmd+4 (Bevy 3D/2D)
 }
 
 pub struct WorldsPlugin;

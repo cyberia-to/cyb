@@ -1,0 +1,9 @@
+[build]
+dist = "dist"
+public_url = "./"
+
+[watch]
+watch = ["src", "style.css", "index.html"]
+
+[serve]
+port = 8090

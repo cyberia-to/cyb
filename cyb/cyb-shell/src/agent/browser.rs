@@ -2,7 +2,7 @@ use std::sync::mpsc;
 
 use bevy::prelude::*;
 
-use crate::worlds::browser::WryWebView;
+use crate::worlds::legacy::LegacyWebView;
 
 #[derive(Debug)]
 pub enum AgentCommand {
@@ -53,7 +53,7 @@ impl Plugin for AgentPlugin {
 
 fn process_agent_commands(
     receiver: NonSend<AgentCommandReceiver>,
-    webview: Option<NonSend<WryWebView>>,
+    webview: Option<NonSend<LegacyWebView>>,
     mut responses: MessageWriter<AgentResponse>,
 ) {
     while let Ok(cmd) = receiver.0.try_recv() {

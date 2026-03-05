@@ -44,6 +44,8 @@ deno.lock
 
 # Rust build artifacts
 cyb/target/
+cyb/cyb-portal/target/
+cyb/cyb-portal/dist/
 
 # Claude Code
 .claude/*

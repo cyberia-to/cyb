@@ -1,7 +1,8 @@
 .PHONY: dev build run clean check test dmg
 
-# Development: run cyb-shell (Browser mode loads https://localhost:3001)
-# Start cyb-ts dev server first: cd .. && deno task start
+# Development: run cyb-shell
+# Portal mode (Cmd+2): cd cyb-portal && trunk serve  (Leptos :8090)
+# Legacy mode (Cmd+3): cd .. && deno task start       (cyb-ts :3001)
 dev:
 	cargo run -p cyb-shell
 
@@ -31,14 +32,18 @@ test:
 clean:
 	cargo clean
 
+# Build cyb-portal (Leptos WASM)
+portal:
+	cd cyb-portal && trunk build --release
+
 # Build macOS .dmg
-dmg: release
+dmg: release portal
 	rm -rf target/release/cyb.app
 	mkdir -p target/release/cyb.app/Contents/MacOS
 	mkdir -p target/release/cyb.app/Contents/Resources
 	cp target/release/cyb-shell target/release/cyb.app/Contents/MacOS/cyb-shell
-	@if [ -d "cyb-shell/web-dist" ]; then \
-		cp -r cyb-shell/web-dist target/release/cyb.app/Contents/Resources/web-dist; \
+	@if [ -d "cyb-portal/dist" ]; then \
+		cp -r cyb-portal/dist target/release/cyb.app/Contents/MacOS/cyb-portal; \
 	fi
 	/usr/libexec/PlistBuddy -c "Add :CFBundleName string cyb" target/release/cyb.app/Contents/Info.plist
 	/usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string cyb" target/release/cyb.app/Contents/Info.plist
@@ -53,6 +58,6 @@ dmg: release
 	hdiutil create -volname "cyb" -srcfolder target/release/cyb.app -ov -format UDZO target/release/cyb.dmg
 
 # Full dev workflow
-# Terminal 1: cd .. && deno task start     (cyb-ts HTTPS :3001)
-# Terminal 2: make dev                     (Bevy shell → Browser mode)
-# Terminal 3: cd cyb-ui && dx serve        (Optional: Dioxus UI dev)
+# Terminal 1: cd .. && deno task start     (cyb-ts HTTPS :3001 → Legacy mode)
+# Terminal 2: cd cyb-portal && trunk serve (Leptos :8090 → Portal mode)
+# Terminal 3: make dev                     (Bevy shell)

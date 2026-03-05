@@ -8,10 +8,10 @@ pub struct TrayPlugin;
 
 struct TrayState {
     _tray: tray_icon::TrayIcon,
-    ui_id: String,
-    game_id: String,
     terminal_id: String,
-    browser_id: String,
+    portal_id: String,
+    legacy_id: String,
+    interface_id: String,
     quit_id: String,
 }
 
@@ -25,23 +25,23 @@ impl Plugin for TrayPlugin {
 fn create_tray(world: &mut World) {
     let menu = Menu::new();
 
-    let item_ui = MenuItem::new("UI (Cmd+1)", true, None);
-    let item_game = MenuItem::new("Game (Cmd+2)", true, None);
-    let item_terminal = MenuItem::new("Terminal (Cmd+3)", true, None);
-    let item_browser = MenuItem::new("Browser (Cmd+4)", true, None);
+    let item_terminal = MenuItem::new("Terminal (Cmd+1)", true, None);
+    let item_portal = MenuItem::new("Portal (Cmd+2)", true, None);
+    let item_legacy = MenuItem::new("Legacy (Cmd+3)", true, None);
+    let item_interface = MenuItem::new("Interface (Cmd+4)", true, None);
     let separator = PredefinedMenuItem::separator();
     let item_quit = MenuItem::new("Quit", true, None);
 
-    let ui_id = item_ui.id().as_ref().to_string();
-    let game_id = item_game.id().as_ref().to_string();
     let terminal_id = item_terminal.id().as_ref().to_string();
-    let browser_id = item_browser.id().as_ref().to_string();
+    let portal_id = item_portal.id().as_ref().to_string();
+    let legacy_id = item_legacy.id().as_ref().to_string();
+    let interface_id = item_interface.id().as_ref().to_string();
     let quit_id = item_quit.id().as_ref().to_string();
 
-    let _ = menu.append(&item_ui);
-    let _ = menu.append(&item_game);
     let _ = menu.append(&item_terminal);
-    let _ = menu.append(&item_browser);
+    let _ = menu.append(&item_portal);
+    let _ = menu.append(&item_legacy);
+    let _ = menu.append(&item_interface);
     let _ = menu.append(&separator);
     let _ = menu.append(&item_quit);
 
@@ -58,10 +58,10 @@ fn create_tray(world: &mut World) {
 
     world.insert_non_send_resource(TrayState {
         _tray: tray,
-        ui_id,
-        game_id,
         terminal_id,
-        browser_id,
+        portal_id,
+        legacy_id,
+        interface_id,
         quit_id,
     });
 
@@ -83,14 +83,14 @@ fn poll_tray_events(
             return;
         }
 
-        let target = if id == tray.ui_id {
-            WorldState::Ui
-        } else if id == tray.game_id {
-            WorldState::Game
-        } else if id == tray.terminal_id {
+        let target = if id == tray.terminal_id {
             WorldState::Terminal
-        } else if id == tray.browser_id {
-            WorldState::Browser
+        } else if id == tray.portal_id {
+            WorldState::Portal
+        } else if id == tray.legacy_id {
+            WorldState::Legacy
+        } else if id == tray.interface_id {
+            WorldState::Interface
         } else {
             continue;
         };

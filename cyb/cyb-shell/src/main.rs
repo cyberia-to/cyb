@@ -9,12 +9,12 @@ use agent::AgentPlugin;
 use shell::hotkeys::HotkeysPlugin;
 use shell::tray::TrayPlugin;
 use worlds::WorldsPlugin;
-use worlds::browser::BrowserWorldPlugin;
-use worlds::game::GameWorldPlugin;
+use worlds::interface::InterfaceWorldPlugin;
+use worlds::legacy::LegacyWorldPlugin;
+use worlds::portal::PortalWorldPlugin;
 use worlds::terminal::TerminalWorldPlugin;
-use worlds::ui::UiWorldPlugin;
 
-/// Clones Bevy's GPU resources (Device, Queue, Instance) into the main world
+/// Clones Bevy's GPU resources (Device, Queue) into the main world
 /// so non-render systems (like Terminal) can use them.
 struct GpuBridgePlugin;
 
@@ -46,9 +46,9 @@ fn main() {
         .add_plugins(GpuBridgePlugin)
         .add_plugins(WorldsPlugin)
         .add_plugins(HotkeysPlugin)
-        .add_plugins(GameWorldPlugin)
-        .add_plugins(BrowserWorldPlugin)
-        .add_plugins(UiWorldPlugin)
+        .add_plugins(InterfaceWorldPlugin)
+        .add_plugins(PortalWorldPlugin)
+        .add_plugins(LegacyWorldPlugin)
         .add_plugins(TerminalWorldPlugin)
         .add_plugins(AgentPlugin)
         .add_plugins(TrayPlugin)

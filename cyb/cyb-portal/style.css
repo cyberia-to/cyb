@@ -1,0 +1,144 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --cyan: #36d6ae;
+    --cyan-dim: #1a8a6a;
+    --bg: #000000;
+    --surface: #111111;
+    --text: #ffffff;
+    --text-dim: #888888;
+    --font: 'Play', sans-serif;
+}
+
+html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--font);
+    -webkit-font-smoothing: antialiased;
+}
+
+a {
+    color: var(--cyan);
+    text-decoration: none;
+}
+
+a:hover {
+    color: var(--text);
+}
+
+.header {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 8px 16px;
+    border-bottom: 1px solid var(--surface);
+    height: 50px;
+}
+
+.logo {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: 2px;
+}
+
+.commander {
+    flex: 1;
+    display: flex;
+}
+
+.commander-input {
+    width: 100%;
+    padding: 8px 16px;
+    background: var(--surface);
+    border: 1px solid #222;
+    border-radius: 20px;
+    color: var(--text);
+    font-family: var(--font);
+    font-size: 14px;
+    outline: none;
+    transition: border-color 0.2s;
+}
+
+.commander-input:focus {
+    border-color: var(--cyan-dim);
+}
+
+.commander-input::placeholder {
+    color: var(--text-dim);
+}
+
+.nav {
+    display: flex;
+    gap: 16px;
+}
+
+.nav-link {
+    color: var(--text-dim);
+    font-size: 13px;
+    text-transform: lowercase;
+}
+
+.nav-link:hover {
+    color: var(--cyan);
+}
+
+.content {
+    height: calc(100vh - 50px);
+    display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+.oracle {
+    text-align: center;
+}
+
+.oracle-title {
+    font-size: 72px;
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: 8px;
+    margin-bottom: 16px;
+}
+
+.oracle-sub {
+    color: var(--text-dim);
+    font-size: 16px;
+}
+
+.search {
+    width: 100%;
+    max-width: 800px;
+    padding: 32px;
+}
+
+.search-query {
+    color: var(--cyan);
+    margin-bottom: 24px;
+}
+
+.page {
+    width: 100%;
+    max-width: 800px;
+    padding: 32px;
+}
+
+.page h2 {
+    color: var(--cyan);
+    margin-bottom: 16px;
+}
+
+.placeholder {
+    color: var(--text-dim);
+}
+
+.not-found {
+    font-size: 48px;
+    color: var(--text-dim);
+}
