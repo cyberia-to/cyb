@@ -2,7 +2,7 @@
   "mcpServers": {
     "bostrom": {
       "command": "npx",
-      "args": ["bostrom-mcp@0.3.0"]
+      "args": ["bostrom-mcp@0.5.0"]
     }
   }
 }

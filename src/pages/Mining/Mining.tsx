@@ -15,17 +15,7 @@ import type {
   ConfigResponse,
 } from 'src/generated/lithium/LitiumMine.types';
 
-type RelayProofRequest = {
-  hash: string;
-  nonce: number;
-  miner_address: string;
-  challenge: string;
-  difficulty: number;
-  timestamp: number;
-  referrer?: string;
-};
-
-type RelayProofResponse = {
+type ActivateAccountResponse = {
   ok?: boolean;
   tx_hash?: string;
   error?: string;
@@ -200,35 +190,21 @@ function classifySubmitError(error: unknown): SubmitErrorKind {
   return 'unknown';
 }
 
-async function relayProof(
-  proof: Proof,
-  minerAddress: string,
-  challenge: string,
-  difficulty: number,
-  referrer: string | undefined,
-  blockTimestamp: number
-): Promise<string | null> {
+async function activateAccount(
+  minerAddress: string
+): Promise<boolean> {
   try {
-    const payload: RelayProofRequest = {
-      hash: proof.hash,
-      nonce: Number(proof.nonce),
-      miner_address: minerAddress,
-      challenge,
-      difficulty,
-      timestamp: blockTimestamp,
-      referrer: referrer || undefined,
-    };
     const res = await fetch(UHASH_RELAY_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ miner_address: minerAddress }),
     });
-    const data = (await res.json()) as RelayProofResponse;
-    console.log('[Mining] Relay result:', data);
-    return data.ok ? data.tx_hash : null;
+    const data = (await res.json()) as ActivateAccountResponse;
+    console.log('[Mining] Account activation result:', data);
+    return !!data.ok;
   } catch (err) {
-    console.error('[Mining] Relay failed:', err);
-    return null;
+    console.error('[Mining] Account activation failed:', err);
+    return false;
   }
 }
 
@@ -533,83 +509,46 @@ function Mining() {
         const kind = classifySubmitError(executeErr);
 
         if (kind === 'account_not_found') {
-          console.log('[Mining] Account not on chain, relaying proof...');
-          const txHash = await relayProof(
-            proof,
-            account.address,
-            challengeRef.current,
-            userDifficulty,
-            referrer,
-            blockTimestampRef.current
-          );
-          if (txHash) {
-            console.log('[Mining] Proof relayed! TX:', txHash);
-            // Update submitted entry to pending with txHash
-            setProofLog((prev) =>
-              prev.map((p) =>
-                p.hash === proof.hash && (p.status === 'submitted' || !p.txHash)
-                  ? { ...p, txHash, status: 'pending' }
-                  : p
-              )
-            );
-            // Wait for tx to be included, then verify
+          console.log('[Mining] Account not on chain, activating...');
+          const activated = await activateAccount(account.address);
+          if (activated) {
+            console.log('[Mining] Account activated, waiting for tx inclusion...');
+            // Wait for activation tx to be included in a block
             await new Promise<void>((resolve) => {
               setTimeout(resolve, 7000);
             });
+            // Retry proof submission directly
+            console.log('[Mining] Retrying proof submission...');
             try {
-              const txRes = await fetch(
-                `${RPC_URL}/tx?hash=0x${txHash}`
+              result = await signingClient.execute(
+                account.address,
+                LITIUM_MINE_CONTRACT,
+                msg,
+                Soft3MessageFactory.fee(8),
+                ''
               );
-              const txJson = await txRes.json();
-              const code = txJson?.result?.tx_result?.code ?? txJson?.result?.code;
-              if (code === 0 || code === undefined) {
-                console.log('[Mining] Relay tx confirmed OK:', txHash);
-                if (isNative) {
-                  invoke('report_proof_submitted').catch(() => {});
-                }
-                setProofLog((prev) =>
-                  prev.map((p) =>
-                    p.txHash === txHash ? { ...p, status: 'success' } : p
-                  )
-                );
-                refreshBalance();
-                setSessionLiMined((prev) => prev + (rewardPerProof || 0));
-              } else {
-                const log = txJson?.result?.tx_result?.log || txJson?.result?.log || 'tx failed';
-                console.warn('[Mining] Relay tx failed on chain:', txHash, log);
-                if (isNative) {
-                  invoke('report_proof_failed').catch(() => {});
-                }
-                setProofLog((prev) =>
-                  prev.map((p) =>
-                    p.txHash === txHash
-                      ? { ...p, status: 'failed', error: String(log).slice(0, 120) }
-                      : p
-                  )
-                );
-              }
-            } catch {
-              // Can't verify — leave as pending
-              console.warn('[Mining] Could not verify relay tx:', txHash);
+            } catch (retryErr) {
               if (isNative) {
-                invoke('report_proof_submitted').catch(() => {});
+                invoke('report_proof_failed').catch(() => {});
               }
-              refreshBalance();
-              setSessionLiMined((prev) => prev + (rewardPerProof || 0));
+              throw new Error(
+                `Retry after activation failed: ${normalizeErrorText(retryErr)}`
+              );
             }
-            return;
+          } else {
+            if (isNative) {
+              invoke('report_proof_failed').catch(() => {});
+            }
+            throw new Error('Account activation failed — cannot submit proof');
           }
+        } else {
           if (isNative) {
             invoke('report_proof_failed').catch(() => {});
           }
-          throw new Error('Proof relay failed — account does not exist');
+          throw new Error(
+            `Submit ${kind} error: ${normalizeErrorText(executeErr)}`
+          );
         }
-        if (isNative) {
-          invoke('report_proof_failed').catch(() => {});
-        }
-        throw new Error(
-          `Submit ${kind} error: ${normalizeErrorText(executeErr)}`
-        );
       }
 
       // Collect all events from both result.events and result.logs[].events[]
@@ -947,6 +886,64 @@ function Mining() {
     }
   }, [address]);
 
+  const handleExportLogs = useCallback(() => {
+    const report = {
+      exported_at: new Date().toISOString(),
+      user_agent: navigator.userAgent,
+      platform: isNative ? 'tauri' : 'web',
+      address: address || null,
+      mining: {
+        active: autoMining,
+        difficulty: userDifficulty,
+        min_difficulty: minDifficulty,
+        threads: threadCount,
+        backend,
+        hashrate,
+        elapsed_secs: elapsed,
+        session_li_mined: sessionLiMined,
+      },
+      hashrate_samples: samples,
+      contract_config: config || null,
+      window_status: windowStatus || null,
+      emission: emission || null,
+      network: {
+        unique_miners: uniqueMiners,
+        total_proofs: totalProofs,
+        avg_difficulty: avgDifficulty,
+        d_rate: dRate,
+        similar_devices: similarDevices,
+        window_proof_count: windowProofCount,
+        base_rate: baseRate,
+      },
+      reward_estimate: {
+        per_proof: rewardPerProof,
+        gross_per_proof: grossRewardPerProof,
+        li_per_hour: estimatedLiPerHour,
+      },
+      proof_log: proofLog,
+    };
+    const text = JSON.stringify(report, null, 2);
+    navigator.clipboard.writeText(text).then(
+      () => console.log('[Mining] Logs copied to clipboard'),
+      () => {
+        // Fallback: download as file
+        const blob = new Blob([text], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `mining-log-${Date.now()}.json`;
+        a.click();
+        URL.revokeObjectURL(url);
+      }
+    );
+  }, [
+    address, autoMining, userDifficulty, minDifficulty, threadCount, backend,
+    hashrate, elapsed, sessionLiMined, samples, config, windowStatus, emission,
+    uniqueMiners, totalProofs, avgDifficulty, dRate, similarDevices,
+    windowProofCount, baseRate, rewardPerProof, grossRewardPerProof,
+    estimatedLiPerHour, proofLog, isNative,
+  ]);
+
   // Format alpha/beta from micros to percentage
   const alphaPercent = config ? (config.alpha / 10_000).toFixed(1) : '...';
   const betaPercent = config ? (config.beta / 10_000).toFixed(1) : '...';
@@ -977,6 +974,14 @@ function Mining() {
                 onClick={() => setConfigOpen((v) => !v)}
               >
                 {configOpen ? 'Hide Config' : 'Config'}
+              </button>
+              <button
+                type="button"
+                className={styles.simToggleBtn}
+                onClick={handleExportLogs}
+                title="Copy mining logs to clipboard"
+              >
+                Export Logs
               </button>
               {!autoMining && <Pill color="black" text="Idle" />}
             </div>
