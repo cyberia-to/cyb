@@ -46,6 +46,7 @@ deno.lock
 cyb/target/
 cyb/cyb-portal/target/
 cyb/cyb-portal/dist/
+cyb-boot/target/
 
 # Claude Code
 .claude/*

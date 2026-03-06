@@ -762,3 +762,42 @@
   gap: 10px;
   justify-content: flex-end;
 }
+
+// Download section (desktop app)
+.downloadInfo {
+  font-size: 13px;
+  color: #999;
+  line-height: 1.5;
+}
+
+.downloadRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.downloadBtn {
+  background: rgba(54, 214, 174, 0.15);
+  border: 1px solid rgba(54, 214, 174, 0.4);
+  border-radius: 4px;
+  padding: 10px 20px;
+  color: #36d6ae;
+  font-size: 14px;
+  font-weight: bold;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    background: rgba(54, 214, 174, 0.25);
+  }
+
+  &:disabled {
+    opacity: 0.5;
+    cursor: wait;
+  }
+}
+
+.downloadError {
+  font-size: 13px;
+  color: #ef4444;
+}

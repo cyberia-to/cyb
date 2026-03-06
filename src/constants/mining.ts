@@ -11,3 +11,6 @@ export const UHASH_RELAY_URL = 'https://bostrom.cybernode.ai/relay';
 
 // Min milliseconds between proof submissions (roughly one Bostrom block)
 export const SUBMIT_COOLDOWN_MS = 6_000;
+
+// cyb-boot distribution server (on cyberproxy, serves cyb.ai)
+export const BOOT_SERVER_URL = 'https://cyb.ai/api/boot';

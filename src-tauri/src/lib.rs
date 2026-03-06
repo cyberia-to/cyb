@@ -93,6 +93,20 @@ async fn init_ipfs_with_progress(splash: &WebviewWindow) {
     println!("[CYB.AI] IPFS initialization complete!");
 }
 
+/// Read and delete bootstrap.json written by cyb-boot installer.
+/// Returns {mnemonic, referrer} if found, null otherwise.
+#[tauri::command]
+fn read_bootstrap() -> Option<serde_json::Value> {
+    let data_dir = dirs::data_dir()?.join("ai.cyb.app");
+    let path = data_dir.join("bootstrap.json");
+    let content = std::fs::read_to_string(&path).ok()?;
+    let value: serde_json::Value = serde_json::from_str(&content).ok()?;
+    // Delete after reading — one-time import
+    let _ = std::fs::remove_file(&path);
+    println!("[CYB.AI] Imported bootstrap.json from cyb-boot installer");
+    Some(value)
+}
+
 #[tauri::command]
 fn toggle_devtools(window: tauri::WebviewWindow) {
     if window.is_devtools_open() {
@@ -109,6 +123,7 @@ fn build_tauri_app() -> tauri::Builder<tauri::Wry> {
         .manage(Arc::new(MiningState::new()))
         .invoke_handler(generate_handler![
             toggle_devtools,
+            read_bootstrap,
             get_ipfs_mode,
             start_ipfs,
             stop_ipfs,
@@ -133,6 +148,7 @@ fn build_tauri_app() -> tauri::Builder<tauri::Wry> {
         .manage(Arc::new(MiningState::new()))
         .invoke_handler(generate_handler![
             toggle_devtools,
+            read_bootstrap,
             get_ipfs_mode,
             start_ipfs,
             stop_ipfs,

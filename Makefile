@@ -9,7 +9,7 @@
 .PHONY: install-ios install-android
 .PHONY: test lint icons
 .PHONY: download-kubo
-.PHONY: macos-release ios-release
+.PHONY: macos-release ios-release cyb-boot
 .PHONY: setup-android-signing android-release
 
 # ============================================================================
@@ -311,6 +311,35 @@ ifdef IS_MACOS
 	@echo -e "  .app: $(TAURI_DIR)/target/aarch64-apple-darwin/release/bundle/macos/cyb.app"
 	@echo -e "  .dmg: $(TAURI_DIR)/target/aarch64-apple-darwin/release/bundle/dmg/"
 	@echo -e "  .pkg: $(TAURI_DIR)/target/aarch64-apple-darwin/release/bundle/pkg/"
+else
+	@echo -e "$(RED)[Error]$(NC) macOS builds require macOS"
+endif
+
+cyb-boot: setup-rust ## Build, sign, notarize cyb-boot thin installer
+ifdef IS_MACOS
+	@if [ -z "$(APPLE_SIGNING_IDENTITY)" ]; then \
+		echo -e "$(RED)[Error]$(NC) No Developer ID Application certificate found in Keychain"; \
+		exit 1; \
+	fi
+	@if [ -z "$(APPLE_API_KEY)" ]; then \
+		echo -e "$(RED)[Error]$(NC) No API key found in ~/.appstoreconnect/private_keys/"; \
+		exit 1; \
+	fi
+	@echo -e "$(BLUE)[Build]$(NC) Building cyb-boot for macOS ARM..."
+	@cd cyb-boot && cargo build --release --target aarch64-apple-darwin
+	@echo -e "$(BLUE)[Sign]$(NC) Signing cyb-boot..."
+	@codesign --force --options runtime --sign "$(APPLE_SIGNING_IDENTITY)" \
+		cyb-boot/target/aarch64-apple-darwin/release/cyb-boot
+	@echo -e "$(BLUE)[Notarize]$(NC) Submitting cyb-boot for notarization..."
+	@ditto -c -k --keepParent cyb-boot/target/aarch64-apple-darwin/release/cyb-boot /tmp/cyb-boot-notarize.zip
+	@xcrun notarytool submit /tmp/cyb-boot-notarize.zip \
+		--key "$(APPLE_API_KEY_PATH)" \
+		--key-id "$(APPLE_API_KEY)" \
+		--issuer "$(APPLE_API_ISSUER)" \
+		--wait
+	@rm -f /tmp/cyb-boot-notarize.zip
+	@echo -e "$(GREEN)[Done]$(NC) cyb-boot signed + notarized:"
+	@echo -e "  cyb-boot/target/aarch64-apple-darwin/release/cyb-boot"
 else
 	@echo -e "$(RED)[Error]$(NC) macOS builds require macOS"
 endif

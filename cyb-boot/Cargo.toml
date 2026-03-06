@@ -1,0 +1,17 @@
+[package]
+name = "cyb-boot"
+version = "0.1.0"
+edition = "2021"
+description = "Thin installer bootstrap for cyb desktop app"
+
+[dependencies]
+aes-gcm = "0.10"
+reqwest = { version = "0.12", features = ["blocking", "rustls-tls"], default-features = false }
+dirs = "6"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[profile.release]
+opt-level = "s"
+lto = true
+strip = true

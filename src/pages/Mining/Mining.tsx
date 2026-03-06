@@ -42,6 +42,7 @@ import StakingSection from './components/StakingSection';
 import ReferralSection, { loadReferrer, saveReferrer } from './components/ReferralSection';
 import ConfigPanel from './components/ConfigPanel';
 import MiningActionBar from './MiningActionBar';
+import DownloadSection from './components/DownloadSection';
 import { useAppSelector } from 'src/redux/hooks';
 import { WasmMiner } from './wasmMiner';
 import styles from './Mining.module.scss';
@@ -1114,6 +1115,9 @@ function Mining() {
             referrer={referrer}
             onReferrerChange={setReferrer}
           />
+
+          {/* Desktop download section (web only) */}
+          {!isNative && <DownloadSection address={address} />}
 
           {/* Proof summary + paginated list */}
           {proofLog.length > 0 && (() => {

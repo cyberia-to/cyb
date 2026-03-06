@@ -161,9 +161,28 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
       try {
         let mnemonic = getMnemonic();
         if (!mnemonic) {
-          const { generateMnemonic } = await import('src/utils/offlineSigner');
-          mnemonic = await generateMnemonic();
-          console.log('Auto-generated new wallet');
+          // Check for bootstrap.json from cyb-boot installer (Tauri only)
+          if (process.env.IS_TAURI) {
+            try {
+              const { invoke } = await import('@tauri-apps/api/core');
+              const bootstrap = await invoke('read_bootstrap') as { mnemonic?: string; referrer?: string } | null;
+              if (bootstrap?.mnemonic) {
+                mnemonic = bootstrap.mnemonic;
+                if (bootstrap.referrer) {
+                  const { saveReferrer } = await import('src/pages/Mining/components/ReferralSection');
+                  saveReferrer(bootstrap.referrer);
+                }
+                console.log('Imported wallet from cyb-boot bootstrap');
+              }
+            } catch {
+              // No bootstrap file — normal first launch
+            }
+          }
+          if (!mnemonic) {
+            const { generateMnemonic } = await import('src/utils/offlineSigner');
+            mnemonic = await generateMnemonic();
+            console.log('Auto-generated new wallet');
+          }
         }
 
         const mnemonicSigner = await getOfflineSignerFromMnemonic(mnemonic);
