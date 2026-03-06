@@ -133,6 +133,8 @@ jobs:
           NODE_OPTIONS: '--max-old-space-size=8192'
 
       - name: Build Tauri app (sign + notarize)
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '11.0'
         run: |
           npx @tauri-apps/cli build \
             --target aarch64-apple-darwin \
@@ -146,6 +148,8 @@ jobs:
             --output-dir src-tauri/target/aarch64-apple-darwin/release/bundle/pkg
 
       - name: Build cyb-boot (sign + notarize)
+        env:
+          MACOSX_DEPLOYMENT_TARGET: '11.0'
         run: |
           cd cyb-boot && cargo build --release --target aarch64-apple-darwin
           cd ..
