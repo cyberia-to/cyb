@@ -26,7 +26,7 @@ function MobileMenu() {
         >
           <img
             src={activeItem?.icon}
-            className={styles.icon}
+            className={cx(styles.icon, { [styles.portalGlow]: activeItem?.name === 'Portal' })}
             alt={`${activeItem?.name} menu active icon`}
           />
         </button>
@@ -44,7 +44,7 @@ function MobileMenu() {
                   rel: 'noreferrer noopener',
                 })}
               >
-                <img src={item.icon} className={styles.icon} alt={`${item.name} menu icon`} />
+                <img src={item.icon} className={cx(styles.icon, { [styles.portalGlow]: item.name === 'Portal' })} alt={`${item.name} menu icon`} />
                 {isExternal && <span className={styles.external} />}
               </NavLink>
             )

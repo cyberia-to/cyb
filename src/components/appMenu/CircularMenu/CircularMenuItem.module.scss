@@ -35,11 +35,13 @@
 .icon {
   width: 30px;
   height: 30px;
-  object-fit: fill;
-  border-radius: 50%;
-  justify-content: center;
-  align-items: center;
-  display: flex;
+  object-fit: cover;
+  display: block;
+  margin: auto;
+}
+
+.portalGlow {
+  filter: drop-shadow(0 0 4px #f62bfd) drop-shadow(0 0 8px #f62bfda0);
 }
 
 .navLink {

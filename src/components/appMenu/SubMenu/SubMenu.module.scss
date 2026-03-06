@@ -40,6 +40,10 @@ $icon-size: 16px;
     object-fit: contain;
   }
 
+  .portalGlow {
+    filter: drop-shadow(0 0 3px #f62bfd) drop-shadow(0 0 6px #f62bfda0);
+  }
+
   .nameApp {
     white-space: nowrap;
   }

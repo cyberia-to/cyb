@@ -161,6 +161,10 @@
   transition: 0.2s;
 }
 
+.portalGlow {
+  filter: drop-shadow(0 0 6px #f62bfd) drop-shadow(0 0 12px #f62bfda0);
+}
+
 .buttonWrapper {
   display: grid;
   gap: 25px;

@@ -1,4 +1,5 @@
 import portal from 'images/space-pussy.svg';
+import portalGlow from 'src/image/space-pussy-glow.svg';
 import { CHAIN_ID } from 'src/constants/config';
 import { cybernetRoutes } from 'src/features/cybernet/ui/routes';
 import congress from 'src/image/new_icons/congress.svg';
@@ -250,7 +251,8 @@ const getMenuItems = () => {
   if (CHAIN_ID === Networks.BOSTROM) {
     listItemMenu.splice(2, 0, {
       name: 'Portal',
-      icon: portal,
+      icon: portalGlow,
+      largeIcon: portal,
       to: '/portal',
       subItems: [
         {
