@@ -8,6 +8,8 @@ on:
         type: boolean
         default: false
   push:
+    branches:
+      - feat/tauri-mining
     tags:
       - 'v*'
 
