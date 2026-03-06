@@ -135,6 +135,7 @@ jobs:
       - name: Build Tauri app (sign + notarize)
         env:
           MACOSX_DEPLOYMENT_TARGET: '11.0'
+          RUSTFLAGS: '-C target-cpu=apple-m1'
         run: |
           npx @tauri-apps/cli build \
             --target aarch64-apple-darwin \
@@ -150,6 +151,7 @@ jobs:
       - name: Build cyb-boot (sign + notarize)
         env:
           MACOSX_DEPLOYMENT_TARGET: '11.0'
+          RUSTFLAGS: '-C target-cpu=apple-m1'
         run: |
           cd cyb-boot && cargo build --release --target aarch64-apple-darwin
           cd ..
