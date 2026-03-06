@@ -47,7 +47,7 @@ class RxBroadcastChannelListener {
 
     const normalMessages = messageObservable.pipe(
       filter((m) => !shouldTrottle(m)),
-      bufferTime(0)
+      bufferTime(200)
     );
 
     this.subscription = merge(bufferedMessages, normalMessages)
