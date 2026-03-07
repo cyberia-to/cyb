@@ -1017,13 +1017,25 @@ function Mining() {
     };
 
     const text = JSON.stringify(report, null, 2);
-    const blob = new Blob([text], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `mining-log-${Date.now()}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
+    const filename = `mining-log-${Date.now()}.json`;
+
+    if (isNative) {
+      const { save } = await import('@tauri-apps/plugin-dialog');
+      const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+      const path = await save({ defaultPath: filename, filters: [{ name: 'JSON', extensions: ['json'] }] });
+      if (path) {
+        await writeTextFile(path, text);
+        console.log('[Mining] Log saved to:', path);
+      }
+    } else {
+      const blob = new Blob([text], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    }
   }, [
     address, referrer, liBalance, autoMining, userDifficulty, minDifficulty,
     threadCount, backend, availableBackends, hashrate, miningStatus, elapsed,

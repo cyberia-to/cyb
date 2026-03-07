@@ -121,6 +121,8 @@ fn build_tauri_app() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .manage(Arc::new(MiningState::new()))
         .invoke_handler(generate_handler![
             toggle_devtools,
@@ -148,6 +150,8 @@ fn build_tauri_app() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_deep_link::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
         .manage(Arc::new(MiningState::new()))
         .invoke_handler(generate_handler![
             toggle_devtools,
