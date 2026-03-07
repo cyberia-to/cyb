@@ -43,13 +43,34 @@ fn find_boot_dat() -> Option<PathBuf> {
         }
     }
 
-    // ~/Downloads/ — browser download flow
+    // Common user directories — browser download flow, Desktop extraction
     if let Some(home) = dirs::home_dir() {
-        let downloads = home.join("Downloads").join(BOOT_DAT);
-        println!("[cyb-boot] Checking: {:?}", downloads);
-        if downloads.exists() {
-            println!("[cyb-boot] Found boot.dat at {:?}", downloads);
-            return Some(downloads);
+        let search_dirs = vec![
+            home.join("Downloads"),
+            home.join("Desktop"),
+        ];
+
+        for search_dir in &search_dirs {
+            // Direct: ~/Downloads/boot.dat or ~/Desktop/boot.dat
+            let direct = search_dir.join(BOOT_DAT);
+            println!("[cyb-boot] Checking: {:?}", direct);
+            if direct.exists() {
+                println!("[cyb-boot] Found boot.dat at {:?}", direct);
+                return Some(direct);
+            }
+
+            // Scan immediate subdirectories (e.g. ~/Downloads/boot_cyb/boot.dat)
+            if let Ok(entries) = fs::read_dir(search_dir) {
+                for entry in entries.flatten() {
+                    if entry.path().is_dir() {
+                        let nested = entry.path().join(BOOT_DAT);
+                        if nested.exists() {
+                            println!("[cyb-boot] Found boot.dat at {:?}", nested);
+                            return Some(nested);
+                        }
+                    }
+                }
+            }
         }
     }
 

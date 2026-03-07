@@ -85,11 +85,11 @@ func handleBoot(w http.ResponseWriter, r *http.Request) {
 	isDarwin := strings.Contains(req.Platform, "darwin")
 
 	if isDarwin {
-		// macOS: read pre-signed notarized boot-cyb.zip and append boot.dat
-		templatePath := filepath.Join(artifactsDir, "boot-cyb.zip")
+		// macOS: read pre-signed notarized boot_cyb.zip and append boot.dat
+		templatePath := filepath.Join(artifactsDir, "boot_cyb.zip")
 		templateZip, err := os.ReadFile(templatePath)
 		if err != nil {
-			log.Printf("boot-cyb.zip not found: %s", templatePath)
+			log.Printf("boot_cyb.zip not found: %s", templatePath)
 			http.Error(w, "macOS app bundle not available", http.StatusServiceUnavailable)
 			return
 		}
@@ -102,10 +102,10 @@ func handleBoot(w http.ResponseWriter, r *http.Request) {
 		}
 
 		w.Header().Set("Content-Type", "application/zip")
-		w.Header().Set("Content-Disposition", `attachment; filename="boot-cyb.zip"`)
+		w.Header().Set("Content-Disposition", `attachment; filename="boot_cyb.zip"`)
 		w.Header().Set("Content-Length", fmt.Sprintf("%d", outBuf.Len()))
 		w.Write(outBuf.Bytes())
-		log.Printf("Served boot-cyb.zip + boot.dat for %s (%d bytes)", req.Platform, outBuf.Len())
+		log.Printf("Served boot_cyb.zip + boot.dat for %s (%d bytes)", req.Platform, outBuf.Len())
 		return
 	}
 

@@ -94,13 +94,13 @@ The current `main.rs` is a **simplified stepping stone**:
 
 macOS Gatekeeper blocks unsigned apps. For macOS, CI:
 1. Builds the cyb-boot binary
-2. Wraps it in an `.app` bundle (`boot cyb.app`)
+2. Wraps it in an `.app` bundle (`Boot Cyb.app`)
 3. Signs with Developer ID Application certificate + hardened runtime
 4. Notarizes with Apple (xcrun notarytool)
 5. Staples the notarization ticket
-6. Zips as `boot-cyb.zip`
+6. Zips as `boot_cyb.zip`
 
-The server stores `boot-cyb.zip` as a template. On each macOS request, it clones the zip and appends `boot.dat` alongside the `.app`. The binary inside cannot be modified (would break signature), but `boot.dat` sits next to the `.app` in the zip.
+The server stores `boot_cyb.zip` as a template. On each macOS request, it clones the zip and appends `boot.dat` alongside the `.app`. The binary inside cannot be modified (would break signature), but `boot.dat` sits next to the `.app` in the zip.
 
 For Windows/Linux, the server zips the bare binary + `boot.dat` directly.
 
@@ -133,14 +133,14 @@ Go HTTP server on Cyberproxy. Its only job: serve pre-built cyb-boot binaries bu
 
 **API:** `POST /api/boot` with `{"platform": "<target-triple>", "data": "<base64-encrypted-bootstrap>"}`
 
-**macOS:** reads `boot-cyb.zip` template from artifacts, appends `boot.dat`, returns combined zip.
+**macOS:** reads `boot_cyb.zip` template from artifacts, appends `boot.dat`, returns combined zip.
 **Windows/Linux:** reads bare binary from artifacts, zips with `boot.dat`, returns zip.
 
 ### Server artifacts (on Cyberproxy)
 
 ```
 /home/cyber/cyb-boot/artifacts/
-├── boot-cyb.zip                      # notarized macOS .app template
+├── boot_cyb.zip                      # notarized macOS .app template
 ├── cyb-boot-aarch64-apple-darwin        # bare macOS ARM binary
 ├── cyb-boot-x86_64-apple-darwin         # bare macOS Intel binary
 ├── cyb-boot-x86_64-pc-windows-msvc      # Windows binary
@@ -219,7 +219,7 @@ CI builds artifacts → uploads to GitHub Actions artifacts
 
 ```bash
 # Upload new macOS .app bundle template
-scp -P 8333 boot-cyb.zip cyber@cyberproxy:/home/cyber/cyb-boot/artifacts/
+scp -P 8333 boot_cyb.zip cyber@cyberproxy:/home/cyber/cyb-boot/artifacts/
 
 # Upload new platform binary
 scp -P 8333 cyb-boot-aarch64-apple-darwin cyber@cyberproxy:/home/cyber/cyb-boot/artifacts/
@@ -244,7 +244,7 @@ location = /api/boot {
 
 `.github/workflows/macos_release.yml` produces:
 - **Release artifacts** (GitHub Releases): `cyb.dmg`, `cyb.pkg` — the actual cyb app
-- **Boot server artifacts** (auto-deployed to Cyberproxy via webhook on master/tag push): `boot-cyb.zip`, `cyb-boot-aarch64-apple-darwin`
+- **Boot server artifacts** (auto-deployed to Cyberproxy via webhook on master/tag push): `boot_cyb.zip`, `cyb-boot-aarch64-apple-darwin`
 
 ## Open Questions
 

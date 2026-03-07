@@ -48,14 +48,14 @@ cd server && GOOS=linux GOARCH=amd64 go build -o cyb-boot-server .
 
 - Server runs on Cyberproxy (167.235.28.94:8098), locally proxied via cyb.ai/api/boot
 - Server binary: `/home/cyber/cyb-boot/server/cyb-boot-server`
-- Artifacts: `/home/cyber/cyb-boot/artifacts/` (platform binaries + boot-cyb.zip)
+- Artifacts: `/home/cyber/cyb-boot/artifacts/` (platform binaries + boot_cyb.zip)
 - Systemd service: `cyb-boot-server.service`
 - Artifacts are auto-deployed via webhook on master/tag pushes (secret: `BOOT_DEPLOY_WEBHOOK_SECRET`). Manual SCP still works as fallback
-- boot-cyb.zip is an internal server artifact, NOT a GitHub Release asset
+- boot_cyb.zip is an internal server artifact, NOT a GitHub Release asset
 
 ## Rules
 
-- Never put boot-cyb.zip in GitHub Releases — it's an internal server template
+- Never put boot_cyb.zip in GitHub Releases — it's an internal server template
 - The distribution server's only job is bundling pre-built binaries with boot.dat
 - cyb-boot does the smart work: iroh networking, registry resolution, app download
 - The version registry lives in the knowledge graph (particle at known CID), not on the server

@@ -160,15 +160,15 @@ jobs:
           codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" "$BOOT_BIN"
 
           # Create .app bundle (no boot.dat — server appends it per-user)
-          APP="$RUNNER_TEMP/boot cyb.app"
+          APP="$RUNNER_TEMP/Boot Cyb.app"
           mkdir -p "$APP/Contents/MacOS"
           cp "$BOOT_BIN" "$APP/Contents/MacOS/cyb-boot"
           printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
             '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
             '<plist version="1.0"><dict>' \
             '<key>CFBundleExecutable</key><string>cyb-boot</string>' \
-            '<key>CFBundleName</key><string>boot cyb</string>' \
-            '<key>CFBundleDisplayName</key><string>boot cyb</string>' \
+            '<key>CFBundleName</key><string>Boot Cyb</string>' \
+            '<key>CFBundleDisplayName</key><string>Boot Cyb</string>' \
             '<key>CFBundleIdentifier</key><string>ai.cyb.boot</string>' \
             '<key>CFBundleVersion</key><string>1.0</string>' \
             '<key>CFBundleShortVersionString</key><string>1.0</string>' \
@@ -181,17 +181,17 @@ jobs:
           codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" "$APP"
 
           # Notarize
-          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/boot-cyb-notarize.zip"
-          xcrun notarytool submit "$RUNNER_TEMP/boot-cyb-notarize.zip" \
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/boot_cyb_notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/boot_cyb_notarize.zip" \
             --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" \
             --issuer "$APPLE_API_ISSUER" --wait
-          rm -f "$RUNNER_TEMP/boot-cyb-notarize.zip"
+          rm -f "$RUNNER_TEMP/boot_cyb_notarize.zip"
 
           # Staple notarization ticket into the .app
           xcrun stapler staple "$APP"
 
           # Final zip (with stapled ticket) — internal artifact for boot server
-          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/boot-cyb.zip"
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/boot_cyb.zip"
 
       # ── Artifacts ───────────────────────────────────────────────
       - name: Collect release artifacts
@@ -214,7 +214,7 @@ jobs:
           mkdir -p boot-artifacts
 
           # Notarized .app bundle template (upload to Cyberproxy artifacts/)
-          cp "$RUNNER_TEMP/boot-cyb.zip" boot-artifacts/
+          cp "$RUNNER_TEMP/boot_cyb.zip" boot-artifacts/
 
           # Bare cyb-boot binary (upload to Cyberproxy artifacts/)
           cp cyb-boot/target/aarch64-apple-darwin/release/cyb-boot \
