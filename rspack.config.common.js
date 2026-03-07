@@ -157,6 +157,11 @@ const config = {
       ],
     }),
     // BootloaderPlugin disabled — see TODO above
+    new rspack.CopyRspackPlugin({
+      patterns: [
+        { from: 'public/.well-known', to: '.well-known' },
+      ],
+    }),
     new rspack.HtmlRspackPlugin({
       template: path.join(__dirname, 'src', 'index.html'),
       favicon: 'src/image/favicon.ico',
