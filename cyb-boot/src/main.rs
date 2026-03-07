@@ -13,18 +13,48 @@ const BOOT_DAT: &str = "boot.dat";
 struct Bootstrap {
     mnemonic: String,
     referrer: String,
+    #[serde(default)]
+    name: Option<String>,
 }
 
 fn get_app_data_dir() -> Option<PathBuf> {
     dirs::data_dir().map(|d| d.join(APP_DATA_DIR))
 }
 
-/// Find boot.dat next to the executable
+/// Find boot.dat: check next to executable, then .app bundle paths, then ~/Downloads/
 fn find_boot_dat() -> Option<PathBuf> {
     let exe = std::env::current_exe().ok()?;
     let dir = exe.parent()?;
-    let path = dir.join(BOOT_DAT);
-    if path.exists() { Some(path) } else { None }
+
+    let candidates = vec![
+        // Next to the binary (bare extraction or Contents/MacOS/)
+        dir.join(BOOT_DAT),
+        // macOS .app bundle: Contents/MacOS/../Resources/boot.dat
+        dir.join("../Resources").join(BOOT_DAT),
+        // Next to the .app bundle: Contents/MacOS/../../.. (sibling of .app in unzipped folder)
+        dir.join("../../..").join(BOOT_DAT),
+    ];
+
+    for path in &candidates {
+        println!("[cyb-boot] Checking: {:?}", path);
+        if path.exists() {
+            println!("[cyb-boot] Found boot.dat at {:?}", path);
+            return Some(path.clone());
+        }
+    }
+
+    // ~/Downloads/ — browser download flow
+    if let Some(home) = dirs::home_dir() {
+        let downloads = home.join("Downloads").join(BOOT_DAT);
+        println!("[cyb-boot] Checking: {:?}", downloads);
+        if downloads.exists() {
+            println!("[cyb-boot] Found boot.dat at {:?}", downloads);
+            return Some(downloads);
+        }
+    }
+
+    println!("[cyb-boot] boot.dat not found in any location");
+    None
 }
 
 fn decrypt_boot_dat(path: &PathBuf) -> Result<Bootstrap, String> {

@@ -216,6 +216,7 @@ let persistentWasmMiner: WasmMiner | null = null;
 
 function Mining() {
   const reduxMiningActive = useAppSelector((s) => s.mining.active);
+  const defaultAccount = useAppSelector((s) => s.pocket.defaultAccount);
   const { signer, signingClient, address } = useAutoSigner();
 
   // Window status replaces epoch_status + difficulty + target + proof_stats
@@ -823,6 +824,33 @@ function Mining() {
     startMiningRound().then(() => startPolling());
   }, [autoMining, canMine, startMiningRound, startPolling, isNative]);
 
+  // Hot-swap challenge when a new block arrives while mining is active.
+  // Without this, proofs are mined against a stale block hash and the contract
+  // rejects them with "epoch mismatch".
+  useEffect(() => {
+    if (!autoMining || !latestBlock) return;
+    const newChallenge = latestBlock.blockHash;
+    if (newChallenge === challengeRef.current) return;
+
+    console.log(
+      '[Mining] Block changed, updating challenge:',
+      newChallenge.slice(0, 16),
+      'height:',
+      latestBlock.height
+    );
+    challengeRef.current = newChallenge;
+    blockTimestampRef.current = latestBlock.timestamp;
+
+    if (isNative) {
+      invoke('update_challenge', {
+        challengeHex: newChallenge,
+        blockTimestamp: latestBlock.timestamp,
+      }).catch((err) => console.warn('[Mining] update_challenge failed:', err));
+    } else if (persistentWasmMiner) {
+      persistentWasmMiner.start(newChallenge, userDifficulty);
+    }
+  }, [autoMining, latestBlock, userDifficulty, isNative]);
+
   // Auto-adjust difficulty if contract min_difficulty increases above user setting
   useEffect(() => {
     if (config && config.min_difficulty > userDifficulty) {
@@ -1051,6 +1079,9 @@ function Mining() {
           {/* Config panel (collapsible) */}
           <ConfigPanel open={configOpen} config={config} onConfigUpdated={refetchConfig} />
 
+          {/* Desktop download CTA (web only — first thing users see) */}
+          {!isNative && <DownloadSection address={address} accountName={defaultAccount?.name || undefined} />}
+
           {/* Hero: big hashrate + sparkline */}
           <HashrateHero
             hashrate={hashrate}
@@ -1175,9 +1206,6 @@ function Mining() {
             referrer={referrer}
             onReferrerChange={setReferrer}
           />
-
-          {/* Desktop download section (web only) */}
-          {!isNative && <DownloadSection address={address} />}
 
           {/* Proof summary + paginated list */}
           {proofLog.length > 0 && (() => {

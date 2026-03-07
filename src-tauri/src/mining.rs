@@ -46,6 +46,8 @@ pub struct MiningState {
     pub(crate) params: Mutex<Option<MiningParams>>,
     pub(crate) active_backend: Mutex<String>,
     pub(crate) hash_snapshots: Mutex<Vec<HashSnapshot>>,
+    /// Live challenge bytes — mining thread reads this on every batch.
+    pub(crate) current_challenge: std::sync::RwLock<[u8; 32]>,
 }
 
 #[derive(Clone, Serialize)]
@@ -110,6 +112,7 @@ impl MiningState {
             params: Mutex::new(None),
             active_backend: Mutex::new(String::new()),
             hash_snapshots: Mutex::new(Vec::with_capacity(MAX_SNAPSHOTS)),
+            current_challenge: std::sync::RwLock::new([0u8; 32]),
         }
     }
 }
@@ -267,7 +270,7 @@ pub fn start_mining(
         Err(e) => return serde_json::json!({ "success": false, "error": e }),
     };
 
-    let header = challenge;
+    *state.current_challenge.write().unwrap() = challenge;
 
     let num_threads = threads.unwrap_or_else(|| {
         std::thread::available_parallelism()
@@ -321,6 +324,7 @@ pub fn start_mining(
         );
 
         while state_clone.mining.load(Ordering::Relaxed) {
+            let header = *state_clone.current_challenge.read().unwrap();
             let batch_start = Instant::now();
             match solver.find_proof_batch(&header, nonce, lanes, difficulty) {
                 Ok((Some((found_nonce, hash)), actual)) => {
@@ -421,6 +425,34 @@ pub fn start_mining(
         "threads": num_threads,
         "backend": backend_name
     })
+}
+
+/// Hot-swap the mining challenge without stopping the mining thread.
+/// Clears pending proofs (they were mined against the old challenge).
+#[tauri::command]
+pub fn update_challenge(
+    challenge_hex: String,
+    block_timestamp: u64,
+    state: State<Arc<MiningState>>,
+) -> serde_json::Value {
+    if !state.mining.load(Ordering::SeqCst) {
+        return serde_json::json!({ "success": false, "error": "Not mining" });
+    }
+
+    let challenge = match decode_hex_32("challenge", &challenge_hex) {
+        Ok(b) => b,
+        Err(e) => return serde_json::json!({ "success": false, "error": e }),
+    };
+
+    *state.current_challenge.write().unwrap() = challenge;
+    state.pending_proofs.lock().unwrap().clear();
+
+    if let Some(ref mut p) = *state.params.lock().unwrap() {
+        p.challenge_hex = challenge_hex;
+        p.block_timestamp = block_timestamp;
+    }
+
+    serde_json::json!({ "success": true })
 }
 
 #[tauri::command]

@@ -763,41 +763,108 @@
   justify-content: flex-end;
 }
 
-// Download section (desktop app)
-.downloadInfo {
-  font-size: 13px;
-  color: #999;
-  line-height: 1.5;
+// Download hero CTA
+@keyframes ctaPulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(54, 214, 174, 0.3), 0 0 24px rgba(54, 214, 174, 0.1); }
+  50% { box-shadow: 0 0 16px rgba(54, 214, 174, 0.5), 0 0 40px rgba(54, 214, 174, 0.2); }
 }
 
-.downloadRow {
+@keyframes glowSweep {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+.downloadHero {
+  position: relative;
+  padding: 24px 0;
+  text-align: center;
+  overflow: hidden;
+}
+
+.downloadHeroContent {
+  position: relative;
+  z-index: 1;
   display: flex;
+  flex-direction: column;
   align-items: center;
   gap: 10px;
 }
 
-.downloadBtn {
+.downloadBadge {
+  display: inline-block;
+  padding: 3px 10px;
+  border-radius: 100px;
   background: rgba(54, 214, 174, 0.15);
-  border: 1px solid rgba(54, 214, 174, 0.4);
-  border-radius: 4px;
-  padding: 10px 20px;
+  border: 1px solid rgba(54, 214, 174, 0.3);
   color: #36d6ae;
-  font-size: 14px;
-  font-weight: bold;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.downloadHeadline {
+  font-size: 18px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.01em;
+}
+
+.downloadSub {
+  font-size: 13px;
+  color: #888;
+  max-width: 320px;
+}
+
+.downloadCtaBtn {
+  position: relative;
+  overflow: hidden;
+  margin-top: 6px;
+  padding: 12px 32px;
+  border: 1px solid rgba(54, 214, 174, 0.5);
+  border-radius: 6px;
+  background: rgba(54, 214, 174, 0.12);
+  color: #36d6ae;
+  font-size: 15px;
+  font-weight: 700;
   cursor: pointer;
   white-space: nowrap;
+  animation: ctaPulse 3s ease-in-out infinite;
+  transition: background 0.2s, transform 0.15s;
 
   &:hover:not(:disabled) {
-    background: rgba(54, 214, 174, 0.25);
+    background: rgba(54, 214, 174, 0.22);
+    transform: translateY(-1px);
+  }
+
+  &:active:not(:disabled) {
+    transform: translateY(0);
   }
 
   &:disabled {
-    opacity: 0.5;
+    animation: none;
+    opacity: 0.6;
     cursor: wait;
   }
+}
+
+.downloadCtaLoading {
+  animation: none;
+}
+
+.downloadCtaGlow {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 50%;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, rgba(54, 214, 174, 0.15), transparent);
+  animation: glowSweep 3s ease-in-out infinite;
+  pointer-events: none;
 }
 
 .downloadError {
   font-size: 13px;
   color: #ef4444;
+  margin-top: 4px;
 }

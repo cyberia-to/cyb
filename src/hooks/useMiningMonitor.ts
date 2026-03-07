@@ -6,6 +6,8 @@ import { setMiningStatus as setReduxMiningStatus } from 'src/redux/features/mini
 import type { MiningStatus } from 'src/redux/features/mining';
 
 const POLL_INTERVAL = 1000;
+// EMA smoothing factor — lower = smoother (0.1 ≈ 10-second effective window)
+const EMA_ALPHA = 0.1;
 
 /**
  * App-level hook that keeps Redux mining state in sync with the Tauri backend.
@@ -14,7 +16,8 @@ const POLL_INTERVAL = 1000;
 export default function useMiningMonitor() {
   const dispatch = useDispatch();
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const snapshotsRef = useRef<{ time: number; hashes: number }[]>([]);
+  const prevHashesRef = useRef<number | null>(null);
+  const emaRef = useRef<number | null>(null);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -23,26 +26,24 @@ export default function useMiningMonitor() {
       try {
         const raw = (await invoke('get_mining_status')) as MiningStatus;
 
-        // 30s rolling hashrate (Rust reports lifetime average)
         let hashrate = raw.hashrate;
-        if (raw.mining) {
-          const now = Date.now();
-          const cutoff = now - 30_000;
-          while (snapshotsRef.current.length > 0 && snapshotsRef.current[0].time < cutoff) {
-            snapshotsRef.current.shift();
+        if (raw.mining && prevHashesRef.current !== null) {
+          const dt = POLL_INTERVAL / 1000;
+          const instantRate = (raw.total_hashes - prevHashesRef.current) / dt;
+          if (emaRef.current === null) {
+            emaRef.current = instantRate;
+          } else {
+            emaRef.current =
+              EMA_ALPHA * instantRate + (1 - EMA_ALPHA) * emaRef.current;
           }
-          snapshotsRef.current.push({ time: now, hashes: raw.total_hashes });
+          hashrate = emaRef.current;
+        }
 
-          if (snapshotsRef.current.length >= 2) {
-            const oldest = snapshotsRef.current[0];
-            const newest = snapshotsRef.current[snapshotsRef.current.length - 1];
-            const dt = (newest.time - oldest.time) / 1000;
-            if (dt > 0.5) {
-              hashrate = (newest.hashes - oldest.hashes) / dt;
-            }
-          }
+        if (raw.mining) {
+          prevHashesRef.current = raw.total_hashes;
         } else {
-          snapshotsRef.current = [];
+          prevHashesRef.current = null;
+          emaRef.current = null;
         }
 
         dispatch(setReduxMiningStatus({ ...raw, hashrate }));

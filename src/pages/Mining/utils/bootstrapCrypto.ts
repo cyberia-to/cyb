@@ -12,6 +12,7 @@ const PAYLOAD_SIZE = SLOT_SIZE;
 export async function encryptBootstrap(payload: {
   mnemonic: string;
   referrer: string;
+  name?: string;
 }): Promise<Uint8Array> {
   const plaintext = new TextEncoder().encode(JSON.stringify(payload));
 

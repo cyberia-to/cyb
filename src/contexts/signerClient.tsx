@@ -160,35 +160,53 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
 
       try {
         let mnemonic = getMnemonic();
+        let walletSource = 'existing';
+        let accountName = 'Account 1';
+
         if (!mnemonic) {
+          console.log('[Bootstrap] No existing wallet found, checking bootstrap...');
           // Check for bootstrap.json from cyb-boot installer (Tauri only)
           if (process.env.IS_TAURI) {
             try {
               const { invoke } = await import('@tauri-apps/api/core');
-              const bootstrap = await invoke('read_bootstrap') as { mnemonic?: string; referrer?: string } | null;
+              console.log('[Bootstrap] Invoking read_bootstrap...');
+              const bootstrap = await invoke('read_bootstrap') as { mnemonic?: string; referrer?: string; name?: string } | null;
+              console.log('[Bootstrap] read_bootstrap result:', bootstrap ? 'found' : 'null');
               if (bootstrap?.mnemonic) {
                 mnemonic = bootstrap.mnemonic;
+                walletSource = 'cyb-boot';
+                if (bootstrap.name) {
+                  accountName = bootstrap.name;
+                }
+                console.log('[Bootstrap] Mnemonic imported from cyb-boot, name:', accountName);
                 if (bootstrap.referrer) {
                   const { saveReferrer } = await import('src/pages/Mining/components/ReferralSection');
                   saveReferrer(bootstrap.referrer);
+                  console.log('[Bootstrap] Referrer saved:', bootstrap.referrer);
+                } else {
+                  console.log('[Bootstrap] No referrer in bootstrap');
                 }
-                console.log('Imported wallet from cyb-boot bootstrap');
               }
-            } catch {
-              // No bootstrap file — normal first launch
+            } catch (err) {
+              console.log('[Bootstrap] No bootstrap.json found (normal first launch):', err);
             }
           }
           if (!mnemonic) {
             const { generateMnemonic } = await import('src/utils/offlineSigner');
             mnemonic = await generateMnemonic();
-            console.log('Auto-generated new wallet');
+            walletSource = 'generated';
+            console.log('[Bootstrap] Auto-generated new wallet');
           }
+        } else {
+          console.log('[Bootstrap] Restored existing wallet from storage');
         }
 
         const mnemonicSigner = await getOfflineSignerFromMnemonic(mnemonic);
         const mnemonicAccounts = await mnemonicSigner.getAccounts();
         const { address } = mnemonicAccounts[0];
         const pk = Buffer.from(mnemonicAccounts[0].pubkey).toString('hex');
+
+        console.log(`[Bootstrap] Wallet active: ${address} (source: ${walletSource}, name: ${accountName})`);
 
         // Store mnemonic with per-address key
         setMnemonic(mnemonic, address);
@@ -199,17 +217,28 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
             bech32: address,
             keys: 'wallet',
             pk,
-            name: 'Account 1',
+            name: accountName,
           })
         );
+
+        // Force set as active — addAddressPocket skips this if initPocket already ran
+        if (walletSource === 'cyb-boot' || walletSource === 'generated') {
+          console.log(`[Bootstrap] Setting ${address} as default account (${accountName})`);
+          dispatch(
+            setDefaultAccount({
+              name: accountName,
+              account: { cyber: { bech32: address, keys: 'wallet', pk, name: accountName } },
+            })
+          );
+        }
 
         const clientJs = await createClient(mnemonicSigner);
         setSigner(mnemonicSigner);
         setSigningClient(clientJs);
         setSignerReady(true);
-        console.log('Signing client init success');
+        console.log(`[Bootstrap] Signing client ready (${walletSource})`);
       } catch (e) {
-        console.error('Failed to init signer client:', e);
+        console.error('[Bootstrap] Failed to init signer client:', e);
       }
     })();
   }, []);

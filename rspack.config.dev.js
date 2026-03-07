@@ -20,6 +20,15 @@ module.exports = merge(commonConfig, {
       'Access-Control-Allow-Origin': '*',
     },
     historyApiFallback: true,
+    proxy: [
+      {
+        context: ['/api/boot'],
+        target: 'https://cyb.ai',
+        changeOrigin: true,
+        secure: false,
+        logLevel: 'debug',
+      },
+    ],
     // Fix .ts worker files served with video/mp2t MIME type
     setupMiddlewares: (middlewares, devServer) => {
       devServer.app.use((req, res, next) => {
