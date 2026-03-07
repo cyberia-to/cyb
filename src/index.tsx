@@ -118,6 +118,24 @@ if (process.env.IS_TAURI) {
     });
   };
 
+  // Deep links: handle cyb.ai URLs opening the app
+  import('@tauri-apps/plugin-deep-link').then(({ getCurrent, onOpenUrl }) => {
+    // App launched via deep link
+    getCurrent().then((urls) => {
+      if (urls?.length) {
+        const url = new URL(urls[0]);
+        window.location.replace(url.pathname + url.search);
+      }
+    });
+    // Deep link received while app is running
+    onOpenUrl((urls) => {
+      if (urls?.length) {
+        const url = new URL(urls[0]);
+        window.location.replace(url.pathname + url.search);
+      }
+    });
+  });
+
   // Mobile: shake → eruda in-app console
   if ('DeviceMotionEvent' in window) {
     let lastToggle = 0;

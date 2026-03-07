@@ -5,7 +5,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::Command;
 
-const PKG_URL: &str = "https://github.com/cyberia-to/cyb-ts/releases/latest/download/cyb.pkg";
+const PKG_URL: &str = "https://github.com/cyberia-to/cyb/releases/latest/download/cyb.pkg";
 const APP_DATA_DIR: &str = "ai.cyb.app";
 const BOOT_DAT: &str = "boot.dat";
 

@@ -39,6 +39,21 @@
       }
     ]
   },
+  "plugins": {
+    "deep-link": {
+      "mobile": [
+        {
+          "scheme": ["https"],
+          "host": "cyb.ai",
+          "pathPrefix": ["/"],
+          "appLink": true
+        }
+      ],
+      "desktop": {
+        "schemes": ["cyb"]
+      }
+    }
+  },
   "bundle": {
     "active": true,
     "category": "DeveloperTool",

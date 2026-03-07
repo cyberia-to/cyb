@@ -887,26 +887,83 @@ function Mining() {
     }
   }, [address]);
 
-  const handleExportLogs = useCallback(() => {
+  const handleExportLogs = useCallback(async () => {
+    const accepted = proofLog.filter((p) => p.status === 'success').length;
+    const failed = proofLog.filter((p) => p.status === 'failed' || (p.error && !p.status)).length;
+    const pending = proofLog.filter((p) => p.status === 'submitted' || p.status === 'pending').length;
+    const total = accepted + failed;
+
+    // Fetch live Tauri backend metrics (includes batch_count, avg_batch_ms,
+    // proofs_submitted, proofs_failed that aren't in Redux)
+    let tauriStatus: Record<string, unknown> | null = null;
+    let tauriParams: Record<string, unknown> | null = null;
+    if (isNative) {
+      try {
+        const [status, params] = await Promise.all([
+          invoke('get_mining_status') as Promise<Record<string, unknown>>,
+          invoke('get_mining_params') as Promise<Record<string, unknown>>,
+        ]);
+        tauriStatus = status;
+        tauriParams = params;
+      } catch {
+        // backend unavailable
+      }
+    }
+
+    // Device info available on all platforms
+    const nav = navigator as Navigator & { deviceMemory?: number };
+    const device = {
+      cpu_cores: navigator.hardwareConcurrency || null,
+      device_memory_gb: nav.deviceMemory || null,
+      platform: navigator.platform || null,
+      max_touch_points: navigator.maxTouchPoints,
+    };
+
     const report = {
       exported_at: new Date().toISOString(),
       user_agent: navigator.userAgent,
       platform: isNative ? 'tauri' : 'web',
       address: address || null,
+      referrer: referrer || null,
+      li_balance: liBalance,
+      device,
       mining: {
         active: autoMining,
         difficulty: userDifficulty,
         min_difficulty: minDifficulty,
         threads: threadCount,
         backend,
+        available_backends: availableBackends,
         hashrate,
+        total_hashes: miningStatus?.total_hashes ?? 0,
         elapsed_secs: elapsed,
+        pending_proofs: miningStatus?.pending_proofs ?? 0,
         session_li_mined: sessionLiMined,
+        // Tauri-only batch/proof counters
+        batch_count: (tauriStatus?.batch_count as number) ?? null,
+        avg_batch_ms: (tauriStatus?.avg_batch_ms as number) ?? null,
+        proofs_submitted: (tauriStatus?.proofs_submitted as number) ?? null,
+        proofs_failed: (tauriStatus?.proofs_failed as number) ?? null,
       },
+      // uhash algorithm params (Tauri-only)
+      uhash_params: tauriParams
+        ? {
+            chains: tauriParams.chains,
+            scratchpad_kb: tauriParams.scratchpad_kb,
+            total_mb: tauriParams.total_mb,
+            rounds: tauriParams.rounds,
+            block_size: tauriParams.block_size,
+          }
+        : null,
+      block: latestBlock
+        ? { height: latestBlock.height, hash: latestBlock.blockHash, timestamp: latestBlock.timestamp }
+        : null,
+      ws_connected: wsConnected,
       hashrate_samples: samples,
       contract_config: config || null,
       window_status: windowStatus || null,
       emission: emission || null,
+      burn_stats: burnStats || null,
       network: {
         unique_miners: uniqueMiners,
         total_proofs: totalProofs,
@@ -921,28 +978,31 @@ function Mining() {
         gross_per_proof: grossRewardPerProof,
         li_per_hour: estimatedLiPerHour,
       },
+      proof_summary: {
+        total: proofLog.length,
+        accepted,
+        failed,
+        pending,
+        success_rate: total > 0 ? `${((accepted / total) * 100).toFixed(1)}%` : null,
+      },
       proof_log: proofLog,
     };
+
     const text = JSON.stringify(report, null, 2);
-    navigator.clipboard.writeText(text).then(
-      () => console.log('[Mining] Logs copied to clipboard'),
-      () => {
-        // Fallback: download as file
-        const blob = new Blob([text], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `mining-log-${Date.now()}.json`;
-        a.click();
-        URL.revokeObjectURL(url);
-      }
-    );
+    const blob = new Blob([text], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `mining-log-${Date.now()}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
   }, [
-    address, autoMining, userDifficulty, minDifficulty, threadCount, backend,
-    hashrate, elapsed, sessionLiMined, samples, config, windowStatus, emission,
-    uniqueMiners, totalProofs, avgDifficulty, dRate, similarDevices,
-    windowProofCount, baseRate, rewardPerProof, grossRewardPerProof,
-    estimatedLiPerHour, proofLog, isNative,
+    address, referrer, liBalance, autoMining, userDifficulty, minDifficulty,
+    threadCount, backend, availableBackends, hashrate, miningStatus, elapsed,
+    sessionLiMined, latestBlock, wsConnected, samples, config, windowStatus,
+    emission, burnStats, uniqueMiners, totalProofs, avgDifficulty, dRate,
+    similarDevices, windowProofCount, baseRate, rewardPerProof,
+    grossRewardPerProof, estimatedLiPerHour, proofLog, isNative,
   ]);
 
   // Format alpha/beta from micros to percentage
@@ -980,7 +1040,7 @@ function Mining() {
                 type="button"
                 className={styles.simToggleBtn}
                 onClick={handleExportLogs}
-                title="Copy mining logs to clipboard"
+                title="Download mining report as JSON file"
               >
                 Export Logs
               </button>

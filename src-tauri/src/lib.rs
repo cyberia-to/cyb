@@ -120,6 +120,7 @@ fn toggle_devtools(window: tauri::WebviewWindow) {
 fn build_tauri_app() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_deep_link::init())
         .manage(Arc::new(MiningState::new()))
         .invoke_handler(generate_handler![
             toggle_devtools,
@@ -145,6 +146,7 @@ fn build_tauri_app() -> tauri::Builder<tauri::Wry> {
 fn build_tauri_app() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_deep_link::init())
         .manage(Arc::new(MiningState::new()))
         .invoke_handler(generate_handler![
             toggle_devtools,

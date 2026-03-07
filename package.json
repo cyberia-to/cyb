@@ -93,6 +93,7 @@
     "@tanstack/react-query-devtools": "^4.22.0",
     "@tanstack/react-table": "^8.9.1",
     "@tauri-apps/api": "^2.0.0",
+    "@tauri-apps/plugin-deep-link": "^2",
     "@uniswap/sdk": "^3.0.3",
     "@xenova/transformers": "^2.17.0",
     "ai": "^3.4.7",
