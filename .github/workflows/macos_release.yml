@@ -163,24 +163,19 @@ jobs:
           APP="$RUNNER_TEMP/boot cyb.app"
           mkdir -p "$APP/Contents/MacOS"
           cp "$BOOT_BIN" "$APP/Contents/MacOS/cyb-boot"
-          cat > "$APP/Contents/Info.plist" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
-  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>CFBundleExecutable</key><string>cyb-boot</string>
-  <key>CFBundleName</key><string>boot cyb</string>
-  <key>CFBundleDisplayName</key><string>boot cyb</string>
-  <key>CFBundleIdentifier</key><string>ai.cyb.boot</string>
-  <key>CFBundleVersion</key><string>1.0</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
-  <key>CFBundlePackageType</key><string>APPL</string>
-  <key>LSMinimumSystemVersion</key><string>11.0</string>
-  <key>NSHighResolutionCapable</key><true/>
-</dict>
-</plist>
-PLIST
+          printf '%s\n' '<?xml version="1.0" encoding="UTF-8"?>' \
+            '<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">' \
+            '<plist version="1.0"><dict>' \
+            '<key>CFBundleExecutable</key><string>cyb-boot</string>' \
+            '<key>CFBundleName</key><string>boot cyb</string>' \
+            '<key>CFBundleDisplayName</key><string>boot cyb</string>' \
+            '<key>CFBundleIdentifier</key><string>ai.cyb.boot</string>' \
+            '<key>CFBundleVersion</key><string>1.0</string>' \
+            '<key>CFBundleShortVersionString</key><string>1.0</string>' \
+            '<key>CFBundlePackageType</key><string>APPL</string>' \
+            '<key>LSMinimumSystemVersion</key><string>11.0</string>' \
+            '<key>NSHighResolutionCapable</key><true/>' \
+            '</dict></plist>' > "$APP/Contents/Info.plist"
 
           # Sign the .app bundle
           codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" "$APP"
