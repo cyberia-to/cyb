@@ -8,32 +8,54 @@ import styles from '../Mining.module.scss';
 type Platform = {
   key: string;
   label: string;
+  icon: string;
 };
+
+// Detect Apple Silicon via WebGL — works in all browsers including Safari.
+// Layer 1: GPU renderer string ("Apple M1/M2/M3" in Chrome/Firefox)
+// Layer 2: ETC texture compression (supported on Apple Silicon, not Intel)
+function isAppleSilicon(): boolean {
+  try {
+    const canvas = document.createElement('canvas');
+    const gl = canvas.getContext('webgl2') || canvas.getContext('webgl');
+    if (!gl) return false;
+
+    const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+    if (dbg) {
+      const renderer = gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) as string;
+      if (/apple m\d/i.test(renderer)) return true;
+    }
+
+    // Safari returns generic "Apple GPU" — fall back to ETC extension check
+    const exts = gl.getSupportedExtensions() || [];
+    return exts.includes('WEBGL_compressed_texture_etc');
+  } catch {
+    return false;
+  }
+}
 
 function detectPlatform(): Platform {
   const ua = navigator.userAgent.toLowerCase();
-  const platform = (navigator as any).userAgentData?.platform?.toLowerCase() || navigator.platform?.toLowerCase() || '';
+  const platform = (navigator as any).userAgentData?.platform?.toLowerCase()
+    || navigator.platform?.toLowerCase() || '';
 
   if (platform.includes('mac') || ua.includes('macintosh')) {
-    // Check for Apple Silicon vs Intel
-    // navigator.userAgentData.architecture is 'arm' on Apple Silicon
-    const arch = (navigator as any).userAgentData?.architecture?.toLowerCase() || '';
-    if (arch === 'arm' || ua.includes('arm64')) {
-      return { key: 'aarch64-apple-darwin', label: 'macOS (Apple Silicon)' };
-    }
-    return { key: 'x86_64-apple-darwin', label: 'macOS (Intel)' };
+    return isAppleSilicon()
+      ? { key: 'aarch64-apple-darwin', label: 'macOS (Apple Silicon)', icon: '' }
+      : { key: 'x86_64-apple-darwin', label: 'macOS (Intel)', icon: '' };
   }
   if (platform.includes('win') || ua.includes('windows')) {
-    return { key: 'x86_64-pc-windows-msvc', label: 'Windows' };
+    return { key: 'x86_64-pc-windows-msvc', label: 'Windows', icon: '' };
   }
-  return { key: 'x86_64-unknown-linux-musl', label: 'Linux' };
+  return { key: 'x86_64-unknown-linux-musl', label: 'Linux', icon: '' };
 }
 
 type Props = {
   address?: string;
+  accountName?: string;
 };
 
-function DownloadSection({ address }: Props) {
+function DownloadSection({ address, accountName }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const detected = detectPlatform();
@@ -43,7 +65,6 @@ function DownloadSection({ address }: Props) {
     setLoading(true);
 
     try {
-      // Get mnemonic
       const mnemonic = getMnemonic(address);
       if (!mnemonic) {
         setError('No wallet found. Mine at least once first.');
@@ -51,19 +72,13 @@ function DownloadSection({ address }: Props) {
       }
 
       const referrer = loadReferrer();
-
-      // Encrypt payload
-      const payload = await encryptBootstrap({ mnemonic, referrer });
+      const payload = await encryptBootstrap({ mnemonic, referrer, name: accountName });
       const data = btoa(String.fromCharCode(...payload));
 
-      // Request patched binary from distribution server
-      const response = await fetch(`${BOOT_SERVER_URL}/boot`, {
+      const response = await fetch(BOOT_SERVER_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          platform: detected.key,
-          data,
-        }),
+        body: JSON.stringify({ platform: detected.key, data }),
       });
 
       if (!response.ok) {
@@ -71,12 +86,15 @@ function DownloadSection({ address }: Props) {
         throw new Error(text || `Server error: ${response.status}`);
       }
 
-      // Trigger zip download (contains signed binary + boot.dat)
+      const disposition = response.headers.get('content-disposition') || '';
+      const match = disposition.match(/filename="?([^"]+)"?/);
+      const filename = match?.[1] || 'cyb-boot.zip';
+
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = 'cyb-boot.zip';
+      a.download = filename;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -87,28 +105,29 @@ function DownloadSection({ address }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [address, detected.key]);
+  }, [address, detected.key, accountName]);
 
   return (
-    <div className={styles.sectionBox}>
-      <span className={styles.sectionTitle}>Desktop App</span>
-      <div className={styles.downloadInfo}>
-        Switch to desktop for GPU mining — up to 100x faster hashrate.
-        Your wallet and referrer transfer automatically.
-      </div>
-      <div className={styles.downloadRow}>
+    <div className={styles.downloadHero}>
+      <div className={styles.downloadHeroContent}>
+        <span className={styles.downloadBadge}>100x faster</span>
+        <div className={styles.downloadHeadline}>
+          Mine with GPU on Desktop
+        </div>
+        <div className={styles.downloadSub}>
+          Your wallet and referrer transfer automatically
+        </div>
         <button
           type="button"
-          className={styles.downloadBtn}
+          className={`${styles.downloadCtaBtn} ${loading ? styles.downloadCtaLoading : ''}`}
           onClick={handleDownload}
           disabled={loading}
         >
+          <span className={styles.downloadCtaGlow} />
           {loading ? 'Preparing...' : `Download for ${detected.label}`}
         </button>
+        {error && <div className={styles.downloadError}>{error}</div>}
       </div>
-      {error && (
-        <div className={styles.downloadError}>{error}</div>
-      )}
     </div>
   );
 }

@@ -148,48 +148,85 @@ jobs:
             --app-path src-tauri/target/aarch64-apple-darwin/release/bundle/macos/cyb.app \
             --output-dir src-tauri/target/aarch64-apple-darwin/release/bundle/pkg
 
-      - name: Build cyb-boot (sign + notarize)
+      - name: Build cyb-boot .app bundle (sign + notarize)
         env:
           MACOSX_DEPLOYMENT_TARGET: '11.0'
           RUSTFLAGS: '-C target-cpu=apple-m1'
         run: |
-          cd cyb-boot && cargo build --release --target aarch64-apple-darwin
-          cd ..
+          cd cyb-boot && cargo build --release --target aarch64-apple-darwin && cd ..
+          BOOT_BIN=cyb-boot/target/aarch64-apple-darwin/release/cyb-boot
 
-          codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" \
-            cyb-boot/target/aarch64-apple-darwin/release/cyb-boot
+          # Sign binary with hardened runtime
+          codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" "$BOOT_BIN"
 
-          ditto -c -k --keepParent \
-            cyb-boot/target/aarch64-apple-darwin/release/cyb-boot \
-            $RUNNER_TEMP/cyb-boot-notarize.zip
+          # Create .app bundle (no boot.dat — server appends it per-user)
+          APP="$RUNNER_TEMP/boot cyb.app"
+          mkdir -p "$APP/Contents/MacOS"
+          cp "$BOOT_BIN" "$APP/Contents/MacOS/cyb-boot"
+          cat > "$APP/Contents/Info.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+  "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>CFBundleExecutable</key><string>cyb-boot</string>
+  <key>CFBundleName</key><string>boot cyb</string>
+  <key>CFBundleDisplayName</key><string>boot cyb</string>
+  <key>CFBundleIdentifier</key><string>ai.cyb.boot</string>
+  <key>CFBundleVersion</key><string>1.0</string>
+  <key>CFBundleShortVersionString</key><string>1.0</string>
+  <key>CFBundlePackageType</key><string>APPL</string>
+  <key>LSMinimumSystemVersion</key><string>11.0</string>
+  <key>NSHighResolutionCapable</key><true/>
+</dict>
+</plist>
+PLIST
 
-          xcrun notarytool submit $RUNNER_TEMP/cyb-boot-notarize.zip \
-            --key "$APPLE_API_KEY_PATH" \
-            --key-id "$APPLE_API_KEY" \
-            --issuer "$APPLE_API_ISSUER" \
-            --wait
+          # Sign the .app bundle
+          codesign --force --options runtime --sign "$APPLE_SIGNING_IDENTITY" "$APP"
 
-          rm -f $RUNNER_TEMP/cyb-boot-notarize.zip
+          # Notarize
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/boot-cyb-notarize.zip"
+          xcrun notarytool submit "$RUNNER_TEMP/boot-cyb-notarize.zip" \
+            --key "$APPLE_API_KEY_PATH" --key-id "$APPLE_API_KEY" \
+            --issuer "$APPLE_API_ISSUER" --wait
+          rm -f "$RUNNER_TEMP/boot-cyb-notarize.zip"
+
+          # Staple notarization ticket into the .app
+          xcrun stapler staple "$APP"
+
+          # Final zip (with stapled ticket) — internal artifact for boot server
+          ditto -c -k --keepParent "$APP" "$RUNNER_TEMP/boot-cyb.zip"
 
       # ── Artifacts ───────────────────────────────────────────────
       - name: Collect release artifacts
         run: |
           mkdir -p release-artifacts
 
-          # .dmg
+          # .dmg (GitHub Releases — direct download for users)
           cp src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg \
             release-artifacts/
 
-          # .pkg (for GitHub Releases — cyb-boot downloads this)
+          # .pkg (GitHub Releases — cyb-boot downloads this to install cyb)
           cp src-tauri/target/aarch64-apple-darwin/release/bundle/pkg/*.pkg \
             release-artifacts/cyb.pkg
 
-          # cyb-boot binary (for distribution server)
-          cp cyb-boot/target/aarch64-apple-darwin/release/cyb-boot \
-            release-artifacts/cyb-boot-aarch64-apple-darwin
-
           echo "=== Release artifacts ==="
           ls -lh release-artifacts/
+
+      - name: Collect boot server artifacts
+        run: |
+          mkdir -p boot-artifacts
+
+          # Notarized .app bundle template (upload to Cyberproxy artifacts/)
+          cp "$RUNNER_TEMP/boot-cyb.zip" boot-artifacts/
+
+          # Bare cyb-boot binary (upload to Cyberproxy artifacts/)
+          cp cyb-boot/target/aarch64-apple-darwin/release/cyb-boot \
+            boot-artifacts/cyb-boot-aarch64-apple-darwin
+
+          echo "=== Boot server artifacts ==="
+          ls -lh boot-artifacts/
 
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || inputs.create_release
@@ -207,6 +244,25 @@ jobs:
         with:
           name: macos-release-aarch64
           path: release-artifacts/
+
+      - name: Upload boot server artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: boot-server-artifacts
+          path: boot-artifacts/
+
+      # ── Deploy boot artifacts via webhook ────────────────────────
+      - name: Trigger boot artifact deployment
+        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/feat/tauri-mining' || startsWith(github.ref, 'refs/tags/')
+        env:
+          WEBHOOK_SECRET: ${{ secrets.BOOT_DEPLOY_WEBHOOK_SECRET }}
+        run: |
+          PAYLOAD="{\"run_id\": ${{ github.run_id }}}"
+          SIGNATURE=$(echo -n "$PAYLOAD" | openssl dgst -sha1 -hmac "$WEBHOOK_SECRET" | sed 's/.*= //')
+          curl -f -X POST "https://cyb.ai/hooks/boot-deploy" \
+            -H "Content-Type: application/json" \
+            -H "X-Hub-Signature: sha1=$SIGNATURE" \
+            -d "$PAYLOAD"
 
       # ── Cleanup ─────────────────────────────────────────────────
       - name: Cleanup keychain

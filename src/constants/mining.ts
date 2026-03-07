@@ -13,4 +13,5 @@ export const UHASH_RELAY_URL = 'https://bostrom.cybernode.ai/relay';
 export const SUBMIT_COOLDOWN_MS = 6_000;
 
 // cyb-boot distribution server (on cyberproxy, serves cyb.ai)
-export const BOOT_SERVER_URL = 'https://cyb.ai/api/boot';
+// Use relative URL so same-origin works in both dev (localhost) and production (cyb.ai)
+export const BOOT_SERVER_URL = '/api/boot';
