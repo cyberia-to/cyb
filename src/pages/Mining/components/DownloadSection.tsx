@@ -34,6 +34,15 @@ function isAppleSilicon(): boolean {
   }
 }
 
+type DeviceType = 'desktop' | 'ios' | 'android';
+
+function detectDevice(): DeviceType {
+  const ua = navigator.userAgent;
+  if (/iPhone|iPad|iPod/i.test(ua)) return 'ios';
+  if (/Android/i.test(ua)) return 'android';
+  return 'desktop';
+}
+
 function detectPlatform(): Platform {
   const ua = navigator.userAgent.toLowerCase();
   const platform = (navigator as any).userAgentData?.platform?.toLowerCase()
@@ -58,6 +67,7 @@ type Props = {
 function DownloadSection({ address, accountName }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const device = detectDevice();
   const detected = detectPlatform();
 
   const handleDownload = useCallback(async () => {
@@ -110,22 +120,29 @@ function DownloadSection({ address, accountName }: Props) {
   return (
     <div className={styles.downloadHero}>
       <div className={styles.downloadHeroContent}>
-        <span className={styles.downloadBadge}>100x faster</span>
         <div className={styles.downloadHeadline}>
-          Mine with GPU on Desktop
+          Mine 10x faster in app
         </div>
-        <div className={styles.downloadSub}>
-          Your wallet and referrer transfer automatically
-        </div>
-        <button
-          type="button"
-          className={`${styles.downloadCtaBtn} ${loading ? styles.downloadCtaLoading : ''}`}
-          onClick={handleDownload}
-          disabled={loading}
-        >
-          <span className={styles.downloadCtaGlow} />
-          {loading ? 'Preparing...' : `Download for ${detected.label}`}
-        </button>
+        {device === 'desktop' ? (
+          <button
+            type="button"
+            className={`${styles.downloadCtaBtn} ${loading ? styles.downloadCtaLoading : ''}`}
+            onClick={handleDownload}
+            disabled={loading}
+          >
+            <span className={styles.downloadCtaGlow} />
+            {loading ? 'Preparing...' : `Download for ${detected.label}`}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className={styles.downloadCtaBtn}
+            disabled
+          >
+            <span className={styles.downloadCtaGlow} />
+            {device === 'ios' ? 'iOS app coming soon' : 'Android app coming soon'}
+          </button>
+        )}
         {error && <div className={styles.downloadError}>{error}</div>}
       </div>
     </div>
