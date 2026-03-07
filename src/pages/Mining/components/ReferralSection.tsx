@@ -82,7 +82,7 @@ function ReferralSection({ referrer, onReferrerChange }: Props) {
 
   const handleCopyLink = useCallback(() => {
     if (address) {
-      const origin = window.location.protocol === 'tauri:' ? 'https://cyb.ai' : window.location.origin;
+      const origin = window.location.origin.startsWith('tauri:') ? 'https://cyb.ai' : window.location.origin;
       navigator.clipboard.writeText(`${origin}/mining?ref=${address}`);
       setStatus({ type: 'info', text: 'Referral link copied!' });
     }
