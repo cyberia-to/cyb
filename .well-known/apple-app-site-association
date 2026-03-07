@@ -1,0 +1,11 @@
+{
+  "applinks": {
+    "apps": [],
+    "details": [
+      {
+        "appID": "38BRD9SJV7.ai.cyb.app",
+        "paths": ["*"]
+      }
+    ]
+  }
+}
