@@ -159,46 +159,48 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
       if (!process.env.IS_TAURI && window.keplr) return;
 
       try {
-        let mnemonic = getMnemonic();
+        let mnemonic: string | null = null;
         let walletSource = 'existing';
         let accountName = 'Account 1';
 
-        if (!mnemonic) {
-          console.log('[Bootstrap] No existing wallet found, checking bootstrap...');
-          // Check for bootstrap.json from cyb-boot installer (Tauri only)
-          if (process.env.IS_TAURI) {
-            try {
-              const { invoke } = await import('@tauri-apps/api/core');
-              console.log('[Bootstrap] Invoking read_bootstrap...');
-              const bootstrap = await invoke('read_bootstrap') as { mnemonic?: string; referrer?: string; name?: string } | null;
-              console.log('[Bootstrap] read_bootstrap result:', bootstrap ? 'found' : 'null');
-              if (bootstrap?.mnemonic) {
-                mnemonic = bootstrap.mnemonic;
-                walletSource = 'cyb-boot';
-                if (bootstrap.name) {
-                  accountName = bootstrap.name;
-                }
-                console.log('[Bootstrap] Mnemonic imported from cyb-boot, name:', accountName);
-                if (bootstrap.referrer) {
-                  const { saveReferrer } = await import('src/pages/Mining/components/ReferralSection');
-                  saveReferrer(bootstrap.referrer);
-                  console.log('[Bootstrap] Referrer saved:', bootstrap.referrer);
-                } else {
-                  console.log('[Bootstrap] No referrer in bootstrap');
-                }
+        // Check bootstrap.json FIRST — it's an explicit user action (download from web)
+        // and should override any existing wallet
+        if (process.env.IS_TAURI) {
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            console.log('[Bootstrap] Invoking read_bootstrap...');
+            const bootstrap = await invoke('read_bootstrap') as { mnemonic?: string; referrer?: string; name?: string } | null;
+            console.log('[Bootstrap] read_bootstrap result:', bootstrap ? 'found' : 'null');
+            if (bootstrap?.mnemonic) {
+              mnemonic = bootstrap.mnemonic;
+              walletSource = 'cyb-boot';
+              if (bootstrap.name) {
+                accountName = bootstrap.name;
               }
-            } catch (err) {
-              console.log('[Bootstrap] No bootstrap.json found (normal first launch):', err);
+              console.log('[Bootstrap] Mnemonic imported from cyb-boot, name:', accountName);
+              if (bootstrap.referrer) {
+                const { saveReferrer } = await import('src/pages/Mining/components/ReferralSection');
+                saveReferrer(bootstrap.referrer);
+                console.log('[Bootstrap] Referrer saved:', bootstrap.referrer);
+              } else {
+                console.log('[Bootstrap] No referrer in bootstrap');
+              }
             }
+          } catch (err) {
+            console.log('[Bootstrap] No bootstrap.json found (normal first launch):', err);
           }
-          if (!mnemonic) {
+        }
+
+        if (!mnemonic) {
+          mnemonic = getMnemonic();
+          if (mnemonic) {
+            console.log('[Bootstrap] Restored existing wallet from storage');
+          } else {
             const { generateMnemonic } = await import('src/utils/offlineSigner');
             mnemonic = await generateMnemonic();
             walletSource = 'generated';
             console.log('[Bootstrap] Auto-generated new wallet');
           }
-        } else {
-          console.log('[Bootstrap] Restored existing wallet from storage');
         }
 
         const mnemonicSigner = await getOfflineSignerFromMnemonic(mnemonic);
