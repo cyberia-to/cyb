@@ -1133,7 +1133,6 @@ function Mining() {
   const handleStartMining = useCallback(async () => {
     miningAddressRef.current = address;
     setAutoMining(true);
-    setSessionLiMined(0);
     await startMiningRound();
     startPolling();
   }, [startMiningRound, startPolling, address]);
