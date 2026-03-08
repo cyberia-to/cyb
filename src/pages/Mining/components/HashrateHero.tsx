@@ -5,6 +5,7 @@ type Props = {
   hashrate: number;
   isActive: boolean;
   samples: number[];
+  sessionAvg?: number;
 };
 
 function buildSparklinePath(samples: number[], width: number, height: number) {
@@ -24,7 +25,7 @@ function buildSparklinePath(samples: number[], width: number, height: number) {
   return { line, fill };
 }
 
-function HashrateHero({ hashrate, isActive, samples }: Props) {
+function HashrateHero({ hashrate, isActive, samples, sessionAvg }: Props) {
   const { line, fill } = buildSparklinePath(samples, 300, 60);
 
   return (
@@ -33,6 +34,12 @@ function HashrateHero({ hashrate, isActive, samples }: Props) {
         {hashrate.toFixed(0)}
         <span className={styles.heroUnit}> H/s</span>
       </div>
+
+      {isActive && sessionAvg != null && sessionAvg > 0 && (
+        <div className={styles.heroAvg}>
+          avg {sessionAvg.toFixed(0)} H/s
+        </div>
+      )}
 
       {samples.length >= 2 && (
         <svg className={styles.sparkline} viewBox="0 0 300 60" preserveAspectRatio="none">

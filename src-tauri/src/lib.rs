@@ -18,7 +18,6 @@ use mining::MiningState;
 use server::start_server;
 use tauri::generate_handler;
 use tauri::Manager;
-#[cfg(desktop)]
 use tauri::RunEvent;
 #[cfg(desktop)]
 use tauri::WebviewWindow;
@@ -250,13 +249,21 @@ pub fn run() {
 
     #[cfg(not(desktop))]
     {
+        use tauri::Emitter;
+
         println!("[CYB.AI] Mobile platform startup");
         build_tauri_app()
             .setup(|_app| {
                 println!("[CYB.AI] App ready!");
                 Ok(())
             })
-            .run(tauri::generate_context!())
-            .expect("error while running tauri application");
+            .build(tauri::generate_context!())
+            .expect("error while building tauri application")
+            .run(|app_handle, event| {
+                if let RunEvent::Resumed { .. } = event {
+                    println!("[CYB.AI] App resumed (foregrounded)");
+                    let _ = app_handle.emit("app-resumed", ());
+                }
+            });
     }
 }

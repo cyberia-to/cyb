@@ -1,5 +1,7 @@
 import { useRef, useMemo } from 'react';
 
+const SAMPLE_INTERVAL_MS = 5000;
+
 function useHashrateSamples(
   hashrate: number,
   isActive: boolean,
@@ -7,21 +9,26 @@ function useHashrateSamples(
 ) {
   const samplesRef = useRef<number[]>([]);
   const prevActiveRef = useRef(isActive);
+  const lastSampleTimeRef = useRef(0);
 
   // Clear samples when mining stops
   if (prevActiveRef.current && !isActive) {
     samplesRef.current = [];
+    lastSampleTimeRef.current = 0;
   }
   prevActiveRef.current = isActive;
 
-  // Append sample during render (no setTick / forced re-render needed —
-  // the parent already re-renders when hashrate changes)
+  // Downsample: only push a new sample every SAMPLE_INTERVAL_MS
   if (isActive && hashrate > 0) {
-    const arr = samplesRef.current;
-    if (arr.length >= maxSamples) {
-      arr.shift();
+    const now = Date.now();
+    if (now - lastSampleTimeRef.current >= SAMPLE_INTERVAL_MS) {
+      lastSampleTimeRef.current = now;
+      const arr = samplesRef.current;
+      if (arr.length >= maxSamples) {
+        arr.shift();
+      }
+      arr.push(hashrate);
     }
-    arr.push(hashrate);
   }
 
   // Return stable reference — the array is mutated in place

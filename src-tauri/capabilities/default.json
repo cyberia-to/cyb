@@ -9,6 +9,7 @@
     "shell:allow-spawn",
     "deep-link:default",
     "dialog:default",
-    "fs:default"
+    "fs:default",
+    "fs:allow-write-text-file"
   ]
 }

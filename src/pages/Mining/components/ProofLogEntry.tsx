@@ -9,7 +9,7 @@ type Props = {
   hash: string;
   txHash?: string;
   error?: string;
-  status?: 'submitted' | 'pending' | 'success' | 'failed';
+  status?: 'submitted' | 'pending' | 'success' | 'failed' | 'retrying';
   timestamp: number;
 };
 
@@ -30,6 +30,8 @@ function StatusPill({ status, error }: { status?: string; error?: string }) {
       return <Pill color="yellow" text="PENDING" />;
     case 'submitted':
       return <Pill color="yellow" text="SENT" />;
+    case 'retrying':
+      return <Pill color="yellow" text="RETRY" />;
     default:
       // Legacy entries without status field
       if (error) return <Pill color="red" text="FAIL" />;

@@ -56,7 +56,20 @@ type MiningStatus = {
   backend?: string;
 };
 
-type ProofStatus = 'submitted' | 'pending' | 'success' | 'failed';
+type ProofStatus = 'submitted' | 'pending' | 'success' | 'failed' | 'retrying';
+
+type RetryEntry = {
+  proof: Proof;
+  challenge: string;
+  blockTimestamp: number;
+  attempts: number;
+  nextRetryAt: number;
+};
+
+const MAX_RETRY_QUEUE = 10;
+const MAX_RETRY_ATTEMPTS = 3;
+const RETRY_BACKOFF_BASE = 6000; // 6s, 12s, 24s
+const CONSECUTIVE_FAILS_THRESHOLD = 3;
 
 type ProofLogEntry_ = {
   hash: string;
@@ -301,6 +314,11 @@ function Mining() {
   const challengeRef = useRef<string>('');
   const blockTimestampRef = useRef<number>(0);
 
+  // Connection health
+  const [rpcOnline, setRpcOnline] = useState(true);
+  const consecutiveFailsRef = useRef(0);
+  const retryQueueRef = useRef<RetryEntry[]>([]);
+
   // Proof submission queue
   const proofQueueRef = useRef<Proof[]>([]);
   const submittingRef = useRef(false);
@@ -317,7 +335,7 @@ function Mining() {
   const liBalance = address && cw20BalData && 'balance' in (cw20BalData as object)
     ? Number((cw20BalData as { balance: string }).balance) / 1_000_000
     : 0;
-  const { rewardPerProof, grossRewardPerProof, estimatedLiPerHour } =
+  const { rewardPerProof, grossRewardPerProof, estimatedLiPerHour, refetch: refetchReward } =
     useRewardEstimate(userDifficulty, hashrate, emission);
   const samples = useHashrateSamples(hashrate, autoMining);
   const { uniqueMiners, totalProofs, avgDifficulty, refetch: refetchMinerStats } = useMinerStats();
@@ -351,7 +369,8 @@ function Mining() {
     refetchEmission();
     refetchBurnStats();
     refetchMinerStats();
-  }, [refetchEmission, refetchBurnStats, refetchMinerStats]);
+    refetchReward();
+  }, [refetchEmission, refetchBurnStats, refetchMinerStats, refetchReward]);
 
   // WebSocket-driven: refetch fast queries on every new block
   const { connected: wsConnected } = useNewBlockSubscription(refetchFast);
@@ -379,6 +398,84 @@ function Mining() {
     }, TICK);
     return () => clearInterval(timer);
   }, [wsConnected, refetchFast, refetchSlow]);
+
+  // Handle sleep/wake and network reconnection using platform-native events.
+  // Desktop Tauri: window focus event (fires on Cmd+Tab, dock click, sleep/wake)
+  // Mobile Tauri:  'app-resumed' custom event (emitted from Rust on RunEvent::Resumed)
+  // Web:           visibilitychange (standard browser API)
+  // All:           'online' event for network reconnection
+  useEffect(() => {
+    const cleanups: (() => void)[] = [];
+
+    // Debounce: don't refetch more than once per 5s from any signal
+    let lastRefetch = 0;
+    const debouncedRefetch = async (source: string) => {
+      const now = Date.now();
+      if (now - lastRefetch < 5000) return;
+      lastRefetch = now;
+      console.log(`[Mining][wake] ${source}, refreshing...`);
+      refetchFast();
+      refetchSlow();
+
+      // Probe RPC health to restore online state
+      try {
+        const probeOk = await fetch(RPC_URL + '/status', {
+          signal: AbortSignal.timeout(5000),
+        }).then((r) => r.ok).catch(() => false);
+        if (probeOk) {
+          setRpcOnline(true);
+          consecutiveFailsRef.current = 0;
+          console.log('[Mining][wake] RPC probe OK — marking online');
+        }
+      } catch {
+        // probe failed, stay in current state
+      }
+    };
+
+    if (isNative) {
+      let cancelled = false;
+
+      // Desktop: window focus event
+      import('@tauri-apps/api/window').then(({ getCurrentWindow }) => {
+        if (cancelled) return;
+        getCurrentWindow().onFocusChanged(({ payload: focused }) => {
+          if (focused) {
+            debouncedRefetch('Window focused');
+          }
+        }).then((unlisten) => {
+          if (cancelled) { unlisten(); } else { cleanups.push(unlisten); }
+        });
+      });
+
+      // Mobile: app-resumed event (RunEvent::Resumed — iOS/Android foreground)
+      import('@tauri-apps/api/event').then(({ listen }) => {
+        if (cancelled) return;
+        listen('app-resumed', () => {
+          debouncedRefetch('App resumed (mobile)');
+        }).then((unlisten) => {
+          if (cancelled) { unlisten(); } else { cleanups.push(unlisten); }
+        });
+      });
+
+      cleanups.push(() => { cancelled = true; });
+    } else {
+      // Web: use visibilitychange
+      const handleVisibility = () => {
+        if (!document.hidden) {
+          debouncedRefetch('Page visible');
+        }
+      };
+      document.addEventListener('visibilitychange', handleVisibility);
+      cleanups.push(() => document.removeEventListener('visibilitychange', handleVisibility));
+    }
+
+    // All platforms: network reconnection
+    const handleOnline = () => debouncedRefetch('Network online');
+    window.addEventListener('online', handleOnline);
+    cleanups.push(() => window.removeEventListener('online', handleOnline));
+
+    return () => cleanups.forEach((fn) => fn());
+  }, [refetchFast, refetchSlow, isNative]);
 
   // Keep autoMining ref in sync with state and persist to localStorage.
   // Redux mining state is managed by useMiningMonitor at app level.
@@ -600,7 +697,7 @@ function Mining() {
       // Update submitted entry to success with txHash
       setProofLog((prev) =>
         prev.map((p) =>
-          p.hash === proof.hash && (p.status === 'submitted' || !p.txHash)
+          p.hash === proof.hash && (p.status === 'submitted' || p.status === 'retrying' || !p.txHash)
             ? { ...p, txHash: result.transactionHash, status: 'success' }
             : p
         )
@@ -616,67 +713,180 @@ function Mining() {
     if (submittingRef.current) {
       return;
     }
-    if (proofQueueRef.current.length === 0) {
+
+    const now = Date.now();
+
+    // --- Primary queue ---
+    if (proofQueueRef.current.length > 0) {
+      const elapsed_ = now - lastSubmitTimeRef.current;
+      if (elapsed_ < SUBMIT_COOLDOWN_MS) {
+        return;
+      }
+
+      // When offline, hold proofs — don't submit or discard
+      if (!rpcOnline) {
+        console.log('[Mining] Offline — holding', proofQueueRef.current.length, 'proofs in queue');
+        return;
+      }
+
+      submittingRef.current = true;
+      setSubmitting(true);
+
+      const queue = proofQueueRef.current;
+      let bestIdx = 0;
+      for (let i = 1; i < queue.length; i++) {
+        if (queue[i].hash < queue[bestIdx].hash) {
+          bestIdx = i;
+        }
+      }
+      const best = queue[bestIdx];
+
+      const discarded = queue.length - 1;
+      proofQueueRef.current = [];
+      if (discarded > 0) {
+        console.log(
+          `[Mining] Submitting best of ${
+            discarded + 1
+          } proofs, discarded ${discarded}`
+        );
+      }
+
+      // Add "submitted" entry immediately
+      setProofLog((prev) => [
+        {
+          hash: best.hash,
+          nonce: best.nonce,
+          status: 'submitted',
+          timestamp: Date.now(),
+        },
+        ...prev,
+      ]);
+
+      try {
+        await submitSingleProof(best);
+        lastSubmitTimeRef.current = Date.now();
+        consecutiveFailsRef.current = 0;
+      } catch (err: any) {
+        console.error('[Mining] Submit failed:', err);
+        const kind = classifySubmitError(err);
+
+        if (kind === 'transport') {
+          // Transport error → move to retry queue instead of marking failed
+          consecutiveFailsRef.current += 1;
+          console.log('[Mining] Transport error, consecutive fails:', consecutiveFailsRef.current);
+
+          if (consecutiveFailsRef.current >= CONSECUTIVE_FAILS_THRESHOLD) {
+            setRpcOnline(false);
+            console.log('[Mining] RPC marked offline after', consecutiveFailsRef.current, 'consecutive failures');
+          }
+
+          if (retryQueueRef.current.length < MAX_RETRY_QUEUE) {
+            retryQueueRef.current.push({
+              proof: best,
+              challenge: challengeRef.current,
+              blockTimestamp: blockTimestampRef.current,
+              attempts: 1,
+              nextRetryAt: Date.now() + RETRY_BACKOFF_BASE,
+            });
+            // Update log entry to "retrying"
+            setProofLog((prev) =>
+              prev.map((p) =>
+                p.hash === best.hash && p.status === 'submitted'
+                  ? { ...p, error: 'Network error — will retry', status: 'retrying' }
+                  : p
+              )
+            );
+          } else {
+            // Retry queue full — mark as failed
+            setProofLog((prev) =>
+              prev.map((p) =>
+                p.hash === best.hash && p.status === 'submitted'
+                  ? { ...p, error: 'Retry queue full', status: 'failed' }
+                  : p
+              )
+            );
+          }
+        } else {
+          // Contract/unknown error → permanent failure (no retry)
+          setProofLog((prev) =>
+            prev.map((p) =>
+              p.hash === best.hash && p.status === 'submitted'
+                ? { ...p, error: err?.message || 'Failed', status: 'failed' }
+                : p
+            )
+          );
+        }
+      } finally {
+        submittingRef.current = false;
+        setSubmitting(false);
+      }
+    }
+
+    // --- Retry queue --- (only when online and not already submitting)
+    if (!rpcOnline || submittingRef.current || retryQueueRef.current.length === 0) {
       return;
     }
 
-    const now = Date.now();
-    const elapsed_ = now - lastSubmitTimeRef.current;
-    if (elapsed_ < SUBMIT_COOLDOWN_MS) {
+    const retryNow = Date.now();
+    const ready = retryQueueRef.current.findIndex(
+      (r) => r.nextRetryAt <= retryNow
+    );
+    if (ready === -1) return;
+
+    const entry = retryQueueRef.current[ready];
+    retryQueueRef.current.splice(ready, 1);
+
+    // Check if challenge is still current
+    if (entry.challenge !== challengeRef.current) {
+      console.log('[Mining] Retry discarded — stale challenge');
+      setProofLog((prev) =>
+        prev.map((p) =>
+          p.hash === entry.proof.hash && p.status === 'retrying'
+            ? { ...p, error: 'Stale challenge', status: 'failed' }
+            : p
+        )
+      );
       return;
     }
 
     submittingRef.current = true;
     setSubmitting(true);
-
-    const queue = proofQueueRef.current;
-    let bestIdx = 0;
-    for (let i = 1; i < queue.length; i++) {
-      if (queue[i].hash < queue[bestIdx].hash) {
-        bestIdx = i;
-      }
-    }
-    const best = queue[bestIdx];
-
-    const discarded = queue.length - 1;
-    proofQueueRef.current = [];
-    if (discarded > 0) {
-      console.log(
-        `[Mining] Submitting best of ${
-          discarded + 1
-        } proofs, discarded ${discarded}`
-      );
-    }
-
-    // Add "submitted" entry immediately
-    setProofLog((prev) => [
-      {
-        hash: best.hash,
-        nonce: best.nonce,
-        status: 'submitted',
-        timestamp: Date.now(),
-      },
-      ...prev,
-    ]);
+    console.log('[Mining] Retrying proof:', entry.proof.hash.slice(0, 16), 'attempt:', entry.attempts + 1);
 
     try {
-      await submitSingleProof(best);
+      await submitSingleProof(entry.proof);
       lastSubmitTimeRef.current = Date.now();
+      consecutiveFailsRef.current = 0;
+      // submitSingleProof already updates the log entry to 'success'
     } catch (err: any) {
-      console.error('[Mining] Submit failed:', err);
-      // Update the submitted entry to failed
-      setProofLog((prev) =>
-        prev.map((p) =>
-          p.hash === best.hash && p.status === 'submitted'
-            ? { ...p, error: err?.message || 'Failed', status: 'failed' }
-            : p
-        )
-      );
+      const kind = classifySubmitError(err);
+
+      if (kind === 'transport' && entry.attempts < MAX_RETRY_ATTEMPTS) {
+        consecutiveFailsRef.current += 1;
+        if (consecutiveFailsRef.current >= CONSECUTIVE_FAILS_THRESHOLD) {
+          setRpcOnline(false);
+        }
+        // Put back with increased backoff
+        retryQueueRef.current.push({
+          ...entry,
+          attempts: entry.attempts + 1,
+          nextRetryAt: Date.now() + RETRY_BACKOFF_BASE * Math.pow(2, entry.attempts),
+        });
+      } else {
+        // Max retries exceeded or non-transport error
+        setProofLog((prev) =>
+          prev.map((p) =>
+            p.hash === entry.proof.hash && p.status === 'retrying'
+              ? { ...p, error: err?.message || 'Failed after retries', status: 'failed' }
+              : p
+          )
+        );
+      }
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [submitSingleProof]);
+  }, [submitSingleProof, rpcOnline]);
 
   // Store processQueue in a ref so the poll interval never needs to be recreated
   const processQueueRef = useRef(processQueue);
@@ -841,6 +1051,23 @@ function Mining() {
     challengeRef.current = newChallenge;
     blockTimestampRef.current = latestBlock.timestamp;
 
+    // Purge stale retries that were mined against the old challenge
+    const stale = retryQueueRef.current.filter((r) => r.challenge !== newChallenge);
+    if (stale.length > 0) {
+      console.log('[Mining] Discarding', stale.length, 'stale retry entries');
+      retryQueueRef.current = retryQueueRef.current.filter(
+        (r) => r.challenge === newChallenge
+      );
+      // Mark stale retries as failed in proof log
+      setProofLog((prev) =>
+        prev.map((p) =>
+          p.status === 'retrying' && stale.some((s) => s.proof.hash === p.hash)
+            ? { ...p, error: 'Stale challenge', status: 'failed' }
+            : p
+        )
+      );
+    }
+
     if (isNative) {
       invoke('update_challenge', {
         challengeHex: newChallenge,
@@ -876,6 +1103,9 @@ function Mining() {
     }
     console.log('[Mining][stop] handleStopMining called', new Error().stack?.split('\n').slice(1, 4).join(' <- '));
     setAutoMining(false);
+    retryQueueRef.current = [];
+    consecutiveFailsRef.current = 0;
+    setRpcOnline(true);
     try {
       if (isNative) {
         await invoke('stop_mining');
@@ -1006,11 +1236,17 @@ function Mining() {
         gross_per_proof: grossRewardPerProof,
         li_per_hour: estimatedLiPerHour,
       },
+      connection: {
+        rpc_online: rpcOnline,
+        retry_queue_size: retryQueueRef.current.length,
+        consecutive_fails: consecutiveFailsRef.current,
+      },
       proof_summary: {
         total: proofLog.length,
         accepted,
         failed,
         pending,
+        retrying: proofLog.filter((p) => p.status === 'retrying').length,
         success_rate: total > 0 ? `${((accepted / total) * 100).toFixed(1)}%` : null,
       },
       proof_log: proofLog,
@@ -1042,7 +1278,7 @@ function Mining() {
     sessionLiMined, latestBlock, wsConnected, samples, config, windowStatus,
     emission, burnStats, uniqueMiners, totalProofs, avgDifficulty, dRate,
     similarDevices, windowProofCount, baseRate, rewardPerProof,
-    grossRewardPerProof, estimatedLiPerHour, proofLog, isNative,
+    grossRewardPerProof, estimatedLiPerHour, proofLog, isNative, rpcOnline,
   ]);
 
   // Format alpha/beta from micros to percentage
@@ -1085,6 +1321,7 @@ function Mining() {
                 Export Logs
               </button>
               {!autoMining && <Pill color="black" text="Idle" />}
+              {autoMining && !rpcOnline && <Pill color="yellow" text="Offline" />}
             </div>
           </div>
 
@@ -1099,6 +1336,7 @@ function Mining() {
             hashrate={hashrate}
             isActive={autoMining}
             samples={samples}
+            sessionAvg={elapsed > 0 ? (miningStatus?.total_hashes ?? 0) / elapsed : undefined}
           />
 
           {/* 4-card stat grid */}
@@ -1223,6 +1461,7 @@ function Mining() {
           {proofLog.length > 0 && (() => {
             const accepted = proofLog.filter((p) => p.status === 'success').length;
             const failed = proofLog.filter((p) => p.status === 'failed' || (p.error && !p.status)).length;
+            const retrying = proofLog.filter((p) => p.status === 'retrying').length;
             const pending = proofLog.filter((p) => p.status === 'submitted' || p.status === 'pending').length;
             const total = accepted + failed;
             const rate = total > 0 ? ((accepted / total) * 100).toFixed(0) : '\u2014';
@@ -1235,6 +1474,7 @@ function Mining() {
                 <div className={styles.statsGrid}>
                   <StatCard label="Accepted" value={accepted} />
                   <StatCard label="Failed" value={failed} />
+                  {retrying > 0 && <StatCard label="Retrying" value={retrying} />}
                   <StatCard label="Success rate" value={`${rate}%`} />
                 </div>
                 <div className={styles.proofLog}>

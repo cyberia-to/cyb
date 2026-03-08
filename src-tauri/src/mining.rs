@@ -31,8 +31,8 @@ pub(crate) struct HashSnapshot {
     count: u64,
 }
 
-const HASHRATE_WINDOW_SECS: f64 = 5.0;
-const MAX_SNAPSHOTS: usize = 64;
+const HASHRATE_WINDOW_SECS: f64 = 30.0;
+const MAX_SNAPSHOTS: usize = 256;
 
 pub struct MiningState {
     pub mining: AtomicBool,
@@ -348,6 +348,7 @@ pub fn start_mining(
                     state_clone
                         .hash_count
                         .fetch_add(actual as u64, Ordering::Relaxed);
+                    state_clone.record_snapshot();
                 }
                 Ok((None, actual)) => {
                     consecutive_errors = 0;

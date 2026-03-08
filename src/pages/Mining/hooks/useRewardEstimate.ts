@@ -10,7 +10,7 @@ function useRewardEstimate(
   hashrate: number,
   emission?: EmissionInfoResponse
 ) {
-  const { data } = useQueryContract(
+  const { data, refetch } = useQueryContract(
     LITIUM_MINE_CONTRACT,
     difficulty !== undefined && difficulty > 0
       ? { calculate_reward: { difficulty_bits: difficulty } }
@@ -61,6 +61,7 @@ function useRewardEstimate(
     grossRewardPerProof: grossReward,
     estimatedLiPerHour,
     loading: !data,
+    refetch,
   };
 }
 
