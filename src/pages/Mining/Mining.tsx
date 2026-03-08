@@ -4,11 +4,13 @@ import { Display, DisplayTitle, MainContainer } from 'src/components';
 import Pill from 'src/components/Pill/Pill';
 import useQueryContract from 'src/hooks/contract/useQueryContract';
 import { LITIUM_MINE_CONTRACT, LITIUM_CORE_CONTRACT, UHASH_RELAY_URL, SUBMIT_COOLDOWN_MS } from 'src/constants/mining';
-import { RPC_URL } from 'src/constants/config';
+import { CHAIN_ID, RPC_URL } from 'src/constants/config';
 import { isTauri } from 'src/utils/tauri';
 import { trimString } from 'src/utils/utils';
 import { compactLi, formatLi } from './utils/formatLi';
 import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
+import { toUtf8 } from '@cosmjs/encoding';
+import { TxRaw } from 'cosmjs-types/cosmos/tx/v1beta1/tx';
 import type {
   ExecuteMsg,
   WindowStatusResponse,
@@ -144,7 +146,7 @@ function formatElapsed(seconds: number): string {
   return `${Math.floor(seconds / 3600)}h ${Math.floor((seconds % 3600) / 60)}m`;
 }
 
-type Proof = { hash: string; nonce: number };
+type Proof = { hash: string; nonce: number; challenge?: string };
 
 function formatHashrate(hps: number): string {
   if (hps >= 1_000_000) return `${(hps / 1_000_000).toFixed(1)} MH/s`;
@@ -296,6 +298,7 @@ function Mining() {
   const miningAddressRef = useRef<string | undefined>(undefined);
   const wasmMinerRef = useRef<WasmMiner | null>(null);
   const stopReadyRef = useRef(false);
+  const sessionStartRef = useRef(Date.now());
   const isNative = isTauri();
 
   // Fetch available backends on mount (Tauri only)
@@ -318,6 +321,9 @@ function Mining() {
   const [rpcOnline, setRpcOnline] = useState(true);
   const consecutiveFailsRef = useRef(0);
   const retryQueueRef = useRef<RetryEntry[]>([]);
+
+  // Local sequence tracking — avoids re-querying chain between proofs
+  const seqRef = useRef<{ accountNumber: number; sequence: number } | null>(null);
 
   // Proof submission queue
   const proofQueueRef = useRef<Proof[]>([]);
@@ -344,60 +350,40 @@ function Mining() {
     refetchWindow: refetchPeerWindow,
   } = usePeerEstimate(hashrate);
 
-  // Tiered polling — avoids react-query's internal setInterval which
-  // causes timer cascade in WebKit.  Three tiers:
-  //   Fast  (10s): window_status, config, block, peer hashrate
-  //   Slow (120s): emission, burn stats, all-time miner stats
-  // WebSocket NewBlock events trigger fast refetches immediately when
-  // available, so the 10s timer acts as a fallback.
-  const FAST_INTERVAL = 10_000;
-  const SLOW_INTERVAL = 120_000;
-  const [refreshCountdown, setRefreshCountdown] = useState(10);
-  const lastFastRef = useRef(Date.now());
-  const lastSlowRef = useRef(Date.now());
-
-  const refetchFast = useCallback(() => {
-    lastFastRef.current = Date.now();
+  // Event-driven refresh — zero timer polling.
+  // Three triggers: new block (WS), after proof submit, platform recovery.
+  // WS fallback: 30s interval only when WebSocket is disconnected.
+  const refetchAll = useCallback(() => {
     refetchWindow();
-    refetchConfig();
     refetchBlock();
     refetchPeerWindow();
-  }, [refetchWindow, refetchConfig, refetchBlock, refetchPeerWindow]);
-
-  const refetchSlow = useCallback(() => {
-    lastSlowRef.current = Date.now();
     refetchEmission();
     refetchBurnStats();
     refetchMinerStats();
     refetchReward();
-  }, [refetchEmission, refetchBurnStats, refetchMinerStats, refetchReward]);
+  }, [refetchWindow, refetchBlock, refetchPeerWindow, refetchEmission, refetchBurnStats, refetchMinerStats, refetchReward]);
 
-  // WebSocket-driven: refetch fast queries on every new block
-  const { connected: wsConnected } = useNewBlockSubscription(refetchFast);
+  // Resync config + balance after proof submit (success or permanent failure)
+  const resyncAfterProof = useCallback(() => {
+    refetchConfig();
+    refreshBalance();
+  }, [refetchConfig, refreshBalance]);
 
+  // WebSocket-driven: refetch all display data on every new block
+  const { connected: wsConnected } = useNewBlockSubscription(refetchAll);
+
+  // WS disconnection fallback: 30s interval, only active when WS is down
   useEffect(() => {
-    const TICK = 1000;
+    if (wsConnected) return;
+    // Immediate refresh when WS drops
+    refetchAll();
+    refetchConfig();
     const timer = setInterval(() => {
-      const now = Date.now();
-      const fastElapsed = now - lastFastRef.current;
-      const slowElapsed = now - lastSlowRef.current;
-
-      // Countdown shows time until next fast refetch
-      const remaining = Math.max(0, Math.ceil((FAST_INTERVAL - fastElapsed) / 1000));
-      setRefreshCountdown(remaining);
-
-      // Fast tier: only poll if WebSocket is not connected (fallback)
-      if (!wsConnected && fastElapsed >= FAST_INTERVAL) {
-        refetchFast();
-      }
-
-      // Slow tier: always poll on timer
-      if (slowElapsed >= SLOW_INTERVAL) {
-        refetchSlow();
-      }
-    }, TICK);
+      refetchAll();
+      refetchConfig();
+    }, 30_000);
     return () => clearInterval(timer);
-  }, [wsConnected, refetchFast, refetchSlow]);
+  }, [wsConnected, refetchAll, refetchConfig]);
 
   // Handle sleep/wake and network reconnection using platform-native events.
   // Desktop Tauri: window focus event (fires on Cmd+Tab, dock click, sleep/wake)
@@ -414,8 +400,8 @@ function Mining() {
       if (now - lastRefetch < 5000) return;
       lastRefetch = now;
       console.log(`[Mining][wake] ${source}, refreshing...`);
-      refetchFast();
-      refetchSlow();
+      refetchAll();
+      refetchConfig();
 
       // Probe RPC health to restore online state
       try {
@@ -475,7 +461,7 @@ function Mining() {
     cleanups.push(() => window.removeEventListener('online', handleOnline));
 
     return () => cleanups.forEach((fn) => fn());
-  }, [refetchFast, refetchSlow, isNative]);
+  }, [refetchAll, refetchConfig, isNative]);
 
   // Keep autoMining ref in sync with state and persist to localStorage.
   // Redux mining state is managed by useMiningMonitor at app level.
@@ -576,12 +562,14 @@ function Mining() {
         console.warn('[Mining] Signer address mismatch:', account.address, '!==', address);
         return;
       }
+      // Use the challenge embedded in the proof (mined against), not the current one
+      const proofChallenge = proof.challenge || challengeRef.current;
       const msg: ExecuteMsg = {
         submit_proof: {
           hash: proof.hash,
           nonce: Number(proof.nonce),
           miner_address: address,
-          challenge: challengeRef.current,
+          challenge: proofChallenge,
           difficulty: userDifficulty,
           timestamp: blockTimestampRef.current,
           referrer: referrer || undefined,
@@ -595,37 +583,76 @@ function Mining() {
         userDifficulty
       );
 
+      // Build the execute message for sign()
+      const encodeMsg = {
+        typeUrl: '/cosmwasm.wasm.v1.MsgExecuteContract' as const,
+        value: {
+          sender: account.address,
+          contract: LITIUM_MINE_CONTRACT,
+          msg: toUtf8(JSON.stringify(msg)),
+          funds: [],
+        },
+      };
+      const fee = Soft3MessageFactory.fee(8);
+
+      // Sign + broadcast with local sequence tracking
+      const signAndBroadcastWithSeq = async () => {
+        // Fetch sequence on first call (or after reset)
+        if (!seqRef.current) {
+          const { accountNumber, sequence } = await signingClient.getSequence(account.address);
+          seqRef.current = { accountNumber, sequence };
+          console.log('[Mining] Fetched sequence from chain:', sequence);
+        }
+
+        const signerData = {
+          accountNumber: seqRef.current.accountNumber,
+          sequence: seqRef.current.sequence,
+          chainId: CHAIN_ID,
+        };
+        console.log('[Mining] Signing with sequence:', signerData.sequence);
+
+        const txRaw = await signingClient.sign(account.address, [encodeMsg], fee, '', signerData);
+        const txBytes = TxRaw.encode(txRaw).finish();
+        const result = await signingClient.broadcastTx(txBytes);
+
+        // Success — increment sequence for next submission
+        seqRef.current.sequence += 1;
+        return result;
+      };
+
       let result;
       try {
-        result = await signingClient.execute(
-          account.address,
-          LITIUM_MINE_CONTRACT,
-          msg,
-          Soft3MessageFactory.fee(8),
-          ''
-        );
+        result = await signAndBroadcastWithSeq();
       } catch (executeErr: any) {
+        const errText = normalizeErrorText(executeErr).toLowerCase();
         const kind = classifySubmitError(executeErr);
 
-        if (kind === 'account_not_found') {
+        // Sequence mismatch — re-fetch from chain and retry once
+        if (/account sequence mismatch/.test(errText)) {
+          console.log('[Mining] Sequence mismatch, re-fetching from chain...');
+          seqRef.current = null;
+          try {
+            result = await signAndBroadcastWithSeq();
+          } catch (retryErr) {
+            if (isNative) {
+              invoke('report_proof_failed').catch(() => {});
+            }
+            throw new Error(
+              `Retry after sequence refresh failed: ${normalizeErrorText(retryErr)}`
+            );
+          }
+        } else if (kind === 'account_not_found') {
           console.log('[Mining] Account not on chain, activating...');
           const activated = await activateAccount(account.address);
           if (activated) {
             console.log('[Mining] Account activated, waiting for tx inclusion...');
-            // Wait for activation tx to be included in a block
             await new Promise<void>((resolve) => {
               setTimeout(resolve, 7000);
             });
-            // Retry proof submission directly
             console.log('[Mining] Retrying proof submission...');
+            seqRef.current = null; // re-fetch after activation
             try {
-              result = await signingClient.execute(
-                account.address,
-                LITIUM_MINE_CONTRACT,
-                msg,
-                Soft3MessageFactory.fee(8),
-                ''
-              );
+              result = await signAndBroadcastWithSeq();
             } catch (retryErr) {
               if (isNative) {
                 invoke('report_proof_failed').catch(() => {});
@@ -644,10 +671,23 @@ function Mining() {
           if (isNative) {
             invoke('report_proof_failed').catch(() => {});
           }
+          // Reset sequence on any unknown error — next submit will re-fetch
+          seqRef.current = null;
           throw new Error(
             `Submit ${kind} error: ${normalizeErrorText(executeErr)}`
           );
         }
+      }
+
+      // Check for on-chain execution failure (code != 0)
+      if ((result as any).code && (result as any).code !== 0) {
+        const rawLog = (result as any).rawLog || (result as any).raw_log || 'Unknown error';
+        if (isNative) {
+          invoke('report_proof_failed').catch(() => {});
+        }
+        // Reset sequence — we don't know if the tx consumed a sequence
+        seqRef.current = null;
+        throw new Error(`Contract error: ${rawLog}`);
       }
 
       // Collect all events from both result.events and result.logs[].events[]
@@ -763,9 +803,10 @@ function Mining() {
       ]);
 
       try {
-        await submitSingleProof(best);
         lastSubmitTimeRef.current = Date.now();
+        await submitSingleProof(best);
         consecutiveFailsRef.current = 0;
+        resyncAfterProof();
       } catch (err: any) {
         console.error('[Mining] Submit failed:', err);
         const kind = classifySubmitError(err);
@@ -815,6 +856,7 @@ function Mining() {
                 : p
             )
           );
+          resyncAfterProof();
         }
       } finally {
         submittingRef.current = false;
@@ -854,9 +896,10 @@ function Mining() {
     console.log('[Mining] Retrying proof:', entry.proof.hash.slice(0, 16), 'attempt:', entry.attempts + 1);
 
     try {
-      await submitSingleProof(entry.proof);
       lastSubmitTimeRef.current = Date.now();
+      await submitSingleProof(entry.proof);
       consecutiveFailsRef.current = 0;
+      resyncAfterProof();
       // submitSingleProof already updates the log entry to 'success'
     } catch (err: any) {
       const kind = classifySubmitError(err);
@@ -881,12 +924,13 @@ function Mining() {
               : p
           )
         );
+        resyncAfterProof();
       }
     } finally {
       submittingRef.current = false;
       setSubmitting(false);
     }
-  }, [submitSingleProof, rpcOnline]);
+  }, [submitSingleProof, rpcOnline, resyncAfterProof]);
 
   // Store processQueue in a ref so the poll interval never needs to be recreated
   const processQueueRef = useRef(processQueue);
@@ -1146,9 +1190,11 @@ function Mining() {
   }, [address]);
 
   const handleExportLogs = useCallback(async () => {
-    const accepted = proofLog.filter((p) => p.status === 'success').length;
-    const failed = proofLog.filter((p) => p.status === 'failed' || (p.error && !p.status)).length;
-    const pending = proofLog.filter((p) => p.status === 'submitted' || p.status === 'pending').length;
+    // Only export proofs from the current app session
+    const sessionLog = proofLog.filter((p) => p.timestamp >= sessionStartRef.current);
+    const accepted = sessionLog.filter((p) => p.status === 'success').length;
+    const failed = sessionLog.filter((p) => p.status === 'failed' || (p.error && !p.status)).length;
+    const pending = sessionLog.filter((p) => p.status === 'submitted' || p.status === 'pending').length;
     const total = accepted + failed;
 
     // Fetch live Tauri backend metrics (includes batch_count, avg_batch_ms,
@@ -1242,14 +1288,14 @@ function Mining() {
         consecutive_fails: consecutiveFailsRef.current,
       },
       proof_summary: {
-        total: proofLog.length,
+        total: sessionLog.length,
         accepted,
         failed,
         pending,
-        retrying: proofLog.filter((p) => p.status === 'retrying').length,
+        retrying: sessionLog.filter((p) => p.status === 'retrying').length,
         success_rate: total > 0 ? `${((accepted / total) * 100).toFixed(1)}%` : null,
       },
-      proof_log: proofLog,
+      proof_log: sessionLog,
     };
 
     const text = JSON.stringify(report, null, 2);
@@ -1404,7 +1450,7 @@ function Mining() {
             <div className={styles.networkHeader}>
               <span className={styles.sectionTitle}>Network</span>
               <span className={styles.refreshBadge}>
-                {wsConnected ? 'live' : `refresh ${refreshCountdown}s`}
+                {wsConnected ? 'live' : 'reconnecting...'}
               </span>
             </div>
             <div className={styles.statsGrid}>

@@ -54,6 +54,7 @@ pub struct MiningState {
 pub struct FoundProof {
     pub hash: String,
     pub nonce: u64,
+    pub challenge: String,
 }
 
 impl MiningState {
@@ -337,6 +338,7 @@ pub fn start_mining(
                     let proof = FoundProof {
                         hash: hex::encode(hash),
                         nonce: found_nonce,
+                        challenge: hex::encode(header),
                     };
                     println!(
                         "[Mining] PROOF FOUND! nonce={}, hash={}..., batch_time={}ms",
