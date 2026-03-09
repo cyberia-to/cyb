@@ -18,8 +18,8 @@ export function calculatePairAmount(inputAmount: string | number, state) {
   let counterPairAmount = new BigNumber(0);
   let swapPrice = new BigNumber(0);
   let price = new BigNumber(0);
-  const feeRatio = new BigNumber(0.03);
-  const swapFeeRatio = new BigNumber(1).minus(feeRatio); // TO DO get params
+  const feeRatio = new BigNumber(0.003);
+  const swapFeeRatio = new BigNumber(1).minus(feeRatio);
 
   const poolAmountA = new BigNumber(tokenAPoolAmount);
   const poolAmountB = new BigNumber(tokenBPoolAmount);

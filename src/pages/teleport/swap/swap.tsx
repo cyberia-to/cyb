@@ -192,19 +192,28 @@ function Swap() {
     return 0;
   }, [poolPrice, swapPrice]);
 
+  const exceedsMaxOrderRatio = useMemo(() => {
+    if (!tokenAPoolAmount || !tokenAAmount || !tokenACoinDecimals) {
+      return false;
+    }
+    const rawAmount = new BigNumber(tokenAAmount).shiftedBy(tokenACoinDecimals);
+    const maxOrderable = new BigNumber(tokenAPoolAmount).multipliedBy(0.1);
+    return rawAmount.isGreaterThan(maxOrderable);
+  }, [tokenAAmount, tokenAPoolAmount, tokenACoinDecimals]);
+
   useEffect(() => {
     // validation swap
     let exceeded = true;
 
     const validTokenAmountA = !validInputAmountTokenA && Number(tokenAAmount) > 0;
 
-    // check pool , check slippage 3%
-    if (poolPrice !== 0 && validTokenAmountA && useGetSlippage < 3) {
+    // check pool, check slippage 3%, check max order ratio 10%
+    if (poolPrice !== 0 && validTokenAmountA && useGetSlippage < 3 && !exceedsMaxOrderRatio) {
       exceeded = false;
     }
 
     setIsExceeded(exceeded);
-  }, [poolPrice, tokenAAmount, validInputAmountTokenA, useGetSlippage]);
+  }, [poolPrice, tokenAAmount, validInputAmountTokenA, useGetSlippage, exceedsMaxOrderRatio]);
 
   const pairPrice = useMemo(() => {
     const isValid = poolPrice && tokenA && tokenB;
