@@ -16,6 +16,7 @@ import type {
   WindowStatusResponse,
   ConfigResponse,
 } from 'src/generated/lithium/LitiumMine.types';
+import type { TotalMintedResponse } from 'src/generated/lithium/LitiumCore.types';
 
 type ActivateAccountResponse = {
   ok?: boolean;
@@ -259,6 +260,11 @@ function Mining() {
   const { block: latestBlock, refetchBlock } = useLatestBlock();
   const { emission, refetch: refetchEmission } = useEmissionInfo();
   const { burnStats, refetch: refetchBurnStats } = useBurnStats();
+  const { data: totalMintedData, refetch: refetchTotalMinted } = useQueryContract(
+    LITIUM_CORE_CONTRACT,
+    { total_minted: {} }
+  );
+  const totalMinted = totalMintedData as TotalMintedResponse | undefined;
 
   // Mining status from Redux (kept in sync by useMiningMonitor in App.tsx)
   const miningStatus = useAppSelector((s) => s.mining.status);
@@ -346,7 +352,7 @@ function Mining() {
   const samples = useHashrateSamples(hashrate, autoMining);
   const { uniqueMiners, totalProofs, avgDifficulty, refetch: refetchMinerStats } = useMinerStats();
   const {
-    dRate, similarDevices, proofCount: windowProofCount, baseRate,
+    dRate, similarDevices, proofCount: windowProofCount, windowSize, baseRate,
     refetchWindow: refetchPeerWindow,
   } = usePeerEstimate(hashrate);
 
@@ -359,9 +365,10 @@ function Mining() {
     refetchPeerWindow();
     refetchEmission();
     refetchBurnStats();
+    refetchTotalMinted();
     refetchMinerStats();
     refetchReward();
-  }, [refetchWindow, refetchBlock, refetchPeerWindow, refetchEmission, refetchBurnStats, refetchMinerStats, refetchReward]);
+  }, [refetchWindow, refetchBlock, refetchPeerWindow, refetchEmission, refetchBurnStats, refetchTotalMinted, refetchMinerStats, refetchReward]);
 
   // Resync config + balance after proof submit (success or permanent failure)
   const resyncAfterProof = useCallback(() => {
@@ -1326,9 +1333,21 @@ function Mining() {
     grossRewardPerProof, estimatedLiPerHour, proofLog, isNative, rpcOnline,
   ]);
 
-  // Format alpha/beta from micros to percentage
-  const alphaPercent = config ? (config.alpha / 10_000).toFixed(1) : '...';
-  const betaPercent = config ? (config.beta / 10_000).toFixed(1) : '...';
+  // PoW / PoS emission share (computed from actual rates)
+  const powSharePercent = emission && Number(emission.gross_rate) > 0
+    ? ((Number(emission.mining_rate) / Number(emission.gross_rate)) * 100).toFixed(1)
+    : '...';
+  const posSharePercent = emission && Number(emission.gross_rate) > 0
+    ? ((Number(emission.staking_rate) / Number(emission.gross_rate)) * 100).toFixed(1)
+    : '...';
+
+  // Miner's network share
+  const userDRate = hashrate > 0 && userDifficulty > 0
+    ? userDifficulty * (hashrate / Math.pow(2, userDifficulty))
+    : 0;
+  const networkSharePercent = userDRate > 0 && dRate > 0
+    ? Math.min((userDRate / dRate) * 100, 100)
+    : 0;
 
   return (
     <MainContainer>
@@ -1408,41 +1427,41 @@ function Mining() {
             <span>{compactLi(liBalance)} LI</span>
           </div>
 
-          {/* Emission info */}
-          {emission && (
-            <div className={styles.sectionBox}>
-              <span className={styles.sectionTitle}>Emission (per second)</span>
-              <div className={styles.statsGrid}>
+          {/* Token economy */}
+          <div className={styles.sectionBox}>
+            <span className={styles.sectionTitle}>Economy</span>
+            <div className={styles.statsGrid}>
+              {totalMinted && (
                 <StatCard
-                  label="Mining"
-                  value={formatLi(emission.mining_rate)}
-                  suffix="LI/s"
+                  label="Supply"
+                  value={`${formatLi(totalMinted.total_minted)} / ${formatLi(totalMinted.supply_cap)}`}
+                  suffix="LI"
                 />
-                <StatCard
-                  label="Staking"
-                  value={formatLi(emission.staking_rate)}
-                  suffix="LI/s"
-                />
-                <StatCard
-                  label="Gross rate"
-                  value={formatLi(emission.gross_rate)}
-                  suffix="LI/s"
-                />
+              )}
+              <StatCard
+                label="PoW share"
+                value={`${powSharePercent}%`}
+              />
+              <StatCard
+                label="PoS share"
+                value={`${posSharePercent}%`}
+              />
+              {emission && (
                 <StatCard
                   label="Windowed fees"
                   value={formatLi(emission.windowed_fees)}
                   suffix="LI"
                 />
-                {burnStats && (
-                  <StatCard
-                    label="Total burned"
-                    value={formatLi(burnStats.total_burned)}
-                    suffix="LI"
-                  />
-                )}
-              </div>
+              )}
+              {burnStats && (
+                <StatCard
+                  label="Total burned"
+                  value={formatLi(burnStats.total_burned)}
+                  suffix="LI"
+                />
+              )}
             </div>
-          )}
+          </div>
 
           {/* Network info */}
           <div className={styles.sectionBox}>
@@ -1459,37 +1478,33 @@ function Mining() {
                 suffix={`bits (min: ${minDifficulty})`}
               />
               <StatCard
+                label="Your share"
+                value={networkSharePercent > 0 ? `${networkSharePercent.toFixed(1)}%` : '\u2014'}
+              />
+              <StatCard
                 label="Base rate"
                 value={baseRate !== '0' ? formatLi(baseRate) : '...'}
                 suffix="LI/bit"
               />
+              <StatCard label="Window" value={`${windowProofCount} / ${windowSize || '...'}`}>
+                {windowSize > 0 && (
+                  <div className={styles.windowProgress}>
+                    <div
+                      className={styles.windowProgressFill}
+                      style={{ width: `${Math.min((windowProofCount / windowSize) * 100, 100)}%` }}
+                    />
+                  </div>
+                )}
+              </StatCard>
               <StatCard
-                label="Window proofs"
-                value={windowProofCount}
-              />
-              <StatCard
-                label="D-rate"
-                value={dRate > 0 ? dRate.toFixed(2) : '...'}
-                suffix="bits/s"
-              />
-              <StatCard
-                label="Alpha"
-                value={`${alphaPercent}%`}
-              />
-              <StatCard
-                label="Beta"
-                value={`${betaPercent}%`}
+                label="Net. throughput"
+                value={dRate > 0 ? (dRate * 3600).toFixed(0) : '...'}
+                suffix="bits/hr"
               />
               <StatCard
                 label="All-time miners"
                 value={uniqueMiners}
               />
-              {latestBlock && (
-                <StatCard
-                  label="Block"
-                  value={latestBlock.height}
-                />
-              )}
             </div>
           </div>
 
