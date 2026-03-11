@@ -41,7 +41,7 @@ function useQueryClientMethod<T extends keyof CyberClient>(
       enabled: !!queryClient,
       keepPreviousData: true,
       refetchInterval,
-      staleTime: typeof refetchInterval === 'number' ? refetchInterval - 1000 : Infinity,
+      staleTime: typeof refetchInterval === 'number' ? refetchInterval - 1000 : 10_000,
     }
   );
 

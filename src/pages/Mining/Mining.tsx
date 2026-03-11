@@ -3,7 +3,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { Display, DisplayTitle, MainContainer } from 'src/components';
 import Pill from 'src/components/Pill/Pill';
 import useQueryContract from 'src/hooks/contract/useQueryContract';
-import { LITIUM_MINE_CONTRACT, LITIUM_CORE_CONTRACT, UHASH_RELAY_URL, SUBMIT_COOLDOWN_MS } from 'src/constants/mining';
+import { LITIUM_MINE_CONTRACT, LITIUM_CORE_CONTRACT, LITIUM_STAKE_CONTRACT, UHASH_RELAY_URL, SUBMIT_COOLDOWN_MS } from 'src/constants/mining';
 import { CHAIN_ID, RPC_URL } from 'src/constants/config';
 import { isTauri } from 'src/utils/tauri';
 import { trimString } from 'src/utils/utils';
@@ -17,6 +17,7 @@ import type {
   ConfigResponse,
 } from 'src/generated/lithium/LitiumMine.types';
 import type { TotalMintedResponse } from 'src/generated/lithium/LitiumCore.types';
+import type { TotalStakedResponse } from 'src/generated/lithium/LitiumStake.types';
 
 type ActivateAccountResponse = {
   ok?: boolean;
@@ -95,8 +96,8 @@ function loadProofLog(): ProofLogEntry_[] {
     const raw = localStorage.getItem(PROOF_LOG_KEY);
     if (!raw) return [];
     const entries: ProofLogEntry_[] = JSON.parse(raw);
-    // Migrate legacy entries without status field
     return entries.map((e) => {
+      // Migrate legacy entries without status field
       if (!e.status) {
         if (e.error) return { ...e, status: 'failed' as const };
         if (e.txHash) return { ...e, status: 'success' as const };
@@ -265,6 +266,21 @@ function Mining() {
     { total_minted: {} }
   );
   const totalMinted = totalMintedData as TotalMintedResponse | undefined;
+  const { data: totalStakedData, refetch: refetchTotalStaked } = useQueryContract(
+    LITIUM_STAKE_CONTRACT,
+    { total_staked: {} }
+  );
+  const totalStaked = totalStakedData as TotalStakedResponse | undefined;
+
+  // PoW share from real on-chain state: powShare = 1 - S^alpha
+  // S = total_staked / total_minted, alpha from window_status (Decimal string)
+  const stakedFraction = totalMinted && totalStaked && Number(totalMinted.total_minted) > 0
+    ? Number(totalStaked.total_staked) / Number(totalMinted.total_minted)
+    : 0;
+  const alphaExp = windowStatus ? Number(windowStatus.alpha) : 0;
+  const powShare = stakedFraction > 0 && alphaExp > 0
+    ? 1 - Math.pow(stakedFraction, alphaExp)
+    : 1;
 
   // Mining status from Redux (kept in sync by useMiningMonitor in App.tsx)
   const miningStatus = useAppSelector((s) => s.mining.status);
@@ -348,11 +364,11 @@ function Mining() {
     ? Number((cw20BalData as { balance: string }).balance) / 1_000_000
     : 0;
   const { rewardPerProof, grossRewardPerProof, estimatedLiPerHour, refetch: refetchReward } =
-    useRewardEstimate(userDifficulty, hashrate, emission);
+    useRewardEstimate(userDifficulty, hashrate, powShare);
   const samples = useHashrateSamples(hashrate, autoMining);
   const { uniqueMiners, totalProofs, avgDifficulty, refetch: refetchMinerStats } = useMinerStats();
   const {
-    dRate, similarDevices, proofCount: windowProofCount, windowSize, baseRate,
+    dRate, similarDevices, windowEntries, windowSize, baseRate,
     refetchWindow: refetchPeerWindow,
   } = usePeerEstimate(hashrate);
 
@@ -366,9 +382,10 @@ function Mining() {
     refetchEmission();
     refetchBurnStats();
     refetchTotalMinted();
+    refetchTotalStaked();
     refetchMinerStats();
     refetchReward();
-  }, [refetchWindow, refetchBlock, refetchPeerWindow, refetchEmission, refetchBurnStats, refetchTotalMinted, refetchMinerStats, refetchReward]);
+  }, [refetchWindow, refetchBlock, refetchPeerWindow, refetchEmission, refetchBurnStats, refetchTotalMinted, refetchTotalStaked, refetchMinerStats, refetchReward]);
 
   // Resync config + balance after proof submit (success or permanent failure)
   const resyncAfterProof = useCallback(() => {
@@ -492,6 +509,57 @@ function Mining() {
     saveProofLog(proofLog);
   }, [proofLog]);
 
+  // Resolve stale 'submitted'/'retrying' entries from previous session on mount
+  useEffect(() => {
+    const stale = proofLog.filter(
+      (p) => p.status === 'submitted' || p.status === 'retrying'
+    );
+    if (stale.length === 0) return;
+
+    // Entries without txHash were never broadcast — resolve immediately
+    const neverBroadcast = stale.filter((p) => !p.txHash);
+    if (neverBroadcast.length > 0) {
+      setProofLog((prev) =>
+        prev.map((p) =>
+          (p.status === 'submitted' || p.status === 'retrying') && !p.txHash
+            ? { ...p, status: 'failed' as const, error: 'Never broadcast' }
+            : p
+        )
+      );
+    }
+
+    // Entries with txHash — verify on-chain once client is ready
+    if (!signingClient) return;
+    const withTx = stale.filter((p) => p.txHash);
+    if (withTx.length === 0) return;
+
+    (async () => {
+      const updates: Record<string, { status: ProofStatus; error?: string }> = {};
+      for (const entry of withTx) {
+        try {
+          const tx = await signingClient.getTx(entry.txHash!);
+          if (tx) {
+            updates[entry.hash] = tx.code === 0
+              ? { status: 'success' }
+              : { status: 'failed', error: tx.rawLog || `code ${tx.code}` };
+          } else {
+            updates[entry.hash] = { status: 'failed', error: 'TX not found on chain' };
+          }
+        } catch {
+          // Can't verify — leave as-is, will retry next launch
+        }
+      }
+      if (Object.keys(updates).length > 0) {
+        setProofLog((prev) =>
+          prev.map((p) =>
+            updates[p.hash] ? { ...p, ...updates[p.hash] } : p
+          )
+        );
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [!!signingClient]);
+
   useEffect(() => {
     try {
       localStorage.setItem(SESSION_LI_KEY, String(sessionLiMined));
@@ -600,7 +668,7 @@ function Mining() {
           funds: [],
         },
       };
-      const fee = Soft3MessageFactory.fee(8);
+      const fee = Soft3MessageFactory.fee(10);
 
       // Sign + broadcast with local sequence tracking
       const signAndBroadcastWithSeq = async () => {
@@ -620,11 +688,39 @@ function Mining() {
 
         const txRaw = await signingClient.sign(account.address, [encodeMsg], fee, '', signerData);
         const txBytes = TxRaw.encode(txRaw).finish();
-        const result = await signingClient.broadcastTx(txBytes);
+        const broadcastResult = await signingClient.broadcastTx(txBytes);
 
-        // Success — increment sequence for next submission
+        // CyberClient.broadcastTx only does broadcastTxSync (CheckTx) — it does NOT
+        // wait for block inclusion. We must poll getTx to verify DeliverTx succeeded.
+        const txHash = broadcastResult.transactionHash;
+        let deliverResult = await signingClient.getTx(txHash);
+        if (!deliverResult) {
+          // Wait for inclusion (up to ~15s, polling every 3s)
+          for (let attempt = 0; attempt < 5 && !deliverResult; attempt++) {
+            await new Promise<void>((r) => setTimeout(r, 3000));
+            deliverResult = await signingClient.getTx(txHash);
+          }
+        }
+
+        // Increment sequence — tx was broadcast (consumes sequence even if DeliverTx fails)
         seqRef.current.sequence += 1;
-        return result;
+
+        if (!deliverResult) {
+          throw new Error(`TX ${txHash} not found after broadcast — may have been dropped`);
+        }
+        if (deliverResult.code !== 0) {
+          throw new Error(`Contract error: ${deliverResult.rawLog || `code ${deliverResult.code}`}`);
+        }
+
+        return {
+          ...broadcastResult,
+          code: deliverResult.code,
+          height: deliverResult.height,
+          events: deliverResult.events,
+          rawLog: deliverResult.rawLog,
+          gasUsed: deliverResult.gasUsed,
+          gasWanted: deliverResult.gasWanted,
+        };
       };
 
       let result;
@@ -684,17 +780,6 @@ function Mining() {
             `Submit ${kind} error: ${normalizeErrorText(executeErr)}`
           );
         }
-      }
-
-      // Check for on-chain execution failure (code != 0)
-      if ((result as any).code && (result as any).code !== 0) {
-        const rawLog = (result as any).rawLog || (result as any).raw_log || 'Unknown error';
-        if (isNative) {
-          invoke('report_proof_failed').catch(() => {});
-        }
-        // Reset sequence — we don't know if the tx consumed a sequence
-        seqRef.current = null;
-        throw new Error(`Contract error: ${rawLog}`);
       }
 
       // Collect all events from both result.events and result.logs[].events[]
@@ -1280,7 +1365,7 @@ function Mining() {
         avg_difficulty: avgDifficulty,
         d_rate: dRate,
         similar_devices: similarDevices,
-        window_proof_count: windowProofCount,
+        window_proof_count: windowEntries,
         base_rate: baseRate,
       },
       reward_estimate: {
@@ -1329,16 +1414,16 @@ function Mining() {
     threadCount, backend, availableBackends, hashrate, miningStatus, elapsed,
     sessionLiMined, latestBlock, wsConnected, samples, config, windowStatus,
     emission, burnStats, uniqueMiners, totalProofs, avgDifficulty, dRate,
-    similarDevices, windowProofCount, baseRate, rewardPerProof,
+    similarDevices, windowEntries, baseRate, rewardPerProof,
     grossRewardPerProof, estimatedLiPerHour, proofLog, isNative, rpcOnline,
   ]);
 
-  // PoW / PoS emission share (computed from actual rates)
-  const powSharePercent = emission && Number(emission.gross_rate) > 0
-    ? ((Number(emission.mining_rate) / Number(emission.gross_rate)) * 100).toFixed(1)
+  // PoW / PoS emission share from real on-chain state: S^alpha split
+  const powSharePercent = powShare < 1
+    ? (powShare * 100).toFixed(1)
     : '...';
-  const posSharePercent = emission && Number(emission.gross_rate) > 0
-    ? ((Number(emission.staking_rate) / Number(emission.gross_rate)) * 100).toFixed(1)
+  const posSharePercent = powShare < 1
+    ? ((1 - powShare) * 100).toFixed(1)
     : '...';
 
   // Miner's network share
@@ -1430,14 +1515,14 @@ function Mining() {
           {/* Token economy */}
           <div className={styles.sectionBox}>
             <span className={styles.sectionTitle}>Economy</span>
+            {totalMinted && (
+              <StatCard
+                label="Supply"
+                value={`${formatLi(totalMinted.total_minted)} / ${formatLi(totalMinted.supply_cap)}`}
+                suffix="LI"
+              />
+            )}
             <div className={styles.statsGrid}>
-              {totalMinted && (
-                <StatCard
-                  label="Supply"
-                  value={`${formatLi(totalMinted.total_minted)} / ${formatLi(totalMinted.supply_cap)}`}
-                  suffix="LI"
-                />
-              )}
               <StatCard
                 label="PoW share"
                 value={`${powSharePercent}%`}
@@ -1486,12 +1571,12 @@ function Mining() {
                 value={baseRate !== '0' ? formatLi(baseRate) : '...'}
                 suffix="LI/bit"
               />
-              <StatCard label="Window" value={`${windowProofCount} / ${windowSize || '...'}`}>
+              <StatCard label="Window" value={`${windowEntries} / ${windowSize || '...'}`}>
                 {windowSize > 0 && (
                   <div className={styles.windowProgress}>
                     <div
                       className={styles.windowProgressFill}
-                      style={{ width: `${Math.min((windowProofCount / windowSize) * 100, 100)}%` }}
+                      style={{ width: `${Math.min((windowEntries / windowSize) * 100, 100)}%` }}
                     />
                   </div>
                 )}

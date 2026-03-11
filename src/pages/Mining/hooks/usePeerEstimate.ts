@@ -60,6 +60,7 @@ function usePeerEstimate(localHashrate: number) {
     similarDevices,
     windowEntries,
     proofCount,
+    totalProofCount: resp?.proof_count ?? 0,
     windowSize: resp?.window_size ?? 0,
     baseRate: resp?.base_rate ?? '0',
     alpha: resp?.alpha ?? '0',

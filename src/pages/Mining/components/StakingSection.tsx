@@ -5,15 +5,16 @@ import { routes } from 'src/routes';
 import { trimString } from 'src/utils/utils';
 import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 import useQueryContract from 'src/hooks/contract/useQueryContract';
-import type { TotalStakedResponse } from 'src/generated/lithium/LitiumStake.types';
+import type { TotalStakedResponse, StakingStatsResponse } from 'src/generated/lithium/LitiumStake.types';
 import type { TotalMintedResponse } from 'src/generated/lithium/LitiumCore.types';
-import type { EmissionInfoResponse } from 'src/generated/lithium/LitiumMine.types';
+import type { ConfigResponse } from 'src/generated/lithium/LitiumMine.types';
 import useAutoSigner from '../hooks/useAutoSigner';
 import useStakeInfo from '../hooks/useStakeInfo';
 import { compactLi } from '../utils/formatLi';
 import styles from '../Mining.module.scss';
 
 const SECONDS_PER_YEAR = 365.25 * 24 * 3600;
+const STAKING_INDEX_SCALE = 1_000_000_000_000;
 
 function StakingSection() {
   const { signer, signingClient, address } = useAutoSigner();
@@ -25,14 +26,17 @@ function StakingSection() {
   const { data: totalMintedData } = useQueryContract(LITIUM_CORE_CONTRACT, {
     total_minted: {},
   });
-  const { data: emissionData } = useQueryContract(
-    LITIUM_MINE_CONTRACT,
-    { emission_info: {} }
-  );
+  const { data: stakingStatsData } = useQueryContract(LITIUM_STAKE_CONTRACT, {
+    staking_stats: {},
+  });
+  const { data: mineConfigData } = useQueryContract(LITIUM_MINE_CONTRACT, {
+    config: {},
+  });
 
   const totalStaked = totalStakedData as TotalStakedResponse | undefined;
   const totalMinted = totalMintedData as TotalMintedResponse | undefined;
-  const emission = emissionData as EmissionInfoResponse | undefined;
+  const stakingStats = stakingStatsData as StakingStatsResponse | undefined;
+  const mineConfig = mineConfigData as ConfigResponse | undefined;
 
   const totalStakedLi = totalStaked ? Number(totalStaked.total_staked) / 1_000_000 : 0;
   const totalMintedLi = totalMinted ? Number(totalMinted.total_minted) / 1_000_000 : 0;
@@ -40,12 +44,13 @@ function StakingSection() {
   // Staked % of total minted supply
   const stakedPercent = totalMintedLi > 0 ? (totalStakedLi / totalMintedLi) * 100 : 0;
 
-  // APR: (staking_rate_per_second × seconds_per_year) / total_staked × 100
-  // Both staking_rate and total_staked are in micro-LI — keep same units to cancel out
-  const stakingRateRaw = emission ? Number(emission.staking_rate) : 0;
-  const totalStakedRaw = totalStaked ? Number(totalStaked.total_staked) : 0;
-  const stakingApr = totalStakedRaw > 0
-    ? (stakingRateRaw * SECONDS_PER_YEAR / totalStakedRaw) * 100
+  // APR from real on-chain data: reward_index tracks cumulative rewards per staked token.
+  // APR = (reward_index / elapsed_seconds) * SECONDS_PER_YEAR / STAKING_INDEX_SCALE * 100
+  const rewardIndex = stakingStats ? Number(stakingStats.reward_index) : 0;
+  const genesisTime = mineConfig?.genesis_time ?? 0;
+  const elapsedSec = genesisTime > 0 ? Math.floor(Date.now() / 1000) - genesisTime : 0;
+  const stakingApr = rewardIndex > 0 && elapsedSec > 0
+    ? (rewardIndex / elapsedSec) * SECONDS_PER_YEAR / STAKING_INDEX_SCALE * 100
     : 0;
 
   // CW20 balance (what miners actually receive and can stake)

@@ -1,14 +1,11 @@
 import useQueryContract from 'src/hooks/contract/useQueryContract';
 import { LITIUM_MINE_CONTRACT, SUBMIT_COOLDOWN_MS } from 'src/constants/mining';
-import type {
-  RewardCalculationResponse,
-  EmissionInfoResponse,
-} from 'src/generated/lithium/LitiumMine.types';
+import type { RewardCalculationResponse } from 'src/generated/lithium/LitiumMine.types';
 
 function useRewardEstimate(
   difficulty: number | undefined,
   hashrate: number,
-  emission?: EmissionInfoResponse
+  powShare: number
 ) {
   const { data, refetch } = useQueryContract(
     LITIUM_MINE_CONTRACT,
@@ -29,16 +26,6 @@ function useRewardEstimate(
     difficulty !== undefined && rewardResp
       ? Number(rewardResp.gross_reward ?? 0) / 1_000_000
       : 0;
-
-  // Compute PoW share from emission_info: powShare = mining_rate / gross_rate
-  // This equals (1 - S^alpha) — the fraction of reward going to PoW (mining + referral)
-  let powShare = 1; // default: assume 100% PoW if no emission data
-  if (emission) {
-    const grossRate = Number(emission.gross_rate);
-    if (grossRate > 0) {
-      powShare = Number(emission.mining_rate) / grossRate;
-    }
-  }
 
   const referralCut = 0.1;
   const minerReward = grossReward * powShare * (1 - referralCut);
