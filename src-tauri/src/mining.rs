@@ -392,11 +392,6 @@ pub fn start_mining(
             }
             nonce = nonce.saturating_add(lanes as u64);
 
-            // Yield between GPU batches to prevent thermal throttling
-            if is_gpu {
-                std::thread::sleep(Duration::from_millis(1));
-            }
-
             // Push metrics in batches (checks internally if enough time elapsed)
             if local_batch_count % 100 == 0 {
                 metrics.maybe_push(&state_clone, backend_name);
@@ -614,12 +609,17 @@ pub fn get_mining_params() -> serde_json::Value {
     #[cfg(feature = "gpu-wgpu")]
     available.push("wgpu");
 
+    let cpu_cores = std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4);
+
     serde_json::json!({
         "chains": uhash_core::CHAINS,
         "scratchpad_kb": uhash_core::SCRATCHPAD_SIZE / 1024,
         "total_mb": uhash_core::TOTAL_MEMORY / (1024 * 1024),
         "rounds": uhash_core::ROUNDS,
         "block_size": uhash_core::BLOCK_SIZE,
-        "available_backends": available
+        "available_backends": available,
+        "cpu_cores": cpu_cores
     })
 }

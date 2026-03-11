@@ -120,7 +120,7 @@ function MiningActionBar({
           value={threadCount}
           onChange={onThreadCountChange}
           max={maxThreads}
-          total={navigator.hardwareConcurrency || 4}
+          total={maxThreads + 1}
           disabled={disabled}
         />
       )}
@@ -150,10 +150,10 @@ function MiningActionBar({
         disabled: !isMining && !canMine,
       }}
       text={
-        <>
+        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap' }}>
           {selectors}
-          {statusText}
-        </>
+          <span style={{ minWidth: 120, whiteSpace: 'nowrap' }}>{statusText}</span>
+        </span>
       }
     />
   );

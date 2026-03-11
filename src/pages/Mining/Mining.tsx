@@ -36,8 +36,6 @@ import useHashrateSamples from './hooks/useHashrateSamples';
 import useMinerStats from './hooks/useMinerStats';
 import usePeerEstimate from './hooks/usePeerEstimate';
 import useLatestBlock from './hooks/useLatestBlock';
-import useEmissionInfo from './hooks/useEmissionInfo';
-import useBurnStats from './hooks/useBurnStats';
 import useNewBlockSubscription from './hooks/useNewBlockSubscription';
 import HashrateHero from './components/HashrateHero';
 import StatCard from './components/StatCard';
@@ -259,8 +257,6 @@ function Mining() {
   }, [userDifficulty]);
 
   const { block: latestBlock, refetchBlock } = useLatestBlock();
-  const { emission, refetch: refetchEmission } = useEmissionInfo();
-  const { burnStats, refetch: refetchBurnStats } = useBurnStats();
   const { data: totalMintedData, refetch: refetchTotalMinted } = useQueryContract(
     LITIUM_CORE_CONTRACT,
     { total_minted: {} }
@@ -296,6 +292,7 @@ function Mining() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [proofLog, setProofLog] = useState<ProofLogEntry_[]>(loadProofLog);
+  const [cpuCores, setCpuCores] = useState(() => navigator.hardwareConcurrency || 4);
   const [threadCount, setThreadCount] = useState(() =>
     Math.max(1, (navigator.hardwareConcurrency || 4) - 1)
   );
@@ -330,6 +327,15 @@ function Mining() {
       .then((params: any) => {
         if (params?.available_backends) {
           setAvailableBackends(params.available_backends);
+        }
+        if (params?.cpu_cores && params.cpu_cores > 0) {
+          const cores = params.cpu_cores as number;
+          setCpuCores(cores);
+          // Bump thread count if it was capped by navigator.hardwareConcurrency
+          setThreadCount((prev) => {
+            const browserMax = Math.max(1, (navigator.hardwareConcurrency || 4) - 1);
+            return prev >= browserMax ? Math.max(1, cores - 1) : prev;
+          });
         }
       })
       .catch(() => {});
@@ -379,13 +385,11 @@ function Mining() {
     refetchWindow();
     refetchBlock();
     refetchPeerWindow();
-    refetchEmission();
-    refetchBurnStats();
     refetchTotalMinted();
     refetchTotalStaked();
     refetchMinerStats();
     refetchReward();
-  }, [refetchWindow, refetchBlock, refetchPeerWindow, refetchEmission, refetchBurnStats, refetchTotalMinted, refetchTotalStaked, refetchMinerStats, refetchReward]);
+  }, [refetchWindow, refetchBlock, refetchPeerWindow, refetchTotalMinted, refetchTotalStaked, refetchMinerStats, refetchReward]);
 
   // Resync config + balance after proof submit (success or permanent failure)
   const resyncAfterProof = useCallback(() => {
@@ -1357,8 +1361,6 @@ function Mining() {
       hashrate_samples: samples,
       contract_config: config || null,
       window_status: windowStatus || null,
-      emission: emission || null,
-      burn_stats: burnStats || null,
       network: {
         unique_miners: uniqueMiners,
         total_proofs: totalProofs,
@@ -1413,19 +1415,15 @@ function Mining() {
     address, referrer, liBalance, autoMining, userDifficulty, minDifficulty,
     threadCount, backend, availableBackends, hashrate, miningStatus, elapsed,
     sessionLiMined, latestBlock, wsConnected, samples, config, windowStatus,
-    emission, burnStats, uniqueMiners, totalProofs, avgDifficulty, dRate,
+    uniqueMiners, totalProofs, avgDifficulty, dRate,
     similarDevices, windowEntries, baseRate, rewardPerProof,
     grossRewardPerProof, estimatedLiPerHour, proofLog, isNative, rpcOnline,
   ]);
 
-  // PoW / PoS emission share from real on-chain state: S^alpha split
+  // PoW share from on-chain state: 1 - S^alpha
   const powSharePercent = powShare < 1
     ? (powShare * 100).toFixed(1)
     : '...';
-  const posSharePercent = powShare < 1
-    ? ((1 - powShare) * 100).toFixed(1)
-    : '...';
-
   // Miner's network share
   const userDRate = hashrate > 0 && userDifficulty > 0
     ? userDifficulty * (hashrate / Math.pow(2, userDifficulty))
@@ -1469,8 +1467,9 @@ function Mining() {
               >
                 Export Logs
               </button>
-              {!autoMining && <Pill color="black" text="Idle" />}
-              {autoMining && !rpcOnline && <Pill color="yellow" text="Offline" />}
+              {autoMining && !rpcOnline
+                ? <Pill color="yellow" text="Offline" />
+                : <Pill color="black" text={autoMining ? 'Mining' : 'Idle'} />}
             </div>
           </div>
 
@@ -1512,39 +1511,14 @@ function Mining() {
             <span>{compactLi(liBalance)} LI</span>
           </div>
 
-          {/* Token economy */}
+          {/* Reward — per-proof math chain */}
           <div className={styles.sectionBox}>
-            <span className={styles.sectionTitle}>Economy</span>
-            {totalMinted && (
-              <StatCard
-                label="Supply"
-                value={`${formatLi(totalMinted.total_minted)} / ${formatLi(totalMinted.supply_cap)}`}
-                suffix="LI"
-              />
-            )}
+            <span className={styles.sectionTitle}>Reward</span>
             <div className={styles.statsGrid}>
-              <StatCard
-                label="PoW share"
-                value={`${powSharePercent}%`}
-              />
-              <StatCard
-                label="PoS share"
-                value={`${posSharePercent}%`}
-              />
-              {emission && (
-                <StatCard
-                  label="Windowed fees"
-                  value={formatLi(emission.windowed_fees)}
-                  suffix="LI"
-                />
-              )}
-              {burnStats && (
-                <StatCard
-                  label="Total burned"
-                  value={formatLi(burnStats.total_burned)}
-                  suffix="LI"
-                />
-              )}
+              <StatCard label="Gross / proof" value={compactLi(grossRewardPerProof)} suffix="LI" />
+              <StatCard label="PoW share" value={`${powSharePercent}%`} />
+              <StatCard label="Referral / pool cut" value="10%" />
+              <StatCard label="Net / proof" value={compactLi(rewardPerProof)} suffix="LI" />
             </div>
           </div>
 
@@ -1558,18 +1532,8 @@ function Mining() {
             </div>
             <div className={styles.statsGrid}>
               <StatCard
-                label="Your difficulty"
-                value={`${userDifficulty}`}
-                suffix={`bits (min: ${minDifficulty})`}
-              />
-              <StatCard
                 label="Your share"
                 value={networkSharePercent > 0 ? `${networkSharePercent.toFixed(1)}%` : '\u2014'}
-              />
-              <StatCard
-                label="Base rate"
-                value={baseRate !== '0' ? formatLi(baseRate) : '...'}
-                suffix="LI/bit"
               />
               <StatCard label="Window" value={`${windowEntries} / ${windowSize || '...'}`}>
                 {windowSize > 0 && (
@@ -1581,14 +1545,21 @@ function Mining() {
                   </div>
                 )}
               </StatCard>
+              {totalMinted && (
+                <StatCard
+                  label="Supply"
+                  value={`${formatLi(totalMinted.total_minted)} / ${formatLi(totalMinted.supply_cap)}`}
+                  suffix="LI"
+                />
+              )}
               <StatCard
-                label="Net. throughput"
-                value={dRate > 0 ? (dRate * 3600).toFixed(0) : '...'}
-                suffix="bits/hr"
+                label="Active miners"
+                value={uniqueMiners > 0 ? uniqueMiners : '...'}
               />
               <StatCard
-                label="All-time miners"
-                value={uniqueMiners}
+                label="Avg difficulty"
+                value={avgDifficulty > 0 ? avgDifficulty.toFixed(1) : '...'}
+                suffix="bits"
               />
             </div>
           </div>
@@ -1667,7 +1638,7 @@ function Mining() {
         activeBackend={miningStatus?.backend}
         threadCount={threadCount}
         onThreadCountChange={setThreadCount}
-        maxThreads={Math.max(1, (navigator.hardwareConcurrency || 4) - 1)}
+        maxThreads={Math.max(1, cpuCores - 1)}
         isNative={isNative}
       />
     </MainContainer>

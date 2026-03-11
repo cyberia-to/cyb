@@ -35,24 +35,24 @@ function HashrateHero({ hashrate, isActive, samples, sessionAvg }: Props) {
         <span className={styles.heroUnit}> H/s</span>
       </div>
 
-      {isActive && sessionAvg != null && sessionAvg > 0 && (
-        <div className={styles.heroAvg}>
-          avg {sessionAvg.toFixed(0)} H/s
-        </div>
-      )}
+      <div className={styles.heroAvg} style={{ visibility: isActive && sessionAvg != null && sessionAvg > 0 ? 'visible' : 'hidden' }}>
+        avg {sessionAvg != null && sessionAvg > 0 ? sessionAvg.toFixed(0) : '0'} H/s
+      </div>
 
-      {samples.length >= 2 && (
-        <svg className={styles.sparkline} viewBox="0 0 300 60" preserveAspectRatio="none">
-          <defs>
-            <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0%" stopColor="#36d6ae" stopOpacity="0.3" />
-              <stop offset="100%" stopColor="#36d6ae" stopOpacity="0" />
-            </linearGradient>
-          </defs>
-          <path d={fill} fill="url(#sparkFill)" />
-          <path d={line} fill="none" stroke="#36d6ae" strokeWidth="2" />
-        </svg>
-      )}
+      <svg className={styles.sparkline} viewBox="0 0 300 60" preserveAspectRatio="none">
+        {samples.length >= 2 && (
+          <>
+            <defs>
+              <linearGradient id="sparkFill" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#36d6ae" stopOpacity="0.3" />
+                <stop offset="100%" stopColor="#36d6ae" stopOpacity="0" />
+              </linearGradient>
+            </defs>
+            <path d={fill} fill="url(#sparkFill)" />
+            <path d={line} fill="none" stroke="#36d6ae" strokeWidth="2" />
+          </>
+        )}
+      </svg>
     </div>
   );
 }

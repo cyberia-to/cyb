@@ -77,8 +77,11 @@ function StakingSection() {
     ? Number(stakeInfo.pending_unbonding) / 1_000_000
     : 0;
   const unbondingUntil = stakeInfo?.pending_unbonding_until ?? 0;
-  const unbondingReady =
-    pendingUnbonding > 0 && unbondingUntil <= Math.floor(Date.now() / 1000);
+  const nowSec = Math.floor(Date.now() / 1000);
+  const unbondingReady = pendingUnbonding > 0 && unbondingUntil <= nowSec;
+  const unbondingRemainingSec = pendingUnbonding > 0 && unbondingUntil > nowSec
+    ? unbondingUntil - nowSec
+    : 0;
 
   const executeOnContract = useCallback(
     async (contract: string, msg: Record<string, unknown>) => {
@@ -91,10 +94,24 @@ function StakingSection() {
           account.address,
           contract,
           msg,
-          Soft3MessageFactory.fee(8)
+          Soft3MessageFactory.fee(10)
         );
-        setStatus({ ok: true, txHash: result.transactionHash });
-        setTimeout(() => refetch(), 7000);
+        const txHash = result.transactionHash;
+        setStatus({ ok: true, txHash });
+
+        // CyberClient.broadcastTx only does broadcastTxSync — verify DeliverTx
+        let deliverResult = await signingClient.getTx(txHash);
+        for (let i = 0; i < 5 && !deliverResult; i++) {
+          await new Promise<void>((r) => setTimeout(r, 3000));
+          deliverResult = await signingClient.getTx(txHash);
+        }
+        if (!deliverResult) {
+          setStatus({ ok: false, txHash, error: 'TX not found — may have been dropped' });
+        } else if (deliverResult.code !== 0) {
+          setStatus({ ok: false, txHash, error: deliverResult.rawLog || `code ${deliverResult.code}` });
+        } else {
+          setTimeout(() => refetch(), 2000);
+        }
       } catch (err: any) {
         setStatus({ ok: false, error: err?.message?.slice(0, 120) || 'Failed' });
       } finally {
@@ -165,6 +182,18 @@ function StakingSection() {
             {compactLi(pendingUnbonding)}
             <span className={styles.statCardSuffix}> LI</span>
           </span>
+          {unbondingReady && pendingUnbonding > 0 && (
+            <span className={styles.statCardSuffix} style={{ color: '#36d6ae' }}>Ready</span>
+          )}
+          {unbondingRemainingSec > 0 && (
+            <span className={styles.statCardSuffix}>
+              {unbondingRemainingSec >= 86400
+                ? `${Math.floor(unbondingRemainingSec / 86400)}d ${Math.floor((unbondingRemainingSec % 86400) / 3600)}h`
+                : unbondingRemainingSec >= 3600
+                  ? `${Math.floor(unbondingRemainingSec / 3600)}h ${Math.floor((unbondingRemainingSec % 3600) / 60)}m`
+                  : `${Math.floor(unbondingRemainingSec / 60)}m`}
+            </span>
+          )}
         </div>
         <div className={styles.statCard}>
           <span className={styles.statCardLabel}>Net. Staked</span>
@@ -256,9 +285,12 @@ function StakingSection() {
       {status && (
         <div className={styles.stakingStatus}>
           {status.ok && status.txHash ? (
-            <Link to={routes.txExplorer.getLink(status.txHash)} style={{ color: '#36d6ae' }}>
-              TX: {trimString(status.txHash, 10, 6)}
-            </Link>
+            <>
+              {busy && <span style={{ color: '#888' }}>Confirming... </span>}
+              <Link to={routes.txExplorer.getLink(status.txHash)} style={{ color: '#36d6ae' }}>
+                TX: {trimString(status.txHash, 10, 6)}
+              </Link>
+            </>
           ) : status.error ? (
             <span style={{ color: '#ef4444' }} title={status.error}>
               Error: {status.error.slice(0, 80)}
