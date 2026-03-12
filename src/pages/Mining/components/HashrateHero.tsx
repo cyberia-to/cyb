@@ -6,6 +6,8 @@ type Props = {
   isActive: boolean;
   samples: number[];
   sessionAvg?: number;
+  countdown?: number;
+  genesisTimeSec?: number;
 };
 
 function buildSparklinePath(samples: number[], width: number, height: number) {
@@ -25,7 +27,41 @@ function buildSparklinePath(samples: number[], width: number, height: number) {
   return { line, fill };
 }
 
-function HashrateHero({ hashrate, isActive, samples, sessionAvg }: Props) {
+function formatCountdown(seconds: number): string {
+  if (seconds < 60) return `${seconds}s`;
+  if (seconds < 3600) {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}m ${s}s`;
+  }
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  return `${h}h ${m}m ${s}s`;
+}
+
+function HashrateHero({ hashrate, isActive, samples, sessionAvg, countdown, genesisTimeSec }: Props) {
+  // Countdown mode
+  if (countdown != null && countdown > 0) {
+    const launchTime = genesisTimeSec
+      ? new Date(genesisTimeSec * 1000).toLocaleString([], { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' })
+      : '';
+
+    return (
+      <div className={styles.heroContainer}>
+        <div className={styles.countdownValue}>
+          {formatCountdown(countdown)}
+        </div>
+        {launchTime && (
+          <div className={styles.countdownLabel}>
+            Launch at {launchTime}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // Normal hashrate mode
   const { line, fill } = buildSparklinePath(samples, 300, 60);
 
   return (

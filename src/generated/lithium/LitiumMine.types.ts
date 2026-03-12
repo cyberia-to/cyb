@@ -52,6 +52,7 @@ export type ExecuteMsg = {
     admin?: string | null;
     core_contract?: string | null;
     estimated_gas_cost_uboot?: Uint128 | null;
+    genesis_time?: number | null;
     max_proof_age?: number | null;
     min_difficulty?: number | null;
     pid_interval?: number | null;
@@ -62,6 +63,10 @@ export type ExecuteMsg = {
 } | {
   apply_testing_overrides: {
     overrides: TestingOverrides;
+  };
+} | {
+  reset_state: {
+    genesis_time?: number | null;
   };
 } | {
   pause: {};

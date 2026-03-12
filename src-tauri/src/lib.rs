@@ -115,6 +115,32 @@ fn toggle_devtools(window: tauri::WebviewWindow) {
     }
 }
 
+#[tauri::command]
+fn reveal_in_finder(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(["-R", &path])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(std::path::Path::new(&path).parent().unwrap_or(std::path::Path::new(&path)))
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .args(["/select,", &path])
+            .spawn()
+            .map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
 #[cfg(desktop)]
 fn build_tauri_app() -> tauri::Builder<tauri::Wry> {
     tauri::Builder::default()
@@ -126,6 +152,7 @@ fn build_tauri_app() -> tauri::Builder<tauri::Wry> {
         .invoke_handler(generate_handler![
             toggle_devtools,
             read_bootstrap,
+            reveal_in_finder,
             get_ipfs_mode,
             start_ipfs,
             stop_ipfs,
@@ -155,6 +182,7 @@ fn build_tauri_app() -> tauri::Builder<tauri::Wry> {
         .invoke_handler(generate_handler![
             toggle_devtools,
             read_bootstrap,
+            reveal_in_finder,
             get_ipfs_mode,
             start_ipfs,
             stop_ipfs,

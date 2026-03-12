@@ -31,6 +31,8 @@ type Props = {
   onThreadCountChange: (v: number) => void;
   maxThreads: number;
   isNative: boolean;
+  countdownMode?: boolean;
+  countdownSeconds?: number;
 };
 
 function MiningActionBar({
@@ -52,10 +54,12 @@ function MiningActionBar({
   onThreadCountChange,
   maxThreads,
   isNative,
+  countdownMode,
+  countdownSeconds,
 }: Props) {
   const canMine = blockReady && difficulty >= minDifficulty && address;
   const isMining = miningStatus?.mining || autoMining;
-  const disabled = isMining;
+  const disabled = isMining || countdownMode;
 
   const selectors = (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
@@ -129,7 +133,15 @@ function MiningActionBar({
 
   // Status text: always a single line, fixed structure
   let statusText: React.ReactNode = null;
-  if (isMining) {
+  if (countdownSeconds != null && countdownSeconds > 0) {
+    const h = Math.floor(countdownSeconds / 3600);
+    const m = Math.floor((countdownSeconds % 3600) / 60);
+    const s = countdownSeconds % 60;
+    const timeStr = h > 0 ? `${h}h ${m}m ${s}s` : m > 0 ? `${m}m ${s}s` : `${s}s`;
+    statusText = countdownMode
+      ? <> Launch in {timeStr}</>
+      : <> Genesis in {timeStr}</>;
+  } else if (isMining) {
     statusText = submitting
       ? <> Submitting proof<Dots /></>
       : <> {miningStatus?.hashrate.toFixed(0) || 0} H/s</>;
@@ -142,12 +154,17 @@ function MiningActionBar({
     statusText = <> Waiting: {missingParts.join(', ')}...</>;
   }
 
+  const genesisInFuture = countdownSeconds != null && countdownSeconds > 0;
+  const buttonText = countdownMode ? 'Cancel' : isMining ? 'Stop Mining' : genesisInFuture ? 'Auto Mine' : 'Start Mining';
+  const buttonClick = countdownMode || isMining ? onStopMining : onStartMining;
+  const buttonDisabled = !countdownMode && !isMining && !canMine;
+
   return (
     <ActionBar
       button={{
-        text: isMining ? 'Stop Mining' : 'Start Mining',
-        onClick: isMining ? onStopMining : onStartMining,
-        disabled: !isMining && !canMine,
+        text: buttonText,
+        onClick: buttonClick,
+        disabled: buttonDisabled,
       }}
       text={
         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12, flexWrap: 'nowrap' }}>

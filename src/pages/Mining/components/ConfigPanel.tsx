@@ -28,12 +28,12 @@ const EDITABLE_FIELDS = [
   'min_difficulty',
   'warmup_base_rate',
   'pid_interval',
+  'genesis_time',
 ] as const;
 
 // Fields that are always read-only
 const READONLY_FIELDS = [
   'window_size',
-  'genesis_time',
   'fee_bucket_duration',
   'fee_num_buckets',
   'token_contract',
@@ -198,7 +198,7 @@ type Props = {
   onConfigUpdated: () => void;
 };
 
-type ConfirmMode = 'config' | 'overrides' | 'pause' | 'unpause' | null;
+type ConfirmMode = 'config' | 'overrides' | 'pause' | 'unpause' | 'reset' | null;
 
 function ConfigPanel({ open, config, onConfigUpdated }: Props) {
   const { signer, signingClient, address } = useAutoSigner();
@@ -269,6 +269,8 @@ function ConfigPanel({ open, config, onConfigUpdated }: Props) {
         msg = { pause: {} };
       } else if (confirmMode === 'unpause') {
         msg = { unpause: {} };
+      } else if (confirmMode === 'reset') {
+        msg = { reset_state: {} };
       } else {
         return;
       }
@@ -361,6 +363,14 @@ function ConfigPanel({ open, config, onConfigUpdated }: Props) {
           >
             {config?.paused ? 'Unpause' : 'Pause'}
           </button>
+          <button
+            type="button"
+            className={styles.dangerBtn}
+            onClick={() => setConfirmMode('reset')}
+            disabled={busy}
+          >
+            Reset State
+          </button>
         </div>
       )}
 
@@ -401,6 +411,25 @@ function ConfigPanel({ open, config, onConfigUpdated }: Props) {
             </button>
             <button type="button" className={styles.stakingBtn} onClick={handleConfirm} disabled={busy}>
               {busy ? 'Sending...' : 'Confirm'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Confirmation: reset state */}
+      {confirmMode === 'reset' && (
+        <div className={styles.diffView}>
+          <div className={styles.warningBox} style={{ borderColor: '#ef4444', color: '#ef4444' }}>
+            Reset all mining state to zero: stats, miner records, proof hashes,
+            PID state, and fee windows. Genesis time resets to current block time.
+            This is irreversible.
+          </div>
+          <div className={styles.confirmActions}>
+            <button type="button" className={styles.stakingBtn} onClick={handleCancel} disabled={busy}>
+              Cancel
+            </button>
+            <button type="button" className={styles.dangerBtn} onClick={handleConfirm} disabled={busy}>
+              {busy ? 'Resetting...' : 'Confirm Reset'}
             </button>
           </div>
         </div>

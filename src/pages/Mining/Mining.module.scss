@@ -37,6 +37,28 @@
   }
 }
 
+// Auto-save info row
+.autoSaveRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border: 1px solid rgba(54, 214, 174, 0.15);
+  border-radius: 4px;
+  font-size: 12px;
+}
+
+.autoSavePath {
+  color: #777;
+  font-family: monospace;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex: 1;
+  min-width: 0;
+}
+
 // Hero: big hashrate + sparkline
 .heroContainer {
   display: flex;
@@ -76,6 +98,31 @@
   }
   50% {
     text-shadow: 0 0 20px rgba(54, 214, 174, 0.6), 0 0 40px rgba(54, 214, 174, 0.2);
+  }
+}
+
+// TESTING: Countdown styles — remove after testing phase
+.countdownValue {
+  font-size: 56px;
+  font-weight: bold;
+  color: #f59e0b;
+  line-height: 1.1;
+  animation: countdownPulse 1.5s ease-in-out infinite;
+}
+
+.countdownLabel {
+  font-size: 14px;
+  color: #888;
+  margin-top: 6px;
+}
+
+@keyframes countdownPulse {
+  0%,
+  100% {
+    text-shadow: 0 0 8px rgba(245, 158, 11, 0.3);
+  }
+  50% {
+    text-shadow: 0 0 20px rgba(245, 158, 11, 0.6), 0 0 40px rgba(245, 158, 11, 0.2);
   }
 }
 
@@ -398,6 +445,26 @@
 
   &:hover:not(:disabled) {
     background: rgba(54, 214, 174, 0.25);
+  }
+
+  &:disabled {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+}
+
+.dangerBtn {
+  background: rgba(239, 68, 68, 0.15);
+  border: 1px solid rgba(239, 68, 68, 0.4);
+  border-radius: 4px;
+  padding: 8px 16px;
+  color: #ef4444;
+  font-size: 13px;
+  cursor: pointer;
+  white-space: nowrap;
+
+  &:hover:not(:disabled) {
+    background: rgba(239, 68, 68, 0.25);
   }
 
   &:disabled {

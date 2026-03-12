@@ -16,6 +16,8 @@ type InMessage =
   | { type: 'start'; threadId: number; numThreads: number; challenge: string; difficulty: number }
   | { type: 'stop' };
 
+let currentChallenge = '';
+
 self.onmessage = async (e: MessageEvent<InMessage>) => {
   const { type } = e.data;
 
@@ -31,6 +33,7 @@ self.onmessage = async (e: MessageEvent<InMessage>) => {
       currentNonce = msg.threadId;
       totalHashes = 0;
       lastProgressTime = 0;
+      currentChallenge = msg.challenge;
       miner = new ChallengeMiner(msg.challenge, msg.difficulty);
       mining = true;
       mine();
@@ -60,6 +63,7 @@ function mine() {
         type: 'proof',
         hash: result.hash,
         nonce: result.nonce,
+        challenge: currentChallenge,
         totalHashes,
       });
     }

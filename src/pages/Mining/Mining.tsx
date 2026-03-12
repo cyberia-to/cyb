@@ -37,6 +37,7 @@ import useMinerStats from './hooks/useMinerStats';
 import usePeerEstimate from './hooks/usePeerEstimate';
 import useLatestBlock from './hooks/useLatestBlock';
 import useNewBlockSubscription from './hooks/useNewBlockSubscription';
+import useCountdown from './hooks/useCountdown'; // TESTING: countdown — remove after testing phase
 import HashrateHero from './components/HashrateHero';
 import StatCard from './components/StatCard';
 import ProofLogEntry from './components/ProofLogEntry';
@@ -47,6 +48,8 @@ import MiningActionBar from './MiningActionBar';
 import DownloadSection from './components/DownloadSection';
 import { useAppSelector } from 'src/redux/hooks';
 import { WasmMiner } from './wasmMiner';
+import { buildMiningReport, type ReportParams } from './buildMiningReport';
+import { useAutoSaveLogs } from './hooks/useAutoSaveLogs';
 import styles from './Mining.module.scss';
 
 type MiningStatus = {
@@ -229,6 +232,11 @@ async function activateAccount(
 // closing the app/tab should terminate it.
 let persistentWasmMiner: WasmMiner | null = null;
 
+/** Accessor for app-level polling (useMiningMonitor) */
+export function getWasmMiner(): WasmMiner | null {
+  return persistentWasmMiner;
+}
+
 function Mining() {
   const reduxMiningActive = useAppSelector((s) => s.mining.active);
   const defaultAccount = useAppSelector((s) => s.pocket.defaultAccount);
@@ -293,13 +301,18 @@ function Mining() {
   const [submitting, setSubmitting] = useState(false);
   const [proofLog, setProofLog] = useState<ProofLogEntry_[]>(loadProofLog);
   const [cpuCores, setCpuCores] = useState(() => navigator.hardwareConcurrency || 4);
-  const [threadCount, setThreadCount] = useState(() =>
-    Math.max(1, (navigator.hardwareConcurrency || 4) - 1)
-  );
+  const [threadCount, setThreadCount] = useState(() => {
+    const cores = navigator.hardwareConcurrency || 4;
+    if (isTauri()) {
+      return Math.max(1, cores - 1); // Native: use all but 1 core
+    }
+    return Math.max(1, Math.floor(cores / 2)); // WASM: use half cores to stay responsive
+  });
   const [backend, setBackend] = useState<string>('cpu');
   const [availableBackends, setAvailableBackends] = useState<string[]>(['cpu']);
   const [sessionLiMined, setSessionLiMined] = useState(loadSessionLi);
   const [configOpen, setConfigOpen] = useState(false);
+  const [countdownMode, setCountdownMode] = useState(false); // TESTING: countdown
   const [proofPage, setProofPage] = useState(1);
   const [referrer, setReferrer] = useState(() => {
     // Check URL ?ref= param first, then localStorage
@@ -317,7 +330,7 @@ function Mining() {
   const miningAddressRef = useRef<string | undefined>(undefined);
   const wasmMinerRef = useRef<WasmMiner | null>(null);
   const stopReadyRef = useRef(false);
-  const sessionStartRef = useRef(Date.now());
+  const sessionStart = useAppSelector((s) => s.mining.sessionStart) ?? Date.now();
   const isNative = isTauri();
 
   // Fetch available backends on mount (Tauri only)
@@ -344,6 +357,7 @@ function Mining() {
   // Track current challenge so proof submission uses the values from when mining started
   const challengeRef = useRef<string>('');
   const blockTimestampRef = useRef<number>(0);
+  const challengeCreatedAtRef = useRef<number>(0);
 
   // Connection health
   const [rpcOnline, setRpcOnline] = useState(true);
@@ -361,6 +375,15 @@ function Mining() {
   const hashrate = miningStatus?.hashrate ?? 0;
   const elapsed = miningStatus?.elapsed_secs ?? 0;
   const canMine = userDifficulty >= minDifficulty && !!address && !!latestBlock;
+
+  // TESTING: Genesis countdown — remove after testing phase
+  const genesisInFuture = config?.genesis_time
+    ? config.genesis_time > Math.floor(Date.now() / 1000)
+    : false;
+  // Always tick when genesis is in the future (show countdown immediately on page load)
+  const countdownTarget = genesisInFuture ? config?.genesis_time : undefined;
+  const countdownSeconds = useCountdown(countdownTarget);
+
 
   const { data: cw20BalData, refetch: refreshBalance } = useQueryContract(
     LITIUM_CORE_CONTRACT,
@@ -580,25 +603,22 @@ function Mining() {
   }, []);
 
   const startMiningRound = useCallback(async () => {
-    if (!address || !latestBlock || userDifficulty < minDifficulty) {
-      console.log('[Mining] Cannot start: missing address/block or difficulty too low');
+    if (!address || userDifficulty < minDifficulty) {
+      console.log('[Mining] Cannot start: missing address or difficulty too low');
       return;
     }
 
-    // Use block hash as the mining challenge (32 bytes hex)
-    const challenge = latestBlock.blockHash;
-    challengeRef.current = challenge;
-    blockTimestampRef.current = latestBlock.timestamp;
-
-    try {
-      console.log(
-        '[Mining] Starting lithium mining, difficulty:',
-        userDifficulty,
-        'challenge:',
-        challenge.slice(0, 16)
-      );
-
-      if (isNative) {
+    // Native path still uses block hash (Tauri backend manages its own challenge rotation)
+    if (isNative) {
+      if (!latestBlock) {
+        console.log('[Mining] Cannot start native: no block data');
+        return;
+      }
+      const challenge = latestBlock.blockHash;
+      challengeRef.current = challenge;
+      blockTimestampRef.current = latestBlock.timestamp;
+      try {
+        console.log('[Mining] Starting native mining, difficulty:', userDifficulty, 'challenge:', challenge.slice(0, 16));
         await invoke('start_mining', {
           address,
           challengeHex: challenge,
@@ -607,17 +627,35 @@ function Mining() {
           threads: threadCount,
           backend,
         });
-      } else {
-        if (!persistentWasmMiner) {
-          const miner = new WasmMiner(threadCount);
-          await miner.init();
-          persistentWasmMiner = miner;
-        }
-        wasmMinerRef.current = persistentWasmMiner;
-        persistentWasmMiner.start(challenge, userDifficulty);
+      } catch (err) {
+        console.error('[Mining] Failed to start native mining', err);
       }
+      return;
+    }
+
+    // WASM path: generate random challenge client-side (like lithium-cli).
+    // The contract accepts any 32-byte challenge — no need to use block hash.
+    // This avoids restarting workers every ~6s block change.
+    const randomBytes = new Uint8Array(32);
+    crypto.getRandomValues(randomBytes);
+    const challenge = Array.from(randomBytes, (b) => b.toString(16).padStart(2, '0')).join('');
+    // Use local wall clock minus 5s safety margin (like lithium-cli)
+    const timestamp = Math.floor(Date.now() / 1000) - 5;
+    challengeRef.current = challenge;
+    blockTimestampRef.current = timestamp;
+    challengeCreatedAtRef.current = Date.now();
+
+    try {
+      console.log('[Mining] Starting WASM mining, difficulty:', userDifficulty, 'challenge:', challenge.slice(0, 16));
+      if (!persistentWasmMiner) {
+        const miner = new WasmMiner(threadCount);
+        await miner.init();
+        persistentWasmMiner = miner;
+      }
+      wasmMinerRef.current = persistentWasmMiner;
+      persistentWasmMiner.start(challenge, userDifficulty);
     } catch (err) {
-      console.error('[Mining] Failed to start mining', err);
+      console.error('[Mining] Failed to start WASM mining', err);
     }
   }, [userDifficulty, minDifficulty, address, latestBlock, threadCount, backend, isNative]);
 
@@ -868,7 +906,14 @@ function Mining() {
       submittingRef.current = true;
       setSubmitting(true);
 
-      const queue = proofQueueRef.current;
+      const queue = [...proofQueueRef.current];
+      proofQueueRef.current = [];
+
+      if (queue.length === 0) {
+        submittingRef.current = false;
+        setSubmitting(false);
+        return;
+      }
       let bestIdx = 0;
       for (let i = 1; i < queue.length; i++) {
         if (queue[i].hash < queue[bestIdx].hash) {
@@ -878,7 +923,6 @@ function Mining() {
       const best = queue[bestIdx];
 
       const discarded = queue.length - 1;
-      proofQueueRef.current = [];
       if (discarded > 0) {
         console.log(
           `[Mining] Submitting best of ${
@@ -1060,9 +1104,12 @@ function Mining() {
           }
 
           if (proofs.length > 0) {
+            // Tag each proof with the challenge it was mined against
+            const currentChallenge = challengeRef.current;
+            const tagged = proofs.map((p) => ({ ...p, challenge: p.challenge || currentChallenge }));
             const MAX_QUEUE = 50;
             if (proofQueueRef.current.length < MAX_QUEUE) {
-              proofQueueRef.current.push(...proofs.slice(0, MAX_QUEUE - proofQueueRef.current.length));
+              proofQueueRef.current.push(...tagged.slice(0, MAX_QUEUE - proofQueueRef.current.length));
             }
             console.log(
               `[Mining] ${proofs.length} proof(s) queued, total pending: ${proofQueueRef.current.length}`
@@ -1174,49 +1221,47 @@ function Mining() {
     startMiningRound().then(() => startPolling());
   }, [autoMining, canMine, startMiningRound, startPolling, isNative]);
 
-  // Hot-swap challenge when a new block arrives while mining is active.
-  // Without this, proofs are mined against a stale block hash and the contract
-  // rejects them with "epoch mismatch".
+  // Native: hot-swap challenge when a new block arrives while mining is active.
   useEffect(() => {
-    if (!autoMining || !latestBlock) return;
+    if (!autoMining || !isNative || !latestBlock) return;
     const newChallenge = latestBlock.blockHash;
     if (newChallenge === challengeRef.current) return;
 
-    console.log(
-      '[Mining] Block changed, updating challenge:',
-      newChallenge.slice(0, 16),
-      'height:',
-      latestBlock.height
-    );
+    console.log('[Mining] Block changed, updating native challenge:', newChallenge.slice(0, 16));
     challengeRef.current = newChallenge;
     blockTimestampRef.current = latestBlock.timestamp;
 
-    // Purge stale retries that were mined against the old challenge
-    const stale = retryQueueRef.current.filter((r) => r.challenge !== newChallenge);
-    if (stale.length > 0) {
-      console.log('[Mining] Discarding', stale.length, 'stale retry entries');
-      retryQueueRef.current = retryQueueRef.current.filter(
-        (r) => r.challenge === newChallenge
-      );
-      // Mark stale retries as failed in proof log
-      setProofLog((prev) =>
-        prev.map((p) =>
-          p.status === 'retrying' && stale.some((s) => s.proof.hash === p.hash)
-            ? { ...p, error: 'Stale challenge', status: 'failed' }
-            : p
-        )
-      );
-    }
+    invoke('update_challenge', {
+      challengeHex: newChallenge,
+      blockTimestamp: latestBlock.timestamp,
+    }).catch((err) => console.warn('[Mining] update_challenge failed:', err));
+  }, [autoMining, latestBlock, isNative]);
 
-    if (isNative) {
-      invoke('update_challenge', {
-        challengeHex: newChallenge,
-        blockTimestamp: latestBlock.timestamp,
-      }).catch((err) => console.warn('[Mining] update_challenge failed:', err));
-    } else if (persistentWasmMiner) {
-      persistentWasmMiner.start(newChallenge, userDifficulty);
-    }
-  }, [autoMining, latestBlock, userDifficulty, isNative]);
+  // WASM: rotate challenge before it expires (max_proof_age).
+  // Unlike native which uses block hashes, WASM generates random challenges
+  // and mines continuously. Rotate at 80% of max_proof_age to leave submission margin.
+  useEffect(() => {
+    if (!autoMining || isNative || !persistentWasmMiner) return;
+    const maxAge = config?.max_proof_age ?? 3600;
+    const rotateAfterMs = maxAge * 0.8 * 1000; // 80% of max age
+
+    const timer = setInterval(() => {
+      const elapsed = Date.now() - challengeCreatedAtRef.current;
+      if (elapsed >= rotateAfterMs) {
+        const randomBytes = new Uint8Array(32);
+        crypto.getRandomValues(randomBytes);
+        const newChallenge = Array.from(randomBytes, (b) => b.toString(16).padStart(2, '0')).join('');
+        const timestamp = Math.floor(Date.now() / 1000) - 5;
+        console.log('[Mining] Rotating challenge (age:', Math.round(elapsed / 1000), 's), new:', newChallenge.slice(0, 16));
+        challengeRef.current = newChallenge;
+        blockTimestampRef.current = timestamp;
+        challengeCreatedAtRef.current = Date.now();
+        persistentWasmMiner.start(newChallenge, userDifficulty);
+      }
+    }, 30_000); // Check every 30s
+
+    return () => clearInterval(timer);
+  }, [autoMining, isNative, config?.max_proof_age, userDifficulty]);
 
   // Auto-adjust difficulty if contract min_difficulty increases above user setting
   useEffect(() => {
@@ -1227,11 +1272,21 @@ function Mining() {
   }, [config, userDifficulty]);
 
   const handleStartMining = useCallback(async () => {
+    // If genesis is in the future, enter countdown mode instead of mining
+    console.log('[Mining][start] genesis check:', {
+      genesis_time: config?.genesis_time,
+      now: Math.floor(Date.now() / 1000),
+      inFuture: config?.genesis_time ? config.genesis_time > Math.floor(Date.now() / 1000) : 'no config',
+    });
+    if (config?.genesis_time && config.genesis_time > Math.floor(Date.now() / 1000)) {
+      setCountdownMode(true);
+      return;
+    }
     miningAddressRef.current = address;
     setAutoMining(true);
     await startMiningRound();
     startPolling();
-  }, [startMiningRound, startPolling, address]);
+  }, [startMiningRound, startPolling, address, config?.genesis_time]);
 
   const handleStopMining = useCallback(async () => {
     // Guard: ignore click events from the same frame as mount (stale click-through
@@ -1241,6 +1296,7 @@ function Mining() {
       return;
     }
     console.log('[Mining][stop] handleStopMining called', new Error().stack?.split('\n').slice(1, 4).join(' <- '));
+    setCountdownMode(false);
     setAutoMining(false);
     retryQueueRef.current = [];
     consecutiveFailsRef.current = 0;
@@ -1257,6 +1313,15 @@ function Mining() {
       console.error('[Mining] Failed to stop mining', err);
     }
     stopPolling();
+    proofQueueRef.current = [];
+    // Resolve any "submitted" proofs that are still pending (tx may still confirm in background)
+    setProofLog((prev) =>
+      prev.map((p) =>
+        p.status === 'submitted' && !p.txHash
+          ? { ...p, status: 'failed' as const, error: 'Mining stopped' }
+          : p
+      )
+    );
   }, [stopPolling, isNative]);
 
   // Stop mining when account switches away from the address that started it
@@ -1278,152 +1343,126 @@ function Mining() {
     }
   }, [config?.paused, autoMining, handleStopMining]);
 
+  // TESTING: Countdown auto-start — remove after testing phase
+  useEffect(() => {
+    if (!countdownMode || countdownSeconds > 0) return;
+    // Double-check genesis is actually in the past (guards against stale-0 race)
+    if (config?.genesis_time && config.genesis_time > Math.floor(Date.now() / 1000)) return;
+    console.log('[Mining] Countdown reached zero — launching mining');
+    setCountdownMode(false);
+    miningAddressRef.current = address;
+    setAutoMining(true);
+    startMiningRound().then(() => startPolling());
+  }, [countdownMode, countdownSeconds, address, startMiningRound, startPolling, config?.genesis_time]);
+
   const handleCopyAddress = useCallback(() => {
     if (address) {
       navigator.clipboard.writeText(address);
     }
   }, [address]);
 
-  const handleExportLogs = useCallback(async () => {
-    // Only export proofs from the current app session
-    const sessionLog = proofLog.filter((p) => p.timestamp >= sessionStartRef.current);
-    const accepted = sessionLog.filter((p) => p.status === 'success').length;
-    const failed = sessionLog.filter((p) => p.status === 'failed' || (p.error && !p.status)).length;
-    const pending = sessionLog.filter((p) => p.status === 'submitted' || p.status === 'pending').length;
-    const total = accepted + failed;
+  // Build report params from current state (sync — no Tauri invoke)
+  const getReportParams = useCallback(
+    (tauriStatus: Record<string, unknown> | null = null, tauriParams: Record<string, unknown> | null = null): ReportParams => ({
+      isNative,
+      address,
+      referrer,
+      liBalance,
+      autoMining,
+      userDifficulty,
+      minDifficulty,
+      threadCount,
+      backend,
+      availableBackends,
+      hashrate,
+      totalHashes: miningStatus?.total_hashes ?? 0,
+      elapsed,
+      pendingProofs: miningStatus?.pending_proofs ?? 0,
+      sessionLiMined,
+      tauriStatus,
+      tauriParams,
+      latestBlock: latestBlock
+        ? { height: latestBlock.height, blockHash: latestBlock.blockHash, timestamp: latestBlock.timestamp }
+        : null,
+      wsConnected,
+      samples,
+      config,
+      windowStatus,
+      uniqueMiners,
+      totalProofs,
+      avgDifficulty,
+      dRate,
+      similarDevices,
+      windowEntries,
+      baseRate,
+      rewardPerProof,
+      grossRewardPerProof,
+      estimatedLiPerHour,
+      rpcOnline,
+      retryQueueSize: retryQueueRef.current.length,
+      consecutiveFails: consecutiveFailsRef.current,
+      proofLog,
+      sessionStart,
+    }),
+    [
+      address, referrer, liBalance, autoMining, userDifficulty, minDifficulty,
+      threadCount, backend, availableBackends, hashrate, miningStatus, elapsed,
+      sessionLiMined, latestBlock, wsConnected, samples, config, windowStatus,
+      uniqueMiners, totalProofs, avgDifficulty, dRate,
+      similarDevices, windowEntries, baseRate, rewardPerProof,
+      grossRewardPerProof, estimatedLiPerHour, proofLog, isNative, rpcOnline,
+      sessionStart,
+    ]
+  );
 
-    // Fetch live Tauri backend metrics (includes batch_count, avg_batch_ms,
-    // proofs_submitted, proofs_failed that aren't in Redux)
-    let tauriStatus: Record<string, unknown> | null = null;
-    let tauriParams: Record<string, unknown> | null = null;
+  // Auto-save mining logs to disk (Tauri only)
+  const { lastSavePath, saveToDailyFile, clearAllLogs, revealInFinder } = useAutoSaveLogs({
+    enabled: isNative && autoMining,
+    sessionStart,
+    buildReport: useCallback(
+      () => buildMiningReport(getReportParams()),
+      [getReportParams]
+    ),
+  });
+
+  // Clear stale local data when genesis hasn't started (post-reset)
+  useEffect(() => {
+    if (!genesisInFuture) return;
+    localStorage.removeItem(PROOF_LOG_KEY);
+    localStorage.removeItem(SESSION_LI_KEY);
+    localStorage.removeItem(MINING_ACTIVE_KEY);
+    localStorage.removeItem(MINING_ADDRESS_KEY);
+    setProofLog([]);
+    setSessionLiMined(0);
+    setAutoMining(false);
+    clearAllLogs();
+  }, [genesisInFuture, clearAllLogs]);
+
+  const handleExportLogs = useCallback(async () => {
+    // Tauri: save to daily sessions file (same format as auto-save)
     if (isNative) {
-      try {
-        const [status, params] = await Promise.all([
-          invoke('get_mining_status') as Promise<Record<string, unknown>>,
-          invoke('get_mining_params') as Promise<Record<string, unknown>>,
-        ]);
-        tauriStatus = status;
-        tauriParams = params;
-      } catch {
-        // backend unavailable
+      const saved = await saveToDailyFile();
+      if (saved) {
+        console.log('[Mining] Exported to daily file:', saved);
       }
+      return;
     }
 
-    // Device info available on all platforms
-    const nav = navigator as Navigator & { deviceMemory?: number };
-    const device = {
-      cpu_cores: navigator.hardwareConcurrency || null,
-      device_memory_gb: nav.deviceMemory || null,
-      platform: navigator.platform || null,
-      max_touch_points: navigator.maxTouchPoints,
-    };
-
-    const report = {
-      exported_at: new Date().toISOString(),
-      user_agent: navigator.userAgent,
-      platform: isNative ? 'tauri' : 'web',
-      address: address || null,
-      referrer: referrer || null,
-      li_balance: liBalance,
-      device,
-      mining: {
-        active: autoMining,
-        difficulty: userDifficulty,
-        min_difficulty: minDifficulty,
-        threads: threadCount,
-        backend,
-        available_backends: availableBackends,
-        hashrate,
-        total_hashes: miningStatus?.total_hashes ?? 0,
-        elapsed_secs: elapsed,
-        pending_proofs: miningStatus?.pending_proofs ?? 0,
-        session_li_mined: sessionLiMined,
-        // Tauri-only batch/proof counters
-        batch_count: (tauriStatus?.batch_count as number) ?? null,
-        avg_batch_ms: (tauriStatus?.avg_batch_ms as number) ?? null,
-        proofs_submitted: (tauriStatus?.proofs_submitted as number) ?? null,
-        proofs_failed: (tauriStatus?.proofs_failed as number) ?? null,
-      },
-      // uhash algorithm params (Tauri-only)
-      uhash_params: tauriParams
-        ? {
-            chains: tauriParams.chains,
-            scratchpad_kb: tauriParams.scratchpad_kb,
-            total_mb: tauriParams.total_mb,
-            rounds: tauriParams.rounds,
-            block_size: tauriParams.block_size,
-          }
-        : null,
-      block: latestBlock
-        ? { height: latestBlock.height, hash: latestBlock.blockHash, timestamp: latestBlock.timestamp }
-        : null,
-      ws_connected: wsConnected,
-      hashrate_samples: samples,
-      contract_config: config || null,
-      window_status: windowStatus || null,
-      network: {
-        unique_miners: uniqueMiners,
-        total_proofs: totalProofs,
-        avg_difficulty: avgDifficulty,
-        d_rate: dRate,
-        similar_devices: similarDevices,
-        window_proof_count: windowEntries,
-        base_rate: baseRate,
-      },
-      reward_estimate: {
-        per_proof: rewardPerProof,
-        gross_per_proof: grossRewardPerProof,
-        li_per_hour: estimatedLiPerHour,
-      },
-      connection: {
-        rpc_online: rpcOnline,
-        retry_queue_size: retryQueueRef.current.length,
-        consecutive_fails: consecutiveFailsRef.current,
-      },
-      proof_summary: {
-        total: sessionLog.length,
-        accepted,
-        failed,
-        pending,
-        retrying: sessionLog.filter((p) => p.status === 'retrying').length,
-        success_rate: total > 0 ? `${((accepted / total) * 100).toFixed(1)}%` : null,
-      },
-      proof_log: sessionLog,
-    };
-
+    // Web: browser file download
+    const report = buildMiningReport(getReportParams());
     const text = JSON.stringify(report, null, 2);
     const filename = `mining-log-${Date.now()}.json`;
+    const blob = new Blob([text], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [isNative, getReportParams, saveToDailyFile]);
 
-    if (isNative) {
-      const { save } = await import('@tauri-apps/plugin-dialog');
-      const { writeTextFile } = await import('@tauri-apps/plugin-fs');
-      const path = await save({ defaultPath: filename, filters: [{ name: 'JSON', extensions: ['json'] }] });
-      if (path) {
-        await writeTextFile(path, text);
-        console.log('[Mining] Log saved to:', path);
-      }
-    } else {
-      const blob = new Blob([text], { type: 'application/json' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      a.click();
-      URL.revokeObjectURL(url);
-    }
-  }, [
-    address, referrer, liBalance, autoMining, userDifficulty, minDifficulty,
-    threadCount, backend, availableBackends, hashrate, miningStatus, elapsed,
-    sessionLiMined, latestBlock, wsConnected, samples, config, windowStatus,
-    uniqueMiners, totalProofs, avgDifficulty, dRate,
-    similarDevices, windowEntries, baseRate, rewardPerProof,
-    grossRewardPerProof, estimatedLiPerHour, proofLog, isNative, rpcOnline,
-  ]);
-
-  // PoW share from on-chain state: 1 - S^alpha
-  const powSharePercent = powShare < 1
-    ? (powShare * 100).toFixed(1)
-    : '...';
+  // PoW share from on-chain state: 1 - S^alpha (100% when nothing staked)
+  const powSharePercent = (powShare * 100).toFixed(1);
   // Miner's network share
   const userDRate = hashrate > 0 && userDifficulty > 0
     ? userDifficulty * (hashrate / Math.pow(2, userDifficulty))
@@ -1467,11 +1506,30 @@ function Mining() {
               >
                 Export Logs
               </button>
-              {autoMining && !rpcOnline
-                ? <Pill color="yellow" text="Offline" />
-                : <Pill color="black" text={autoMining ? 'Mining' : 'Idle'} />}
+              {genesisInFuture
+                ? <Pill color="yellow" text={countdownMode ? 'Launching' : 'Countdown'} />
+                : autoMining && !rpcOnline
+                  ? <Pill color="yellow" text="Offline" />
+                  : <Pill color="black" text={autoMining ? 'Mining' : 'Idle'} />}
             </div>
           </div>
+
+          {/* Auto-save info (Tauri only) */}
+          {lastSavePath && (
+            <div className={styles.autoSaveRow}>
+              <span className={styles.autoSavePath} title={lastSavePath}>
+                Auto-save: {lastSavePath.replace(/^.*\/Library\/Logs\//, '~/Library/Logs/')}
+              </span>
+              <button
+                type="button"
+                className={styles.copyBtn}
+                onClick={revealInFinder}
+                title="Reveal in Finder"
+              >
+                Reveal
+              </button>
+            </div>
+          )}
 
           {/* Config panel (collapsible) */}
           <ConfigPanel open={configOpen} config={config} onConfigUpdated={refetchConfig} />
@@ -1485,6 +1543,8 @@ function Mining() {
             isActive={autoMining}
             samples={samples}
             sessionAvg={elapsed > 0 ? (miningStatus?.total_hashes ?? 0) / elapsed : undefined}
+            countdown={countdownSeconds > 0 ? countdownSeconds : undefined}
+            genesisTimeSec={genesisInFuture ? config?.genesis_time : undefined}
           />
 
           {/* 4-card stat grid */}
@@ -1638,8 +1698,10 @@ function Mining() {
         activeBackend={miningStatus?.backend}
         threadCount={threadCount}
         onThreadCountChange={setThreadCount}
-        maxThreads={Math.max(1, cpuCores - 1)}
+        maxThreads={isNative ? Math.max(1, cpuCores - 1) : Math.max(1, Math.floor(cpuCores / 2))}
         isNative={isNative}
+        countdownMode={countdownMode}
+        countdownSeconds={countdownSeconds}
       />
     </MainContainer>
   );

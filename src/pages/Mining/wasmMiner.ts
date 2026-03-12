@@ -9,9 +9,9 @@ export interface WasmMiningStatus {
 type WorkerMessage =
   | { type: 'ready' }
   | { type: 'progress'; totalHashes: number }
-  | { type: 'proof'; hash: string; nonce: number; totalHashes: number };
+  | { type: 'proof'; hash: string; nonce: number; challenge: string; totalHashes: number };
 
-export type FoundProof = { hash: string; nonce: number };
+export type FoundProof = { hash: string; nonce: number; challenge?: string };
 
 type HashSnapshot = { time: number; hashes: number };
 
@@ -19,12 +19,14 @@ const ROLLING_WINDOW_MS = 30_000;
 
 export class WasmMiner {
   private workers: Worker[] = [];
-  private workerHashes: number[] = [];
+  private workerLastReported: number[] = [];
   private mining = false;
   private startTime = 0;
   private pendingProofs: FoundProof[] = [];
   private numThreads: number;
   private hashSnapshots: HashSnapshot[] = [];
+  private currentChallenge = '';
+  private totalHashes = 0;
 
   constructor(numThreads: number) {
     this.numThreads = numThreads;
@@ -32,14 +34,14 @@ export class WasmMiner {
 
   async init(): Promise<void> {
     this.workers = [];
-    this.workerHashes = [];
+    this.workerLastReported = [];
 
     const readyPromises: Promise<void>[] = [];
 
     for (let i = 0; i < this.numThreads; i++) {
       const worker = new Worker(new URL('./miningWorker.ts', import.meta.url));
       this.workers.push(worker);
-      this.workerHashes.push(0);
+      this.workerLastReported.push(0);
 
       const readyPromise = new Promise<void>((resolve) => {
         const handler = (e: MessageEvent<WorkerMessage>) => {
@@ -64,25 +66,41 @@ export class WasmMiner {
       worker.onmessage = (e: MessageEvent<WorkerMessage>) => {
         const msg = e.data;
 
-        if (msg.type === 'progress') {
-          this.workerHashes[index] = msg.totalHashes;
-        } else if (msg.type === 'proof') {
-          this.workerHashes[index] = msg.totalHashes;
-          this.pendingProofs.push({
-            hash: msg.hash,
-            nonce: msg.nonce,
-          });
+        if (msg.type === 'progress' || msg.type === 'proof') {
+          // Incremental counting: only add positive deltas.
+          // When a worker restarts (totalHashes drops to 0), delta < 0 → skip.
+          // Next message after restart has a small positive delta → resumes counting.
+          const delta = msg.totalHashes - this.workerLastReported[index];
+          if (delta > 0) {
+            this.totalHashes += delta;
+          }
+          this.workerLastReported[index] = msg.totalHashes;
+
+          if (msg.type === 'proof') {
+            this.pendingProofs.push({
+              hash: msg.hash,
+              nonce: msg.nonce,
+              challenge: msg.challenge,
+            });
+          }
         }
       };
     });
   }
 
   start(challenge: string, difficulty: number): void {
-    this.pendingProofs = [];
-    this.workerHashes = this.workers.map(() => 0);
-    this.startTime = Date.now();
+    if (!this.mining) {
+      // Fresh start — reset everything
+      this.startTime = Date.now();
+      this.hashSnapshots = [];
+      this.totalHashes = 0;
+      this.workerLastReported = this.workers.map(() => 0);
+      this.pendingProofs = [];
+    }
+    // Challenge change while mining: just send new start to workers.
+    // workerLastReported stays — delta tracking handles the restart automatically.
     this.mining = true;
-    this.hashSnapshots = [];
+    this.currentChallenge = challenge;
 
     this.workers.forEach((worker, i) => {
       worker.postMessage({
@@ -107,15 +125,14 @@ export class WasmMiner {
   }
 
   getStatus(): WasmMiningStatus {
-    const totalHashes = this.workerHashes.reduce((a, b) => a + b, 0);
     const now = Date.now();
-    const elapsedSecs = this.mining || totalHashes > 0
+    const elapsedSecs = this.mining || this.totalHashes > 0
       ? (now - this.startTime) / 1000
       : 0;
 
     // Update rolling window snapshots (called every ~500ms from poll)
     if (this.mining) {
-      this.hashSnapshots.push({ time: now, hashes: totalHashes });
+      this.hashSnapshots.push({ time: now, hashes: this.totalHashes });
       const cutoff = now - ROLLING_WINDOW_MS;
       this.hashSnapshots = this.hashSnapshots.filter(
         (s) => s.time >= cutoff
@@ -135,12 +152,12 @@ export class WasmMiner {
 
     // Fallback to lifetime average during warmup (<1s of data)
     if (hashrate === 0 && elapsedSecs > 0) {
-      hashrate = totalHashes / elapsedSecs;
+      hashrate = this.totalHashes / elapsedSecs;
     }
 
     return {
       mining: this.mining,
-      total_hashes: totalHashes,
+      total_hashes: this.totalHashes,
       elapsed_secs: elapsedSecs,
       hashrate,
       pending_proofs: this.pendingProofs.length,
@@ -154,9 +171,12 @@ export class WasmMiner {
   }
 
   destroy(): void {
+    console.log('[WasmMiner] destroy: terminating', this.workers.length, 'workers');
     this.mining = false;
     this.workers.forEach((worker) => worker.terminate());
     this.workers = [];
-    this.workerHashes = [];
+    this.workerLastReported = [];
+    this.totalHashes = 0;
+    this.hashSnapshots = [];
   }
 }
