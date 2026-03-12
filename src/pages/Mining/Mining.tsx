@@ -90,6 +90,7 @@ const SESSION_LI_KEY = 'mining_session_li';
 const MINING_ACTIVE_KEY = 'mining_active';
 const MINING_ADDRESS_KEY = 'mining_active_address';
 const USER_DIFFICULTY_KEY = 'mining_user_difficulty';
+const COUNTDOWN_MODE_KEY = 'mining_countdown_mode';
 const DEFAULT_DIFFICULTY = 12;
 
 function loadProofLog(): ProofLogEntry_[] {
@@ -312,7 +313,15 @@ function Mining() {
   const [availableBackends, setAvailableBackends] = useState<string[]>(['cpu']);
   const [sessionLiMined, setSessionLiMined] = useState(loadSessionLi);
   const [configOpen, setConfigOpen] = useState(false);
-  const [countdownMode, setCountdownMode] = useState(false); // TESTING: countdown
+  const [countdownMode, setCountdownMode] = useState(() => {
+    try { return !!localStorage.getItem(COUNTDOWN_MODE_KEY); } catch { return false; }
+  });
+  useEffect(() => {
+    try {
+      if (countdownMode) localStorage.setItem(COUNTDOWN_MODE_KEY, '1');
+      else localStorage.removeItem(COUNTDOWN_MODE_KEY);
+    } catch { /* ignore */ }
+  }, [countdownMode]);
   const [proofPage, setProofPage] = useState(1);
   const [referrer, setReferrer] = useState(() => {
     // Check URL ?ref= param first, then localStorage
