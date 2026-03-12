@@ -26,7 +26,7 @@ const QueryClientContext = React.createContext<{
 
 // eslint-disable-next-line import/no-unused-modules
 export function useCyberClient() {
-  return useContext(QueryClientContext);
+  return useContext(QueryClientContext) ?? ({} as any);
 }
 
 const rpcEndpoint = RPC_URL;
@@ -54,20 +54,11 @@ function CyberTsQueryClientProvider({ children }: { children: React.ReactNode })
     },
   });
 
-  if (!rpcClient) {
-    return null;
-  }
-
-  const hooks = createRpcQueryHooks({
-    rpc: rpcClient,
-  });
+  const hooks = rpcClient ? createRpcQueryHooks({ rpc: rpcClient }) : undefined;
 
   return (
     <QueryClientContext.Provider
-      value={{
-        rpc: data,
-        hooks,
-      }}
+      value={rpcClient ? { rpc: data, hooks } : undefined}
     >
       {children}
     </QueryClientContext.Provider>

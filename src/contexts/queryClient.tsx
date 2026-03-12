@@ -30,15 +30,8 @@ function QueryClientProvider({ children }: { children: React.ReactNode }) {
     retryDelay: (attempt) => Math.min(2000 * 2 ** attempt, 15000),
   });
 
-  if (isFetching) {
-    return null;
-  }
-
   if (error) {
     console.error('Error queryClient connect: ', error.message);
-
-    return <span>api connection error</span>;
-    // return <APIError />;
   }
 
   return <QueryClientContext.Provider value={client}>{children}</QueryClientContext.Provider>;
