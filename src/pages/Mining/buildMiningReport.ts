@@ -47,6 +47,7 @@ export type ReportParams = {
   consecutiveFails: number;
   proofLog: ProofLogEntry[];
   sessionStart: number;
+  actionLog?: { action: string; detail?: string; timestamp: number; result?: string; error?: string }[];
 };
 
 export function buildMiningReport(params: ReportParams): object {
@@ -145,5 +146,6 @@ export function buildMiningReport(params: ReportParams): object {
         total > 0 ? `${((accepted / total) * 100).toFixed(1)}%` : null,
     },
     proof_log: sessionLog,
+    action_log: params.actionLog || [],
   };
 }

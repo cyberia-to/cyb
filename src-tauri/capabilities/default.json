@@ -10,6 +10,7 @@
     "deep-link:default",
     "dialog:default",
     "fs:default",
+    "fs:allow-app-write-recursive",
     "fs:allow-write-text-file",
     "fs:allow-read-text-file",
     "fs:allow-mkdir",

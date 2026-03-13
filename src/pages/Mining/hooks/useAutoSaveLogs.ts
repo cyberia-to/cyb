@@ -49,7 +49,7 @@ export function useAutoSaveLogs(params: {
         );
 
         const baseDir = await appLogDir();
-        const dir = `${baseDir}mining-logs`;
+        const dir = baseDir.endsWith('/') ? `${baseDir}mining-logs` : `${baseDir}/mining-logs`;
         await mkdir(dir, { recursive: true });
         if (!cancelled) {
           logDirRef.current = dir;
@@ -184,9 +184,10 @@ export function useAutoSaveLogs(params: {
     }
   }, []);
 
-  const revealInFinder = useCallback(() => {
-    if (!lastSavePath) return;
-    invoke('reveal_in_finder', { path: lastSavePath }).catch((err) =>
+  const revealInFinder = useCallback((pathOverride?: string) => {
+    const p = pathOverride || lastSavePath;
+    if (!p) return;
+    invoke('reveal_in_finder', { path: p }).catch((err) =>
       console.warn('[Mining] Reveal failed:', err)
     );
   }, [lastSavePath]);

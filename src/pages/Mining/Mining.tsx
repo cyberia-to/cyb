@@ -4,19 +4,16 @@ import { Display, DisplayTitle, MainContainer } from 'src/components';
 import Pill from 'src/components/Pill/Pill';
 import useQueryContract from 'src/hooks/contract/useQueryContract';
 import { LITIUM_MINE_CONTRACT, LITIUM_CORE_CONTRACT, LITIUM_STAKE_CONTRACT, UHASH_RELAY_URL, SUBMIT_COOLDOWN_MS } from 'src/constants/mining';
-import { CHAIN_ID, RPC_URL } from 'src/constants/config';
+import { RPC_URL } from 'src/constants/config';
 import { isTauri } from 'src/utils/tauri';
 import { trimString } from 'src/utils/utils';
 import { compactLi, formatLi } from './utils/formatLi';
-import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
-import { toUtf8 } from '@cosmjs/encoding';
-import { TxRaw } from 'cosmjs-types/cosmos/tx/v1beta1/tx';
 import type {
   ExecuteMsg,
   WindowStatusResponse,
   ConfigResponse,
 } from 'src/generated/lithium/LitiumMine.types';
-import type { TotalMintedResponse } from 'src/generated/lithium/LitiumCore.types';
+import type { TotalMintedResponse, BurnStatsResponse } from 'src/generated/lithium/LitiumCore.types';
 import type { TotalStakedResponse } from 'src/generated/lithium/LitiumStake.types';
 
 type ActivateAccountResponse = {
@@ -50,6 +47,8 @@ import { useAppSelector } from 'src/redux/hooks';
 import { WasmMiner } from './wasmMiner';
 import { buildMiningReport, type ReportParams } from './buildMiningReport';
 import { useAutoSaveLogs } from './hooks/useAutoSaveLogs';
+import useSharedTxSender from './hooks/useSharedTxSender';
+import usePendingTxVerifier from './hooks/usePendingTxVerifier';
 import styles from './Mining.module.scss';
 
 type MiningStatus = {
@@ -91,7 +90,33 @@ const MINING_ACTIVE_KEY = 'mining_active';
 const MINING_ADDRESS_KEY = 'mining_active_address';
 const USER_DIFFICULTY_KEY = 'mining_user_difficulty';
 const COUNTDOWN_MODE_KEY = 'mining_countdown_mode';
+const ACTION_LOG_KEY = 'mining_action_log';
 const DEFAULT_DIFFICULTY = 12;
+
+type ActionLogEntry = {
+  action: string;
+  detail?: string;
+  timestamp: number;
+  result?: 'ok' | 'error';
+  error?: string;
+};
+
+function loadActionLog(): ActionLogEntry[] {
+  try {
+    const raw = localStorage.getItem(ACTION_LOG_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveActionLog(log: ActionLogEntry[]) {
+  try {
+    localStorage.setItem(ACTION_LOG_KEY, JSON.stringify(log.slice(0, 500)));
+  } catch {
+    // ignore
+  }
+}
 
 function loadProofLog(): ProofLogEntry_[] {
   try {
@@ -276,11 +301,21 @@ function Mining() {
     { total_staked: {} }
   );
   const totalStaked = totalStakedData as TotalStakedResponse | undefined;
+  const { data: burnStatsData, refetch: refetchBurnStats } = useQueryContract(
+    LITIUM_CORE_CONTRACT,
+    { burn_stats: {} }
+  );
+  const burnStats = burnStatsData as BurnStatsResponse | undefined;
+
+  // Circulating supply = total_minted - total_burned (matches contract logic)
+  const circulatingSupply = totalMinted
+    ? Number(totalMinted.total_minted) - Number(burnStats?.total_burned ?? 0)
+    : 0;
 
   // PoW share from real on-chain state: powShare = 1 - S^alpha
-  // S = total_staked / total_minted, alpha from window_status (Decimal string)
-  const stakedFraction = totalMinted && totalStaked && Number(totalMinted.total_minted) > 0
-    ? Number(totalStaked.total_staked) / Number(totalMinted.total_minted)
+  // S = total_staked / circulating_supply, alpha from window_status (already a decimal string, e.g. "0.500000")
+  const stakedFraction = circulatingSupply > 0 && totalStaked
+    ? Number(totalStaked.total_staked) / circulatingSupply
     : 0;
   const alphaExp = windowStatus ? Number(windowStatus.alpha) : 0;
   const powShare = stakedFraction > 0 && alphaExp > 0
@@ -301,6 +336,16 @@ function Mining() {
   });
   const [submitting, setSubmitting] = useState(false);
   const [proofLog, setProofLog] = useState<ProofLogEntry_[]>(loadProofLog);
+  const [actionLog, setActionLog] = useState<ActionLogEntry[]>(loadActionLog);
+  const logAction = useCallback((action: string, detail?: string, result?: 'ok' | 'error', error?: string) => {
+    const entry: ActionLogEntry = { action, detail, timestamp: Date.now(), result, error };
+    console.log('[Mining][action]', action, detail || '', result || '', error || '');
+    setActionLog((prev) => {
+      const next = [entry, ...prev].slice(0, 500);
+      saveActionLog(next);
+      return next;
+    });
+  }, []);
   const [cpuCores, setCpuCores] = useState(() => navigator.hardwareConcurrency || 4);
   const [threadCount, setThreadCount] = useState(() => {
     const cores = navigator.hardwareConcurrency || 4;
@@ -373,8 +418,8 @@ function Mining() {
   const consecutiveFailsRef = useRef(0);
   const retryQueueRef = useRef<RetryEntry[]>([]);
 
-  // Local sequence tracking — avoids re-querying chain between proofs
-  const seqRef = useRef<{ accountNumber: number; sequence: number } | null>(null);
+  // Shared TX sender — serializes all TXs (proofs + staking) through one sequence
+  const { sendContractTx, broadcastContractTx, resetSequence, seqRef } = useSharedTxSender(signer, signingClient, address);
 
   // Proof submission queue
   const proofQueueRef = useRef<Proof[]>([]);
@@ -419,9 +464,10 @@ function Mining() {
     refetchPeerWindow();
     refetchTotalMinted();
     refetchTotalStaked();
+    refetchBurnStats();
     refetchMinerStats();
     refetchReward();
-  }, [refetchWindow, refetchBlock, refetchPeerWindow, refetchTotalMinted, refetchTotalStaked, refetchMinerStats, refetchReward]);
+  }, [refetchWindow, refetchBlock, refetchPeerWindow, refetchTotalMinted, refetchTotalStaked, refetchBurnStats, refetchMinerStats, refetchReward]);
 
   // Resync config + balance after proof submit (success or permanent failure)
   const resyncAfterProof = useCallback(() => {
@@ -429,19 +475,55 @@ function Mining() {
     refreshBalance();
   }, [refetchConfig, refreshBalance]);
 
-  // WebSocket-driven: refetch all display data on every new block
-  const { connected: wsConnected } = useNewBlockSubscription(refetchAll);
+  // Async TX verification — confirms proof TXs on each new block
+  const handleProofConfirmed = useCallback((txHash: string, proofHash: string, reward: number) => {
+    setProofLog((prev) =>
+      prev.map((p) =>
+        p.hash === proofHash ? { ...p, txHash, status: 'success' as const } : p
+      )
+    );
+    setSessionLiMined((prev) => prev + reward);
+    refreshBalance();
+    logAction('proof_confirmed', `txHash=${txHash} reward=${reward.toFixed(6)}`, 'ok');
+    if (isNative) invoke('report_proof_submitted').catch(() => {});
+  }, [refreshBalance, logAction, isNative]);
 
-  // WS disconnection fallback: 30s interval, only active when WS is down
-  useEffect(() => {
-    if (wsConnected) return;
-    // Immediate refresh when WS drops
+  const handleProofFailed = useCallback((txHash: string, proofHash: string, error: string) => {
+    setProofLog((prev) =>
+      prev.map((p) =>
+        p.hash === proofHash && (p.status === 'pending' || p.status === 'submitted')
+          ? { ...p, txHash, error, status: 'failed' as const }
+          : p
+      )
+    );
+    logAction('proof_verify_failed', `txHash=${txHash} error=${error}`, 'error', error);
+    if (isNative) invoke('report_proof_failed').catch(() => {});
+    resyncAfterProof();
+  }, [logAction, isNative, resyncAfterProof]);
+
+  const verifier = usePendingTxVerifier(signingClient, handleProofConfirmed, handleProofFailed);
+
+  // WebSocket-driven: refetch all display data on every new block + verify pending TXs
+  const onNewBlock = useCallback(() => {
     refetchAll();
-    refetchConfig();
+    verifier.checkAll();
+  }, [refetchAll, verifier]);
+  const { connected: wsConnected } = useNewBlockSubscription(onNewBlock);
+
+  // Polling safety net: always poll at moderate interval.
+  // WS provides instant updates when working, but if WS events stop
+  // flowing (proxy issues, stale connection) this keeps data fresh.
+  useEffect(() => {
+    const interval = wsConnected ? 15_000 : 10_000;
+    if (!wsConnected) {
+      // Immediate refresh when WS is down
+      refetchAll();
+      refetchConfig();
+    }
     const timer = setInterval(() => {
       refetchAll();
       refetchConfig();
-    }, 30_000);
+    }, interval);
     return () => clearInterval(timer);
   }, [wsConnected, refetchAll, refetchConfig]);
 
@@ -668,11 +750,11 @@ function Mining() {
     }
   }, [userDifficulty, minDifficulty, address, latestBlock, threadCount, backend, isNative]);
 
-  // Submit a single proof to chain
+  // Submit a single proof to chain (fire-and-forget — verification is async via usePendingTxVerifier)
   const submitSingleProof = useCallback(
     async (proof: Proof) => {
-      if (!signer || !signingClient || !address) {
-        console.log('[Mining] Cannot submit: no signer/client');
+      if (!signer || !address) {
+        console.log('[Mining] Cannot submit: no signer/address');
         return;
       }
 
@@ -703,90 +785,24 @@ function Mining() {
       };
 
       console.log(
-        '[Mining] Submitting proof:',
+        '[Mining] Broadcasting proof:',
         `${proof.hash.slice(0, 16)}...`,
         'difficulty:',
         userDifficulty
       );
 
-      // Build the execute message for sign()
-      const encodeMsg = {
-        typeUrl: '/cosmwasm.wasm.v1.MsgExecuteContract' as const,
-        value: {
-          sender: account.address,
-          contract: LITIUM_MINE_CONTRACT,
-          msg: toUtf8(JSON.stringify(msg)),
-          funds: [],
-        },
-      };
-      const fee = Soft3MessageFactory.fee(10);
-
-      // Sign + broadcast with local sequence tracking
-      const signAndBroadcastWithSeq = async () => {
-        // Fetch sequence on first call (or after reset)
-        if (!seqRef.current) {
-          const { accountNumber, sequence } = await signingClient.getSequence(account.address);
-          seqRef.current = { accountNumber, sequence };
-          console.log('[Mining] Fetched sequence from chain:', sequence);
-        }
-
-        const signerData = {
-          accountNumber: seqRef.current.accountNumber,
-          sequence: seqRef.current.sequence,
-          chainId: CHAIN_ID,
-        };
-        console.log('[Mining] Signing with sequence:', signerData.sequence);
-
-        const txRaw = await signingClient.sign(account.address, [encodeMsg], fee, '', signerData);
-        const txBytes = TxRaw.encode(txRaw).finish();
-        const broadcastResult = await signingClient.broadcastTx(txBytes);
-
-        // CyberClient.broadcastTx only does broadcastTxSync (CheckTx) — it does NOT
-        // wait for block inclusion. We must poll getTx to verify DeliverTx succeeded.
-        const txHash = broadcastResult.transactionHash;
-        let deliverResult = await signingClient.getTx(txHash);
-        if (!deliverResult) {
-          // Wait for inclusion (up to ~15s, polling every 3s)
-          for (let attempt = 0; attempt < 5 && !deliverResult; attempt++) {
-            await new Promise<void>((r) => setTimeout(r, 3000));
-            deliverResult = await signingClient.getTx(txHash);
-          }
-        }
-
-        // Increment sequence — tx was broadcast (consumes sequence even if DeliverTx fails)
-        seqRef.current.sequence += 1;
-
-        if (!deliverResult) {
-          throw new Error(`TX ${txHash} not found after broadcast — may have been dropped`);
-        }
-        if (deliverResult.code !== 0) {
-          throw new Error(`Contract error: ${deliverResult.rawLog || `code ${deliverResult.code}`}`);
-        }
-
-        return {
-          ...broadcastResult,
-          code: deliverResult.code,
-          height: deliverResult.height,
-          events: deliverResult.events,
-          rawLog: deliverResult.rawLog,
-          gasUsed: deliverResult.gasUsed,
-          gasWanted: deliverResult.gasWanted,
-        };
-      };
-
-      let result;
+      let broadcastResult: { txHash: string };
       try {
-        result = await signAndBroadcastWithSeq();
+        broadcastResult = await broadcastContractTx(LITIUM_MINE_CONTRACT, msg as unknown as Record<string, unknown>);
       } catch (executeErr: any) {
         const errText = normalizeErrorText(executeErr).toLowerCase();
         const kind = classifySubmitError(executeErr);
 
-        // Sequence mismatch — re-fetch from chain and retry once
+        // Sequence mismatch — already reset by broadcastContractTx, retry once
         if (/account sequence mismatch/.test(errText)) {
-          console.log('[Mining] Sequence mismatch, re-fetching from chain...');
-          seqRef.current = null;
+          console.log('[Mining] Sequence mismatch, retrying...');
           try {
-            result = await signAndBroadcastWithSeq();
+            broadcastResult = await broadcastContractTx(LITIUM_MINE_CONTRACT, msg as unknown as Record<string, unknown>);
           } catch (retryErr) {
             if (isNative) {
               invoke('report_proof_failed').catch(() => {});
@@ -804,9 +820,9 @@ function Mining() {
               setTimeout(resolve, 7000);
             });
             console.log('[Mining] Retrying proof submission...');
-            seqRef.current = null; // re-fetch after activation
+            resetSequence();
             try {
-              result = await signAndBroadcastWithSeq();
+              broadcastResult = await broadcastContractTx(LITIUM_MINE_CONTRACT, msg as unknown as Record<string, unknown>);
             } catch (retryErr) {
               if (isNative) {
                 invoke('report_proof_failed').catch(() => {});
@@ -825,70 +841,34 @@ function Mining() {
           if (isNative) {
             invoke('report_proof_failed').catch(() => {});
           }
-          // Reset sequence on any unknown error — next submit will re-fetch
-          seqRef.current = null;
           throw new Error(
             `Submit ${kind} error: ${normalizeErrorText(executeErr)}`
           );
         }
       }
 
-      // Collect all events from both result.events and result.logs[].events[]
-      const allEvents: { type: string; attributes?: { key: string; value: string }[] }[] = [];
-      if (result.events?.length) {
-        allEvents.push(...result.events);
-      }
-      if ((result as any).logs) {
-        for (const log of (result as any).logs) {
-          if (log.events?.length) {
-            allEvents.push(...log.events);
-          }
-        }
-      }
+      // Fire-and-forget: broadcast succeeded, register for async verification
+      console.log('[Mining] Proof broadcast OK, txHash:', broadcastResult.txHash);
+      logAction('proof_broadcast', `txHash=${broadcastResult.txHash} hash=${proof.hash.slice(0, 16)}`, 'ok');
 
-      console.log(
-        '[Mining] Proof submitted! TX:',
-        result.transactionHash,
-        'events:',
-        allEvents.length
-      );
-
-      // Report successful submission to Tauri backend for metrics
-      if (isNative) {
-        invoke('report_proof_submitted').catch(() => {});
-      }
-
-      // Extract actual miner reward from wasm event
-      let actualReward = 0;
-      const wasmEvent = allEvents.find(
-        (e) => e.type === 'wasm' && e.attributes?.some(
-          (a) => a.key === 'miner_reward' || a.key === 'reward'
-        )
-      );
-      if (wasmEvent) {
-        const rewardAttr = wasmEvent.attributes?.find(
-          (a) => a.key === 'miner_reward' || a.key === 'reward'
-        );
-        if (rewardAttr?.value) {
-          actualReward = Number(rewardAttr.value) / 1_000_000;
-        }
-      }
-      if (actualReward === 0) {
-        actualReward = rewardPerProof || 0;
-      }
-
-      // Update submitted entry to success with txHash
+      // Update log entry to 'pending' with txHash
       setProofLog((prev) =>
         prev.map((p) =>
           p.hash === proof.hash && (p.status === 'submitted' || p.status === 'retrying' || !p.txHash)
-            ? { ...p, txHash: result.transactionHash, status: 'success' }
+            ? { ...p, txHash: broadcastResult.txHash, status: 'pending' }
             : p
         )
       );
-      refreshBalance();
-      setSessionLiMined((prev) => prev + actualReward);
+
+      // Register with verifier — will be confirmed/failed on next NewBlock event
+      verifier.addPending({
+        txHash: broadcastResult.txHash,
+        proofHash: proof.hash,
+        proofNonce: proof.nonce,
+        submittedAt: Date.now(),
+      });
     },
-    [signer, signingClient, address, userDifficulty, referrer, refreshBalance, rewardPerProof, isNative]
+    [signer, address, userDifficulty, referrer, isNative, logAction, broadcastContractTx, resetSequence, verifier]
   );
 
   // Process the proof queue
@@ -953,11 +933,13 @@ function Mining() {
 
       try {
         lastSubmitTimeRef.current = Date.now();
+        logAction('proof_submit', `hash=${best.hash.slice(0, 16)} nonce=${best.nonce}`);
         await submitSingleProof(best);
         consecutiveFailsRef.current = 0;
         resyncAfterProof();
       } catch (err: any) {
         console.error('[Mining] Submit failed:', err);
+        logAction('proof_submit', `hash=${best.hash.slice(0, 16)}`, 'error', normalizeErrorText(err).slice(0, 120));
         const kind = classifySubmitError(err);
 
         if (kind === 'transport') {
@@ -1049,7 +1031,7 @@ function Mining() {
       await submitSingleProof(entry.proof);
       consecutiveFailsRef.current = 0;
       resyncAfterProof();
-      // submitSingleProof already updates the log entry to 'success'
+      // submitSingleProof registers with verifier — confirmation is async
     } catch (err: any) {
       const kind = classifySubmitError(err);
 
@@ -1289,13 +1271,15 @@ function Mining() {
     });
     if (config?.genesis_time && config.genesis_time > Math.floor(Date.now() / 1000)) {
       setCountdownMode(true);
+      logAction('start_countdown', `genesis_time=${config.genesis_time}`);
       return;
     }
     miningAddressRef.current = address;
     setAutoMining(true);
+    logAction('start_mining', `difficulty=${userDifficulty} threads=${threadCount} backend=${backend}`);
     await startMiningRound();
     startPolling();
-  }, [startMiningRound, startPolling, address, config?.genesis_time]);
+  }, [startMiningRound, startPolling, address, config?.genesis_time, logAction, userDifficulty, threadCount, backend]);
 
   const handleStopMining = useCallback(async () => {
     // Guard: ignore click events from the same frame as mount (stale click-through
@@ -1305,6 +1289,7 @@ function Mining() {
       return;
     }
     console.log('[Mining][stop] handleStopMining called', new Error().stack?.split('\n').slice(1, 4).join(' <- '));
+    logAction('stop_mining');
     setCountdownMode(false);
     setAutoMining(false);
     retryQueueRef.current = [];
@@ -1331,7 +1316,7 @@ function Mining() {
           : p
       )
     );
-  }, [stopPolling, isNative]);
+  }, [stopPolling, isNative, logAction]);
 
   // Stop mining when account switches away from the address that started it
   useEffect(() => {
@@ -1412,6 +1397,7 @@ function Mining() {
       consecutiveFails: consecutiveFailsRef.current,
       proofLog,
       sessionStart,
+      actionLog,
     }),
     [
       address, referrer, liBalance, autoMining, userDifficulty, minDifficulty,
@@ -1420,12 +1406,12 @@ function Mining() {
       uniqueMiners, totalProofs, avgDifficulty, dRate,
       similarDevices, windowEntries, baseRate, rewardPerProof,
       grossRewardPerProof, estimatedLiPerHour, proofLog, isNative, rpcOnline,
-      sessionStart,
+      sessionStart, actionLog,
     ]
   );
 
   // Auto-save mining logs to disk (Tauri only)
-  const { lastSavePath, saveToDailyFile, clearAllLogs, revealInFinder } = useAutoSaveLogs({
+  const { saveToDailyFile, clearAllLogs, revealInFinder } = useAutoSaveLogs({
     enabled: isNative && autoMining,
     sessionStart,
     buildReport: useCallback(
@@ -1441,18 +1427,22 @@ function Mining() {
     localStorage.removeItem(SESSION_LI_KEY);
     localStorage.removeItem(MINING_ACTIVE_KEY);
     localStorage.removeItem(MINING_ADDRESS_KEY);
+    localStorage.removeItem(ACTION_LOG_KEY);
     setProofLog([]);
     setSessionLiMined(0);
+    setActionLog([]);
     setAutoMining(false);
     clearAllLogs();
   }, [genesisInFuture, clearAllLogs]);
 
   const handleExportLogs = useCallback(async () => {
-    // Tauri: save to daily sessions file (same format as auto-save)
+    logAction('export_logs', isNative ? 'tauri' : 'web');
+    // Tauri: save to daily sessions file + reveal in Finder
     if (isNative) {
       const saved = await saveToDailyFile();
       if (saved) {
         console.log('[Mining] Exported to daily file:', saved);
+        revealInFinder(saved);
       }
       return;
     }
@@ -1468,7 +1458,7 @@ function Mining() {
     a.download = filename;
     a.click();
     URL.revokeObjectURL(url);
-  }, [isNative, getReportParams, saveToDailyFile]);
+  }, [isNative, getReportParams, saveToDailyFile, revealInFinder, logAction]);
 
   // PoW share from on-chain state: 1 - S^alpha (100% when nothing staked)
   const powSharePercent = (powShare * 100).toFixed(1);
@@ -1522,23 +1512,6 @@ function Mining() {
                   : <Pill color="black" text={autoMining ? 'Mining' : 'Idle'} />}
             </div>
           </div>
-
-          {/* Auto-save info (Tauri only) */}
-          {lastSavePath && (
-            <div className={styles.autoSaveRow}>
-              <span className={styles.autoSavePath} title={lastSavePath}>
-                Auto-save: {lastSavePath.replace(/^.*\/Library\/Logs\//, '~/Library/Logs/')}
-              </span>
-              <button
-                type="button"
-                className={styles.copyBtn}
-                onClick={revealInFinder}
-                title="Reveal in Finder"
-              >
-                Reveal
-              </button>
-            </div>
-          )}
 
           {/* Config panel (collapsible) */}
           <ConfigPanel open={configOpen} config={config} onConfigUpdated={refetchConfig} />
@@ -1634,12 +1607,12 @@ function Mining() {
           </div>
 
           {/* Staking section */}
-          <StakingSection />
+          <StakingSection logAction={logAction} sendContractTx={sendContractTx} />
 
           {/* Referral section */}
           <ReferralSection
             referrer={referrer}
-            onReferrerChange={setReferrer}
+            onReferrerChange={(v: string | null) => { setReferrer(v); logAction('set_referrer', v || 'none'); }}
           />
 
           {/* Proof summary + paginated list */}
@@ -1700,13 +1673,13 @@ function Mining() {
         miningStatus={miningStatus}
         onStartMining={handleStartMining}
         onStopMining={handleStopMining}
-        onDifficultyChange={setUserDifficulty}
+        onDifficultyChange={(v: number) => { setUserDifficulty(v); logAction('set_difficulty', `${v}`); }}
         backend={backend}
-        onBackendChange={setBackend}
+        onBackendChange={(v: string) => { setBackend(v); logAction('set_backend', v); }}
         availableBackends={availableBackends}
         activeBackend={miningStatus?.backend}
         threadCount={threadCount}
-        onThreadCountChange={setThreadCount}
+        onThreadCountChange={(v: number) => { setThreadCount(v); logAction('set_threads', `${v}`); }}
         maxThreads={isNative ? Math.max(1, cpuCores - 1) : Math.max(1, Math.floor(cpuCores / 2))}
         isNative={isNative}
         countdownMode={countdownMode}

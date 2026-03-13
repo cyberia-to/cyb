@@ -259,6 +259,11 @@ build-tauri: setup-node setup-rust download-kubo ## Build Tauri production bundl
 
 macos: setup-node setup-rust download-kubo ## Build macOS app (.dmg)
 ifdef IS_MACOS
+	@# Remove old code-signed bundle (has restricted permissions that block overwrite)
+	@if [ -d "$(TAURI_DIR)/target/release/bundle/macos/cyb.app" ]; then \
+		chmod -R u+w "$(TAURI_DIR)/target/release/bundle/macos/cyb.app" 2>/dev/null || true; \
+		rm -rf "$(TAURI_DIR)/target/release/bundle/macos/cyb.app"; \
+	fi
 	@echo -e "$(BLUE)[Build]$(NC) macOS (GPU: Metal)..."
 	@npx @tauri-apps/cli build -- $(CARGO_GPU_FEATURES)
 	@echo -e "$(GREEN)[Done]$(NC) macOS: $(TAURI_DIR)/target/release/bundle/dmg/"

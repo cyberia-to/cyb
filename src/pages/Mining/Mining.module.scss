@@ -37,27 +37,6 @@
   }
 }
 
-// Auto-save info row
-.autoSaveRow {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  border: 1px solid rgba(54, 214, 174, 0.15);
-  border-radius: 4px;
-  font-size: 12px;
-}
-
-.autoSavePath {
-  color: #777;
-  font-family: monospace;
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  flex: 1;
-  min-width: 0;
-}
 
 // Hero: big hashrate + sparkline
 .heroContainer {

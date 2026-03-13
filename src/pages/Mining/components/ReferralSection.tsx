@@ -72,7 +72,7 @@ function ReferralSection({ referrer, onReferrerChange }: Props) {
         ''
       );
       setStatus({ type: 'tx', ok: true, txHash: result.transactionHash });
-      setTimeout(() => refetch(), 7000);
+      setTimeout(() => refetch(), 2000);
     } catch (err: any) {
       setStatus({ type: 'tx', ok: false, error: err?.message?.slice(0, 120) || 'Failed' });
     } finally {

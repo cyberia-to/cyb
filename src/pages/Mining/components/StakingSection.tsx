@@ -3,58 +3,82 @@ import { Link } from 'react-router-dom';
 import { LITIUM_STAKE_CONTRACT, LITIUM_CORE_CONTRACT, LITIUM_MINE_CONTRACT } from 'src/constants/mining';
 import { routes } from 'src/routes';
 import { trimString } from 'src/utils/utils';
-import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 import useQueryContract from 'src/hooks/contract/useQueryContract';
-import type { TotalStakedResponse, StakingStatsResponse } from 'src/generated/lithium/LitiumStake.types';
-import type { TotalMintedResponse } from 'src/generated/lithium/LitiumCore.types';
-import type { ConfigResponse } from 'src/generated/lithium/LitiumMine.types';
+import type { TotalStakedResponse } from 'src/generated/lithium/LitiumStake.types';
+import type { TotalMintedResponse, BurnStatsResponse } from 'src/generated/lithium/LitiumCore.types';
+import type { WindowStatusResponse } from 'src/generated/lithium/LitiumMine.types';
 import useAutoSigner from '../hooks/useAutoSigner';
 import useStakeInfo from '../hooks/useStakeInfo';
 import { compactLi } from '../utils/formatLi';
 import styles from '../Mining.module.scss';
 
 const SECONDS_PER_YEAR = 365.25 * 24 * 3600;
-const STAKING_INDEX_SCALE = 1_000_000_000_000;
 
-function StakingSection() {
-  const { signer, signingClient, address } = useAutoSigner();
+type Props = {
+  logAction: (action: string, detail?: string, result?: 'ok' | 'error', error?: string) => void;
+  sendContractTx: (contract: string, msg: Record<string, unknown>) => Promise<{
+    transactionHash: string;
+    code: number;
+    events: { type: string; attributes?: { key: string; value: string }[] }[];
+    rawLog: string;
+  }>;
+};
+
+function StakingSection({ logAction, sendContractTx }: Props) {
+  const { address } = useAutoSigner();
   const { stakeInfo, refetch } = useStakeInfo(address);
 
-  const { data: totalStakedData } = useQueryContract(LITIUM_STAKE_CONTRACT, {
+  const { data: totalStakedData, refetch: refetchTotalStaked } = useQueryContract(LITIUM_STAKE_CONTRACT, {
     total_staked: {},
   });
-  const { data: totalMintedData } = useQueryContract(LITIUM_CORE_CONTRACT, {
+  const { data: totalMintedData, refetch: refetchTotalMinted } = useQueryContract(LITIUM_CORE_CONTRACT, {
     total_minted: {},
   });
-  const { data: stakingStatsData } = useQueryContract(LITIUM_STAKE_CONTRACT, {
+  const { data: stakingStatsData, refetch: refetchStakingStats } = useQueryContract(LITIUM_STAKE_CONTRACT, {
     staking_stats: {},
   });
-  const { data: mineConfigData } = useQueryContract(LITIUM_MINE_CONTRACT, {
-    config: {},
+  const { data: windowData } = useQueryContract(LITIUM_MINE_CONTRACT, {
+    window_status: {},
+  });
+  const { data: burnStatsData, refetch: refetchBurnStats } = useQueryContract(LITIUM_CORE_CONTRACT, {
+    burn_stats: {},
   });
 
   const totalStaked = totalStakedData as TotalStakedResponse | undefined;
   const totalMinted = totalMintedData as TotalMintedResponse | undefined;
-  const stakingStats = stakingStatsData as StakingStatsResponse | undefined;
-  const mineConfig = mineConfigData as ConfigResponse | undefined;
+  const windowStatus = windowData as WindowStatusResponse | undefined;
+  const burnStats = burnStatsData as BurnStatsResponse | undefined;
 
   const totalStakedLi = totalStaked ? Number(totalStaked.total_staked) / 1_000_000 : 0;
-  const totalMintedLi = totalMinted ? Number(totalMinted.total_minted) / 1_000_000 : 0;
+  // Circulating supply = minted - burned (matches contract logic)
+  const circulatingLi = totalMinted
+    ? (Number(totalMinted.total_minted) - Number(burnStats?.total_burned ?? 0)) / 1_000_000
+    : 0;
 
-  // Staked % of total minted supply
-  const stakedPercent = totalMintedLi > 0 ? (totalStakedLi / totalMintedLi) * 100 : 0;
+  // Staked % of circulating supply
+  const stakedPercent = circulatingLi > 0 ? (totalStakedLi / circulatingLi) * 100 : 0;
 
-  // APR from real on-chain data: reward_index tracks cumulative rewards per staked token.
-  // APR = (reward_index / elapsed_seconds) * SECONDS_PER_YEAR / STAKING_INDEX_SCALE * 100
-  const rewardIndex = stakingStats ? Number(stakingStats.reward_index) : 0;
-  const genesisTime = mineConfig?.genesis_time ?? 0;
-  const elapsedSec = genesisTime > 0 ? Math.floor(Date.now() / 1000) - genesisTime : 0;
-  const stakingApr = rewardIndex > 0 && elapsedSec > 0
-    ? (rewardIndex / elapsedSec) * SECONDS_PER_YEAR / STAKING_INDEX_SCALE * 100
+  // Forward-looking APR (like Cosmos SDK / SushiSwap):
+  // Uses current emission parameters to predict annual staking yield.
+  // APR = base_rate * D_rate * S^alpha * SECONDS_PER_YEAR / total_staked * 100
+  //
+  // Where:
+  //   base_rate = LI reward per difficulty bit (atomic)
+  //   D_rate = network difficulty bits per second
+  //   S^alpha = staking share of gross reward
+  //   total_staked = total staked tokens (atomic)
+  const baseRate = windowStatus ? Number(windowStatus.base_rate) : 0;
+  const dRate = windowStatus ? Number(windowStatus.window_d_rate) : 0;
+  const alpha = windowStatus ? Number(windowStatus.alpha) : 0;
+  const stakedFraction = circulatingLi > 0 ? totalStakedLi / circulatingLi : 0;
+  const stakingShare = stakedFraction > 0 && alpha > 0 ? Math.pow(stakedFraction, alpha) : 0;
+
+  const stakingApr = totalStakedLi > 0 && baseRate > 0 && dRate > 0
+    ? (baseRate * dRate * stakingShare * SECONDS_PER_YEAR) / (totalStakedLi * 1_000_000) * 100
     : 0;
 
   // CW20 balance (what miners actually receive and can stake)
-  const { data: cw20BalanceData } = useQueryContract(
+  const { data: cw20BalanceData, refetch: refetchBalance } = useQueryContract(
     LITIUM_CORE_CONTRACT,
     address ? { balance: { address } } : { token_info: {} }
   );
@@ -84,70 +108,62 @@ function StakingSection() {
     : 0;
 
   const executeOnContract = useCallback(
-    async (contract: string, msg: Record<string, unknown>) => {
-      if (!signer || !signingClient || !address) return;
+    async (actionName: string, contract: string, msg: Record<string, unknown>, detail?: string) => {
+      if (!address) return;
       setBusy(true);
       setStatus(null);
+      logAction(actionName, detail);
       try {
-        const [account] = await signer.getAccounts();
-        const result = await signingClient.execute(
-          account.address,
-          contract,
-          msg,
-          Soft3MessageFactory.fee(10)
-        );
+        const result = await sendContractTx(contract, msg);
         const txHash = result.transactionHash;
         setStatus({ ok: true, txHash });
-
-        // CyberClient.broadcastTx only does broadcastTxSync — verify DeliverTx
-        let deliverResult = await signingClient.getTx(txHash);
-        for (let i = 0; i < 5 && !deliverResult; i++) {
-          await new Promise<void>((r) => setTimeout(r, 3000));
-          deliverResult = await signingClient.getTx(txHash);
-        }
-        if (!deliverResult) {
-          setStatus({ ok: false, txHash, error: 'TX not found — may have been dropped' });
-        } else if (deliverResult.code !== 0) {
-          setStatus({ ok: false, txHash, error: deliverResult.rawLog || `code ${deliverResult.code}` });
-        } else {
-          setTimeout(() => refetch(), 2000);
-        }
+        logAction(actionName, `txHash=${txHash}`, 'ok');
+        setTimeout(() => {
+          refetch();
+          refetchBalance();
+          refetchTotalStaked();
+          refetchTotalMinted();
+          refetchStakingStats();
+          refetchBurnStats();
+        }, 2000);
       } catch (err: any) {
-        setStatus({ ok: false, error: err?.message?.slice(0, 120) || 'Failed' });
+        const errMsg = err?.message?.slice(0, 120) || 'Failed';
+        setStatus({ ok: false, error: errMsg });
+        logAction(actionName, undefined, 'error', errMsg);
       } finally {
         setBusy(false);
       }
     },
-    [signer, signingClient, address, refetch]
+    [address, refetch, refetchBalance, refetchTotalStaked, refetchTotalMinted, refetchStakingStats, refetchBurnStats, logAction, sendContractTx]
   );
 
   // Stake: send CW20 tokens to stake contract via litium-core's `send`
   const handleStake = useCallback(() => {
     const amountMicro = Math.floor(Number(stakeAmount) * 1_000_000);
     if (amountMicro <= 0) return;
-    executeOnContract(LITIUM_CORE_CONTRACT, {
+    executeOnContract('stake_li', LITIUM_CORE_CONTRACT, {
       send: {
         contract: LITIUM_STAKE_CONTRACT,
         amount: String(amountMicro),
         msg: btoa(JSON.stringify({ stake: {} })),
       },
-    });
+    }, `amount=${stakeAmount} LI`);
     setStakeAmount('');
   }, [stakeAmount, executeOnContract]);
 
   const handleUnstake = useCallback(() => {
     const amountMicro = Math.floor(Number(unstakeAmount) * 1_000_000);
     if (amountMicro <= 0) return;
-    executeOnContract(LITIUM_STAKE_CONTRACT, { unstake: { amount: String(amountMicro) } });
+    executeOnContract('unstake_li', LITIUM_STAKE_CONTRACT, { unstake: { amount: String(amountMicro) } }, `amount=${unstakeAmount} LI`);
     setUnstakeAmount('');
   }, [unstakeAmount, executeOnContract]);
 
   const handleClaimRewards = useCallback(() => {
-    executeOnContract(LITIUM_STAKE_CONTRACT, { claim_staking_rewards: {} });
+    executeOnContract('claim_staking_rewards', LITIUM_STAKE_CONTRACT, { claim_staking_rewards: {} });
   }, [executeOnContract]);
 
   const handleClaimUnbonding = useCallback(() => {
-    executeOnContract(LITIUM_STAKE_CONTRACT, { claim_unbonding: {} });
+    executeOnContract('claim_unbonding', LITIUM_STAKE_CONTRACT, { claim_unbonding: {} });
   }, [executeOnContract]);
 
   return (

@@ -10,7 +10,8 @@ module.exports = merge(commonConfig, {
     server: 'https',
     host: 'localhost',
     port: process.env.PORT_APP || '3001',
-    hot: true,
+    hot: false,
+    liveReload: false,
     client: {
       overlay: false,
     },
