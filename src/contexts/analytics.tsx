@@ -26,6 +26,7 @@ function AnalyticsProvider({ children }: { children: ReactNode }) {
     try {
       init({
         domain: PLAUSIBLE_DOMAIN,
+        apiHost: 'https://metrics.cyb.ai',
         captureOnLocalhost: false,
         outboundLinks: true,
         fileDownloads: true,
