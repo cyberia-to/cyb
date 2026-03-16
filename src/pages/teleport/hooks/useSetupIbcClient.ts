@@ -13,7 +13,7 @@ import useGetBalancesIbc from './useGetBalancesIbc';
 function useSetupIbcClient(denom, network) {
   const { signingClient } = useSigningClient();
   const [ibcClient, setIbcClient] = useState(null);
-  const { balanceIbc, denomIbc } = useGetBalancesIbc(ibcClient, denom);
+  const { balanceIbc, denomIbc, refresh: refreshBalanceIbc } = useGetBalancesIbc(ibcClient, denom);
 
   useEffect(() => {
     const createClient = async () => {
@@ -46,7 +46,7 @@ function useSetupIbcClient(denom, network) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [network, signingClient]);
 
-  return { ibcClient, balanceIbc, denomIbc };
+  return { ibcClient, balanceIbc, denomIbc, refreshBalanceIbc };
 }
 
 export default useSetupIbcClient;

@@ -51,7 +51,7 @@ function Bridge() {
 
   const [tokenACoinDecimals, setTokenACoinDecimals] = useState<number>(0);
 
-  const { ibcClient, balanceIbc, denomIbc } = useSetupIbcClient(
+  const { ibcClient, balanceIbc, denomIbc, refreshBalanceIbc } = useSetupIbcClient(
     tokenSelect,
     typeTxs === 'deposit' ? networkA : networkB
   );
@@ -227,7 +227,10 @@ function Bridge() {
   const stateActionBar = {
     tokenAmount,
     tokenSelect,
-    updateFunc: () => refreshBalances(),
+    updateFunc: () => {
+      refreshBalances();
+      refreshBalanceIbc();
+    },
     isExceeded,
     typeTxs,
     ibcClient,
