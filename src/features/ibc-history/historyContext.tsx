@@ -122,27 +122,32 @@ function HistoryContextProvider({ children }: { children: React.ReactNode }) {
     };
   }
 
-  const traceHistoryStatus = async (item: HistoriesItem): Promise<StatusTx> => {
+  const traceHistoryStatus = useCallback(async (item: HistoriesItem): Promise<StatusTx> => {
     if (item.status === StatusTx.COMPLETE || item.status === StatusTx.REFUNDED) {
       return item.status;
     }
 
-    // First, always check if recv_packet already happened (packet was completed)
-    const destRpc = findRpc(item.destChainId);
-    if (destRpc) {
+    // Check if packet was acknowledged on source chain (bostrom) via WebSocket.
+    // This avoids CORS/connectivity issues with destination chain RPCs.
+    // acknowledge_packet on source = recv_packet succeeded on destination.
+    const sourceRpc = findRpc(item.sourceChainId);
+    if (sourceRpc) {
+      const ackTracer = new TracerTx(sourceRpc, '/websocket');
       try {
-        const query = `recv_packet.packet_dst_channel='${item.destChannelId}' AND recv_packet.packet_sequence='${item.sequence}'`;
-        const response = await fetch(
-          `${destRpc}/tx_search?query=${encodeURIComponent(query)}&per_page=1`
+        const result = await ackTracer.traceTx(
+          {
+            'acknowledge_packet.packet_src_channel': item.sourceChannelId,
+            'acknowledge_packet.packet_sequence': item.sequence,
+          },
+          { timeoutMs: 20000, connectionTimeoutMs: 10000 }
         );
-        if (response.ok) {
-          const data = await response.json();
-          if (data?.result?.total_count !== '0') {
-            return StatusTx.COMPLETE;
-          }
+        ackTracer.close();
+        if (result) {
+          return StatusTx.COMPLETE;
         }
       } catch {
-        // ignore, continue with normal flow
+        ackTracer.close();
+        // continue with normal flow
       }
     }
 
@@ -227,7 +232,8 @@ function HistoryContextProvider({ children }: { children: React.ReactNode }) {
       txTracer.close();
       return item.status;
     }
-  };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const useGetHistoriesItems = useCallback(() => {
     if (addressActive) {
@@ -254,15 +260,15 @@ function HistoryContextProvider({ children }: { children: React.ReactNode }) {
       }
     };
     getItem();
-  }, [addressActive]);
+  }, [addressActive, _update]);
 
-  const updateStatusByTxHash = async (txHash: string, status: StatusTx) => {
+  const updateStatusByTxHash = useCallback(async (txHash: string, status: StatusTx) => {
     const itemCollection = dbIbcHistory.historiesItems.where({ txHash });
     const itemByTxHash = await itemCollection.toArray();
     if (itemByTxHash && itemByTxHash[0].status !== status) {
       itemCollection.modify({ status });
     }
-  };
+  }, []);
 
   // Trace pending/timeout items on initial load (only when address changes)
   useEffect(() => {
@@ -287,7 +293,6 @@ function HistoryContextProvider({ children }: { children: React.ReactNode }) {
       }
     };
     tracePendingItems();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [addressActive, traceHistoryStatus, updateStatusByTxHash]);
 
   const pingTxsIbc = async (
