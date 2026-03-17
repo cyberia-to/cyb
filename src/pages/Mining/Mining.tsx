@@ -253,7 +253,7 @@ async function activateAccount(
   }
 }
 
-// Module-level WASM miner — survives component unmount/remount during navigation.
+// Module-level miners — survive component unmount/remount during navigation.
 // Mining is a background process; only explicit user action (Stop button) or
 // closing the app/tab should terminate it.
 let persistentWasmMiner: WasmMiner | null = null;
@@ -306,10 +306,18 @@ function Mining() {
     { burn_stats: {} }
   );
   const burnStats = burnStatsData as BurnStatsResponse | undefined;
+  const { data: pendingRewardsData, refetch: refetchPendingRewards } = useQueryContract(
+    LITIUM_STAKE_CONTRACT,
+    { total_pending_rewards: {} }
+  );
+  const pendingRewards = pendingRewardsData as { total_pending_rewards: string } | undefined;
 
-  // Circulating supply = total_minted - total_burned (matches contract logic)
+  // Effective supply = minted - burned + pending staking rewards (unminted but accrued).
+  // Including pending rewards prevents the "sawtooth" effect where claiming staking
+  // rewards mass-mints tokens and suddenly changes the S-ratio.
   const circulatingSupply = totalMinted
     ? Number(totalMinted.total_minted) - Number(burnStats?.total_burned ?? 0)
+      + Number(pendingRewards?.total_pending_rewards ?? 0)
     : 0;
 
   // PoW share from real on-chain state: powShare = 1 - S^alpha
@@ -387,25 +395,28 @@ function Mining() {
   const sessionStart = useAppSelector((s) => s.mining.sessionStart) ?? Date.now();
   const isNative = isTauri();
 
-  // Fetch available backends on mount (Tauri only)
+  // Fetch available backends on mount
   useEffect(() => {
-    if (!isNative) return;
-    invoke('get_mining_params')
-      .then((params: any) => {
-        if (params?.available_backends) {
-          setAvailableBackends(params.available_backends);
-        }
-        if (params?.cpu_cores && params.cpu_cores > 0) {
-          const cores = params.cpu_cores as number;
-          setCpuCores(cores);
-          // Bump thread count if it was capped by navigator.hardwareConcurrency
-          setThreadCount((prev) => {
-            const browserMax = Math.max(1, (navigator.hardwareConcurrency || 4) - 1);
-            return prev >= browserMax ? Math.max(1, cores - 1) : prev;
-          });
-        }
-      })
-      .catch(() => {});
+    if (isNative) {
+      invoke('get_mining_params')
+        .then((params: any) => {
+          if (params?.available_backends) {
+            setAvailableBackends(params.available_backends);
+          }
+          if (params?.cpu_cores && params.cpu_cores > 0) {
+            const cores = params.cpu_cores as number;
+            setCpuCores(cores);
+            // Bump thread count if it was capped by navigator.hardwareConcurrency
+            setThreadCount((prev) => {
+              const browserMax = Math.max(1, (navigator.hardwareConcurrency || 4) - 1);
+              return prev >= browserMax ? Math.max(1, cores - 1) : prev;
+            });
+          }
+        })
+        .catch(() => {});
+    } else {
+      setAvailableBackends(['cpu']);
+    }
   }, [isNative]);
 
   // Track current challenge so proof submission uses the values from when mining started
@@ -465,9 +476,11 @@ function Mining() {
     refetchTotalMinted();
     refetchTotalStaked();
     refetchBurnStats();
+    refetchPendingRewards();
     refetchMinerStats();
     refetchReward();
-  }, [refetchWindow, refetchBlock, refetchPeerWindow, refetchTotalMinted, refetchTotalStaked, refetchBurnStats, refetchMinerStats, refetchReward]);
+    refreshBalance();
+  }, [refetchWindow, refetchBlock, refetchPeerWindow, refetchTotalMinted, refetchTotalStaked, refetchBurnStats, refetchPendingRewards, refetchMinerStats, refetchReward, refreshBalance]);
 
   // Resync config + balance after proof submit (success or permanent failure)
   const resyncAfterProof = useCallback(() => {
@@ -523,9 +536,10 @@ function Mining() {
     const timer = setInterval(() => {
       refetchAll();
       refetchConfig();
+      verifier.checkAll(); // verify pending TXs even when WS is down
     }, interval);
     return () => clearInterval(timer);
-  }, [wsConnected, refetchAll, refetchConfig]);
+  }, [wsConnected, refetchAll, refetchConfig, verifier]);
 
   // Handle sleep/wake and network reconnection using platform-native events.
   // Desktop Tauri: window focus event (fires on Cmd+Tab, dock click, sleep/wake)
@@ -724,7 +738,7 @@ function Mining() {
       return;
     }
 
-    // WASM path: generate random challenge client-side (like lithium-cli).
+    // Web path: generate random challenge client-side (like lithium-cli).
     // The contract accepts any 32-byte challenge — no need to use block hash.
     // This avoids restarting workers every ~6s block change.
     const randomBytes = new Uint8Array(32);
@@ -847,26 +861,27 @@ function Mining() {
         }
       }
 
-      // Fire-and-forget: broadcast succeeded, register for async verification
-      console.log('[Mining] Proof broadcast OK, txHash:', broadcastResult.txHash);
+      // Broadcast succeeded — TX accepted into mempool (fire-and-forget)
+      console.log('[Mining] TX in mempool, txHash:', broadcastResult.txHash);
       logAction('proof_broadcast', `txHash=${broadcastResult.txHash} hash=${proof.hash.slice(0, 16)}`, 'ok');
 
-      // Update log entry to 'pending' with txHash
+      // Mark proof as submitted, register with verifier for confirmation tracking
       setProofLog((prev) =>
         prev.map((p) =>
           p.hash === proof.hash && (p.status === 'submitted' || p.status === 'retrying' || !p.txHash)
-            ? { ...p, txHash: broadcastResult.txHash, status: 'pending' }
+            ? { ...p, txHash: broadcastResult.txHash, status: 'submitted' }
             : p
         )
       );
 
-      // Register with verifier — will be confirmed/failed on next NewBlock event
+      // Verifier will poll getTx, extract miner_reward, and call handleProofConfirmed
       verifier.addPending({
         txHash: broadcastResult.txHash,
         proofHash: proof.hash,
         proofNonce: proof.nonce,
         submittedAt: Date.now(),
       });
+      if (isNative) invoke('report_proof_submitted').catch(() => {});
     },
     [signer, address, userDifficulty, referrer, isNative, logAction, broadcastContractTx, resetSequence, verifier]
   );
@@ -1076,20 +1091,21 @@ function Mining() {
         if (!autoMiningRef.current) return;
 
         // Check pending proofs from backend
+        const activeMiner = wasmMinerRef.current;
         let pendingProofs = 0;
         if (isNative) {
           const status = (await invoke('get_mining_status')) as MiningStatus;
           pendingProofs = status.pending_proofs;
-        } else if (wasmMinerRef.current) {
-          pendingProofs = wasmMinerRef.current.getStatus().pending_proofs;
+        } else if (activeMiner) {
+          pendingProofs = activeMiner.getStatus().pending_proofs;
         }
 
         if (pendingProofs > 0) {
           let proofs: Proof[];
           if (isNative) {
             proofs = (await invoke('take_proofs')) as Proof[];
-          } else if (wasmMinerRef.current) {
-            proofs = wasmMinerRef.current.takeProofs();
+          } else if (activeMiner) {
+            proofs = activeMiner.takeProofs();
           } else {
             proofs = [];
           }
@@ -1172,7 +1188,7 @@ function Mining() {
       };
     }
 
-    // WASM: check if persistent miner is still running (survives navigation)
+    // Check if persistent miner is still running (survives navigation)
     if (persistentWasmMiner) {
       const status = persistentWasmMiner.getStatus();
       if (status.mining) {
@@ -1204,11 +1220,11 @@ function Mining() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Auto-start WASM mining when autoMining is true but workers aren't running yet
+  // Auto-start web mining when autoMining is true but no miner is running yet
   // (happens after reload when deps become ready)
   useEffect(() => {
     if (!autoMining || isNative || persistentWasmMiner || !canMine) return;
-    console.log('[Mining] Dependencies ready, starting WASM miners');
+    console.log('[Mining] Dependencies ready, starting web miners');
     startMiningRound().then(() => startPolling());
   }, [autoMining, canMine, startMiningRound, startPolling, isNative]);
 
@@ -1228,26 +1244,27 @@ function Mining() {
     }).catch((err) => console.warn('[Mining] update_challenge failed:', err));
   }, [autoMining, latestBlock, isNative]);
 
-  // WASM: rotate challenge before it expires (max_proof_age).
-  // Unlike native which uses block hashes, WASM generates random challenges
-  // and mines continuously. Rotate at 80% of max_proof_age to leave submission margin.
+  // Web mining: rotate challenge before it expires (max_proof_age).
+  // Unlike native which uses block hashes, web miners generate random challenges
+  // and mine continuously. Rotate at 80% of max_proof_age to leave submission margin.
   useEffect(() => {
-    if (!autoMining || isNative || !persistentWasmMiner) return;
+    const activeMiner = persistentWasmMiner;
+    if (!autoMining || isNative || !activeMiner) return;
     const maxAge = config?.max_proof_age ?? 3600;
     const rotateAfterMs = maxAge * 0.8 * 1000; // 80% of max age
 
     const timer = setInterval(() => {
-      const elapsed = Date.now() - challengeCreatedAtRef.current;
-      if (elapsed >= rotateAfterMs) {
+      const elapsed_ = Date.now() - challengeCreatedAtRef.current;
+      if (elapsed_ >= rotateAfterMs) {
         const randomBytes = new Uint8Array(32);
         crypto.getRandomValues(randomBytes);
         const newChallenge = Array.from(randomBytes, (b) => b.toString(16).padStart(2, '0')).join('');
         const timestamp = Math.floor(Date.now() / 1000) - 5;
-        console.log('[Mining] Rotating challenge (age:', Math.round(elapsed / 1000), 's), new:', newChallenge.slice(0, 16));
+        console.log('[Mining] Rotating challenge (age:', Math.round(elapsed_ / 1000), 's), new:', newChallenge.slice(0, 16));
         challengeRef.current = newChallenge;
         blockTimestampRef.current = timestamp;
         challengeCreatedAtRef.current = Date.now();
-        persistentWasmMiner.start(newChallenge, userDifficulty);
+        activeMiner.start(newChallenge, userDifficulty);
       }
     }, 30_000); // Check every 30s
 
@@ -1298,10 +1315,12 @@ function Mining() {
     try {
       if (isNative) {
         await invoke('stop_mining');
-      } else if (persistentWasmMiner) {
-        persistentWasmMiner.destroy();
-        persistentWasmMiner = null;
-        wasmMinerRef.current = null;
+      } else {
+        if (persistentWasmMiner) {
+          persistentWasmMiner.destroy();
+          persistentWasmMiner = null;
+          wasmMinerRef.current = null;
+        }
       }
     } catch (err) {
       console.error('[Mining] Failed to stop mining', err);

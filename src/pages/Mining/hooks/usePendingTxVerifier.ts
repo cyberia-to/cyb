@@ -52,17 +52,17 @@ export default function usePendingTxVerifier(
               return;
             }
 
-            // Extract miner_reward from events
+            // Extract miner_reward from events (prefer miner_reward over gross reward)
             const allEvents: TxEvent[] = [...(tx.events || [])];
             let reward = 0;
             const wasmEvent = allEvents.find(
               (e) => e.type === 'wasm' && e.attributes?.some(
-                (a) => a.key === 'miner_reward' || a.key === 'reward'
+                (a) => a.key === 'miner_reward'
               )
             );
             if (wasmEvent) {
               const rewardAttr = wasmEvent.attributes?.find(
-                (a) => a.key === 'miner_reward' || a.key === 'reward'
+                (a) => a.key === 'miner_reward'
               );
               if (rewardAttr?.value) {
                 reward = Number(rewardAttr.value) / 1_000_000;

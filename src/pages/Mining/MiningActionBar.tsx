@@ -1,7 +1,10 @@
+import { useState } from 'react';
 import ActionBar from 'src/components/actionBar';
 import { Dots } from 'src/components';
 import BackendSelector from './components/BackendSelector';
 import ThreadSelector from './components/ThreadSelector';
+
+const MAX_DIFFICULTY = 64;
 
 type MiningStatus = {
   mining: boolean;
@@ -35,6 +38,110 @@ type Props = {
   countdownSeconds?: number;
 };
 
+function DifficultySelector({
+  value,
+  min,
+  max,
+  disabled,
+  onChange,
+}: {
+  value: number;
+  min: number;
+  max: number;
+  disabled: boolean;
+  onChange: (v: number) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+
+  const startEditing = () => {
+    if (disabled) return;
+    setDraft(String(value));
+    setEditing(true);
+  };
+
+  const commitDraft = () => {
+    setEditing(false);
+    const n = parseInt(draft, 10);
+    if (Number.isNaN(n)) return;
+    onChange(Math.max(min, Math.min(max, n)));
+  };
+
+  const btnStyle: React.CSSProperties = {
+    background: 'transparent',
+    border: '1px solid rgba(54, 214, 174, 0.3)',
+    borderRadius: 3,
+    color: '#36d6ae',
+    fontSize: 12,
+    cursor: 'pointer',
+    padding: '0 4px',
+    lineHeight: '18px',
+  };
+
+  return (
+    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 12 }}>
+      <span style={{ color: '#888' }}>d:</span>
+      <button
+        type="button"
+        onClick={() => { if (value > min) onChange(value - 1); }}
+        disabled={disabled || value <= min}
+        style={btnStyle}
+      >
+        −
+      </button>
+      {editing ? (
+        <input
+          type="text"
+          inputMode="numeric"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value.replace(/\D/g, ''))}
+          onBlur={commitDraft}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') commitDraft();
+            if (e.key === 'Escape') setEditing(false);
+          }}
+          autoFocus
+          style={{
+            width: 28,
+            textAlign: 'center',
+            color: '#36d6ae',
+            fontFamily: 'monospace',
+            fontSize: 12,
+            background: 'transparent',
+            border: '1px solid rgba(54, 214, 174, 0.5)',
+            borderRadius: 3,
+            outline: 'none',
+            padding: 0,
+          }}
+        />
+      ) : (
+        <span
+          onClick={startEditing}
+          title="Click to type difficulty"
+          style={{
+            minWidth: 24,
+            textAlign: 'center',
+            color: '#36d6ae',
+            fontFamily: 'monospace',
+            fontSize: 12,
+            cursor: disabled ? 'default' : 'pointer',
+          }}
+        >
+          {value}
+        </span>
+      )}
+      <button
+        type="button"
+        onClick={() => { if (value < max) onChange(value + 1); }}
+        disabled={disabled || value >= max}
+        style={btnStyle}
+      >
+        +
+      </button>
+    </span>
+  );
+}
+
 function MiningActionBar({
   difficulty,
   minDifficulty,
@@ -64,53 +171,14 @@ function MiningActionBar({
   const selectors = (
     <span style={{ display: 'inline-flex', alignItems: 'center', gap: 12 }}>
       {/* Difficulty selector */}
-      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 2, fontSize: 12 }}>
-        <span style={{ color: '#888' }}>d:</span>
-        <button
-          type="button"
-          onClick={() => { if (difficulty > minDifficulty) onDifficultyChange(difficulty - 1); }}
-          disabled={!!disabled || difficulty <= minDifficulty}
-          style={{
-            background: 'transparent',
-            border: '1px solid rgba(54, 214, 174, 0.3)',
-            borderRadius: 3,
-            color: '#36d6ae',
-            fontSize: 12,
-            cursor: 'pointer',
-            padding: '0 4px',
-            lineHeight: '18px',
-          }}
-        >
-          −
-        </button>
-        <span style={{
-          minWidth: 24,
-          textAlign: 'center',
-          color: '#36d6ae',
-          fontFamily: 'monospace',
-          fontSize: 12,
-        }}>
-          {difficulty}
-        </span>
-        <button
-          type="button"
-          onClick={() => { if (difficulty < 64) onDifficultyChange(difficulty + 1); }}
-          disabled={!!disabled || difficulty >= 64}
-          style={{
-            background: 'transparent',
-            border: '1px solid rgba(54, 214, 174, 0.3)',
-            borderRadius: 3,
-            color: '#36d6ae',
-            fontSize: 12,
-            cursor: 'pointer',
-            padding: '0 4px',
-            lineHeight: '18px',
-          }}
-        >
-          +
-        </button>
-      </span>
-      {isNative && availableBackends.length > 1 && (
+      <DifficultySelector
+        value={difficulty}
+        min={minDifficulty}
+        max={MAX_DIFFICULTY}
+        disabled={!!disabled}
+        onChange={onDifficultyChange}
+      />
+      {availableBackends.length > 1 && (
         <BackendSelector
           value={backend}
           onChange={onBackendChange}
@@ -119,7 +187,7 @@ function MiningActionBar({
           disabled={disabled}
         />
       )}
-      {(!isNative || backend === 'cpu') && (
+      {backend === 'cpu' && (
         <ThreadSelector
           value={threadCount}
           onChange={onThreadCountChange}

@@ -17,11 +17,11 @@ function useRewardEstimate(
   const rewardResp = data as RewardCalculationResponse | undefined;
 
   // Contract returns gross_reward = base_rate * d — the TOTAL reward before split.
-  // The actual split in execute_submit_proof:
-  //   staking_reward = gross * S^alpha
-  //   pow_reward     = gross - staking_reward
-  //   referral       = pow_reward * 10%
-  //   miner_reward   = pow_reward - referral
+  // The actual split in execute_submit_proof (spec §5):
+  //   referral       = gross * 10%
+  //   post_referral  = gross * 90%
+  //   staking_reward = post_referral * S^alpha
+  //   miner_reward   = post_referral - staking_reward = gross * 0.9 * (1 - S^alpha)
   const grossReward =
     difficulty !== undefined && rewardResp
       ? Number(rewardResp.gross_reward ?? 0) / 1_000_000

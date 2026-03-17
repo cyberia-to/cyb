@@ -133,8 +133,9 @@ export default function useSharedTxSender(
   );
 
   /**
-   * Fire-and-forget: sign + broadcast, increment sequence, return txHash.
-   * No getTx polling — caller is responsible for async verification.
+   * Sign + broadcast to mempool, increment sequence, return txHash.
+   * Fire-and-forget: does NOT wait for block inclusion.
+   * Caller should use the verifier to track confirmation and extract events.
    * Uses the same mutex + sequence counter as sendContractTx.
    */
   const broadcastContractTx = useCallback(
@@ -183,13 +184,25 @@ export default function useSharedTxSender(
 
         const txRaw = await signingClient.sign(account.address, [encodeMsg], fee, '', signerData);
         const txBytes = TxRaw.encode(txRaw).finish();
-        const broadcastResult = await signingClient.broadcastTx(txBytes);
 
-        // Increment sequence immediately — TX consumes sequence regardless of DeliverTx outcome
+        // broadcastTxSync: submits to mempool (CheckTx) and returns immediately
+        const cometClient = (signingClient as any).getCometClient?.() || (signingClient as any).forceGetCometClient?.();
+        if (!cometClient) {
+          throw new Error('Cannot access CometClient for sync broadcast');
+        }
+        const syncResult = await cometClient.broadcastTxSync({ tx: txBytes });
+
+        // CheckTx failure = TX rejected by mempool (bad sequence, out of gas, etc.)
+        if (syncResult.code !== 0) {
+          throw new Error(`CheckTx failed (code ${syncResult.code}): ${syncResult.log || 'unknown'}`);
+        }
+
+        // Increment sequence immediately — TX accepted into mempool
         seqRef.current.sequence += 1;
 
-        console.log('[TxSender] Broadcast OK, txHash:', broadcastResult.transactionHash);
-        return { txHash: broadcastResult.transactionHash };
+        const txHash = syncResult.hash ? Buffer.from(syncResult.hash).toString('hex').toUpperCase() : '';
+        console.log('[TxSender] Mempool accepted, txHash:', txHash);
+        return { txHash };
       } catch (err: any) {
         const errText = (err?.message || '').toLowerCase();
 

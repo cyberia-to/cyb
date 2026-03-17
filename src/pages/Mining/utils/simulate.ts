@@ -69,16 +69,18 @@ const FEE_PER_TRANSFER = 0.01; // 1% fee per transfer
 const AVERAGE_TRANSFER_AMOUNT = 50; // average LI per transfer (assumption)
 
 function computeSplit(stakedFraction: number, alpha: number) {
-  // R_pow_share = 1 - S^alpha (PoW share)
-  // R_pos_share = S^alpha (PoS share)
+  // Spec §5: 10% referral from gross, 90% split between stakers/miners
   const sAlpha = stakedFraction > 0 && alpha > 0 ? Math.pow(stakedFraction, alpha) : 0;
-  const powShare = 1 - sAlpha;
-  const posShare = sAlpha;
+  const postReferral = 1 - REFERRAL_SHARE; // 90% of gross
 
-  // Referral comes from PoW share
-  const referralPercent = powShare * REFERRAL_SHARE * 100;
-  const miningPercent = powShare * (1 - REFERRAL_SHARE) * 100;
-  const stakingPercent = posShare * 100;
+  // Percentages of gross emission going to each recipient
+  const referralPercent = REFERRAL_SHARE * 100; // 10%
+  const miningPercent = postReferral * (1 - sAlpha) * 100;
+  const stakingPercent = postReferral * sAlpha * 100;
+
+  // powShare = miner's fraction of gross (for base_rate calibration)
+  const powShare = postReferral * (1 - sAlpha);
+  const posShare = postReferral * sAlpha;
   return {
     miningPercent,
     stakingPercent,
@@ -123,9 +125,9 @@ export function simulate(params: SimParams): SimResult {
     ? (grossRatePerSecond * powShare) / dRate
     : 0;
 
-  // reward per proof = base_rate * d (minus referral cut for miner)
-  const grossRewardPerProof = baseRate * params.difficultyBits;
-  const rewardPerProof = grossRewardPerProof * (1 - REFERRAL_SHARE);
+  // reward per proof = base_rate * d
+  // powShare already includes the post-referral factor (0.9), so no extra cut needed
+  const rewardPerProof = baseRate * params.difficultyBits;
 
   // Per-split emission (per hour for readability)
   const emissionPerHour = emissionPerSecond * 3600;

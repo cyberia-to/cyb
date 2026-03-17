@@ -43,38 +43,38 @@ function StakingSection({ logAction, sendContractTx }: Props) {
   const { data: burnStatsData, refetch: refetchBurnStats } = useQueryContract(LITIUM_CORE_CONTRACT, {
     burn_stats: {},
   });
+  const { data: pendingRewardsData, refetch: refetchPendingRewards } = useQueryContract(LITIUM_STAKE_CONTRACT, {
+    total_pending_rewards: {},
+  });
 
   const totalStaked = totalStakedData as TotalStakedResponse | undefined;
   const totalMinted = totalMintedData as TotalMintedResponse | undefined;
   const windowStatus = windowData as WindowStatusResponse | undefined;
   const burnStats = burnStatsData as BurnStatsResponse | undefined;
+  const pendingRewards = pendingRewardsData as { total_pending_rewards: string } | undefined;
 
   const totalStakedLi = totalStaked ? Number(totalStaked.total_staked) / 1_000_000 : 0;
-  // Circulating supply = minted - burned (matches contract logic)
+  // Effective supply = minted - burned + pending staking rewards (unminted but accrued)
   const circulatingLi = totalMinted
-    ? (Number(totalMinted.total_minted) - Number(burnStats?.total_burned ?? 0)) / 1_000_000
+    ? (Number(totalMinted.total_minted) - Number(burnStats?.total_burned ?? 0)
+      + Number(pendingRewards?.total_pending_rewards ?? 0)) / 1_000_000
     : 0;
 
   // Staked % of circulating supply
   const stakedPercent = circulatingLi > 0 ? (totalStakedLi / circulatingLi) * 100 : 0;
 
-  // Forward-looking APR (like Cosmos SDK / SushiSwap):
-  // Uses current emission parameters to predict annual staking yield.
-  // APR = base_rate * D_rate * S^alpha * SECONDS_PER_YEAR / total_staked * 100
-  //
-  // Where:
-  //   base_rate = LI reward per difficulty bit (atomic)
-  //   D_rate = network difficulty bits per second
-  //   S^alpha = staking share of gross reward
-  //   total_staked = total staked tokens (atomic)
+  // Forward-looking APR (spec §5):
+  // Staking gets S^alpha of 90% post-referral gross emission.
+  // APR = base_rate * D_rate * 0.9 * S^alpha * SECONDS_PER_YEAR / total_staked * 100
   const baseRate = windowStatus ? Number(windowStatus.base_rate) : 0;
   const dRate = windowStatus ? Number(windowStatus.window_d_rate) : 0;
   const alpha = windowStatus ? Number(windowStatus.alpha) : 0;
   const stakedFraction = circulatingLi > 0 ? totalStakedLi / circulatingLi : 0;
   const stakingShare = stakedFraction > 0 && alpha > 0 ? Math.pow(stakedFraction, alpha) : 0;
+  const postReferralShare = 0.9; // 10% of gross goes to referral program
 
   const stakingApr = totalStakedLi > 0 && baseRate > 0 && dRate > 0
-    ? (baseRate * dRate * stakingShare * SECONDS_PER_YEAR) / (totalStakedLi * 1_000_000) * 100
+    ? (baseRate * dRate * postReferralShare * stakingShare * SECONDS_PER_YEAR) / (totalStakedLi * 1_000_000) * 100
     : 0;
 
   // CW20 balance (what miners actually receive and can stake)
@@ -125,6 +125,7 @@ function StakingSection({ logAction, sendContractTx }: Props) {
           refetchTotalMinted();
           refetchStakingStats();
           refetchBurnStats();
+          refetchPendingRewards();
         }, 2000);
       } catch (err: any) {
         const errMsg = err?.message?.slice(0, 120) || 'Failed';
@@ -134,7 +135,7 @@ function StakingSection({ logAction, sendContractTx }: Props) {
         setBusy(false);
       }
     },
-    [address, refetch, refetchBalance, refetchTotalStaked, refetchTotalMinted, refetchStakingStats, refetchBurnStats, logAction, sendContractTx]
+    [address, refetch, refetchBalance, refetchTotalStaked, refetchTotalMinted, refetchStakingStats, refetchBurnStats, refetchPendingRewards, logAction, sendContractTx]
   );
 
   // Stake: send CW20 tokens to stake contract via litium-core's `send`
