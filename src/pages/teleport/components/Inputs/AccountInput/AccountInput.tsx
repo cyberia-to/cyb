@@ -162,7 +162,11 @@ function AccountInput({ recipient, setRecipient, title = PLACEHOLDER_TITLE }: Pr
 
   if (!isOpen && recipient) {
     return (
-      <button type="button" onClick={() => setIsOpen(true)} className={styles.containerBtnValue}>
+      <button type="button" onClick={() => {
+        setRecipient(undefined);
+        setValueRecipient('');
+        setIsOpen(true);
+      }} className={styles.containerBtnValue}>
         <LinearGradientContainer color={Color.Green} title={title}>
           <Account avatar disabled address={recipient} styleUser={{ height: '42px' }} />
         </LinearGradientContainer>

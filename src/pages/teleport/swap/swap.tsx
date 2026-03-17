@@ -34,7 +34,7 @@ function Swap() {
   const { addressActive } = useSetActiveAddress(defaultAccount);
   const dataSwapTxs = useGetSendTxsByAddressByType(
     addressActive,
-    'tendermint.liquidity.v1beta1.MsgSwapWithinBatch'
+    'cyber.liquidity.v1beta1.MsgSwapWithinBatch'
   );
   const poolsData = usePoolListInterval({ refetchInterval: 5 * 60 * 1000 });
   const params = useGetParams();

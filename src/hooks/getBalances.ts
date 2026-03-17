@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { DENOM_LIQUID } from 'src/constants/config';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { authAccounts } from '../utils/search/utils';
@@ -47,9 +47,48 @@ function useGetBalances(addressActive: string | undefined) {
   const [liquidBalances, setLiquidBalances] = useState(null);
   const [_update, setUpdate] = useState(0);
 
-  const refresh = () => {
+  const pollingRef = useRef<ReturnType<typeof setInterval>>();
+  const snapshotRef = useRef<string | null>(null);
+
+  const stopPolling = useCallback(() => {
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+      pollingRef.current = undefined;
+    }
+  }, []);
+
+  const fetchBalances = useCallback(async () => {
+    if (!queryClient || !addressActive) return null;
+    const result = await queryClient.getAllBalances(addressActive);
+    return reduceBalances(result);
+  }, [queryClient, addressActive]);
+
+  const refresh = useCallback(() => {
     setUpdate((item) => item + 1);
-  };
+
+    // Snapshot current balance for change detection
+    if (allBalances) {
+      snapshotRef.current = JSON.stringify(allBalances);
+    }
+
+    stopPolling();
+    let count = 0;
+    pollingRef.current = setInterval(async () => {
+      count++;
+      const balances = await fetchBalances();
+      if (balances && JSON.stringify(balances) !== snapshotRef.current) {
+        setAllBalances(balances);
+        stopPolling();
+        return;
+      }
+      if (count >= 30) {
+        stopPolling();
+      }
+    }, 10000);
+  }, [allBalances, fetchBalances, stopPolling]);
+
+  // Cleanup polling on unmount
+  useEffect(() => () => stopPolling(), [stopPolling]);
 
   useEffect(() => {
     const getAllBalances = async () => {

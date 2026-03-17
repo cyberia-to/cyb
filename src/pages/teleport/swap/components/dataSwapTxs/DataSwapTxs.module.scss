@@ -19,6 +19,7 @@ $color-text: #777777;
 
 .containerSwapImg {
   display: flex;
+  align-items: center;
   gap: 5px;
 
   img {
@@ -28,7 +29,7 @@ $color-text: #777777;
 
 .containerPrice {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
 
   img {
     @include img-size;

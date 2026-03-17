@@ -29,6 +29,10 @@ export const ibcDenomAtom = 'ibc/15E9C5CF5969080539DB395FA7D9C0868265217EFC52843
 
 const isCyberChain = (chainId: string) => chainId === CHAIN_ID;
 
+// Only osmosis is fully operational; space-pussy is shown but greyed out
+const ACTIVE_NETWORKS = new Set(['osmosis-1']);
+const VISIBLE_NETWORKS = ['osmosis-1', 'space-pussy'];
+
 function Bridge() {
   const { tracesDenom } = useIbcDenom();
   const { channels } = useChannels();
@@ -111,11 +115,23 @@ function Bridge() {
   const networkOptions = useCallback(
     () =>
       channels
-        ? [CHAIN_ID, ...Object.keys(channels)].map((key) => ({
-            value: key,
-            text: <DenomArr type="network" denomValue={key} onlyText tooltipStatusText={false} />,
-            img: <DenomArr type="network" denomValue={key} onlyImg tooltipStatusImg={false} />,
-          }))
+        ? [CHAIN_ID, ...VISIBLE_NETWORKS.filter((key) => key in channels)]
+            .map((key) => {
+              const inactive = key !== CHAIN_ID && !ACTIVE_NETWORKS.has(key);
+              return {
+                value: key,
+                text: (
+                  <span style={inactive ? { opacity: 0.4 } : undefined}>
+                    <DenomArr type="network" denomValue={key} onlyText tooltipStatusText={false} />
+                  </span>
+                ),
+                img: (
+                  <span style={inactive ? { opacity: 0.4 } : undefined}>
+                    <DenomArr type="network" denomValue={key} onlyImg tooltipStatusImg={false} />
+                  </span>
+                ),
+              };
+            })
         : [],
     [channels]
   );
