@@ -1,3 +1,10 @@
+[build]
+  command = "deno install && deno task build"
+  publish = "build"
+
+[build.environment]
+  NODE_VERSION = "20"
+  DENO_VERSION = "v2.1.4"
+
 [[plugins]]
   package = "./netlify/prebuild/"
-  

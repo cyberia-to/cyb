@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
 import { Dots } from 'src/components';
 import { Props as AdviserProps } from 'src/features/adviser/Adviser/Adviser';
 import { useSetAdviser } from 'src/features/adviser/context';
@@ -48,7 +47,7 @@ function useAdviserTexts(
     if (error && !messageShowed) {
       adviserText = (
         <p>
-          {error} {txHash && <Link to={routes.txExplorer.getLink(txHash)}>check tx</Link>}
+          {error} {txHash && <a href={routes.txExplorer.getLink(txHash)}>check tx</a>}
         </p>
       );
       color = 'red';

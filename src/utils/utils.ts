@@ -314,8 +314,8 @@ const selectNetworkImg = (network) => {
   }
 };
 
-const sha256 = (data) => {
-  return new Uint8Array(new Sha256().update(data).digest());
+const sha256 = (data: string) => {
+  return new Uint8Array(new Sha256().update(new TextEncoder().encode(data)).digest());
 };
 
 function getDenomHash(path, baseDenom) {

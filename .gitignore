@@ -36,8 +36,10 @@ storybook-static
 # WASM build artifacts (installed via uhash-web npm package)
 public/wasm
 
-# Kubo IPFS sidecar binaries (downloaded via make download-kubo)
+# Tauri build artifacts
 src-tauri/bin/
+src-tauri/gen/
+src-tauri/target/
 
 # Deno
 deno.lock

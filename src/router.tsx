@@ -37,7 +37,7 @@ import TxsDetails from './containers/txs/txsDetails';
 import Warp from './containers/warp/Warp';
 import WarpDashboardPools from './containers/warp/WarpDashboardPools';
 import { CodePage, Codes, ContractPage, DashboardPage } from './containers/wasm';
-import { AnalyticsProvider } from './contexts/analytics';
+
 import StudioWrapper from './features/studio/StudioWrapper';
 import Keys from './pages/Keys/Keys';
 import OracleLanding from './pages/oracle/landing/OracleLanding';
@@ -107,7 +107,6 @@ function RedirectToRobot() {
 function AppRouter() {
   return (
     <WrappedRouter>
-      <AnalyticsProvider>
         <Routes>
           <Route path={routes.home.path} element={<App />}>
             <Route index element={<OracleLanding />} />
@@ -253,7 +252,6 @@ function AppRouter() {
             <Route path="*" element={<PageNotExist />} />
           </Route>
         </Routes>
-      </AnalyticsProvider>
     </WrappedRouter>
   );
 }

@@ -50,6 +50,8 @@ function Swap() {
   const [isExceeded, setIsExceeded] = useState<boolean>(false);
   const poolPrice = useGetSwapPrice(tokenA, tokenB, tokenAPoolAmount, tokenBPoolAmount);
   const firstEffectOccured = useRef(false);
+  const skipRecalc = useRef(false);
+  const tokenAAmountRef = useRef('');
   const [tokenABalance, setTokenABalance] = useState(0);
   const [tokenBBalance, setTokenBBalance] = useState(0);
 
@@ -143,24 +145,69 @@ function Swap() {
         setSwapPrice(0);
       }
 
+      const counterPairStr = counterPairAmount.toString(10);
       if (isReverse) {
-        setTokenBAmount(inputAmount);
-        setTokenAAmount(counterPairAmount.toString(10));
+        setTokenBAmount(String(inputAmount));
+        setTokenAAmount(counterPairStr);
       } else {
-        setTokenAAmount(inputAmount);
-        setTokenBAmount(counterPairAmount.toString(10));
+        setTokenAAmount(String(inputAmount));
+        setTokenBAmount(counterPairStr);
       }
     },
     [tokenAPoolAmount, tokenB, tokenA, tokenBPoolAmount, tokenACoinDecimals, tokenBCoinDecimals]
   );
 
+  // Recalculate only the output (tokenB + swapPrice) without touching tokenA.
+  // This prevents the feedback loop where setting tokenA triggers InputNumber
+  // re-render → onValueChange → amountChangeHandler → setTokenA → loop.
+  const recalcOutput = useCallback(
+    (inputAmount: string) => {
+      if (tokenAPoolAmount && tokenBPoolAmount && Number(inputAmount) > 0) {
+        const state = {
+          tokenB,
+          tokenA,
+          tokenBPoolAmount,
+          tokenAPoolAmount,
+          coinDecimalsA: tokenACoinDecimals,
+          coinDecimalsB: tokenBCoinDecimals,
+          isReverse: false,
+        };
+
+        const { counterPairAmount, price } = calculatePairAmount(inputAmount, state);
+        setSwapPrice(price.toNumber());
+        setTokenBAmount(counterPairAmount.toString(10));
+      } else {
+        setSwapPrice(0);
+        setTokenBAmount('0');
+      }
+    },
+    [tokenAPoolAmount, tokenB, tokenA, tokenBPoolAmount, tokenACoinDecimals, tokenBCoinDecimals]
+  );
+
+  const recalcOutputRef = useRef<typeof recalcOutput>(null!);
   useEffect(() => {
-    // update swap price for current amount tokenA
-    if (update || new BigNumber(tokenAAmount).comparedTo(0)) {
-      amountChangeHandler(tokenAAmount, TokenSetterId.tokenAAmount);
+    recalcOutputRef.current = recalcOutput;
+  }, [recalcOutput]);
+
+  // Keep tokenAAmountRef in sync
+  useEffect(() => {
+    tokenAAmountRef.current = tokenAAmount;
+  }, [tokenAAmount]);
+
+  useEffect(() => {
+    // Recalculate output when pool data changes or update is triggered.
+    // tokenAAmount is read from ref to avoid being a dependency —
+    // user input already calls amountChangeHandler directly.
+    if (skipRecalc.current) {
+      skipRecalc.current = false;
+      return;
+    }
+    const amount = tokenAAmountRef.current;
+    if (Number(amount) > 0) {
+      recalcOutputRef.current(amount);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [update, amountChangeHandler, tokenAAmount]);
+  }, [update, tokenAPoolAmount, tokenBPoolAmount]);
 
   const validInputAmountTokenA = useMemo(() => {
     const isValid = Number(tokenAAmount) > 0 && !!tokenABalance;
@@ -192,19 +239,38 @@ function Swap() {
     return 0;
   }, [poolPrice, swapPrice]);
 
+  const CHAIN_MIN_OFFER_AMOUNT = 100; // chain rejects offers below 100 base units
+
+  const belowMinAmount = useMemo(() => {
+    if (!tokenAAmount || Number(tokenAAmount) <= 0) {
+      return false;
+    }
+    const rawAmount = new BigNumber(tokenAAmount).shiftedBy(tokenACoinDecimals);
+    return rawAmount.isLessThan(CHAIN_MIN_OFFER_AMOUNT);
+  }, [tokenAAmount, tokenACoinDecimals]);
+
+  const exceedsMaxOrderRatio = useMemo(() => {
+    if (!tokenAPoolAmount || !tokenAAmount || !tokenACoinDecimals) {
+      return false;
+    }
+    const rawAmount = new BigNumber(tokenAAmount).shiftedBy(tokenACoinDecimals);
+    const maxOrderable = new BigNumber(tokenAPoolAmount).multipliedBy(0.1);
+    return rawAmount.isGreaterThan(maxOrderable);
+  }, [tokenAAmount, tokenAPoolAmount, tokenACoinDecimals]);
+
   useEffect(() => {
     // validation swap
     let exceeded = true;
 
     const validTokenAmountA = !validInputAmountTokenA && Number(tokenAAmount) > 0;
 
-    // check pool , check slippage 3%
-    if (poolPrice !== 0 && validTokenAmountA && useGetSlippage < 3) {
+    // check pool, check slippage 3%, check max order ratio 10%, check min amount
+    if (poolPrice !== 0 && validTokenAmountA && useGetSlippage < 3 && !exceedsMaxOrderRatio && !belowMinAmount) {
       exceeded = false;
     }
 
     setIsExceeded(exceeded);
-  }, [poolPrice, tokenAAmount, validInputAmountTokenA, useGetSlippage]);
+  }, [poolPrice, tokenAAmount, validInputAmountTokenA, useGetSlippage, exceedsMaxOrderRatio, belowMinAmount]);
 
   const pairPrice = useMemo(() => {
     const isValid = poolPrice && tokenA && tokenB;
@@ -247,6 +313,10 @@ function Swap() {
   }
 
   const updateFunc = useCallback(() => {
+    skipRecalc.current = true;
+    setTokenAAmount('');
+    setTokenBAmount('');
+    setSwapPrice(0);
     setUpdate((item) => item + 1);
     dataSwapTxs.refetch();
     refreshBalances();
@@ -268,31 +338,20 @@ function Swap() {
 
   useEffect(() => {
     if (firstEffectOccured.current) {
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-      const query = {
-        from: tokenA,
-        to: tokenB,
-      };
-
-      if (Number(tokenAAmount) > 0) {
-        query.amount = tokenAAmount;
-      }
-
-      setSearchParams(createSearchParams(query), { replace: true });
+      setSearchParams(createSearchParams({ from: tokenA, to: tokenB }), { replace: true });
     } else {
       firstEffectOccured.current = true;
       const param = Object.fromEntries(searchParams.entries());
       if (Object.keys(param).length > 0) {
-        const { from, to, amount } = param;
-        setTokenA(from);
-        setTokenB(to);
-        if (Number(amount) > 0) {
-          setTokenAAmount(amount);
-          amountChangeHandler(amount, TokenSetterId.tokenAAmount);
-        }
+        const { from, to } = param;
+        if (from) setTokenA(from);
+        if (to) setTokenB(to);
+        // clean URL: remove stale params like amount
+        setSearchParams(createSearchParams({ from: from || tokenA, to: to || tokenB }), { replace: true });
       }
     }
-  }, [tokenA, tokenB, tokenAAmount, setSearchParams, searchParams, amountChangeHandler]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tokenA, tokenB, setSearchParams]);
 
   const getPercentsOfToken = useCallback(() => {
     return tokenABalance > 0
@@ -315,8 +374,18 @@ function Swap() {
     poolPrice,
   };
 
+  const adviserText = useMemo(() => {
+    if (belowMinAmount) {
+      return 'amount too small: minimum 100 base units required by chain';
+    }
+    if (exceedsMaxOrderRatio) {
+      return 'amount exceeds 10% of pool reserves';
+    }
+    return 'swap tokens';
+  }, [belowMinAmount, exceedsMaxOrderRatio]);
+
   useAdviserTexts({
-    defaultText: 'swap tokens',
+    defaultText: adviserText,
   });
 
   return (
@@ -333,6 +402,8 @@ function Swap() {
             onChangeSelect={setTokenA}
             amountChangeHandler={amountChangeHandler}
             validInputAmount={validInputAmountTokenA}
+            warningAmount={exceedsMaxOrderRatio}
+            warningAmountText="exceeds 10% of pool reserves"
             autoFocus
           />
 
@@ -341,7 +412,16 @@ function Swap() {
             onChange={setPercentageBalanceHook}
             onSwapClick={() => tokenChange()}
             tokenPair={pairPrice}
-            text={<Slippage value={useGetSlippage} />}
+            text={
+              <>
+                <Slippage value={useGetSlippage} />
+                {Number(tokenAAmount) > 0 && (
+                  <span style={{ color: 'var(--grayscale-dark)', fontSize: '0.75rem', marginLeft: 8 }}>
+                    fee (0.3%): <span style={{ color: 'var(--grayscale-primary)' }}>{new BigNumber(tokenAAmount).multipliedBy(0.003).dp(tokenACoinDecimals > 0 ? tokenACoinDecimals : 2).toString()}</span>
+                  </span>
+                )}
+              </>
+            }
           />
 
           <TokenSetterSwap

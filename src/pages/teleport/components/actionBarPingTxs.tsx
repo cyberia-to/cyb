@@ -1,5 +1,5 @@
 import { ActionBar as ActionBarContainer } from '@cybercongress/gravity';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { Option } from 'src/types';
 import {
@@ -21,17 +21,30 @@ function ActionBarPingTxs({ stageActionBarStaps }) {
   const { stage, setStage, clearState, txHash, errorMessageProps, updateFunc } =
     stageActionBarStaps;
 
+  // Use ref for updateFunc to avoid restarting the polling loop when it changes
+  const updateFuncRef = useRef(updateFunc);
   useEffect(() => {
+    updateFuncRef.current = updateFunc;
+  }, [updateFunc]);
+
+  useEffect(() => {
+    let retries = 0;
+    let cancelled = false;
+    const MAX_RETRIES = 20;
+
     const confirmTx = async () => {
-      if (queryClient && txHash) {
-        setStage(STAGE_CONFIRMING);
+      if (cancelled || !queryClient || !txHash) return;
+
+      setStage(STAGE_CONFIRMING);
+      try {
         const response = await queryClient.getTx(txHash);
+        if (cancelled) return;
         if (response !== null) {
           if (response.code === 0) {
             setStage(STAGE_CONFIRMED);
             setTxHeight(response.height);
-            if (updateFunc) {
-              updateFunc();
+            if (updateFuncRef.current) {
+              updateFuncRef.current();
             }
             return;
           }
@@ -42,12 +55,26 @@ function ActionBarPingTxs({ stageActionBarStaps }) {
             return;
           }
         }
-        setTimeout(confirmTx, 1500);
+      } catch (error) {
+        console.error('getTx error:', error);
       }
+
+      if (cancelled) return;
+      retries += 1;
+      if (retries >= MAX_RETRIES) {
+        setStage(STAGE_ERROR);
+        setErrorMessage(`transaction confirmation timed out after ${MAX_RETRIES * 1.5}s — check tx ${txHash} manually`);
+        return;
+      }
+      setTimeout(confirmTx, 1500);
     };
     confirmTx();
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [queryClient, txHash, setStage, updateFunc]);
+  }, [queryClient, txHash, setStage]);
 
   if (stage === STAGE_SUBMITTED) {
     return (

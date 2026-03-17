@@ -1,43 +1,49 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { HistoriesItem, StatusTx } from './HistoriesItem';
 import { useIbcHistory } from './historyContext';
 
-function* toGenerator<R>(p: Promise<R>) {
-  return (yield p) as R;
-}
+const PENDING_RETRY_INTERVAL = 15000; // 15s between retries for stuck PENDING
+const MAX_PENDING_RETRIES = 20; // give up after ~5 min
 
 function useGetStatus(item: HistoriesItem) {
   const { traceHistoryStatus, updateStatusByTxHash } = useIbcHistory();
 
   const [status, setStatus] = useState(item.status);
+  const retriesRef = useRef(0);
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
 
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  function* tryUpdateHistoryStatus(item: HistoriesItem) {
-    const status = yield* toGenerator(traceHistoryStatus(item));
+  const trace = useCallback(async () => {
+    const newStatus = await traceHistoryStatus(item);
 
-    return status;
-  }
+    updateStatusByTxHash(item.txHash, newStatus);
+    setStatus(newStatus);
 
-  async function helper(func: Generator<Promise<StatusTx>, StatusTx, StatusTx>): Promise<StatusTx> {
-    const { value } = func.next();
-    const output = await value;
-    return output;
-  }
+    if (newStatus === StatusTx.TIMEOUT) {
+      // Retry immediately for timeout (waiting for refund)
+      retriesRef.current = 0;
+      trace();
+      return;
+    }
+
+    if (newStatus === StatusTx.PENDING) {
+      retriesRef.current += 1;
+      if (retriesRef.current < MAX_PENDING_RETRIES) {
+        timerRef.current = setTimeout(trace, PENDING_RETRY_INTERVAL);
+      }
+    }
+    // COMPLETE or REFUNDED — done, no retry
+  }, [item, traceHistoryStatus, updateStatusByTxHash]);
 
   useEffect(() => {
-    const getValue = async () => {
-      const gen = await helper(tryUpdateHistoryStatus(item));
+    retriesRef.current = 0;
+    trace();
 
-      updateStatusByTxHash(item.txHash, gen);
-
-      setStatus(gen);
-
-      if (gen === StatusTx.TIMEOUT) {
-        getValue();
+    return () => {
+      if (timerRef.current) {
+        clearTimeout(timerRef.current);
       }
     };
-    getValue();
-  }, [item, tryUpdateHistoryStatus, updateStatusByTxHash, helper]);
+  }, [trace]);
 
   return status;
 }

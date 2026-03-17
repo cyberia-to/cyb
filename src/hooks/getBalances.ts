@@ -60,7 +60,7 @@ function useGetBalances(addressActive: string | undefined) {
       }
     };
     getAllBalances();
-  }, [addressActive, queryClient]);
+  }, [addressActive, queryClient, _update]);
 
   useEffect(() => {
     (async () => {

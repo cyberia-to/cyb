@@ -4,7 +4,7 @@ import {
   Pool,
 } from '@cybercongress/cyber-js/build/codec/tendermint/liquidity/v1beta1/liquidity';
 import BigNumber from 'bignumber.js';
-import { useCallback, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useIbcDenom } from 'src/contexts/ibcDenom';
 import { useSigningClient } from 'src/contexts/signerClient';
@@ -12,19 +12,17 @@ import useSetActiveAddress from 'src/hooks/useSetActiveAddress';
 import { useAppSelector } from 'src/redux/hooks';
 import { RootState } from 'src/redux/store';
 import { Option } from 'src/types';
-import { Account, ActionBar as ActionBarCenter } from '../../../components';
+import { Account, ActionBar as ActionBarCenter, Confirmed, TransactionError } from '../../../components';
 import { LEDGER } from '../../../utils/config';
-import { convertAmount, convertAmountReverce } from '../../../utils/utils';
-
 import ActionBarPingTxs from '../components/actionBarPingTxs';
 import { sortReserveCoinDenoms } from './utils';
 
 const POOL_TYPE_INDEX = 1;
 
-const { STAGE_INIT, STAGE_ERROR, STAGE_SUBMITTED } = LEDGER;
+const { STAGE_INIT, STAGE_ERROR, STAGE_SUBMITTED, STAGE_CONFIRMED } = LEDGER;
 
-const coinFunc = (amount: number, denom: string): Coin => {
-  return { denom, amount: new BigNumber(amount).toString(10) };
+const coinFunc = (amount: BigNumber | string | number, denom: string): Coin => {
+  return { denom, amount: new BigNumber(amount).toFixed(0) };
 };
 
 type Props = {
@@ -47,7 +45,9 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
   const { tracesDenom } = useIbcDenom();
   const [stage, setStage] = useState(STAGE_INIT);
   const [txHash, setTxHash] = useState<Option<string>>(undefined);
+  const [txHeight, setTxHeight] = useState<Option<number>>(undefined);
   const [errorMessage, setErrorMessage] = useState<Option<string | JSX.Element>>(undefined);
+  const updateFuncCalledRef = useRef(false);
 
   const {
     tokenAAmount,
@@ -67,11 +67,15 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
 
       const [{ coinDecimals: coinDecimalsA }] = tracesDenom(tokenA);
 
-      const amountTokenA = convertAmountReverce(tokenAAmount, coinDecimalsA);
+      const amountTokenA = new BigNumber(tokenAAmount)
+        .shiftedBy(coinDecimalsA)
+        .dp(0, BigNumber.ROUND_FLOOR);
 
       setStage(STAGE_SUBMITTED);
+
+      const swapFeeRate = new BigNumber(params.swapFeeRate).shiftedBy(-18);
       const offerCoinFee = coinFunc(
-        Math.ceil(amountTokenA * convertAmount(parseFloat(params.swapFeeRate), 18) * 0.5),
+        amountTokenA.multipliedBy(swapFeeRate).multipliedBy(0.5).dp(0, BigNumber.ROUND_CEIL),
         tokenA
       );
 
@@ -98,6 +102,12 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
 
           if (response.code === 0) {
             setTxHash(response.transactionHash);
+            setTxHeight(response.height);
+            setStage(STAGE_CONFIRMED);
+            if (!updateFuncCalledRef.current) {
+              updateFuncCalledRef.current = true;
+              updateFunc();
+            }
           } else {
             setTxHash(undefined);
             setErrorMessage(response.rawLog.toString());
@@ -122,7 +132,9 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
   const clearState = () => {
     setStage(STAGE_INIT);
     setTxHash(undefined);
+    setTxHeight(undefined);
     setErrorMessage(undefined);
+    updateFuncCalledRef.current = false;
   };
 
   const createPool = useCallback(() => {
@@ -149,6 +161,19 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
           onClick: swapWithinBatch,
           disabled: isExceeded,
         }}
+      />
+    );
+  }
+
+  if (stage === STAGE_CONFIRMED) {
+    return <Confirmed txHash={txHash} txHeight={txHeight} onClickBtnClose={() => clearState()} />;
+  }
+
+  if (stage === STAGE_ERROR) {
+    return (
+      <TransactionError
+        errorMessage={errorMessage}
+        onClickBtn={() => clearState()}
       />
     );
   }
