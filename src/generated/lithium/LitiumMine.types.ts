@@ -90,6 +90,7 @@ export interface InstantiateMsg {
   estimated_gas_cost_uboot?: Uint128 | null;
   fee_bucket_duration?: number | null;
   fee_num_buckets?: number | null;
+  genesis_time?: number | null;
   max_proof_age: number;
   min_difficulty?: number | null;
   pid_interval?: number | null;

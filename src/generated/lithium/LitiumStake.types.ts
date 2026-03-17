@@ -39,6 +39,8 @@ export type ExecuteMsg = {
     overrides: TestingOverrides;
   };
 } | {
+  reset_state: {};
+} | {
   pause: {};
 } | {
   unpause: {};
@@ -56,7 +58,8 @@ export interface TestingOverrides {
   staking_reserve?: Uint128 | null;
   staking_reward_index?: Uint256 | null;
   staking_total_staked?: Uint128 | null;
-  total_pending_rewards?: Uint128 | null;
+  total_accrued_rewards?: Uint128 | null;
+  total_claimed_rewards?: Uint128 | null;
   unbonding_period_seconds?: number | null;
 }
 export interface InstantiateMsg {

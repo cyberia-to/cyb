@@ -82,6 +82,7 @@ type ProofLogEntry_ = {
   error?: string;
   status?: ProofStatus;
   timestamp: number;
+  reward?: number;
 };
 
 const PROOF_LOG_KEY = 'mining_proof_log';
@@ -492,7 +493,7 @@ function Mining() {
   const handleProofConfirmed = useCallback((txHash: string, proofHash: string, reward: number) => {
     setProofLog((prev) =>
       prev.map((p) =>
-        p.hash === proofHash ? { ...p, txHash, status: 'success' as const } : p
+        p.hash === proofHash ? { ...p, txHash, status: 'success' as const, reward } : p
       )
     );
     setSessionLiMined((prev) => prev + reward);
@@ -1467,16 +1468,21 @@ function Mining() {
     }
 
     // Web: browser file download
-    const report = buildMiningReport(getReportParams());
-    const text = JSON.stringify(report, null, 2);
-    const filename = `mining-log-${Date.now()}.json`;
-    const blob = new Blob([text], { type: 'application/json' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.click();
-    URL.revokeObjectURL(url);
+    try {
+      const report = buildMiningReport(getReportParams());
+      const text = JSON.stringify(report, null, 2);
+      const filename = `mining-log-${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.json`;
+      const blob = new Blob([text], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('[Mining] Export failed:', err);
+      logAction('export_logs', 'web', 'error', String(err));
+    }
   }, [isNative, getReportParams, saveToDailyFile, revealInFinder, logAction]);
 
   // PoW share from on-chain state: 1 - S^alpha (100% when nothing staked)

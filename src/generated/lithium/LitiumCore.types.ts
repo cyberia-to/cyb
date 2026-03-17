@@ -87,6 +87,8 @@ export type ExecuteMsg = {
     overrides: TestingOverrides;
   };
 } | {
+  reset_state: {};
+} | {
   pause: {};
 } | {
   unpause: {};

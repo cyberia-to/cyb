@@ -112,6 +112,7 @@ export interface LitiumReferInterface extends LitiumReferReadOnlyInterface {
   }: {
     overrides: TestingOverrides;
   }, fee_?: number | StdFee | "auto", memo_?: string, funds_?: Coin[]) => Promise<any>;
+  resetState: (fee_?: number | StdFee | "auto", memo_?: string, funds_?: Coin[]) => Promise<any>;
   pause: (fee_?: number | StdFee | "auto", memo_?: string, funds_?: Coin[]) => Promise<any>;
   unpause: (fee_?: number | StdFee | "auto", memo_?: string, funds_?: Coin[]) => Promise<any>;
 }
@@ -130,6 +131,7 @@ export class LitiumReferClient extends LitiumReferQueryClient implements LitiumR
     this.claimCommunityPool = this.claimCommunityPool.bind(this);
     this.updateConfig = this.updateConfig.bind(this);
     this.applyTestingOverrides = this.applyTestingOverrides.bind(this);
+    this.resetState = this.resetState.bind(this);
     this.pause = this.pause.bind(this);
     this.unpause = this.unpause.bind(this);
   }
@@ -206,6 +208,11 @@ export class LitiumReferClient extends LitiumReferQueryClient implements LitiumR
       apply_testing_overrides: {
         overrides
       }
+    }, fee_, memo_, funds_);
+  };
+  resetState = async (fee_: number | StdFee | "auto" = "auto", memo_?: string, funds_?: Coin[]): Promise<any> => {
+    return await this.client.execute(this.sender, this.contractAddress, {
+      reset_state: {}
     }, fee_, memo_, funds_);
   };
   pause = async (fee_: number | StdFee | "auto" = "auto", memo_?: string, funds_?: Coin[]): Promise<any> => {

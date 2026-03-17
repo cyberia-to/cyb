@@ -109,6 +109,7 @@ export interface LitiumMineInterface extends LitiumMineReadOnlyInterface {
     admin,
     coreContract,
     estimatedGasCostUboot,
+    genesisTime,
     maxProofAge,
     minDifficulty,
     pidInterval,
@@ -119,6 +120,7 @@ export interface LitiumMineInterface extends LitiumMineReadOnlyInterface {
     admin?: string;
     coreContract?: string;
     estimatedGasCostUboot?: Uint128;
+    genesisTime?: number;
     maxProofAge?: number;
     minDifficulty?: number;
     pidInterval?: number;
@@ -130,6 +132,11 @@ export interface LitiumMineInterface extends LitiumMineReadOnlyInterface {
     overrides
   }: {
     overrides: TestingOverrides;
+  }, fee_?: number | StdFee | "auto", memo_?: string, funds_?: Coin[]) => Promise<any>;
+  resetState: ({
+    genesisTime
+  }: {
+    genesisTime?: number;
   }, fee_?: number | StdFee | "auto", memo_?: string, funds_?: Coin[]) => Promise<any>;
   pause: (fee_?: number | StdFee | "auto", memo_?: string, funds_?: Coin[]) => Promise<any>;
   unpause: (fee_?: number | StdFee | "auto", memo_?: string, funds_?: Coin[]) => Promise<any>;
@@ -147,6 +154,7 @@ export class LitiumMineClient extends LitiumMineQueryClient implements LitiumMin
     this.accrueFees = this.accrueFees.bind(this);
     this.updateConfig = this.updateConfig.bind(this);
     this.applyTestingOverrides = this.applyTestingOverrides.bind(this);
+    this.resetState = this.resetState.bind(this);
     this.pause = this.pause.bind(this);
     this.unpause = this.unpause.bind(this);
   }
@@ -194,6 +202,7 @@ export class LitiumMineClient extends LitiumMineQueryClient implements LitiumMin
     admin,
     coreContract,
     estimatedGasCostUboot,
+    genesisTime,
     maxProofAge,
     minDifficulty,
     pidInterval,
@@ -204,6 +213,7 @@ export class LitiumMineClient extends LitiumMineQueryClient implements LitiumMin
     admin?: string;
     coreContract?: string;
     estimatedGasCostUboot?: Uint128;
+    genesisTime?: number;
     maxProofAge?: number;
     minDifficulty?: number;
     pidInterval?: number;
@@ -216,6 +226,7 @@ export class LitiumMineClient extends LitiumMineQueryClient implements LitiumMin
         admin,
         core_contract: coreContract,
         estimated_gas_cost_uboot: estimatedGasCostUboot,
+        genesis_time: genesisTime,
         max_proof_age: maxProofAge,
         min_difficulty: minDifficulty,
         pid_interval: pidInterval,
@@ -233,6 +244,17 @@ export class LitiumMineClient extends LitiumMineQueryClient implements LitiumMin
     return await this.client.execute(this.sender, this.contractAddress, {
       apply_testing_overrides: {
         overrides
+      }
+    }, fee_, memo_, funds_);
+  };
+  resetState = async ({
+    genesisTime
+  }: {
+    genesisTime?: number;
+  }, fee_: number | StdFee | "auto" = "auto", memo_?: string, funds_?: Coin[]): Promise<any> => {
+    return await this.client.execute(this.sender, this.contractAddress, {
+      reset_state: {
+        genesis_time: genesisTime
       }
     }, fee_, memo_, funds_);
   };

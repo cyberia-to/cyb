@@ -1,4 +1,4 @@
-import { useRef, useMemo } from 'react';
+import { useRef, useEffect } from 'react';
 
 const SAMPLE_INTERVAL_MS = 5000;
 
@@ -8,31 +8,30 @@ function useHashrateSamples(
   maxSamples = 60
 ) {
   const samplesRef = useRef<number[]>([]);
-  const prevActiveRef = useRef(isActive);
-  const lastSampleTimeRef = useRef(0);
+  const hashrateRef = useRef(hashrate);
+  hashrateRef.current = hashrate;
 
-  // Clear samples when mining stops
-  if (prevActiveRef.current && !isActive) {
-    samplesRef.current = [];
-    lastSampleTimeRef.current = 0;
-  }
-  prevActiveRef.current = isActive;
-
-  // Downsample: only push a new sample every SAMPLE_INTERVAL_MS
-  if (isActive && hashrate > 0) {
-    const now = Date.now();
-    if (now - lastSampleTimeRef.current >= SAMPLE_INTERVAL_MS) {
-      lastSampleTimeRef.current = now;
-      const arr = samplesRef.current;
-      if (arr.length >= maxSamples) {
-        arr.shift();
-      }
-      arr.push(hashrate);
+  useEffect(() => {
+    if (!isActive) {
+      samplesRef.current = [];
+      return;
     }
-  }
 
-  // Return stable reference — the array is mutated in place
-  return useMemo(() => samplesRef.current, [isActive, hashrate]);
+    const interval = setInterval(() => {
+      const hr = hashrateRef.current;
+      if (hr > 0) {
+        const arr = samplesRef.current;
+        if (arr.length >= maxSamples) {
+          arr.shift();
+        }
+        arr.push(hr);
+      }
+    }, SAMPLE_INTERVAL_MS);
+
+    return () => clearInterval(interval);
+  }, [isActive, maxSamples]);
+
+  return samplesRef.current;
 }
 
 export default useHashrateSamples;

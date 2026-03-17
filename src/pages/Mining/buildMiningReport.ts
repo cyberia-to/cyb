@@ -7,6 +7,7 @@ type ProofLogEntry = {
   error?: string;
   status?: 'submitted' | 'pending' | 'success' | 'failed' | 'retrying';
   timestamp: number;
+  reward?: number;
 };
 
 export type ReportParams = {
@@ -146,6 +147,6 @@ export function buildMiningReport(params: ReportParams): object {
         total > 0 ? `${((accepted / total) * 100).toFixed(1)}%` : null,
     },
     proof_log: sessionLog,
-    action_log: params.actionLog || [],
+    action_log: (params.actionLog || []).filter(a => a.timestamp >= params.sessionStart),
   };
 }

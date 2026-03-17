@@ -160,12 +160,12 @@ function StakingSection({ logAction, sendContractTx }: Props) {
   }, [unstakeAmount, executeOnContract]);
 
   const handleClaimRewards = useCallback(() => {
-    executeOnContract('claim_staking_rewards', LITIUM_STAKE_CONTRACT, { claim_staking_rewards: {} });
-  }, [executeOnContract]);
+    executeOnContract('claim_staking_rewards', LITIUM_STAKE_CONTRACT, { claim_staking_rewards: {} }, `claimable=${claimableRewards} staked=${stakedLi}`);
+  }, [executeOnContract, claimableRewards, stakedLi]);
 
   const handleClaimUnbonding = useCallback(() => {
-    executeOnContract('claim_unbonding', LITIUM_STAKE_CONTRACT, { claim_unbonding: {} });
-  }, [executeOnContract]);
+    executeOnContract('claim_unbonding', LITIUM_STAKE_CONTRACT, { claim_unbonding: {} }, `unbonding=${pendingUnbonding}`);
+  }, [executeOnContract, pendingUnbonding]);
 
   return (
     <div className={styles.sectionBox}>

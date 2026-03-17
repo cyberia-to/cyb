@@ -289,6 +289,7 @@ export interface LitiumCoreInterface extends LitiumCoreReadOnlyInterface {
   }: {
     overrides: TestingOverrides;
   }, fee_?: number | StdFee | "auto", memo_?: string, funds_?: Coin[]) => Promise<any>;
+  resetState: (fee_?: number | StdFee | "auto", memo_?: string, funds_?: Coin[]) => Promise<any>;
   pause: (fee_?: number | StdFee | "auto", memo_?: string, funds_?: Coin[]) => Promise<any>;
   unpause: (fee_?: number | StdFee | "auto", memo_?: string, funds_?: Coin[]) => Promise<any>;
   receive: ({
@@ -323,6 +324,7 @@ export class LitiumCoreClient extends LitiumCoreQueryClient implements LitiumCor
     this.removeAuthorizedCaller = this.removeAuthorizedCaller.bind(this);
     this.updateConfig = this.updateConfig.bind(this);
     this.applyTestingOverrides = this.applyTestingOverrides.bind(this);
+    this.resetState = this.resetState.bind(this);
     this.pause = this.pause.bind(this);
     this.unpause = this.unpause.bind(this);
     this.receive = this.receive.bind(this);
@@ -522,6 +524,11 @@ export class LitiumCoreClient extends LitiumCoreQueryClient implements LitiumCor
       apply_testing_overrides: {
         overrides
       }
+    }, fee_, memo_, funds_);
+  };
+  resetState = async (fee_: number | StdFee | "auto" = "auto", memo_?: string, funds_?: Coin[]): Promise<any> => {
+    return await this.client.execute(this.sender, this.contractAddress, {
+      reset_state: {}
     }, fee_, memo_, funds_);
   };
   pause = async (fee_: number | StdFee | "auto" = "auto", memo_?: string, funds_?: Coin[]): Promise<any> => {

@@ -43,6 +43,8 @@ export type ExecuteMsg = {
     overrides: TestingOverrides;
   };
 } | {
+  reset_state: {};
+} | {
   pause: {};
 } | {
   unpause: {};
@@ -51,7 +53,8 @@ export interface TestingOverrides {
   community_pool_addr?: string | null;
   community_pool_balance?: Uint128 | null;
   paused?: boolean | null;
-  total_pending_rewards?: Uint128 | null;
+  total_accrued_rewards?: Uint128 | null;
+  total_claimed_rewards?: Uint128 | null;
 }
 export interface InstantiateMsg {
   admin?: string | null;

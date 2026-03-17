@@ -1,5 +1,6 @@
 import { useCallback, useRef } from 'react';
 import type { SigningCosmWasmClient } from '@cosmjs/cosmwasm-stargate';
+import { parseRawLog } from '@cosmjs/stargate/build/logs';
 
 export type PendingTx = {
   txHash: string;
@@ -7,8 +8,6 @@ export type PendingTx = {
   proofNonce: number;
   submittedAt: number;
 };
-
-type TxEvent = { type: string; attributes?: { key: string; value: string }[] };
 
 const TX_TIMEOUT_MS = 60_000; // 60s — ~10 blocks
 
@@ -52,21 +51,24 @@ export default function usePendingTxVerifier(
               return;
             }
 
-            // Extract miner_reward from events (prefer miner_reward over gross reward)
-            const allEvents: TxEvent[] = [...(tx.events || [])];
+            // Extract miner_reward from rawLog (CyberClient returns events: [])
             let reward = 0;
-            const wasmEvent = allEvents.find(
-              (e) => e.type === 'wasm' && e.attributes?.some(
-                (a) => a.key === 'miner_reward'
-              )
-            );
-            if (wasmEvent) {
-              const rewardAttr = wasmEvent.attributes?.find(
-                (a) => a.key === 'miner_reward'
-              );
-              if (rewardAttr?.value) {
-                reward = Number(rewardAttr.value) / 1_000_000;
+            try {
+              const logs = parseRawLog(tx.rawLog);
+              for (const log of logs) {
+                const wasmEvent = log.events.find((e) => e.type === 'wasm');
+                if (wasmEvent) {
+                  const rewardAttr = wasmEvent.attributes.find(
+                    (a) => a.key === 'miner_reward'
+                  );
+                  if (rewardAttr?.value) {
+                    reward = Number(rewardAttr.value) / 1_000_000;
+                    break;
+                  }
+                }
               }
+            } catch {
+              // rawLog may not be valid JSON — reward stays 0
             }
 
             console.log('[Verifier] Confirmed TX:', txHash.slice(0, 16), 'reward:', reward.toFixed(6));

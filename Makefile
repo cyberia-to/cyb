@@ -91,6 +91,7 @@ setup-node: ## Install Node.js and Deno dependencies
 	@echo -e "$(BLUE)[Setup]$(NC) Node.js & Deno..."
 ifdef IS_MACOS
 	@command -v node >/dev/null || (echo -e "$(RED)[Error]$(NC) Node.js not found. Install via: brew install node" && exit 1)
+	@command -v create-dmg >/dev/null || (echo -e "$(YELLOW)[Setup]$(NC) Installing create-dmg..." && brew install create-dmg)
 else
 	@command -v node >/dev/null || (echo -e "$(YELLOW)[Setup]$(NC) Installing Node.js..." && \
 		curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash - && \

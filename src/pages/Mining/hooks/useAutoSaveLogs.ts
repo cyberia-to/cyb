@@ -143,24 +143,28 @@ export function useAutoSaveLogs(params: {
     } finally {
       savingRef.current = false;
     }
-  }, [lastSavePath]);
+  }, []);
+
+  // Stable ref for saveToDailyFile to avoid effect re-triggers
+  const saveToDailyFileRef = useRef(saveToDailyFile);
+  saveToDailyFileRef.current = saveToDailyFile;
 
   // Periodic save while enabled AND directory is ready
   useEffect(() => {
     if (!enabled || !dirReady) return;
     // Save immediately now that both conditions are met
-    saveToDailyFile();
-    const timer = setInterval(saveToDailyFile, SAVE_INTERVAL_MS);
+    saveToDailyFileRef.current();
+    const timer = setInterval(() => saveToDailyFileRef.current(), SAVE_INTERVAL_MS);
     return () => clearInterval(timer);
-  }, [enabled, dirReady, saveToDailyFile]);
+  }, [enabled, dirReady]);
 
   // Save final snapshot when mining stops (enabled true -> false)
   useEffect(() => {
     if (prevEnabledRef.current && !enabled) {
-      saveToDailyFile();
+      saveToDailyFileRef.current();
     }
     prevEnabledRef.current = enabled;
-  }, [enabled, saveToDailyFile]);
+  }, [enabled]);
 
   // Delete all log files from disk
   const clearAllLogs = useCallback(async () => {
