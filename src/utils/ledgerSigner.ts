@@ -9,6 +9,7 @@ const HEALTH_CHECK_TIMEOUT_MS = 3_000; // 3 seconds — ping timeout
 let _transport: TransportWebUSB | null = null;
 let _idleTimer: ReturnType<typeof setTimeout> | null = null;
 let _transportPromise: Promise<TransportWebUSB> | null = null;
+let _signingInProgress = false;
 
 function resetIdleTimer() {
   if (_idleTimer) clearTimeout(_idleTimer);
@@ -28,6 +29,11 @@ export async function getTransport(): Promise<TransportWebUSB> {
   }
 
   if (_transport) {
+    // Skip ping if another signing operation owns the transport
+    if (_signingInProgress) {
+      resetIdleTimer();
+      return _transport;
+    }
     try {
       // Ping: getVersion APDU — Cosmos app responds with 0x9000
       const response = await _transport.send(0xe0, 0x01, 0x00, 0x00);
@@ -68,6 +74,8 @@ export async function getTransport(): Promise<TransportWebUSB> {
  * Close the current transport and clear the idle timer.
  */
 export async function closeTransport(): Promise<void> {
+  // Never close transport while Ledger is showing "Review Transaction"
+  if (_signingInProgress) return;
   if (_idleTimer) {
     clearTimeout(_idleTimer);
     _idleTimer = null;
@@ -116,7 +124,13 @@ export class ReconnectingLedgerSigner implements OfflineAminoSigner {
   async signAmino(signerAddress: string, signDoc: StdSignDoc): Promise<AminoSignResponse> {
     // Fresh signer with fresh transport — survives device sleep
     const inner = await createLedgerSigner(this.prefix);
-    return inner.signAmino(signerAddress, signDoc);
+    // Block health-check pings while Ledger shows "Review Transaction"
+    _signingInProgress = true;
+    try {
+      return await inner.signAmino(signerAddress, signDoc);
+    } finally {
+      _signingInProgress = false;
+    }
   }
 }
 
@@ -161,6 +175,8 @@ export function isWebUSBSupported(): boolean {
  */
 export async function checkTransportHealth(): Promise<boolean> {
   if (!_transport) return false;
+  // Never ping during signing — APDU collision aborts the Ledger prompt
+  if (_signingInProgress) return true;
   try {
     const timeout = new Promise<never>((_, reject) =>
       setTimeout(() => reject(new Error('timeout')), HEALTH_CHECK_TIMEOUT_MS)
