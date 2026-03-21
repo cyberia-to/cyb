@@ -109,9 +109,14 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
     !location.pathname.includes('/brain') // both full and robot
   ) {
     const isWallet = defaultAccount.account?.cyber.keys === 'wallet';
+    const isLedger = defaultAccount.account?.cyber.keys === 'ledger';
 
     if (isWallet) {
       return <UnlockWalletBar />;
+    }
+
+    if (isLedger) {
+      return <ConnectLedgerBar />;
     }
 
     const activeAddress =
@@ -200,6 +205,35 @@ function UnlockWalletBar() {
         />
         <Button onClick={handleUnlock} disabled={!password || loading}>
           {loading ? 'Unlocking...' : 'Unlock'}
+        </Button>
+        {error && <span style={{ color: '#ff4d4d', fontSize: '14px' }}>{error}</span>}
+      </span>
+    </ActionBarContainer>
+  );
+}
+
+function ConnectLedgerBar() {
+  const { reconnectLedger } = useSigningClient();
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleConnect = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      await reconnectLedger();
+    } catch (err: any) {
+      setError(err?.message || 'Connection failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <ActionBarContainer>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <Button onClick={handleConnect} disabled={loading}>
+          {loading ? 'Connecting...' : 'Connect Ledger'}
         </Button>
         {error && <span style={{ color: '#ff4d4d', fontSize: '14px' }}>{error}</span>}
       </span>

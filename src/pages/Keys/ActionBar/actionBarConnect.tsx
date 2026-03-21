@@ -26,6 +26,7 @@ const STAGE_ADD_ADDRESS_USER = 2.1;
 const STAGE_ADD_ADDRESS_OK = 2.2;
 const STAGE_OPEN_MODAL = 2.5;
 const STAGE_SET_PASSWORD = 2.6;
+const STAGE_LEDGER_WAITING = 2.7;
 const STAGE_ADD_SECRETS = 100;
 
 const PASSWORD_HINT =
@@ -34,7 +35,7 @@ const PASSWORD_HINT =
   'or 12+ chars of any kind. Weak example: "password" — don\'t do that';
 
 function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onClickBack }) {
-  const { activateWalletSigner } = useSigningClient();
+  const { activateWalletSigner, connectLedger } = useSigningClient();
   const { setAdviser } = useAdviser();
   const [stage, setStage] = useState(STAGE_INIT);
   const [valueInputAddres, setValueInputAddres] = useState('');
@@ -99,6 +100,9 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
       case KEY_TYPE.wallet:
         setStage(STAGE_OPEN_MODAL);
         break;
+      case KEY_TYPE.ledger:
+        onClickConnectLedger();
+        break;
       default:
         onClickAddAddressUser();
         break;
@@ -111,6 +115,40 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
 
   const onClickToggleSecrets = () => {
     setStage(STAGE_ADD_SECRETS);
+  };
+
+  const onClickConnectLedger = async () => {
+    setStage(STAGE_LEDGER_WAITING);
+    try {
+      const { address, pubkey } = await connectLedger();
+      const pk = toHex(pubkey);
+
+      const accounts: AccountValue = {
+        pk,
+        keys: 'ledger',
+        path: HDPATH,
+        bech32: address,
+      };
+
+      setStage(STAGE_ADD_ADDRESS_OK);
+      setTimeout(() => {
+        dispatch(addAddressPocket(accounts));
+      }, 100);
+
+      clearState();
+      if (updateAddress) {
+        updateAddress();
+      }
+      if (updateFuncActionBar) {
+        updateFuncActionBar();
+      }
+    } catch (err: any) {
+      setAdviser(
+        `Ledger connection failed: ${err?.message || 'unknown error'}. Make sure the Cosmos app is open.`,
+        AdviserColors.red
+      );
+      setStage(STAGE_INIT);
+    }
   };
 
   const onClickAddAddressUserToLocalStr = async () => {
@@ -301,6 +339,17 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
 
   if (stage === STAGE_ADD_SECRETS) {
     return <ActionBarSecrets onClickBack={() => setStage(STAGE_INIT)} />;
+  }
+
+  if (stage === STAGE_LEDGER_WAITING) {
+    return (
+      <ActionBar onClickBack={() => setStage(STAGE_INIT)}>
+        <Pane display="flex" alignItems="center">
+          <Pane fontSize={20}>Connect your Ledger and open the Cosmos app</Pane>
+          <Dots big />
+        </Pane>
+      </ActionBar>
+    );
   }
 
   if (stage === STAGE_ADD_ADDRESS_OK) {

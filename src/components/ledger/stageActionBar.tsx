@@ -18,7 +18,10 @@ import { LinkWindow } from '../link/link';
 import { Dots } from '../ui/Dots';
 import { ContainetLedger } from './container';
 
-const imgKeplr = require('../../image/keplr-icon.svg');
+import { isWebUSBSupported } from 'src/utils/ledgerSigner';
+
+const imgWallet = require('../../image/wallet-outline.svg');
+const imgLedger = require('../../image/ledger.svg');
 const imgRead = require('../../image/duplicate-outline.svg');
 const imgSecrets = require('../../image/secrets_icon.png');
 
@@ -259,7 +262,6 @@ export function ConnectAddress({
   selectMethod,
   selectNetwork,
   connectAddress,
-  keplr,
   onClickBack,
 }) {
   return (
@@ -272,19 +274,20 @@ export function ConnectAddress({
       onClickBack={onClickBack}
     >
       <Pane display="flex" alignItems="center" justifyContent="center" flex={1}>
-        {keplr ? (
+        <ButtonIcon
+          onClick={() => selectMethodFunc('wallet')}
+          active={selectMethod === 'wallet'}
+          img={imgWallet}
+          text="wallet"
+        />
+
+        {isWebUSBSupported() && (
           <ButtonIcon
-            onClick={() => selectMethodFunc(KEY_TYPE.keplr)}
-            active={selectMethod === KEY_TYPE.keplr}
-            img={imgKeplr}
-            text="keplr"
+            onClick={() => selectMethodFunc(KEY_TYPE.ledger)}
+            active={selectMethod === KEY_TYPE.ledger}
+            img={imgLedger}
+            text="ledger"
           />
-        ) : (
-          <LinkWindow to="https://www.keplr.app/">
-            <Pane marginRight={5} width={34} height={30}>
-              <img style={{ width: '34px', height: '30px' }} src={imgKeplr} alt="icon" />
-            </Pane>
-          </LinkWindow>
         )}
 
         <ButtonIcon
