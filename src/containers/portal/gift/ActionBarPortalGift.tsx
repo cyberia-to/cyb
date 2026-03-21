@@ -119,7 +119,7 @@ function ActionBarPortalGift({
   const { signer, signingClient, isLedgerAccount, getSignerForChain } = useSigningClient();
   const [selectMethod, setSelectMethod] = useState('');
   const [selectNetwork, setSelectNetwork] = useState('');
-  const [signedMessage, setSignedMessageKeplr] = useState(null);
+  const [signedMessage, setSignedMessage] = useState(null);
 
   const currentAddress = useCurrentAddress();
 
@@ -207,10 +207,12 @@ function ActionBarPortalGift({
       };
 
       const signature = toBase64(toAscii(JSON.stringify(proveData)));
-      setSignedMessageKeplr({ signature, address });
+      setSignedMessage({ signature, address });
       setStepApp(STEP_INFO.STATE_PROVE_CHECK_ACCOUNT);
     } else if (chainSigner) {
       setAdviser('Ledger does not support message signing. Use a software wallet for this step.');
+    } else {
+      setAdviser('Wallet is locked. Unlock your wallet to sign.');
     }
     return null;
   }, [citizenship, selectNetwork, setStepApp, getSignerForChain, setAdviser]);
@@ -245,7 +247,7 @@ function ActionBarPortalGift({
         params: [msg, from, 'proveAddress'],
       });
 
-      setSignedMessageKeplr({ signature, address });
+      setSignedMessage({ signature, address });
       setStepApp(STEP_INFO.STATE_PROVE_CHECK_ACCOUNT);
     }
     return null;
@@ -563,7 +565,7 @@ function ActionBarPortalGift({
             setStepApp(
               selectMethod === 'MetaMask'
                 ? STEP_INFO.STATE_PROVE_SIGN_MM
-                : STEP_INFO.STATE_PROVE_SIGN_KEPLR
+                : STEP_INFO.STATE_PROVE_SIGN
             ),
           text: 'connect',
           disabled: selectMethod === '',
@@ -579,7 +581,7 @@ function ActionBarPortalGift({
     );
   }
 
-  if (activeStep === STEP_INFO.STATE_PROVE_SIGN_KEPLR) {
+  if (activeStep === STEP_INFO.STATE_PROVE_SIGN) {
     return (
       <ActionBarSteps
         onClickBack={() => setStepApp(STEP_INFO.STATE_PROVE_CONNECT)}

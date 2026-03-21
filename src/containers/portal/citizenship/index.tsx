@@ -59,30 +59,18 @@ const {
   STEP_NICKNAME_APROVE,
   STEP_RULES,
   STEP_AVATAR_UPLOAD,
-  STEP_KEPLR_INIT,
-  STEP_KEPLR_INIT_INSTALLED,
-  STEP_KEPLR_INIT_CHECK_FNC,
-  STEP_KEPLR_SETUP,
-  STEP_KEPLR_CONNECT,
+  STEP_WALLET_INIT,
+  STEP_WALLET_INSTALLED,
+  STEP_WALLET_CHECK,
+  STEP_WALLET_SETUP,
+  STEP_WALLET_CONNECT,
   STEP_CHECK_ADDRESS,
   STEP_CHECK_ADDRESS_CHECK_FNC,
   STEP_ACTIVE_ADD,
-  STEP_KEPLR_REGISTER,
+  STEP_REGISTER,
   STEP_DONE,
   STEP_CHECK_GIFT,
 } = steps;
-
-// const items1 = {
-//   [STEP_NICKNAME_CHOSE]: 'nickname',
-//   [STEP_RULES]: 'rules',
-//   [STEP_AVATAR_UPLOAD]: 'avatar',
-//   [STEP_KEPLR_INIT]: 'install keplr',
-//   [STEP_KEPLR_SETUP]: 'setup keplr',
-//   [STEP_KEPLR_CONNECT]: 'connect keplr',
-//   [STEP_CHECK_ADDRESS]: 'check address',
-//   [STEP_KEPLR_REGISTER]: 'register',
-//   [STEP_DONE]: 'passport look',
-// };
 
 const items = [
   {
@@ -95,11 +83,11 @@ const items = [
   },
   {
     title: 'connect wallet',
-    step: STEP_KEPLR_INIT,
+    step: STEP_WALLET_INIT,
   },
   {
     title: 'setup wallet',
-    step: STEP_KEPLR_SETUP,
+    step: STEP_WALLET_SETUP,
   },
   {
     title: 'active address',
@@ -111,7 +99,7 @@ const items = [
   },
   {
     title: 'passport',
-    step: STEP_KEPLR_REGISTER,
+    step: STEP_REGISTER,
   },
 ];
 
@@ -166,7 +154,7 @@ function GetCitizenship({ defaultAccount }) {
       if (localStorageAvatarCid !== null) {
         const localStorageAvatarCidData = JSON.parse(localStorageAvatarCid);
         setAvatarIpfs(localStorageAvatarCidData);
-        setStep(STEP_KEPLR_INIT_CHECK_FNC);
+        setStep(STEP_WALLET_CHECK);
       } else {
         setStep(STEP_NICKNAME_CHOSE);
       }
@@ -204,17 +192,17 @@ function GetCitizenship({ defaultAccount }) {
 
   useEffect(() => {
     const checkSignerSetup = async () => {
-      if (step === STEP_KEPLR_INIT_CHECK_FNC) {
+      if (step === STEP_WALLET_CHECK) {
         if (signer) {
           const [{ address }] = await signer.getAccounts();
           if (addressActive !== null && addressActive.bech32 === address) {
             setStep(STEP_CHECK_ADDRESS_CHECK_FNC);
           } else {
-            setStep(STEP_KEPLR_CONNECT);
+            setStep(STEP_WALLET_CONNECT);
           }
         } else {
           // No signer available — prompt to connect wallet
-          setStep(STEP_KEPLR_CONNECT);
+          setStep(STEP_WALLET_CONNECT);
         }
       }
     };
@@ -260,7 +248,7 @@ function GetCitizenship({ defaultAccount }) {
               status: 'error',
               rawLog: response.rawLog.toString(),
             }));
-            setStep(STEP_KEPLR_REGISTER);
+            setStep(STEP_REGISTER);
             return;
           }
         }
@@ -348,9 +336,11 @@ function GetCitizenship({ defaultAccount }) {
       };
       const signature = toBase64(toAscii(JSON.stringify(proveData)));
       setSignedMessage(signature);
-      setStep(STEP_KEPLR_REGISTER);
+      setStep(STEP_REGISTER);
     } else if (signer) {
       setAdviser('Ledger does not support message signing. Use a software wallet for this step.');
+    } else {
+      setAdviser('Wallet is locked. Unlock your wallet to sign.');
     }
   };
 
@@ -384,7 +374,7 @@ function GetCitizenship({ defaultAccount }) {
   const uploadAvatarImg = useCallback(() => {
     if (avatarIpfs !== null) {
       localStorage.setItem('avatarCid', JSON.stringify(avatarIpfs));
-      setStep(STEP_KEPLR_INIT_CHECK_FNC);
+      setStep(STEP_WALLET_CHECK);
     }
   }, [avatarIpfs]);
 
@@ -501,11 +491,11 @@ function GetCitizenship({ defaultAccount }) {
   }
 
   if (
-    step === STEP_KEPLR_INIT ||
-    step === STEP_KEPLR_INIT_CHECK_FNC ||
-    step === STEP_KEPLR_INIT_INSTALLED ||
-    step === STEP_KEPLR_SETUP ||
-    step === STEP_KEPLR_CONNECT
+    step === STEP_WALLET_INIT ||
+    step === STEP_WALLET_CHECK ||
+    step === STEP_WALLET_INSTALLED ||
+    step === STEP_WALLET_SETUP ||
+    step === STEP_WALLET_CONNECT
   ) {
     content = (
       <Passport
@@ -525,7 +515,7 @@ function GetCitizenship({ defaultAccount }) {
     step === STEP_CHECK_ADDRESS ||
     step === STEP_CHECK_ADDRESS_CHECK_FNC ||
     step === STEP_ACTIVE_ADD ||
-    step === STEP_KEPLR_REGISTER
+    step === STEP_REGISTER
   ) {
     content = (
       <Passport
@@ -595,9 +585,6 @@ function GetCitizenship({ defaultAccount }) {
             <ScrollableTabs items={items} active={step} setStep={setStep} />
           )} */}
         {content}
-        {/* <button type="button" onClick={() => checkKeplr()}>
-          keplr
-        </button> */}
       </MainContainer>
 
       {!mobile && (

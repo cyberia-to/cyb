@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { Pane } from '@cybercongress/gravity';
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { ActionBar, ConnectAddress, Dots, Input, TransactionError } from 'src/components';
 import { PATTERN_CYBER } from 'src/constants/patterns';
@@ -43,9 +43,9 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
   const selectNetwork = 'cyber';
   const [validAddressAddedUser, setValidAddressAddedUser] = useState(true);
 
-  // Mnemonic flow state
-  const [pendingName, setPendingName] = useState('');
-  const [pendingMnemonic, setPendingMnemonic] = useState('');
+  // Mnemonic flow state — useRef to avoid React DevTools exposure
+  const pendingNameRef = useRef('');
+  const pendingMnemonicRef = useRef('');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [passwordError, setPasswordError] = useState('');
@@ -58,17 +58,20 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
     setValueInputAddres('');
     setConnectMethod('');
     setValidAddressAddedUser(true);
-    setPendingName('');
-    setPendingMnemonic('');
+    pendingNameRef.current = '';
+    pendingMnemonicRef.current = '';
     setPassword('');
     setPasswordConfirm('');
     setPasswordError('');
     setSaving(false);
   };
 
-  // Best-effort cleanup on unmount — setState is no-op in React 18 during unmount
+  // Cleanup on unmount — refs are cleared synchronously, setState is no-op in React 18
   useEffect(() => {
-    return () => clearState();
+    return () => {
+      pendingNameRef.current = '';
+      pendingMnemonicRef.current = '';
+    };
   }, []);
 
   useEffect(() => {
@@ -171,8 +174,8 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
 
   // Step 1: mnemonic entered → ask for password
   const onMnemonicSubmit = (name: string, mnemonic: string) => {
-    setPendingName(name);
-    setPendingMnemonic(mnemonic);
+    pendingNameRef.current = name;
+    pendingMnemonicRef.current = mnemonic;
     setStage(STAGE_SET_PASSWORD);
   };
 
@@ -205,7 +208,8 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
 
     setSaving(true);
     try {
-      const offlineSigner = await getOfflineSigner(pendingMnemonic);
+      const mnemonic = pendingMnemonicRef.current;
+      const offlineSigner = await getOfflineSigner(mnemonic);
 
       if (offlineSigner) {
         const [{ address, pubkey: pubKey }] = await offlineSigner.getAccounts();
@@ -213,15 +217,15 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
 
         // Persist encrypted mnemonic before setting signer —
         // if localStorage write fails, don't activate a non-persisted wallet
-        const encrypted = await encryptMnemonic(pendingMnemonic, password);
+        const encrypted = await encryptMnemonic(mnemonic, password);
         setEncryptedMnemonic(encrypted, address);
-        activateWalletSigner(offlineSigner, pendingMnemonic);
+        activateWalletSigner(offlineSigner, mnemonic);
 
         const accounts: AccountValue = {
           pk,
           keys: 'wallet',
           path: HDPATH,
-          name: pendingName,
+          name: pendingNameRef.current,
           bech32: address,
         };
 
@@ -239,7 +243,7 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
         }
       }
     } catch (err) {
-      setPendingMnemonic('');
+      pendingMnemonicRef.current = '';
       setPassword('');
       setPasswordConfirm('');
       setPasswordError('Failed to create wallet. Please check your seed phrase.');
