@@ -2,10 +2,11 @@ import TransportWebUSB from '@ledgerhq/hw-transport-webusb';
 import { LedgerSigner } from '@cosmjs/ledger-amino';
 import { makeCosmoshubPath } from '@cosmjs/crypto';
 
-const IDLE_TIMEOUT_MS = 30_000;
+const IDLE_TIMEOUT_MS = 5 * 60_000; // 5 minutes — signing on device can take time
 
 let _transport: TransportWebUSB | null = null;
 let _idleTimer: ReturnType<typeof setTimeout> | null = null;
+let _transportPromise: Promise<TransportWebUSB> | null = null;
 
 function resetIdleTimer() {
   if (_idleTimer) clearTimeout(_idleTimer);
@@ -17,6 +18,7 @@ function resetIdleTimer() {
 /**
  * Get or create a WebUSB transport to the Ledger device.
  * Reuses existing transport if still alive. Requires a user gesture.
+ * Uses a mutex to prevent concurrent TransportWebUSB.create() calls.
  */
 export async function getTransport(): Promise<TransportWebUSB> {
   if (!navigator.usb) {
@@ -34,9 +36,22 @@ export async function getTransport(): Promise<TransportWebUSB> {
     }
   }
 
-  _transport = await TransportWebUSB.create();
-  resetIdleTimer();
-  return _transport;
+  // Mutex: if another call is already creating a transport, wait for it
+  if (_transportPromise) {
+    return _transportPromise;
+  }
+
+  _transportPromise = TransportWebUSB.create().then((t) => {
+    _transport = t;
+    _transportPromise = null;
+    resetIdleTimer();
+    return t;
+  }).catch((err) => {
+    _transportPromise = null;
+    throw err;
+  });
+
+  return _transportPromise;
 }
 
 /**

@@ -8,6 +8,7 @@ import { getPassport } from 'src/services/passports/lcd';
 import { Nullable } from 'src/types';
 import { Citizenship } from 'src/types/citizenship';
 import { AccountValue } from 'src/types/defaultAccount';
+import { isLedgerSigner } from 'src/utils/ledgerSigner';
 
 const AMOUNT_ALL_STAGE = 90;
 const NEW_RELEASE = 1000; // release 1% every 1k claims
@@ -281,14 +282,13 @@ type SignerKeyInfo = {
 
 /**
  * Get key info from signer — works for wallet (mnemonic) and Ledger signers.
- * Ledger signers are detected by constructor name (LedgerSigner from @cosmjs/ledger-amino).
  */
 async function getSignerKeyInfo(
   signer: OfflineSigner,
   _chainId: string
 ): Promise<SignerKeyInfo> {
   const [account] = await signer.getAccounts();
-  const isLedger = signer.constructor?.name === 'LedgerSigner';
+  const isLedger = isLedgerSigner(signer);
 
   return {
     bech32Address: account.address,

@@ -8,6 +8,7 @@ import { Option } from 'src/types';
 import { Networks } from 'src/types/networks';
 import { decryptMnemonic } from 'src/utils/mnemonicCrypto';
 import { connectLedger as connectLedgerDevice, createLedgerSigner, closeTransport } from 'src/utils/ledgerSigner';
+import networkListIbc from 'src/utils/networkListIbc';
 import { getOfflineSigner as getOfflineSignerFromMnemonic } from 'src/utils/offlineSigner';
 import { getEncryptedMnemonic } from 'src/utils/utils';
 
@@ -194,8 +195,20 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
   const reconnectLedger = useCallback(async () => {
     if (!isLedgerAccount) return;
     const ledgerSigner = await createLedgerSigner();
+
+    // Verify the reconnected device derives the same address as stored account
+    const expectedAddress = defaultAccount.account?.cyber?.bech32;
+    if (expectedAddress) {
+      const [account] = await ledgerSigner.getAccounts();
+      if (account.address !== expectedAddress) {
+        throw new Error(
+          `Ledger address mismatch: expected ${expectedAddress}, got ${account.address}. Is this the correct device?`
+        );
+      }
+    }
+
     setSigner(ledgerSigner);
-  }, [isLedgerAccount]);
+  }, [isLedgerAccount, defaultAccount]);
 
   // Close transport on unmount
   useEffect(() => {
@@ -206,8 +219,13 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
 
   const getSignerForChain = useCallback(
     async (chainId: string): Promise<Option<OfflineSigner>> => {
-      if (isLedgerAccount && chainId === CHAIN_ID) {
-        return createLedgerSigner();
+      if (isLedgerAccount) {
+        const network = networkListIbc[chainId];
+        const prefix = network?.prefix;
+        if (prefix) {
+          return createLedgerSigner(prefix);
+        }
+        return undefined;
       }
       if (mnemonicRef.current) {
         return getOfflineSignerFromMnemonic(mnemonicRef.current, chainId);

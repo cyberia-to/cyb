@@ -129,44 +129,48 @@ export default slice.reducer;
 // refactor this
 // Migrate legacy 'keplr' accounts to 'read-only' (one-time, idempotent)
 function migrateKeplrAccounts() {
-  const raw = localStorage.getItem(localStorageKeys.pocket.POCKET_ACCOUNT);
-  if (!raw) return;
+  try {
+    const raw = localStorage.getItem(localStorageKeys.pocket.POCKET_ACCOUNT);
+    if (!raw) return;
 
-  let changed = false;
-  const accounts: Accounts = JSON.parse(raw);
+    let changed = false;
+    const accounts: Accounts = JSON.parse(raw);
 
-  Object.keys(accounts).forEach((name) => {
-    Object.keys(accounts[name]).forEach((network) => {
-      if (accounts[name][network].keys === 'keplr') {
-        accounts[name][network].keys = 'read-only';
-        changed = true;
-      }
-    });
-  });
-
-  if (changed) {
-    localStorage.setItem(localStorageKeys.pocket.POCKET_ACCOUNT, JSON.stringify(accounts));
-
-    // Also patch the default account pocket entry
-    const pocketRaw = localStorage.getItem(localStorageKeys.pocket.POCKET);
-    if (pocketRaw) {
-      const pocket = JSON.parse(pocketRaw);
-      Object.keys(pocket).forEach((name) => {
-        if (pocket[name]) {
-          Object.keys(pocket[name]).forEach((network) => {
-            if (pocket[name][network]?.keys === 'keplr') {
-              pocket[name][network].keys = 'read-only';
-            }
-          });
+    Object.keys(accounts).forEach((name) => {
+      Object.keys(accounts[name]).forEach((network) => {
+        if (accounts[name][network].keys === 'keplr') {
+          accounts[name][network].keys = 'read-only';
+          changed = true;
         }
       });
-      localStorage.setItem(localStorageKeys.pocket.POCKET, JSON.stringify(pocket));
-    }
+    });
 
-    // Flag for one-time adviser notification
-    if (!localStorage.getItem('cyb:keplr-migrated')) {
-      localStorage.setItem('cyb:keplr-migrated', '1');
+    if (changed) {
+      localStorage.setItem(localStorageKeys.pocket.POCKET_ACCOUNT, JSON.stringify(accounts));
+
+      // Also patch the default account pocket entry
+      const pocketRaw = localStorage.getItem(localStorageKeys.pocket.POCKET);
+      if (pocketRaw) {
+        const pocket = JSON.parse(pocketRaw);
+        Object.keys(pocket).forEach((name) => {
+          if (pocket[name]) {
+            Object.keys(pocket[name]).forEach((network) => {
+              if (pocket[name][network]?.keys === 'keplr') {
+                pocket[name][network].keys = 'read-only';
+              }
+            });
+          }
+        });
+        localStorage.setItem(localStorageKeys.pocket.POCKET, JSON.stringify(pocket));
+      }
+
+      // Flag for one-time adviser notification
+      if (!localStorage.getItem('cyb:keplr-migrated')) {
+        localStorage.setItem('cyb:keplr-migrated', '1');
+      }
     }
+  } catch (e) {
+    console.warn('keplr account migration skipped due to corrupt localStorage:', e);
   }
 }
 
