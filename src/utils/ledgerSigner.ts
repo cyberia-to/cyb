@@ -29,10 +29,18 @@ export async function getTransport(): Promise<TransportWebUSB> {
 
   if (_transport) {
     try {
-      // Ping the transport to check if it's still alive
-      await _transport.send(0xe0, 0x01, 0x00, 0x00);
-      resetIdleTimer();
-      return _transport;
+      // Ping: getVersion APDU — Cosmos app responds with 0x9000
+      const response = await _transport.send(0xe0, 0x01, 0x00, 0x00);
+      // Last 2 bytes = status word; 0x9000 = OK, anything else = wrong app
+      const sw = response.length >= 2
+        ? (response[response.length - 2] << 8) | response[response.length - 1]
+        : 0;
+      if (sw !== 0x9000) {
+        _transport = null;
+      } else {
+        resetIdleTimer();
+        return _transport;
+      }
     } catch {
       _transport = null;
     }

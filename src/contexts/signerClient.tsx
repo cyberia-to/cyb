@@ -242,9 +242,14 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
     return () => clearInterval(interval);
   }, [isLedgerAccount, signer]);
 
-  // Close transport on unmount
+  // Close transport on unmount and on page unload
   useEffect(() => {
+    const handleBeforeUnload = () => {
+      closeTransport();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
     return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
       closeTransport();
     };
   }, []);

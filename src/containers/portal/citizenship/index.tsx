@@ -309,17 +309,18 @@ function GetCitizenship({ defaultAccount }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient, addressActive, step, getBalanceAndNickname]);
 
-  const checkAddressNetwork = useCallback(async () => {
+  const checkAddressNetwork = useCallback(async (attempt = 0) => {
+    const MAX_RETRIES = 10;
     if (step === STEP_ACTIVE_ADD && queryClient && addressActive !== null) {
       const { bech32 } = addressActive;
       const response = await queryClient.getAccount(bech32);
       console.log('response', response);
       if (response && Object.hasOwn(response, 'accountNumber')) {
         setStep(STEP_RULES);
-      } else {
+      } else if (attempt < MAX_RETRIES) {
         const responseCredit = await getCredit(bech32);
         if (responseCredit !== null && responseCredit.data === 'ok') {
-          checkAddressNetwork();
+          setTimeout(() => checkAddressNetwork(attempt + 1), 1500);
         }
       }
     }
