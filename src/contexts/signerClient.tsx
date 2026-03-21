@@ -7,7 +7,13 @@ import { useAppSelector } from 'src/redux/hooks';
 import { Option } from 'src/types';
 import { Networks } from 'src/types/networks';
 import { decryptMnemonic } from 'src/utils/mnemonicCrypto';
-import { connectLedger as connectLedgerDevice, createLedgerSigner, closeTransport } from 'src/utils/ledgerSigner';
+import {
+  connectLedger as connectLedgerDevice,
+  ReconnectingLedgerSigner,
+  createLedgerSigner,
+  closeTransport,
+  checkTransportHealth,
+} from 'src/utils/ledgerSigner';
 import networkListIbc from 'src/utils/networkListIbc';
 import { getOfflineSigner as getOfflineSignerFromMnemonic } from 'src/utils/offlineSigner';
 import { getEncryptedMnemonic } from 'src/utils/utils';
@@ -196,15 +202,15 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
     return { address, pubkey };
   }, []);
 
-  // Reconnect Ledger — for when signer was lost (page refresh)
+  // Reconnect Ledger — for when signer was lost (page refresh / device sleep)
   const reconnectLedger = useCallback(async () => {
     if (!isLedgerAccount) return;
-    const ledgerSigner = await createLedgerSigner();
 
-    // Verify the reconnected device derives the same address as stored account
+    // Validate device first with a raw signer
+    const rawSigner = await createLedgerSigner();
     const expectedAddress = defaultAccount.account?.cyber?.bech32;
     if (expectedAddress) {
-      const [account] = await ledgerSigner.getAccounts();
+      const [account] = await rawSigner.getAccounts();
       if (account.address !== expectedAddress) {
         throw new Error(
           `Ledger address mismatch: expected ${expectedAddress}, got ${account.address}. Is this the correct device?`
@@ -212,8 +218,29 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    setSigner(ledgerSigner);
+    // Use ReconnectingLedgerSigner for long-lived use — survives sleep
+    const [account] = await rawSigner.getAccounts();
+    const reconnectingSigner = new ReconnectingLedgerSigner('bostrom', [account]);
+    setSigner(reconnectingSigner);
   }, [isLedgerAccount, defaultAccount]);
+
+  // Ledger health monitoring — detect sleep / disconnect
+  useEffect(() => {
+    if (!isLedgerAccount || !signer) return;
+
+    const HEALTH_INTERVAL_MS = 30_000; // 30 seconds
+
+    const check = async () => {
+      const healthy = await checkTransportHealth();
+      if (!healthy) {
+        setSigner(undefined);
+        window.dispatchEvent(new CustomEvent('__cyb_ledger_disconnected'));
+      }
+    };
+
+    const interval = setInterval(check, HEALTH_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [isLedgerAccount, signer]);
 
   // Close transport on unmount
   useEffect(() => {

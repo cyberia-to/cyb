@@ -1,8 +1,10 @@
 import TransportWebUSB from '@ledgerhq/hw-transport-webusb';
 import { LedgerSigner } from '@cosmjs/ledger-amino';
 import { makeCosmoshubPath } from '@cosmjs/amino';
+import type { AccountData, AminoSignResponse, OfflineAminoSigner, StdSignDoc } from '@cosmjs/amino';
 
 const IDLE_TIMEOUT_MS = 5 * 60_000; // 5 minutes — signing on device can take time
+const HEALTH_CHECK_TIMEOUT_MS = 3_000; // 3 seconds — ping timeout
 
 let _transport: TransportWebUSB | null = null;
 let _idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -83,28 +85,59 @@ export async function createLedgerSigner(prefix = 'bostrom'): Promise<LedgerSign
 }
 
 /**
- * Connect to a Ledger device, create a signer, and return account info.
+ * A signer that acquires a fresh transport for each signing operation.
+ * Survives device sleep / disconnect — reconnects automatically when
+ * the device is available again.
+ */
+export class ReconnectingLedgerSigner implements OfflineAminoSigner {
+  private prefix: string;
+  private _cachedAccounts: readonly AccountData[] | null;
+
+  constructor(prefix = 'bostrom', cachedAccounts?: readonly AccountData[]) {
+    this.prefix = prefix;
+    this._cachedAccounts = cachedAccounts ?? null;
+  }
+
+  async getAccounts(): Promise<readonly AccountData[]> {
+    if (this._cachedAccounts) return this._cachedAccounts;
+    const inner = await createLedgerSigner(this.prefix);
+    this._cachedAccounts = await inner.getAccounts();
+    return this._cachedAccounts;
+  }
+
+  async signAmino(signerAddress: string, signDoc: StdSignDoc): Promise<AminoSignResponse> {
+    // Fresh signer with fresh transport — survives device sleep
+    const inner = await createLedgerSigner(this.prefix);
+    return inner.signAmino(signerAddress, signDoc);
+  }
+}
+
+/**
+ * Connect to a Ledger device, validate it, and return a reconnecting signer.
  * @param prefix - bech32 prefix (default: 'bostrom')
  */
 export async function connectLedger(prefix = 'bostrom'): Promise<{
-  signer: LedgerSigner;
+  signer: ReconnectingLedgerSigner;
   address: string;
   pubkey: Uint8Array;
 }> {
-  const signer = await createLedgerSigner(prefix);
-  const [account] = await signer.getAccounts();
+  // Validate device connection with a real signer first
+  const inner = await createLedgerSigner(prefix);
+  const [account] = await inner.getAccounts();
+
+  // Return a reconnecting signer for long-lived use
   return {
-    signer,
+    signer: new ReconnectingLedgerSigner(prefix, [account]),
     address: account.address,
     pubkey: account.pubkey,
   };
 }
 
 /**
- * Type guard: check if a signer is a LedgerSigner instance.
+ * Type guard: check if a signer is a Ledger-backed signer.
  */
-export function isLedgerSigner(signer: unknown): signer is LedgerSigner {
-  return signer instanceof LedgerSigner;
+export function isLedgerSigner(signer: unknown): boolean {
+  return signer instanceof LedgerSigner || signer instanceof ReconnectingLedgerSigner;
 }
 
 /**
@@ -112,4 +145,31 @@ export function isLedgerSigner(signer: unknown): signer is LedgerSigner {
  */
 export function isWebUSBSupported(): boolean {
   return typeof navigator !== 'undefined' && !!navigator.usb;
+}
+
+/**
+ * Check if the Ledger transport is alive and the Cosmos app is responsive.
+ * Returns true if reachable, false if device is asleep/disconnected.
+ */
+export async function checkTransportHealth(): Promise<boolean> {
+  if (!_transport) return false;
+  try {
+    const timeout = new Promise<never>((_, reject) =>
+      setTimeout(() => reject(new Error('timeout')), HEALTH_CHECK_TIMEOUT_MS)
+    );
+    await Promise.race([
+      _transport.send(0xe0, 0x01, 0x00, 0x00),
+      timeout,
+    ]);
+    resetIdleTimer(); // successful ping counts as activity
+    return true;
+  } catch (err: any) {
+    // TransportStatusError (has statusCode) means USB works but app returned error
+    // — device is alive, just maybe wrong app open
+    if (err?.statusCode !== undefined) {
+      resetIdleTimer();
+      return true;
+    }
+    return false;
+  }
 }

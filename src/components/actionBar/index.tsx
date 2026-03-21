@@ -1,8 +1,10 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { CHAIN_ID } from 'src/constants/config';
 import { useDevice } from 'src/contexts/device';
 import { useSigningClient } from 'src/contexts/signerClient';
+import { useAdviser } from 'src/features/adviser/context';
+import { AdviserColors } from 'src/features/adviser/Adviser/Adviser';
 import usePassportByAddress from 'src/features/passport/hooks/usePassportByAddress';
 import { selectCurrentAddress } from 'src/redux/features/pocket';
 import { useAppSelector } from 'src/redux/hooks';
@@ -214,8 +216,16 @@ function UnlockWalletBar() {
 
 function ConnectLedgerBar() {
   const { reconnectLedger } = useSigningClient();
+  const { setAdviser } = useAdviser();
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setAdviser(
+      'Ledger is not connected. Wake up your device and open the Cosmos app.',
+      AdviserColors.yellow
+    );
+  }, [setAdviser]);
 
   const handleConnect = async () => {
     setError('');
@@ -224,6 +234,10 @@ function ConnectLedgerBar() {
       await reconnectLedger();
     } catch (err: any) {
       setError(err?.message || 'Connection failed');
+      setAdviser(
+        `Ledger connection failed: ${err?.message || 'unknown error'}`,
+        AdviserColors.red
+      );
     } finally {
       setLoading(false);
     }
