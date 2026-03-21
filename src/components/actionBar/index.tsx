@@ -222,7 +222,7 @@ function ConnectLedgerBar() {
 
   useEffect(() => {
     setAdviser(
-      'Ledger is not connected. Wake up your device and open the Cosmos app.',
+      'Ledger is not connected. Wake up your device and open the Cosmos app',
       AdviserColors.yellow
     );
   }, [setAdviser]);
@@ -235,7 +235,7 @@ function ConnectLedgerBar() {
     } catch (err: any) {
       setError(err?.message || 'Connection failed');
       setAdviser(
-        `Ledger connection failed: ${err?.message || 'unknown error'}`,
+        `Could not connect to Ledger: ${err?.message || 'unknown error'}`,
         AdviserColors.red
       );
     } finally {

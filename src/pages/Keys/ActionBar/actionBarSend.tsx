@@ -14,6 +14,7 @@ import { PATTERN_CYBER } from 'src/constants/patterns';
 import { useSigningClient } from 'src/contexts/signerClient';
 import { getTxs } from 'src/services/transactions/lcd';
 import { LEDGER } from 'src/utils/config';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 
 const { STAGE_ERROR, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED } = LEDGER;
 
@@ -31,7 +32,7 @@ function ActionBarSendTokens({ updateAddress, updateBalance, onClickBack }) {
 
   const generateTxSend = async () => {
     if (!signer || !signingClient) {
-      setErrorMessage('Wallet is not ready. Please unlock your wallet and try again.');
+      setErrorMessage('Unlock your wallet first to send tokens');
       setStage(STAGE_ERROR);
       return;
     }
@@ -88,7 +89,7 @@ function ActionBarSendTokens({ updateAddress, updateBalance, onClickBack }) {
           if (response.code) {
             setStage(STAGE_ERROR);
             setTxHeight(response.height);
-            setErrorMessage(response.raw_log);
+            setErrorMessage(friendlyErrorMessage(response.raw_log));
             return;
           }
         }

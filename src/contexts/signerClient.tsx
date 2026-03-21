@@ -175,10 +175,10 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
   const unlockWallet = useCallback(
     async (password: string) => {
       const address = defaultAccount.account?.cyber.bech32;
-      if (!address) throw new Error('No active account');
+      if (!address) throw new Error('Select an account in Keys before signing');
 
       const encrypted = getEncryptedMnemonic(address);
-      if (!encrypted) throw new Error('No encrypted mnemonic found');
+      if (!encrypted) throw new Error('Wallet data not found. Re-import your seed phrase');
 
       const mnemonic = await decryptMnemonic(encrypted, password);
       const offlineSigner = await getOfflineSignerFromMnemonic(mnemonic);
@@ -186,7 +186,7 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
       // Verify decrypted mnemonic derives to the expected address
       const [account] = await offlineSigner.getAccounts();
       if (account.address !== address) {
-        throw new Error('Decrypted mnemonic does not match expected address');
+        throw new Error('Seed phrase does not match this account. Check your backup');
       }
 
       setMnemonicWithAutoClear(mnemonic);
@@ -213,7 +213,7 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
       const [account] = await rawSigner.getAccounts();
       if (account.address !== expectedAddress) {
         throw new Error(
-          `Ledger address mismatch: expected ${expectedAddress}, got ${account.address}. Is this the correct device?`
+          'This Ledger has a different address. Is it the correct device?'
         );
       }
     }

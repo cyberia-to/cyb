@@ -92,7 +92,7 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
   useEffect(() => {
     if (stage === STAGE_INIT && !isWebUSBSupported()) {
       setAdviser(
-        'Ledger hardware wallet requires Chrome, Edge, or the cyb.ai desktop app',
+        'Ledger requires Chrome, Edge, or the cyb.ai desktop app',
         AdviserColors.yellow
       );
     }
@@ -158,7 +158,7 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
       }
     } catch (err: any) {
       setAdviser(
-        `Ledger connection failed: ${err?.message || 'unknown error'}. Make sure the Cosmos app is open.`,
+        `Could not connect to Ledger: ${err?.message || 'unknown error'}. Open the Cosmos app on your device and try again`,
         AdviserColors.red
       );
       setStage(STAGE_INIT);
@@ -257,7 +257,7 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
       pendingMnemonicRef.current = '';
       setPassword('');
       setPasswordConfirm('');
-      setPasswordError('Failed to create wallet. Please check your seed phrase.');
+      setPasswordError('Failed to import wallet. Check your seed phrase and try again');
     } finally {
       setSaving(false);
     }

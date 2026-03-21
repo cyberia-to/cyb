@@ -15,6 +15,7 @@ import networks from '../../../utils/networkListIbc';
 import { convertAmountReverce, fromBech32, trimString } from '../../../utils/utils';
 import ActionBarPingTxs from '../components/actionBarPingTxs';
 import { TxsType, TypeTxsT } from '../type';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 
 const { STAGE_INIT, STAGE_ERROR, STAGE_SUBMITTED } = LEDGER;
 
@@ -136,7 +137,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
         // }
       } else {
         setTxHashIbc(null);
-        setErrorMessage(response.rawLog.toString());
+        setErrorMessage(friendlyErrorMessage(response.rawLog));
         setStage(STAGE_ERROR);
       }
     } catch (e) {
@@ -206,7 +207,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
         pingTxsIbc(signingClient, transferData);
       } else {
         setTxHash(undefined);
-        setErrorMessage(response.rawLog.toString());
+        setErrorMessage(friendlyErrorMessage(response.rawLog));
         setStage(STAGE_ERROR);
       }
     } catch (e) {

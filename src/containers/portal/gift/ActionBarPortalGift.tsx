@@ -210,9 +210,9 @@ function ActionBarPortalGift({
       setSignedMessage({ signature, address });
       setStepApp(STEP_INFO.STATE_PROVE_CHECK_ACCOUNT);
     } else if (chainSigner) {
-      setAdviser('Ledger does not support message signing. Use a software wallet for this step.');
+      setAdviser('Ledger cannot sign messages. Use a seed phrase wallet for this step');
     } else {
-      setAdviser('Wallet is locked. Unlock your wallet to sign.');
+      setAdviser('Wallet is locked. Enter your password to unlock');
     }
     return null;
   }, [citizenship, selectNetwork, setStepApp, getSignerForChain, setAdviser]);

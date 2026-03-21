@@ -110,7 +110,7 @@ function App() {
   useEffect(() => {
     const handleAutoLock = () => {
       adviserContext.setAdviser(
-        'Wallet locked after inactivity. Enter password to unlock.',
+        'Wallet locked after inactivity. Enter your password to continue',
         AdviserColors.yellow
       );
       adviserContext.setIsOpen(true);

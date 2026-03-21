@@ -23,6 +23,7 @@ import {
 } from '../../../../components';
 import withIpfsAndSigner from '../../../../hocs/withIpfsAndSigner';
 import { LEDGER } from '../../../../utils/config';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 
 const { STAGE_INIT, STAGE_READY, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED, STAGE_ERROR } =
   LEDGER;
@@ -144,7 +145,7 @@ class ActionBarContainer extends Component<Props> {
               txHash = response.transactionHash;
 
               if (response.code) {
-                throw Error(response.rawLog.toString());
+                throw Error(friendlyErrorMessage(response.rawLog));
               }
             }
           }
@@ -204,7 +205,7 @@ class ActionBarContainer extends Component<Props> {
           this.setState({
             stage: STAGE_ERROR,
             txHeight: data.height,
-            errorMessage: data.raw_log,
+            errorMessage: friendlyErrorMessage(data.raw_log),
           });
           return;
         }

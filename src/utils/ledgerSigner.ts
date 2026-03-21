@@ -24,7 +24,7 @@ function resetIdleTimer() {
  */
 export async function getTransport(): Promise<TransportWebUSB> {
   if (!navigator.usb) {
-    throw new Error('WebUSB is not supported in this browser. Use Chrome or Edge.');
+    throw new Error('Ledger requires Chrome, Edge, or the cyb.ai desktop app');
   }
 
   if (_transport) {

@@ -21,6 +21,7 @@ import {
 } from '../../components';
 import { LEDGER } from '../../utils/config';
 import { trimString } from '../../utils/utils';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 
 const imgCyber = require('../../image/blue-circle.png');
 
@@ -217,7 +218,7 @@ class ActionBarContainer extends Component<Props, any> {
           this.setState({
             stage: STAGE_ERROR,
             txHeight: data.height,
-            errorMessage: data.raw_log,
+            errorMessage: friendlyErrorMessage(data.raw_log),
           });
           return;
         }

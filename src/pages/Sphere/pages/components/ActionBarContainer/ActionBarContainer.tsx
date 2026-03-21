@@ -19,6 +19,7 @@ import {
 import { LEDGER } from '../../../../../utils/config';
 import Delegate from './components/Delegate/Delegate';
 import ReDelegate from './components/ReDelegate/ReDelegate';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 
 const {
   STAGE_INIT,
@@ -94,7 +95,7 @@ const checkTxs = (response, updateState) => {
   } else {
     setStage(STAGE_ERROR);
     setTxHash(null);
-    setErrorMessage(response.rawLog.toString());
+    setErrorMessage(friendlyErrorMessage(response.rawLog));
   }
 };
 
@@ -120,7 +121,7 @@ const useCheckStatusTx = (txHash, setStage, setErrorMessage, updateFnc) => {
           if (response.code) {
             setStage(STAGE_ERROR);
             setTxHeight(response.height);
-            setErrorMessage(response.rawLog);
+            setErrorMessage(friendlyErrorMessage(response.rawLog));
             return;
           }
         }
@@ -167,7 +168,7 @@ function ActionBarContainer({ validators, updateFnc }: Props) {
   const errorState = (error) => {
     setTxHash(null);
     setStage(STAGE_ERROR);
-    setErrorMessage(error.toString());
+    setErrorMessage(friendlyErrorMessage(error?.message || error));
   };
 
   const clearFunc = () => {

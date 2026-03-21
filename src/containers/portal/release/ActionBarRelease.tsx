@@ -94,13 +94,6 @@ function ActionBarRelease({
           true // onlyDelegate
         );
 
-        if (isNanoLedger) {
-          setAdviser(
-            "Ledger Nano-S is temporarily not supported, but don't worry, you can release your gift later",
-            'red'
-          );
-        }
-
         if (!msgsBroadcast.length) {
           return;
         }

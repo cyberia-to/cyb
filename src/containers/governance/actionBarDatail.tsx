@@ -26,6 +26,7 @@ import {
 // import styles from './ActionBarDetail.module.scss';
 
 import { LEDGER } from '../../utils/config';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 
 const imgCyber = require('../../image/blue-circle.png');
 
@@ -66,7 +67,7 @@ function ActionBarDetail({ proposals, id, update }: Props) {
           if (response.code) {
             setStage(STAGE_ERROR);
             setTxHeight(response.height);
-            setErrorMessage(response.raw_log);
+            setErrorMessage(friendlyErrorMessage(response.raw_log));
             return;
           }
         }
@@ -112,7 +113,7 @@ function ActionBarDetail({ proposals, id, update }: Props) {
             setTxHash(response.transactionHash);
           } else {
             setTxHash(null);
-            setErrorMessage(response.rawLog.toString());
+            setErrorMessage(friendlyErrorMessage(response.rawLog));
             setStage(STAGE_ERROR);
           }
         } else {
