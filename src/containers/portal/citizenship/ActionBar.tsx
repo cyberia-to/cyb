@@ -11,6 +11,7 @@ import { BtnGrd, Dots } from '../../../components';
 import { setAccounts, setDefaultAccount } from '../../../redux/features/pocket';
 import { LEDGER } from '../../../utils/config';
 import { ActionBarSteps } from '../components';
+import { getSignerKeyInfo } from '../utils';
 import { steps } from './utils';
 
 const {
@@ -71,8 +72,8 @@ function ActionBar({
 
     let count = 1;
     if (signer) {
-      const { bech32Address, pubKey, name } = await signer.keplr.getKey(chainId);
-      const pk = toHex(new Uint8Array(pubKey));
+      const { bech32Address, pubKey, name } = await getSignerKeyInfo(signer, chainId);
+      const pk = toHex(pubKey);
 
       const localStoragePocketAccount = localStorage.getItem('pocketAccount');
       const localStorageCount = localStorage.getItem('count');
@@ -97,7 +98,7 @@ function ActionBar({
       } else {
         accounts.cyber = {
           bech32: bech32Address,
-          keys: 'keplr',
+          keys: 'wallet',
           pk,
           path: LEDGER.HDPATH,
           name,
@@ -140,15 +141,14 @@ function ActionBar({
     }
   };
 
-  const onClickInstallKeplr = useCallback(() => {
+  const onClickConnectWallet = useCallback(() => {
     if (!signer) {
-      setStep(STEP_KEPLR_INIT_INSTALLED);
-      openInNewTab('https://www.keplr.app');
+      setStep(STEP_KEPLR_SETUP);
     } else {
       setStep(STEP_KEPLR_SETUP);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [signer, openInNewTab, setStep]);
+  }, [signer, setStep]);
 
   useEffect(() => {
     if (step === STEP_KEPLR_REGISTER || step === STEP_ACTIVE_ADD) {
@@ -215,8 +215,8 @@ function ActionBar({
     return (
       <ActionBarSteps onClickBack={() => setStep(STEP_AVATAR_UPLOAD)}>
         <BtnGrd
-          onClick={() => onClickInstallKeplr()}
-          text={!signer ? 'install Keplr' : 'I installed Keplr'}
+          onClick={() => onClickConnectWallet()}
+          text={!signer ? 'connect wallet' : 'wallet connected'}
         />
         {/* <Button onClick={() => setStep(STEP_KEPLR_SETUP)}>install Keplr</Button> */}
       </ActionBarSteps>
@@ -226,7 +226,7 @@ function ActionBar({
   if (step === STEP_KEPLR_INIT_INSTALLED) {
     return (
       <ActionBarSteps onClickBack={() => setStep(STEP_AVATAR_UPLOAD)}>
-        <BtnGrd onClick={() => setStep(STEP_KEPLR_SETUP)} text="I installed Keplr" />
+        <BtnGrd onClick={() => setStep(STEP_KEPLR_SETUP)} text="wallet connected" />
         {/* <Button onClick={() => setStep(STEP_KEPLR_SETUP)}>install Keplr</Button> */}
       </ActionBarSteps>
     );

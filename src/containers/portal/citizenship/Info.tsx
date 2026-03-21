@@ -126,9 +126,8 @@ function Info({
       case STEP_KEPLR_INIT_INSTALLED:
         content = (
           <span>
-            You need Keplr to use cyb. <br />
-            It is opensource and cool! <br /> Check{' '}
-            <LinkWindow to="https://www.keplr.app/">repository</LinkWindow> if necesarry
+            You need a wallet to use cyb. <br />
+            Import your seed phrase or connect a Ledger.
           </span>
         );
         break;
@@ -136,7 +135,7 @@ function Info({
       case STEP_KEPLR_SETUP:
         content = (
           <span>
-            Create an account in keplr. <br />
+            Set up your wallet. <br />
             You will then have addresses in the Cyber ecosystem.
           </span>
         );
@@ -145,7 +144,7 @@ function Info({
       case STEP_KEPLR_CONNECT:
         content = (
           <span>
-            Connect keplr. <br /> One click left
+            Connect your wallet. <br /> One click left
           </span>
         );
         break;

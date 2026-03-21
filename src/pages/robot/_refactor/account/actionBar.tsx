@@ -21,7 +21,7 @@ import {
   TransactionError,
   TransactionSubmitted,
 } from '../../../../components';
-import withIpfsAndKeplr from '../../../../hocs/withIpfsAndKeplr';
+import withIpfsAndSigner from '../../../../hocs/withIpfsAndSigner';
 import { LEDGER } from '../../../../utils/config';
 
 const { STAGE_INIT, STAGE_READY, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED, STAGE_ERROR } =
@@ -396,4 +396,4 @@ class ActionBarContainer extends Component<Props> {
   }
 }
 
-export default withIpfsAndKeplr(ActionBarContainer);
+export default withIpfsAndSigner(ActionBarContainer);

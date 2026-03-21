@@ -89,7 +89,7 @@ function Info({ stepCurrent, useReleasedStage, nextRelease }) {
       break;
 
     case STATE_PROVE_SIGN_KEPLR:
-      content = <span>sign message in keplr</span>;
+      content = <span>sign message in your wallet</span>;
       break;
 
     case STATE_PROVE_SEND_SIGN:
@@ -97,7 +97,7 @@ function Info({ stepCurrent, useReleasedStage, nextRelease }) {
       break;
 
     case STATE_PROVE_CHANGE_ACCOUNT:
-      content = <span> you need change account in keplr</span>;
+      content = <span> you need to change account in your wallet</span>;
       break;
 
     case STATE_PROVE_YOU_ADDED_ADDR:

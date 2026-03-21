@@ -27,7 +27,6 @@ import {
 
 import { LEDGER } from '../../utils/config';
 
-const imgKeplr = require('../../image/keplr-icon.svg');
 const imgCyber = require('../../image/blue-circle.png');
 
 const { STAGE_INIT, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED, STAGE_ERROR } = LEDGER;
@@ -198,25 +197,9 @@ function ActionBarDetail({ proposals, id, update }: Props) {
             onChangeSelect={(value) => setValueSelect(Number(value))}
           />
         </ActionBarContentText>
-        <ButtonImgText
-          text={
-            <Pane alignItems="center" display="flex">
-              Vote
-              <img
-                src={imgCyber}
-                alt="cyber"
-                style={{
-                  width: 20,
-                  height: 20,
-                  marginLeft: '5px',
-                  paddingTop: '2px',
-                  objectFit: 'contain',
-                }}
-              />
-            </Pane>
-          }
+        <BtnGrd
           onClick={() => generateTxKeplr()}
-          img={imgKeplr}
+          text="Vote"
         />
       </ActionBar>
     );

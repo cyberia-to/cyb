@@ -5,19 +5,17 @@ import { ActionBar as ActionBarContainer } from 'src/components';
 import Button from 'src/components/btnGrd';
 import { useSigningClient } from 'src/contexts/signerClient';
 import imgRead from 'src/image/duplicate-outline.svg';
-import imgKeplr from 'src/image/keplr-icon.svg';
 import { deleteAddress } from 'src/redux/features/pocket';
 import { removeSecret } from 'src/redux/reducers/scripting';
 import { RootState } from 'src/redux/store';
 import BroadcastChannelSender from 'src/services/backend/channels/BroadcastChannelSender';
 import { KEY_LIST_TYPE, KEY_TYPE } from '../types';
 import ActionBarConnect from './actionBarConnect';
-import ActionBarKeplr from './actionBarKeplr';
+import ActionBarSend from './actionBarKeplr';
 
 const STAGE_INIT = 1;
 const STAGE_CONNECT = 2;
-const _STAGE_SEND_LEDGER = 3.1;
-const STAGE_SEND_KEPLR = 4.1;
+const STAGE_SEND = 4.1;
 const STAGE_SEND_READ_ONLY = 5.1;
 
 function ButtonImgText({ img, text = 'Send', ...props }) {
@@ -240,12 +238,16 @@ function ActionBar({
         </ActionBarContainer>
       );
     }
-    if (typeActionBar === KEY_TYPE.keplr) {
+    if (typeActionBar === KEY_TYPE.wallet || typeActionBar === KEY_TYPE.ledger) {
       return (
         <ActionBarContainer>
           <Pane>
             {connect && buttonConnect}
-            {keplr && <ButtonImgText img={imgKeplr} onClick={() => setStage(STAGE_SEND_KEPLR)} />}
+            {keplr && (
+              <Button style={{ margin: '0 10px' }} onClick={() => setStage(STAGE_SEND)}>
+                Send
+              </Button>
+            )}
             {makeActive && buttonActivate}
           </Pane>
         </ActionBarContainer>
@@ -265,9 +267,9 @@ function ActionBar({
     }
   }
 
-  if (stage === STAGE_SEND_KEPLR) {
+  if (stage === STAGE_SEND) {
     return (
-      <ActionBarKeplr
+      <ActionBarSend
         updateAddress={updateFuncActionBar}
         updateBalance={updateAddress}
         onClickBack={() => setStage(STAGE_INIT)}

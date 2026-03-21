@@ -19,12 +19,11 @@ import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 import { Nullable } from 'src/types';
 import { Citizenship } from 'src/types/citizenship';
 import { toHex } from 'src/utils/encoding';
-import { getKeplr } from 'src/utils/keplrUtils';
+import { hasSignArbitrary } from 'src/utils/offlineSigner';
 import { ActionBar as ActionBarSteps, BtnGrd, ButtonIcon, Dots } from '../../../components';
 import { addAddress, deleteAddress } from '../../../features/passport/passports.redux';
 import imgCosmos from '../../../image/cosmos-2.svg';
 import imgEth from '../../../image/Ethereum_logo_2014.svg';
-import imgKeplr from '../../../image/keplr-icon.svg';
 import imgMetaMask from '../../../image/mm-logo.svg';
 import imgOsmosis from '../../../image/osmosis.svg';
 import imgSpacePussy from '../../../image/space-pussy.svg';
@@ -36,8 +35,8 @@ import {
   CONSTITUTION_HASH,
   CONTRACT_ADDRESS_GIFT,
   CONTRACT_ADDRESS_PASSPORT,
+  getSignerKeyInfo,
 } from '../utils';
-import configTerraKeplr from './configTerraKeplr';
 import { ClaimMsg } from './type';
 import STEP_INFO from './utils';
 
@@ -115,7 +114,7 @@ function ActionBarPortalGift({
   const navigate = useNavigate();
   const location = useLocation();
 
-  const { signer, signingClient, initSigner } = useSigningClient();
+  const { signer, signingClient, initSigner, getSignerForChain } = useSigningClient();
   const [selectMethod, setSelectMethod] = useState('');
   const [selectNetwork, setSelectNetwork] = useState('');
   const [signedMessageKeplr, setSignedMessageKeplr] = useState(null);
@@ -179,24 +178,18 @@ function ActionBarPortalGift({
   }, [citizenship, addressActive]);
 
   const signMsgKeplr = useCallback(async () => {
-    const keplrWindow = await getKeplr();
-    if (keplrWindow && citizenship && selectNetwork !== '') {
-      const { owner, extension } = citizenship;
-      const { addresses } = extension;
+    if (!citizenship || selectNetwork === '') return null;
 
-      if (selectNetwork === 'columbus-5') {
-        if (window.keplr?.experimentalSuggestChain) {
-          await window.keplr.experimentalSuggestChain(configTerraKeplr());
-        }
-      }
-      await keplrWindow.enable(selectNetwork);
-      const signer = await keplrWindow.getOfflineSignerAuto(selectNetwork);
+    const { owner, extension } = citizenship;
+    const { addresses } = extension;
 
-      const [{ address }] = await signer.getAccounts();
+    const chainSigner = await getSignerForChain(selectNetwork);
+
+    if (hasSignArbitrary(chainSigner)) {
+      const [{ address }] = await chainSigner.getAccounts();
 
       if (addresses !== null && Object.keys(addresses).length > 0) {
         const result = Object.keys(addresses).filter((key) => addresses[key].address === address);
-
         if (result.length > 0) {
           setStepApp(STEP_INFO.STATE_PROVE_YOU_ADDED_ADDR);
           return null;
@@ -204,7 +197,7 @@ function ActionBarPortalGift({
       }
 
       const data = `${owner}:${CONSTITUTION_HASH}`;
-      const res = await keplrWindow.signArbitrary(selectNetwork, address, data);
+      const res = await chainSigner.signArbitrary(selectNetwork, address, data);
 
       const proveData = {
         pub_key: res.pub_key.value,
@@ -216,7 +209,7 @@ function ActionBarPortalGift({
       setStepApp(STEP_INFO.STATE_PROVE_CHECK_ACCOUNT);
     }
     return null;
-  }, [citizenship, selectNetwork, setStepApp]);
+  }, [citizenship, selectNetwork, setStepApp, getSignerForChain]);
 
   const signMsgETH = useCallback(async () => {
     if (window.ethereum && citizenship) {
@@ -351,7 +344,7 @@ function ActionBarPortalGift({
             const msgObject = claimMsg(nickname, address, amount, proof);
             msgs.push(msgObject);
           });
-          const { bech32Address, isNanoLedger } = await signer.keplr.getKey(CHAIN_ID);
+          const { bech32Address, isNanoLedger } = await getSignerKeyInfo(signer, CHAIN_ID);
 
           if (!msgs.length) {
             return;
@@ -571,20 +564,14 @@ function ActionBarPortalGift({
         button={{
           onClick: () =>
             setStepApp(
-              selectMethod === 'keplr'
-                ? STEP_INFO.STATE_PROVE_SIGN_KEPLR
-                : STEP_INFO.STATE_PROVE_SIGN_MM
+              selectMethod === 'MetaMask'
+                ? STEP_INFO.STATE_PROVE_SIGN_MM
+                : STEP_INFO.STATE_PROVE_SIGN_KEPLR
             ),
           text: 'connect',
           disabled: selectMethod === '',
         }}
       >
-        <ButtonIcon
-          onClick={() => setSelectMethod('keplr')}
-          active={selectMethod === 'keplr'}
-          img={imgKeplr}
-          text="keplr"
-        />
         <ButtonIcon
           onClick={() => onClickMMSigner()}
           active={selectMethod === 'MetaMask'}
@@ -601,7 +588,7 @@ function ActionBarPortalGift({
         onClickBack={() => setStepApp(STEP_INFO.STATE_PROVE_CONNECT)}
         button={{
           onClick: () => signMsgKeplr(),
-          text: 'sign Moon Code in keplr',
+          text: 'sign Moon Code',
           disabled: selectNetwork === '',
         }}
       >
@@ -667,7 +654,7 @@ function ActionBarPortalGift({
   if (activeStep === STEP_INFO.STATE_PROVE_CHANGE_ACCOUNT) {
     return (
       <ActionBarSteps onClickBack={() => setStepApp(STEP_INFO.STATE_PROVE_CONNECT)}>
-        choose {useAddressOwner} in keplr
+        choose {useAddressOwner} in your wallet
       </ActionBarSteps>
     );
   }

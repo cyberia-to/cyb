@@ -1,4 +1,5 @@
 import { CyberClient } from '@cybercongress/cyber-js';
+import { OfflineSigner } from '@cybercongress/cyber-js/build/signingcyberclient';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { useEffect } from 'react';
@@ -271,8 +272,35 @@ const parseRowLog = (rawlog) => {
   return rawlog;
 };
 
+type SignerKeyInfo = {
+  bech32Address: string;
+  isNanoLedger: boolean;
+  pubKey: Uint8Array;
+  name: string;
+};
+
+/**
+ * Get key info from signer — works for wallet (mnemonic) and Ledger signers.
+ * Ledger signers are detected by constructor name (LedgerSigner from @cosmjs/ledger-amino).
+ */
+async function getSignerKeyInfo(
+  signer: OfflineSigner,
+  _chainId: string
+): Promise<SignerKeyInfo> {
+  const [account] = await signer.getAccounts();
+  const isLedger = signer.constructor?.name === 'LedgerSigner';
+
+  return {
+    bech32Address: account.address,
+    isNanoLedger: isLedger,
+    pubKey: account.pubkey,
+    name: isLedger ? 'Ledger' : 'Wallet',
+  };
+}
+
 export {
   activePassport,
+  getSignerKeyInfo,
   CONTRACT_ADDRESS_PASSPORT,
   useGetActivePassport,
   CONSTITUTION_HASH,

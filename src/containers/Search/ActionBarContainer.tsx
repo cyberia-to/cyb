@@ -5,7 +5,7 @@ import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import { PATTERN_IPFS_HASH } from 'src/constants/patterns';
 import { SenseApi } from 'src/contexts/backend/services/senseApi';
-import withIpfsAndKeplr from 'src/hocs/withIpfsAndKeplr';
+import withIpfsAndSigner from 'src/hocs/withIpfsAndSigner';
 import { BackgroundWorker } from 'src/services/backend/workers/background/worker';
 import { sendCyberlink } from 'src/services/neuron/neuronApi';
 import { getTxs } from 'src/services/transactions/lcd';
@@ -22,8 +22,6 @@ import {
 import { LEDGER } from '../../utils/config';
 import { trimString } from '../../utils/utils';
 
-const imgKeplr = require('../../image/keplr-icon.svg');
-const imgLedger = require('../../image/ledger.svg');
 const imgCyber = require('../../image/blue-circle.png');
 
 const { STAGE_INIT, STAGE_READY, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED, STAGE_ERROR } =
@@ -283,17 +281,11 @@ class ActionBarContainer extends Component<Props, any> {
       });
     }
 
-    if (addressLocalStor.keys === 'keplr') {
-      this.onClickInitKeplr();
-    }
+    this.onClickInitKeplr();
   };
 
   onClickInit = () => {
-    const { addressLocalStor } = this.state;
-
-    if (addressLocalStor.keys === 'keplr') {
-      this.onClickInitKeplr();
-    }
+    this.onClickInitKeplr();
   };
 
   render() {
@@ -303,10 +295,6 @@ class ActionBarContainer extends Component<Props, any> {
     const { textBtn, placeholder, rankLink } = this.props;
 
     if (stage === STAGE_INIT && rankLink && rankLink !== null) {
-      let keys = 'ledger';
-      if (addressLocalStor !== null) {
-        keys = addressLocalStor.keys;
-      }
       return (
         <ActionBar>
           <ActionBarContentText>
@@ -327,7 +315,7 @@ class ActionBarContainer extends Component<Props, any> {
                 </Pane>
               }
               onClick={() => this.onClickBtnRank()}
-              img={keys === 'ledger' ? imgLedger : imgKeplr}
+              img={imgCyber}
             />
           </ActionBarContentText>
         </ActionBar>
@@ -418,4 +406,4 @@ const mapStateToProps = (store) => {
   };
 };
 
-export default withIpfsAndKeplr(connect(mapStateToProps)(ActionBarContainer));
+export default withIpfsAndSigner(connect(mapStateToProps)(ActionBarContainer));
