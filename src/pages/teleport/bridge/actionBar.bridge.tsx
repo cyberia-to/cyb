@@ -129,6 +129,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
           amount: coinFunc(amount, tokenSelect),
         };
         pingTxsIbc(ibcClient, transferData);
+        updateFunc();
         setStage(STAGE_CONFIRMED_IBC);
         // if (response.rawLog.length > 0) {
         //   parseRawLog(response.rawLog);
@@ -156,6 +157,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
     signer,
     sourceChannel,
     tokenSelect,
+    updateFunc,
   ]);
 
   const withdrawOnClick = useCallback(async () => {
@@ -246,7 +248,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
 
   if (stage === STAGE_CONFIRMED_IBC) {
     return (
-      <ActionBarCenter button={{ text: 'Fuck Google', onClick: clearState }}>
+      <ActionBarCenter button={{ text: 'Grow', onClick: clearState }}>
         <span>
           Transaction successful:{' '}
           <LinkWindow to={linkIbcTxs}>{trimString(txHashIbc, 6, 6)}</LinkWindow>

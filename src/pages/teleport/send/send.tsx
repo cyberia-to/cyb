@@ -17,7 +17,7 @@ import { ObjKeyValue } from 'src/types/data';
 import { getDisplayAmount, getDisplayAmountReverce, reduceBalances } from 'src/utils/utils';
 import { Col, GridContainer, TeleportContainer } from '../components/containers/Containers';
 import { AccountInput, InputMemo, InputNumberDecimalScale } from '../components/Inputs';
-import useGetSendTxsByAddressByLcd from '../hooks/useGetSendTxsByAddressByLcd';
+import useGetSendTxsByAddressByType from '../hooks/useGetSendTxsByAddress';
 import { useTeleport } from '../Teleport.context';
 import ActionBar from './actionBar.send';
 import DataSendTxs from './components/dataSendTxs/DataSendTxs';
@@ -34,11 +34,10 @@ function Send() {
   const [_update, setUpdate] = useState(0);
   const [recipient, setRecipient] = useState<string | undefined>(undefined);
   const [searchParams, setSearchParams] = useSearchParams();
-  // const dataSendTxs = useGetSendTxsByAddressByType(
-  //   addressActive,
-  //   'cosmos.bank.v1beta1.MsgSend'
-  // );
-  const dataSendTxs = useGetSendTxsByAddressByLcd(addressActive, recipient);
+  const dataSendTxs = useGetSendTxsByAddressByType(
+    addressActive,
+    'cosmos.bank.v1beta1.MsgSend'
+  );
   const [tokenSelect, setTokenSelect] = useState<string>(tokenDefaultValue);
   const [tokenAmount, setTokenAmount] = useState<string>('');
 
@@ -233,7 +232,6 @@ function Send() {
             // disabled
             title="choose network"
           />
-          <InputMemo value={memoValue} onChangeValue={setMemoValue} />
           <AccountInput recipient={recipient} setRecipient={setRecipient} />
           <GridContainer>
             <Col>
@@ -274,6 +272,7 @@ function Send() {
           </GridContainer>
 
           <Slider valuePercents={getPercentsOfToken()} onChange={setPercentageBalanceHook} />
+          <InputMemo value={memoValue} onChangeValue={setMemoValue} />
         </TeleportContainer>
         <TeleportContainer>
           <DataSendTxs dataSendTxs={dataSendTxs} accountUser={addressActive} />

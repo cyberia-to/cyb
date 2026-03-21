@@ -56,7 +56,7 @@ export function TransactionSubmitted() {
 
 export function Confirmed({ txHash, txHeight, cosmos, onClickBtnClose }) {
   return (
-    <ActionBar button={{ text: 'Fuck Google', onClick: onClickBtnClose }}>
+    <ActionBar button={{ text: 'Grow', onClick: onClickBtnClose }}>
       <span>
         Transaction successful:{' '}
         {cosmos ? (

@@ -15,12 +15,17 @@ const getSendBySenderRecipient = async (address, offset = 0, limit = 5) => {
   try {
     const { recipient, sender } = address;
 
+    const events = [
+      { key: 'message.action', value: '/cosmos.bank.v1beta1.MsgSend' },
+      { key: 'transfer.sender', value: sender },
+    ];
+
+    if (recipient) {
+      events.push({ key: 'transfer.recipient', value: recipient });
+    }
+
     const response = await getTransactions({
-      events: [
-        { key: 'message.action', value: '/cosmos.bank.v1beta1.MsgSend' },
-        { key: 'transfer.sender', value: sender },
-        { key: 'transfer.recipient', value: recipient },
-      ],
+      events,
       pagination: { limit, offset },
       orderBy: OrderBy.ORDER_BY_DESC,
     });
@@ -35,7 +40,7 @@ const getSendBySenderRecipient = async (address, offset = 0, limit = 5) => {
 const concatResponse = (arr: undefined | InfiniteData<{ data: any }>) => {
   return (
     arr?.pages?.reduce((acc, page) => {
-      return acc.concat(page.data.txResponses);
+      return acc.concat(page.data?.txResponses || []);
     }, []) || []
   );
 };
@@ -70,8 +75,7 @@ function useGetSendBySenderRecipient(
       enabled:
         Boolean(addressSender) &&
         Boolean(addressSender?.match(PATTERN_CYBER)) &&
-        Boolean(addressRecipient) &&
-        Boolean(addressRecipient?.match(PATTERN_CYBER)),
+        (!addressRecipient || Boolean(addressRecipient?.match(PATTERN_CYBER))),
       getNextPageParam: (lastPage) => {
         const { page, data } = lastPage;
 

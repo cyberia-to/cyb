@@ -3,50 +3,43 @@ import { Link } from 'react-router-dom';
 import { CreatedAt } from 'src/components';
 import Display from 'src/components/containerGradient/Display/Display';
 import { Colors } from 'src/components/containerGradient/types';
+import { UseGetSendTxsByAddressByType } from 'src/pages/teleport/hooks/useGetSendTxsByAddress';
 import { Nullable } from 'src/types';
 import { AccountValue } from 'src/types/defaultAccount';
 import { v4 as uuidv4 } from 'uuid';
 import InfiniteScrollDataTsx from '../../../components/InfiniteScrollDataTxs/InfiniteScrollDataTsx';
 import styles from './DataSendTxs.module.scss';
 import { AmountDenomColor, Memo } from './DataSendTxsItems';
-import { DataSendTxs } from './type';
 
 function DataSendTxs({
   dataSendTxs,
   accountUser,
 }: {
-  dataSendTxs: DataSendTxs;
+  dataSendTxs: UseGetSendTxsByAddressByType;
   accountUser: Nullable<AccountValue>;
 }) {
-  const { data, fetchNextPage, hasNextPage } = dataSendTxs;
+  const { data, error, hasMore, fetchMoreData } = dataSendTxs;
 
   const itemRows = useMemo(() => {
     if (data) {
-      return data.map((item) => {
+      return data.messages_by_address.map((item) => {
         const key = uuidv4();
 
-        const { memo } = item.tx.body;
-        let isReceive = false;
-
-        const typeTx = item.tx.body.messages[0]['@type'];
-        if (
-          typeTx.includes('MsgSend') &&
-          item.tx.body.messages[0].to_address === accountUser?.bech32
-        ) {
-          isReceive = true;
-        }
+        const memo = item.transaction?.memo || '';
+        const isReceive = item.value?.to_address === accountUser?.bech32;
+        const coins = item.value?.amount || [];
 
         return (
-          <Link to={`/network/bostrom/tx/${item.txhash}`} key={`${item.txhash}_${key}`}>
+          <Link to={`/network/bostrom/tx/${item.transaction_hash}`} key={`${item.transaction_hash}_${key}`}>
             <Display
               sideSaber={isReceive ? 'left' : 'right'}
-              color={item.code === 0 ? Colors.BLUE : Colors.RED}
+              color={item.transaction?.success ? Colors.BLUE : Colors.RED}
             >
               <div className={styles.containerDataItem}>
                 <Memo memo={memo} receive={isReceive} />
                 <div className={styles.containerAmountTime}>
-                  <AmountDenomColor receive={isReceive} coins={item.tx.body.messages[0].amount} />
-                  <CreatedAt timeAt={item.timestamp} />
+                  <AmountDenomColor receive={isReceive} coins={coins} />
+                  <CreatedAt timeAt={item.transaction?.block.timestamp} />
                 </div>
               </div>
             </Display>
@@ -60,7 +53,7 @@ function DataSendTxs({
 
   const fetchNextPageFnc = () => {
     setTimeout(() => {
-      fetchNextPage();
+      fetchMoreData();
     }, 250);
   };
 
@@ -68,9 +61,9 @@ function DataSendTxs({
     <InfiniteScrollDataTsx
       dataLength={Object.keys(itemRows).length}
       next={fetchNextPageFnc}
-      hasMore={hasNextPage}
+      hasMore={hasMore}
     >
-      {itemRows.length > 0 && itemRows}
+      {error ? <span>Error: {error.message}</span> : itemRows.length > 0 ? itemRows : null}
     </InfiniteScrollDataTsx>
   );
 }

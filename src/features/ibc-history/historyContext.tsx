@@ -305,8 +305,22 @@ function HistoryContextProvider({ children }: { children: React.ReactNode }) {
     const ping = async () => {
       const response = await cliet.getTx(uncommitedTx.txHash);
       if (response) {
-        const result = parseRawLog(response.rawLog);
-        const dataFromEvent = parseEvents(result);
+        // Try parsing rawLog first (works for bostrom/older Cosmos SDK)
+        let dataFromEvent = null;
+        if (response.rawLog) {
+          try {
+            const result = parseRawLog(response.rawLog);
+            dataFromEvent = parseEvents(result);
+          } catch {
+            // rawLog parsing failed, try events fallback
+          }
+        }
+
+        // Fallback: parse events directly (newer Cosmos SDK like Osmosis)
+        if (!dataFromEvent && response.events) {
+          dataFromEvent = parseEvents([{ events: response.events, msg_index: 0, log: '' }]);
+        }
+
         if (dataFromEvent) {
           const itemHistories = { ...uncommitedTx, ...dataFromEvent };
           addHistoriesItem({
