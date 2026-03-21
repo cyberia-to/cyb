@@ -143,7 +143,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
     } catch (e) {
       console.error(`error: `, e);
       setTxHashIbc(null);
-      setErrorMessage(e.toString());
+      setErrorMessage(friendlyErrorMessage(e?.message || e));
       setStage(STAGE_ERROR);
     }
 
@@ -178,16 +178,16 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
 
     const amount = convertAmountReverce(tokenAmount, coinDecimals);
     const transferAmount = coinFunc(amount, tokenSelect);
-    const msg = {
+    const msg: MsgTransferEncodeObject = {
       typeUrl: '/ibc.applications.transfer.v1.MsgTransfer',
-      value: {
+      value: MsgTransfer.fromPartial({
         sourcePort,
         sourceChannel,
         sender: address,
         receiver: counterpartyAccount,
         timeoutTimestamp: BigInt(timeoutTimestamp.toNumber()),
         token: transferAmount,
-      },
+      }),
     };
     try {
       const response = await signingClient.signAndBroadcast(address, [msg], fee, '');
@@ -213,7 +213,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
     } catch (e) {
       console.error(`error: `, e);
       setTxHash(undefined);
-      setErrorMessage(e.toString());
+      setErrorMessage(friendlyErrorMessage(e?.message || e));
       setStage(STAGE_ERROR);
     }
 
