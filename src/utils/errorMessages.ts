@@ -21,13 +21,16 @@ export function friendlyErrorMessage(raw: string | undefined | null): string {
     return 'Transaction ran out of gas. Try again with a higher gas limit';
   }
 
-  // Request rejected by user (Ledger / wallet)
-  if (
-    text.includes('Request rejected') ||
-    text.includes('rejected') ||
-    text.includes('Transaction declined')
-  ) {
-    return 'Transaction was rejected';
+  // User declined on device / in wallet UI
+  if (text.includes('rejected by the user') || text.includes('Transaction declined')) {
+    return 'You rejected the transaction on your device';
+  }
+
+  // Chain-level or validator rejection — keep the reason
+  if (text.includes('rejected')) {
+    // Strip the verbose "failed to execute message; message index: N:" prefix
+    const cleaned = text.replace(/failed to execute message;\s*message index:\s*\d+:\s*/gi, '');
+    return `Transaction rejected: ${cleaned.length > 150 ? cleaned.slice(0, 150) + '…' : cleaned}`;
   }
 
   // Account sequence mismatch (concurrent txs)
