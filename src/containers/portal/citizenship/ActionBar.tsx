@@ -21,14 +21,14 @@ const {
   STEP_NICKNAME_INVALID,
   STEP_RULES,
   STEP_AVATAR_UPLOAD,
-  STEP_KEPLR_INIT,
-  STEP_KEPLR_INIT_CHECK_FNC,
-  STEP_KEPLR_INIT_INSTALLED,
-  STEP_KEPLR_SETUP,
-  STEP_KEPLR_CONNECT,
+  STEP_WALLET_INIT,
+  STEP_WALLET_CHECK,
+  STEP_WALLET_INSTALLED,
+  STEP_WALLET_SETUP,
+  STEP_WALLET_CONNECT,
   STEP_CHECK_ADDRESS,
   STEP_CHECK_ADDRESS_CHECK_FNC,
-  STEP_KEPLR_REGISTER,
+  STEP_REGISTER,
   STEP_CHECK_GIFT,
   STEP_ACTIVE_ADD,
 } = steps;
@@ -143,22 +143,22 @@ function ActionBar({
 
   const onClickConnectWallet = useCallback(() => {
     if (!signer) {
-      setStep(STEP_KEPLR_SETUP);
+      setStep(STEP_WALLET_SETUP);
     } else {
-      setStep(STEP_KEPLR_SETUP);
+      setStep(STEP_WALLET_SETUP);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [signer, setStep]);
 
   useEffect(() => {
-    if (step === STEP_KEPLR_REGISTER || step === STEP_ACTIVE_ADD) {
+    if (step === STEP_REGISTER || step === STEP_ACTIVE_ADD) {
       setCheckAddressNetworkState(false);
     }
   }, [step]);
 
   const onClickSignMoonCodeCheckSined = useCallback(() => {
     if (signedMessage !== null) {
-      setStep(STEP_KEPLR_REGISTER);
+      setStep(STEP_REGISTER);
     } else {
       onClickSignMoonCode();
     }
@@ -211,41 +211,39 @@ function ActionBar({
     );
   }
 
-  if (step === STEP_KEPLR_INIT || step === STEP_KEPLR_INIT_CHECK_FNC) {
+  if (step === STEP_WALLET_INIT || step === STEP_WALLET_CHECK) {
     return (
       <ActionBarSteps onClickBack={() => setStep(STEP_AVATAR_UPLOAD)}>
         <BtnGrd
           onClick={() => onClickConnectWallet()}
           text={!signer ? 'connect wallet' : 'wallet connected'}
         />
-        {/* <Button onClick={() => setStep(STEP_KEPLR_SETUP)}>install Keplr</Button> */}
       </ActionBarSteps>
     );
   }
 
-  if (step === STEP_KEPLR_INIT_INSTALLED) {
+  if (step === STEP_WALLET_INSTALLED) {
     return (
       <ActionBarSteps onClickBack={() => setStep(STEP_AVATAR_UPLOAD)}>
-        <BtnGrd onClick={() => setStep(STEP_KEPLR_SETUP)} text="wallet connected" />
-        {/* <Button onClick={() => setStep(STEP_KEPLR_SETUP)}>install Keplr</Button> */}
+        <BtnGrd onClick={() => setStep(STEP_WALLET_SETUP)} text="wallet connected" />
       </ActionBarSteps>
     );
   }
 
-  if (step === STEP_KEPLR_SETUP) {
+  if (step === STEP_WALLET_SETUP) {
     return (
-      <ActionBarSteps onClickBack={() => setStep(STEP_KEPLR_INIT)}>
-        <BtnGrd onClick={() => setStep(STEP_KEPLR_CONNECT)} text="I created account" />
-        {/* <Button onClick={() => setStep(STEP_KEPLR_CONNECT)}>
+      <ActionBarSteps onClickBack={() => setStep(STEP_WALLET_INIT)}>
+        <BtnGrd onClick={() => setStep(STEP_WALLET_CONNECT)} text="I created account" />
+        {/* <Button onClick={() => setStep(STEP_WALLET_CONNECT)}>
           I created account
         </Button> */}
       </ActionBarSteps>
     );
   }
 
-  if (step === STEP_KEPLR_CONNECT) {
+  if (step === STEP_WALLET_CONNECT) {
     return (
-      <ActionBarSteps onClickBack={() => setStep(STEP_KEPLR_SETUP)}>
+      <ActionBarSteps onClickBack={() => setStep(STEP_WALLET_SETUP)}>
         {!signer ? (
           <BtnGrd onClick={() => document.location.reload(true)} text="update page" />
         ) : (
@@ -258,7 +256,7 @@ function ActionBar({
 
   if (step === STEP_CHECK_ADDRESS) {
     return (
-      <ActionBarSteps onClickBack={() => setStep(STEP_KEPLR_CONNECT)}>
+      <ActionBarSteps onClickBack={() => setStep(STEP_WALLET_CONNECT)}>
         {/* check your bostrom address <Dots /> */}
         <BtnGrd onClick={() => setStep(STEP_CHECK_ADDRESS_CHECK_FNC)} text="check address" />
       </ActionBarSteps>
@@ -267,7 +265,7 @@ function ActionBar({
 
   if (step === STEP_CHECK_ADDRESS_CHECK_FNC) {
     return (
-      <ActionBarSteps onClickBack={() => setStep(STEP_KEPLR_CONNECT)}>
+      <ActionBarSteps onClickBack={() => setStep(STEP_WALLET_CONNECT)}>
         {/* check your bostrom address <Dots /> */}
         <BtnGrd
           disabled
@@ -283,7 +281,7 @@ function ActionBar({
 
   if (step === STEP_ACTIVE_ADD) {
     return (
-      <ActionBarSteps onClickBack={() => setStep(STEP_KEPLR_CONNECT)}>
+      <ActionBarSteps onClickBack={() => setStep(STEP_WALLET_CONNECT)}>
         {/* check your bostrom address <Dots /> */}
         <BtnGrd
           disabled={checkAddressNetworkState}
@@ -313,7 +311,7 @@ function ActionBar({
     );
   }
 
-  if (step === STEP_KEPLR_REGISTER) {
+  if (step === STEP_REGISTER) {
     return (
       <ActionBarSteps onClickBack={() => setStep(STEP_RULES)}>
         <BtnGrd disabled={!registerDisabled} onClick={() => onClickRegister()} text="register" />
