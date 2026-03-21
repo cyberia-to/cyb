@@ -191,7 +191,7 @@ class ActionBarContainer extends Component<Props, any> {
       this.setState({
         stage: STAGE_ERROR,
         txBody: null,
-        errorMessage: e.toString(),
+        errorMessage: friendlyErrorMessage(e?.message || e),
       });
     }
   };

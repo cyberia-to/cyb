@@ -127,7 +127,7 @@ function ActionBarDetail({ proposals, id, update }: Props) {
       } catch (e) {
         console.log(e);
         setTxHash(null);
-        setErrorMessage(e.toString());
+        setErrorMessage(friendlyErrorMessage(e?.message || e));
         setStage(STAGE_ERROR);
       }
     }

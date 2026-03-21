@@ -12,6 +12,7 @@ import {
   TransactionSubmitted,
 } from '../../components';
 import { LEDGER } from '../../utils/config';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 import { SelectedState } from './types';
 
 const { STAGE_INIT, STAGE_ERROR, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED } = LEDGER;
@@ -64,7 +65,7 @@ function ActionBar({ amountH, resource, valueDays, resourceAmount, updateFnc }: 
         console.log(e);
 
         setTx(undefined);
-        setErrorMessage(e.toString());
+        setErrorMessage(friendlyErrorMessage(e?.message || e));
         setStage(STAGE_ERROR);
       });
   };
