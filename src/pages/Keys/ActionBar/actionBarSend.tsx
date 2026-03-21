@@ -30,9 +30,15 @@ function ActionBarSendTokens({ updateAddress, updateBalance, onClickBack }) {
   const [disabledGenerate, setDisabledGenerate] = useState(true);
 
   const generateTxSend = async () => {
+    if (!signer || !signingClient) {
+      setErrorMessage('Wallet is not ready. Please unlock your wallet and try again.');
+      setStage(STAGE_ERROR);
+      return;
+    }
+
     const amount = parseFloat(amountSend);
-    if (signer && signingClient) {
-      setStage(STAGE_SUBMITTED);
+    setStage(STAGE_SUBMITTED);
+    try {
       const [{ address }] = await signer.getAccounts();
       const fee = {
         amount: [],
@@ -44,10 +50,11 @@ function ActionBarSendTokens({ updateAddress, updateBalance, onClickBack }) {
         coins(amount, BASE_DENOM),
         fee
       );
-      console.log('result: ', result);
       const hash = result.transactionHash;
-      console.log('hash :>> ', hash);
       setTxHash(hash);
+    } catch (e: any) {
+      setStage(STAGE_ERROR);
+      setErrorMessage(e?.message || 'Transaction failed');
     }
   };
 

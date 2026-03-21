@@ -80,7 +80,12 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
   // Rebuild signingClient whenever signer changes
   useEffect(() => {
     if (signer) {
-      createClient(signer).then(setSigningClient);
+      createClient(signer)
+        .then(setSigningClient)
+        .catch((err) => {
+          console.error('Failed to create signing client:', err);
+          setSigningClient(undefined);
+        });
     } else {
       setSigningClient(undefined);
     }

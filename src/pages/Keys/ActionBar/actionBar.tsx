@@ -65,7 +65,7 @@ function ActionBar({
   defaultAccounts,
   defaultAccountsKeys,
 }: Props) {
-  const { signer } = useSigningClient();
+  const { signer, signingClient } = useSigningClient();
   const [typeActionBar, setTypeActionBar] = useState('');
   const [stage, setStage] = useState(STAGE_INIT);
   const [makeActive, setMakeActive] = useState(false);
@@ -230,7 +230,7 @@ function ActionBar({
         <ActionBarContainer>
           <Pane>
             {connect && buttonConnect}
-            {signer && (
+            {signer && signingClient && (
               <Button style={{ margin: '0 10px' }} onClick={() => setStage(STAGE_SEND)}>
                 Send
               </Button>
