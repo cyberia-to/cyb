@@ -39,8 +39,8 @@ export async function getTransport(): Promise<TransportWebUSB> {
       return _transport;
     }
     try {
-      // Ping: getVersion APDU — Cosmos app responds with 0x9000
-      const response = await _transport.send(0xe0, 0x01, 0x00, 0x00);
+      // Ping: Cosmos app getVersion (CLA=0x55, INS=0x00) — responds 0x9000
+      const response = await _transport.send(0x55, 0x00, 0x00, 0x00);
       // Last 2 bytes = status word; 0x9000 = OK, anything else = wrong app
       const sw = response.length >= 2
         ? (response[response.length - 2] << 8) | response[response.length - 1]
@@ -302,7 +302,7 @@ export async function checkTransportHealth(): Promise<boolean> {
       setTimeout(() => reject(new Error('timeout')), HEALTH_CHECK_TIMEOUT_MS)
     );
     await Promise.race([
-      _transport.send(0xe0, 0x01, 0x00, 0x00),
+      _transport.send(0x55, 0x00, 0x00, 0x00),
       timeout,
     ]);
     resetIdleTimer(); // successful ping counts as activity
