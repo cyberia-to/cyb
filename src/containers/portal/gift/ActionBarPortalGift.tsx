@@ -19,6 +19,7 @@ import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 import { Nullable } from 'src/types';
 import { Citizenship } from 'src/types/citizenship';
 import { toHex } from 'src/utils/encoding';
+import { useAdviser } from 'src/features/adviser/context';
 import { hasSignArbitrary } from 'src/utils/offlineSigner';
 import { ActionBar as ActionBarSteps, BtnGrd, ButtonIcon, Dots } from '../../../components';
 import { addAddress, deleteAddress } from '../../../features/passport/passports.redux';
@@ -109,12 +110,13 @@ function ActionBarPortalGift({
   progressClaim,
   currentBonus,
 }: Props) {
+  const { setAdviser } = useAdviser();
   const { isIpfsInitialized, ipfsApi } = useBackend();
 
   const navigate = useNavigate();
   const location = useLocation();
 
-  const { signer, signingClient, initSigner, getSignerForChain } = useSigningClient();
+  const { signer, signingClient, isLedgerAccount, getSignerForChain } = useSigningClient();
   const [selectMethod, setSelectMethod] = useState('');
   const [selectNetwork, setSelectNetwork] = useState('');
   const [signedMessageKeplr, setSignedMessageKeplr] = useState(null);
@@ -207,9 +209,11 @@ function ActionBarPortalGift({
       const signature = toBase64(toAscii(JSON.stringify(proveData)));
       setSignedMessageKeplr({ signature, address });
       setStepApp(STEP_INFO.STATE_PROVE_CHECK_ACCOUNT);
+    } else if (chainSigner) {
+      setAdviser('Ledger does not support message signing. Use a software wallet for this step.');
     }
     return null;
-  }, [citizenship, selectNetwork, setStepApp, getSignerForChain]);
+  }, [citizenship, selectNetwork, setStepApp, getSignerForChain, setAdviser]);
 
   const signMsgETH = useCallback(async () => {
     if (window.ethereum && citizenship) {
@@ -323,12 +327,6 @@ function ActionBarPortalGift({
 
   const claim = useCallback(async () => {
     try {
-      if (!signer) {
-        if (initSigner) {
-          initSigner();
-        }
-      }
-
       if (
         signer &&
         signingClient &&
@@ -402,7 +400,6 @@ function ActionBarPortalGift({
     selectedAddress,
     currentGift,
     citizenship,
-    initSigner,
     setLoadingGift, // setStep(STEP_INIT);
     setStepApp,
     updateTxHash,

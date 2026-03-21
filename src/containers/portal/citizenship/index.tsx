@@ -349,6 +349,8 @@ function GetCitizenship({ defaultAccount }) {
       const signature = toBase64(toAscii(JSON.stringify(proveData)));
       setSignedMessage(signature);
       setStep(STEP_KEPLR_REGISTER);
+    } else if (signer) {
+      setAdviser('Ledger does not support message signing. Use a software wallet for this step.');
     }
   };
 
