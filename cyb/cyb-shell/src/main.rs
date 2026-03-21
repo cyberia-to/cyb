@@ -12,6 +12,7 @@ use worlds::WorldsPlugin;
 use worlds::interface::InterfaceWorldPlugin;
 use worlds::legacy::LegacyWorldPlugin;
 use worlds::portal::PortalWorldPlugin;
+use worlds::splash::SplashWorldPlugin;
 use worlds::terminal::TerminalWorldPlugin;
 
 /// Clones Bevy's GPU resources (Device, Queue) into the main world
@@ -42,10 +43,19 @@ fn main() {
                 ..default()
             }),
             ..default()
+        }).set(bevy::render::RenderPlugin {
+            render_creation: bevy::render::settings::RenderCreation::Automatic(
+                bevy::render::settings::WgpuSettings {
+                    ..default()
+                },
+            ),
+            ..default()
         }))
+        .insert_resource(ClearColor(bevy::color::Color::BLACK))
         .add_plugins(GpuBridgePlugin)
         .add_plugins(WorldsPlugin)
         .add_plugins(HotkeysPlugin)
+        .add_plugins(SplashWorldPlugin)
         .add_plugins(InterfaceWorldPlugin)
         .add_plugins(PortalWorldPlugin)
         .add_plugins(LegacyWorldPlugin)

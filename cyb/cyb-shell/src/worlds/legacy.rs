@@ -1,5 +1,7 @@
 use std::borrow::Cow;
 use std::path::PathBuf;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -14,10 +16,34 @@ pub(crate) struct LegacyWebView {
     pub webview: WebView,
 }
 
+/// Marker: WebView creation is pending (window wasn't ready on OnEnter)
+#[derive(Resource)]
+struct LegacyPendingCreate;
+
+/// Marker: web content has finished loading (React app mounted)
+#[derive(Resource)]
+pub struct LegacyContentLoaded;
+
+/// Shared flag set by WebView IPC when content is loaded
+#[derive(Resource)]
+struct ContentLoadedFlag(Arc<AtomicBool>);
+
 impl Plugin for LegacyWorldPlugin {
     fn build(&self, app: &mut App) {
+        let flag = Arc::new(AtomicBool::new(false));
+        app.insert_resource(ContentLoadedFlag(flag));
+        app.insert_resource(LegacyPendingCreate);
+
         app.add_systems(OnEnter(WorldState::Legacy), show_legacy)
             .add_systems(OnExit(WorldState::Legacy), hide_legacy)
+            .add_systems(
+                Update,
+                preload_legacy_webview.run_if(resource_exists::<LegacyPendingCreate>),
+            )
+            .add_systems(
+                Update,
+                poll_content_loaded.run_if(not(resource_exists::<LegacyContentLoaded>)),
+            )
             .add_systems(
                 Update,
                 legacy_update.run_if(in_state(WorldState::Legacy)),
@@ -25,15 +51,41 @@ impl Plugin for LegacyWorldPlugin {
     }
 }
 
+fn poll_content_loaded(mut commands: Commands, flag: Res<ContentLoadedFlag>) {
+    if flag.0.load(Ordering::Relaxed) {
+        commands.insert_resource(LegacyContentLoaded);
+        info!("Legacy content loaded (React app ready)");
+    }
+}
+
+/// Preload WebView in background (runs during Splash and Legacy states)
+fn preload_legacy_webview(world: &mut World) {
+    if world.get_non_send_resource::<LegacyWebView>().is_some() {
+        world.remove_resource::<LegacyPendingCreate>();
+        return;
+    }
+    create_legacy_webview(world);
+    if let Some(wv) = world.get_non_send_resource::<LegacyWebView>() {
+        // Hide it until Legacy state is entered
+        let _ = wv.webview.set_visible(false);
+        world.remove_resource::<LegacyPendingCreate>();
+        info!("Legacy WebView preloaded (hidden)");
+    }
+}
+
 fn show_legacy(world: &mut World) {
     if let Some(wv) = world.get_non_send_resource::<LegacyWebView>() {
         let _ = wv.webview.set_visible(true);
         update_legacy_bounds(world);
-        info!("Legacy WebView shown (persisted)");
+        info!("Legacy WebView shown");
         return;
     }
 
+    // WebView not preloaded yet — create now
     create_legacy_webview(world);
+    if world.get_non_send_resource::<LegacyWebView>().is_none() {
+        world.insert_resource(LegacyPendingCreate);
+    }
 }
 
 fn legacy_build_dir() -> PathBuf {
@@ -90,7 +142,19 @@ fn mime_from_path(path: &str) -> &'static str {
     }
 }
 
+/// JS injected into WebView to signal when React app is mounted
+const READY_SCRIPT: &str = r#"
+    window.addEventListener('load', function() {
+        // Wait a tick for React to mount
+        setTimeout(function() {
+            if (window.ipc) window.ipc.postMessage('ready');
+        }, 100);
+    });
+"#;
+
 fn create_legacy_webview(world: &mut World) {
+    let flag = world.resource::<ContentLoadedFlag>().0.clone();
+
     let primary_entity = world
         .query_filtered::<Entity, With<PrimaryWindow>>()
         .single(world);
@@ -105,11 +169,27 @@ fn create_legacy_webview(world: &mut World) {
         let inner_size = window_wrapper.inner_size();
         let build_dir = legacy_build_dir();
 
+        let ipc_flag = flag.clone();
+        let ipc_handler = move |msg: wry::http::Request<String>| {
+            let body = msg.body().as_str();
+            if body == "ready" {
+                ipc_flag.store(true, Ordering::Relaxed);
+            }
+        };
+
         // Dev mode: no local build, fall back to dev server
         if build_dir.as_os_str().is_empty() {
             info!("Legacy: no build/, falling back to https://localhost:3001");
+            let ipc_flag2 = flag.clone();
+            let ipc_handler2 = move |msg: wry::http::Request<String>| {
+                if msg.body().as_str() == "ready" {
+                    ipc_flag2.store(true, Ordering::Relaxed);
+                }
+            };
             return match WebViewBuilder::new()
                 .with_url("https://localhost:3001")
+                .with_ipc_handler(ipc_handler2)
+                .with_initialization_script(READY_SCRIPT)
                 .with_bounds(Rect {
                     position: wry::dpi::PhysicalPosition::new(0, 0).into(),
                     size: wry::dpi::PhysicalSize::new(inner_size.width, inner_size.height).into(),
@@ -128,6 +208,8 @@ fn create_legacy_webview(world: &mut World) {
         // Serve local build via custom protocol
         let dist = build_dir.clone();
         match WebViewBuilder::new()
+            .with_ipc_handler(ipc_handler)
+            .with_initialization_script(READY_SCRIPT)
             .with_custom_protocol("cyb".into(), move |_webview_id, request| {
                 let uri_path = request.uri().path();
                 let path = if uri_path == "/" || uri_path.is_empty() {
