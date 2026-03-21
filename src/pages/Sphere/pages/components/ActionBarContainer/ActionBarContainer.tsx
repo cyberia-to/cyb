@@ -1,7 +1,7 @@
 import { coin } from '@cosmjs/launchpad';
 import { Validator } from '@cybercongress/cyber-ts/cosmos/staking/v1beta1/staking';
 import BigNumber from 'bignumber.js';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from 'src/components/btnGrd';
 import { BASE_DENOM, MEMO } from 'src/constants/config';
@@ -171,18 +171,19 @@ function ActionBarContainer({ validators, updateFnc }: Props) {
     setErrorMessage(friendlyErrorMessage(error?.message || error));
   };
 
-  const clearFunc = () => {
+  const clearFunc = useCallback(() => {
     setTxHash(null);
     setAmount('');
     setValueSelect('');
     setErrorMessage(null);
     setTxType(null);
     setStage(STAGE_INIT);
-  };
+  }, []);
 
+  // Reset state when navigating to a different validator
   useEffect(() => {
     clearFunc();
-  }, [clearFunc]);
+  }, [validatorSelected, clearFunc]);
 
   const delegateTokens = async () => {
     if (signer && signingClient) {
