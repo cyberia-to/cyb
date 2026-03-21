@@ -5,6 +5,9 @@ on:
     branches:
       - master
 
+permissions:
+  contents: write
+
 jobs:
   build_cyb:
     runs-on: ubuntu-latest
@@ -40,7 +43,7 @@ jobs:
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          token: ${{ secrets.ACTIONS_DEPLOY_ACCESS_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           branch: build
           folder: build
           clean: true
