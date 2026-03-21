@@ -1160,10 +1160,7 @@ fn render_terminal(world: &mut World) {
 
         // Render sugarloaf to offscreen texture + CPU readback
         let pixels = {
-            let view = state.sugarloaf.ctx.offscreen_view();
-            if let Some(ref view) = view {
-                state.sugarloaf.render_to_view(view);
-            }
+            state.sugarloaf.render_offscreen();
             state.sugarloaf.ctx.read_offscreen_pixels()
         };
 

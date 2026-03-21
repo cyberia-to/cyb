@@ -544,7 +544,7 @@ impl Sugarloaf<'_> {
             &mut self.graphics,
         );
 
-        let Some(view) = self.ctx.offscreen_view() else {
+        let Some(view) = self.ctx.offscreen_texture_view.take() else {
             tracing::warn!("render_offscreen called but offscreen not enabled");
             return;
         };
@@ -627,6 +627,7 @@ impl Sugarloaf<'_> {
         }
 
         self.ctx.queue.submit(Some(encoder.finish()));
+        self.ctx.offscreen_texture_view = Some(view);
         self.reset();
     }
 

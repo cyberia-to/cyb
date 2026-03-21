@@ -1,5 +1,5 @@
 import BigNumber from 'bignumber.js';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { BASE_DENOM, DENOM_LIQUID } from 'src/constants/config';
 import { useIbcDenom } from 'src/contexts/ibcDenom';
 import { useQueryClient } from 'src/contexts/queryClient';
@@ -129,25 +129,24 @@ function useGetMarketData() {
     getPpools();
   }, [dataPools, queryClient, tracesDenom]);
 
-  const dataTotalRef = useRef(dataTotal);
-  dataTotalRef.current = dataTotal;
-  const poolsTotalRef = useRef(poolsTotal);
-  poolsTotalRef.current = poolsTotal;
+  const saveToLocalStorage = (obj) => {
+    if (Object.keys(obj).length > 0) {
+      localStorage.setItem('marketData', JSON.stringify(obj));
+    }
+  };
 
   const getMarketDataPool = useCallback(
     (data) => {
       try {
         const tempMarketData = {};
-        const currentDataTotal = dataTotalRef.current;
-        const currentPoolsTotal = poolsTotalRef.current;
-        if (Object.keys(currentDataTotal).length > 0) {
-          const filteredDataTotalSupply = Object.keys(currentDataTotal).filter((item) =>
+        if (Object.keys(dataTotal).length > 0) {
+          const filteredDataTotalSupply = Object.keys(dataTotal).filter((item) =>
             item.includes('pool')
           );
 
           filteredDataTotalSupply.forEach((key) => {
-            if (Object.hasOwn(currentPoolsTotal, key)) {
-              const { reserveCoinDenoms, balances } = currentPoolsTotal[key];
+            if (Object.hasOwn(poolsTotal, key)) {
+              const { reserveCoinDenoms, balances } = poolsTotal[key];
 
               if (Object.hasOwn(data, reserveCoinDenoms[0])) {
                 let marketCapTemp = 0;
@@ -161,7 +160,7 @@ function useGetMarketData() {
                   }
                 });
                 if (marketCapTemp > 0) {
-                  const total = currentDataTotal[key];
+                  const total = dataTotal[key];
                   const price = marketCapTemp / total;
                   tempMarketData[key] = price;
                 }
@@ -175,7 +174,8 @@ function useGetMarketData() {
         return {};
       }
     },
-    [tracesDenom]
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [dataTotal, poolsTotal, tracesDenom]
   );
 
   useEffect(() => {
@@ -195,14 +195,13 @@ function useGetMarketData() {
         const tempdataPool = getMarketDataPool(marketDataObj);
         const resultMarketDataObj = { ...marketDataObj, ...tempdataPool };
         setMarketData(resultMarketDataObj);
-        if (Object.keys(resultMarketDataObj).length > 0) {
-          localStorage.setItem('marketData', JSON.stringify(resultMarketDataObj));
-        }
+        saveToLocalStorage(resultMarketDataObj);
       }
     } catch (error) {
       console.log('error', error);
     }
-  }, [dataTotal, poolsTotal, getMarketDataPool]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dataTotal, poolsTotal, getMarketDataPool, saveToLocalStorage]);
 
   return { marketData, dataTotal };
 }

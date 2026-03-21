@@ -13,6 +13,8 @@ pub struct Context<'a> {
     /// Offscreen render target for embedded/headless mode.
     /// When Some, render() uses this texture instead of the surface swapchain.
     pub offscreen_texture: Option<wgpu::Texture>,
+    /// Cached view for the offscreen texture (avoid creating per frame).
+    pub offscreen_texture_view: Option<wgpu::TextureView>,
     /// Read-back buffer for copying offscreen texture to CPU.
     pub readback_buffer: Option<wgpu::Buffer>,
     // --- Fields only present in standalone mode (own surface) ---
@@ -251,6 +253,7 @@ impl Context<'_> {
             colorspace: renderer_config.colorspace,
             max_texture_dimension_2d,
             offscreen_texture: None,
+            offscreen_texture_view: None,
             readback_buffer: None,
             surface: Some(surface),
             alpha_mode: Some(alpha_mode),
@@ -284,6 +287,7 @@ impl Context<'_> {
             colorspace: Colorspace::default(),
             max_texture_dimension_2d,
             offscreen_texture: None,
+            offscreen_texture_view: None,
             readback_buffer: None,
             surface: None,
             alpha_mode: None,
@@ -298,6 +302,11 @@ impl Context<'_> {
     pub fn enable_offscreen(&mut self) {
         let width = self.size.width as u32;
         let height = self.size.height as u32;
+
+        // Drop old GPU resources before creating new ones
+        self.offscreen_texture_view = None;
+        self.offscreen_texture = None;
+        self.readback_buffer = None;
 
         let texture = self.device.create_texture(&wgpu::TextureDescriptor {
             label: Some("sugarloaf_offscreen"),
@@ -316,6 +325,8 @@ impl Context<'_> {
             view_formats: &[],
         });
 
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+
         // Buffer for reading pixels back to CPU
         let bytes_per_row = Self::align_to_256(width * 4);
         let buffer = self.device.create_buffer(&wgpu::BufferDescriptor {
@@ -326,14 +337,13 @@ impl Context<'_> {
         });
 
         self.offscreen_texture = Some(texture);
+        self.offscreen_texture_view = Some(view);
         self.readback_buffer = Some(buffer);
     }
 
-    /// Get the offscreen texture view for rendering
-    pub fn offscreen_view(&self) -> Option<wgpu::TextureView> {
-        self.offscreen_texture.as_ref().map(|t| {
-            t.create_view(&wgpu::TextureViewDescriptor::default())
-        })
+    /// Get the cached offscreen texture view for rendering
+    pub fn offscreen_view(&self) -> Option<&wgpu::TextureView> {
+        self.offscreen_texture_view.as_ref()
     }
 
     /// Read offscreen texture pixels into a Vec<u8> (RGBA8).
