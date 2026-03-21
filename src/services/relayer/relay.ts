@@ -1,9 +1,9 @@
 import { IbcClient, Link as IbcLink, Logger } from '@confio/relayer/build';
 import { RelayedHeights } from '@confio/relayer/build/lib/link';
-// import { OfflineDirectSigner, OfflineSigner } from '@cosmjs/proto-signing';
+import { OfflineDirectSigner } from '@cosmjs/proto-signing';
 import { GasPrice } from '@cosmjs/stargate';
 import { Tendermint34Client } from '@cosmjs/tendermint-rpc';
-import { OfflineAminoSigner, OfflineDirectSigner } from '@keplr-wallet/types';
+import { OfflineAminoSigner } from '@cosmjs/amino';
 import doCheckAndRelayPrivate from './doCheckAndRelayPrivate';
 
 const sleep = (ms: number) => {

@@ -1,5 +1,3 @@
-import { Window as KeplrWindow } from '@keplr-wallet/types';
-
 interface EthereumProvider {
   request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
   on?: (event: string, handler: (...args: unknown[]) => void) => void;
@@ -8,7 +6,7 @@ interface EthereumProvider {
 }
 
 declare global {
-  interface Window extends KeplrWindow {
+  interface Window {
     ethereum?: EthereumProvider;
 
     // for our window things
