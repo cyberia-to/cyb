@@ -10,7 +10,7 @@ import styles from './Keys.module.scss';
 import { KEY_LIST_TYPE } from './types';
 
 function Keys() {
-  const { accounts, defaultAccount } = useSelector((state: RootState) => state.pocket);
+  const { accounts } = useSelector((state: RootState) => state.pocket);
   const { secrets } = useSelector((state: RootState) => state.scripting.context);
 
   const [selectedKey, setSelectedKey] = useState<string | null>();
@@ -64,14 +64,13 @@ function Keys() {
         selectCard="pubkey"
         hoverCard="pubkey"
         keyType={keyType}
-        selectAccount={defaultAccount.account}
+        selectAccount={null}
         selectedAddress={selectedKey}
         updateAddress={() => {
           dispatch(initPocket());
           setSelectedKey(null);
         }}
-        defaultAccounts={defaultAccount.account}
-        defaultAccountsKeys={defaultAccount.name}
+        defaultAccounts={null}
       />
     </>
   );
