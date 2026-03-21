@@ -7,6 +7,7 @@
 :root {
     --cyan: #36d6ae;
     --cyan-dim: #1a8a6a;
+    --pink: #f62bfd;
     --bg: #000000;
     --surface: #111111;
     --text: #ffffff;
@@ -31,51 +32,106 @@ a:hover {
     color: var(--text);
 }
 
-.header {
+/* ── Layout ─────────────────────────────────────── */
+
+.app {
     display: flex;
-    align-items: center;
-    gap: 16px;
-    padding: 8px 16px;
-    border-bottom: 1px solid var(--surface);
-    height: 50px;
+    flex-direction: column;
+    height: 100vh;
 }
 
-.logo {
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--cyan);
-    letter-spacing: 2px;
-}
-
-.commander {
+.content {
     flex: 1;
     display: flex;
+    justify-content: center;
+    align-items: center;
+}
+
+/* ── Commander (bottom bar) ─────────────────────── */
+
+.commander-bar {
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 62%;
+    max-width: calc(100vw - 200px);
+    z-index: 10;
+}
+
+.commander-wrapper {
+    position: relative;
+    background: rgba(0, 0, 0, 0.79);
 }
 
 .commander-input {
     width: 100%;
-    padding: 8px 16px;
-    background: var(--surface);
-    border: 1px solid #222;
-    border-radius: 20px;
+    height: 42px;
+    padding: 0 16px;
+    background: transparent;
+    border: none;
     color: var(--text);
     font-family: var(--font);
-    font-size: 14px;
+    font-size: 20px;
+    text-align: center;
     outline: none;
-    transition: border-color 0.2s;
-}
-
-.commander-input:focus {
-    border-color: var(--cyan-dim);
+    filter: drop-shadow(0 0 15px rgba(0, 0, 0, 0.5));
 }
 
 .commander-input::placeholder {
-    color: var(--text-dim);
+    color: #272343;
+    opacity: 0.5;
 }
 
-.nav {
+/* Gradient trapezoid with perspective */
+.commander-gradient {
+    position: absolute;
+    bottom: 2px;
+    left: 0;
+    width: 100%;
+    height: 35px;
+    border-radius: 2px;
+    transform-origin: 50% 100%;
+    transform: perspective(220px) rotateX(50deg);
+    background: linear-gradient(
+        180deg,
+        rgba(246, 43, 253, 0) -3.3%,
+        rgba(246, 43, 253, 0.3) 100%
+    );
+    pointer-events: none;
+    transition: all 0.25s ease;
+}
+
+/* Glowing bottom line */
+.commander-line {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 0px;
+    background-color: white;
+    border-radius: 100px;
+    box-shadow: 0px 0px 0px 0px rgba(246, 43, 253, 0);
+    transition: all 0.25s ease;
+    pointer-events: none;
+}
+
+/* Active state (focus) */
+.commander-wrapper.active .commander-line {
+    height: 1px;
+    box-shadow: 0px 0px 6px 2px rgba(246, 43, 253, 0.65);
+}
+
+/* ── Nav links ──────────────────────────────────── */
+
+.nav-bottom {
+    position: fixed;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
     display: flex;
-    gap: 16px;
+    gap: 24px;
+    z-index: 9;
 }
 
 .nav-link {
@@ -88,12 +144,7 @@ a:hover {
     color: var(--cyan);
 }
 
-.content {
-    height: calc(100vh - 50px);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
+/* ── Oracle (home) ──────────────────────────────── */
 
 .oracle {
     text-align: center;
@@ -112,6 +163,8 @@ a:hover {
     font-size: 16px;
 }
 
+/* ── Search ─────────────────────────────────────── */
+
 .search {
     width: 100%;
     max-width: 800px;
@@ -122,6 +175,8 @@ a:hover {
     color: var(--cyan);
     margin-bottom: 24px;
 }
+
+/* ── Generic page ───────────────────────────────── */
 
 .page {
     width: 100%;

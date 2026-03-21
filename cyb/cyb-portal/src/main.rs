@@ -15,23 +15,26 @@ fn App() -> impl IntoView {
     view! {
         <Stylesheet href="/style.css"/>
         <Router>
-            <Header/>
-            <main class="content">
-                <Routes fallback=|| view! { <p class="not-found">"404"</p> }>
-                    <Route path=path!("/") view=OraclePage/>
-                    <Route path=path!("/search/:query") view=SearchPage/>
-                    <Route path=path!("/particles") view=ParticlesPage/>
-                    <Route path=path!("/graph") view=GraphPage/>
-                    <Route path=path!("/settings") view=SettingsPage/>
-                </Routes>
-            </main>
+            <div class="app">
+                <main class="content">
+                    <Routes fallback=|| view! { <p class="not-found">"404"</p> }>
+                        <Route path=path!("/") view=OraclePage/>
+                        <Route path=path!("/search/:query") view=SearchPage/>
+                        <Route path=path!("/particles") view=ParticlesPage/>
+                        <Route path=path!("/graph") view=GraphPage/>
+                        <Route path=path!("/settings") view=SettingsPage/>
+                    </Routes>
+                </main>
+                <Commander/>
+            </div>
         </Router>
     }
 }
 
 #[component]
-fn Header() -> impl IntoView {
+fn Commander() -> impl IntoView {
     let (query, set_query) = signal(String::new());
+    let (focused, set_focused) = signal(false);
 
     let on_submit = move |ev: web_sys::SubmitEvent| {
         ev.prevent_default();
@@ -42,24 +45,30 @@ fn Header() -> impl IntoView {
         }
     };
 
+    let wrapper_class = move || {
+        if focused.get() {
+            "commander-wrapper active"
+        } else {
+            "commander-wrapper"
+        }
+    };
+
     view! {
-        <header class="header">
-            <a href="/" class="logo">"cyb"</a>
-            <form class="commander" on:submit=on_submit>
+        <div class="commander-bar">
+            <form class=wrapper_class on:submit=on_submit>
+                <div class="commander-gradient"></div>
                 <input
                     type="text"
                     class="commander-input"
                     placeholder="ask, search, transact..."
                     prop:value=query
                     on:input=move |ev| set_query.set(event_target_value(&ev))
+                    on:focus=move |_| set_focused.set(true)
+                    on:blur=move |_| set_focused.set(false)
                 />
+                <div class="commander-line"></div>
             </form>
-            <nav class="nav">
-                <a href="/particles" class="nav-link">"particles"</a>
-                <a href="/graph" class="nav-link">"graph"</a>
-                <a href="/settings" class="nav-link">"settings"</a>
-            </nav>
-        </header>
+        </div>
     }
 }
 
