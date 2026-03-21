@@ -1,5 +1,6 @@
 export const KEY_TYPE = {
-  keplr: 'keplr',
+  ledger: 'ledger',
+  wallet: 'wallet',
   readOnly: 'read-only',
   secrets: 'secrets',
 };
