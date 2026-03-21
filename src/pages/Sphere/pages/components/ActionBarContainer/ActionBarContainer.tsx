@@ -4,7 +4,7 @@ import BigNumber from 'bignumber.js';
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Button from 'src/components/btnGrd';
-import { BASE_DENOM, MEMO_KEPLR } from 'src/constants/config';
+import { BASE_DENOM, MEMO } from 'src/constants/config';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { useSigningClient } from 'src/contexts/signerClient';
 import { useSphereContext } from 'src/pages/Sphere/Sphere.context';
@@ -186,16 +186,16 @@ function ActionBarContainer({ validators, updateFnc }: Props) {
   const delegateTokens = async () => {
     if (signer && signingClient) {
       try {
-        const [{ address: addressKeplr }] = await signer.getAccounts();
+        const [{ address: signerAddress }] = await signer.getAccounts();
         const validatorAddres = getValidatorAddres(validators);
 
         setStage(STAGE_WAIT);
         const response = await signingClient.delegateTokens(
-          addressKeplr,
+          signerAddress,
           validatorAddres,
           coin(amount, BASE_DENOM),
           fee,
-          MEMO_KEPLR
+          MEMO
         );
         checkTxs(response, { setTxHash, setErrorMessage, setStage });
       } catch (error) {
@@ -207,17 +207,17 @@ function ActionBarContainer({ validators, updateFnc }: Props) {
   const undelegateTokens = async () => {
     if (signer && signingClient) {
       try {
-        const [{ address: addressKeplr }] = await signer.getAccounts();
+        const [{ address: signerAddress }] = await signer.getAccounts();
 
         const validatorAddres = getValidatorAddres(validators);
 
         setStage(STAGE_WAIT);
         const response = await signingClient.undelegateTokens(
-          addressKeplr,
+          signerAddress,
           validatorAddres,
           coin(amount, BASE_DENOM),
           fee,
-          MEMO_KEPLR
+          MEMO
         );
         checkTxs(response, { setTxHash, setErrorMessage, setStage });
       } catch (error) {
@@ -229,17 +229,17 @@ function ActionBarContainer({ validators, updateFnc }: Props) {
   const redelegateTokens = async () => {
     if (signer && signingClient) {
       try {
-        const [{ address: addressKeplr }] = await signer.getAccounts();
+        const [{ address: signerAddress }] = await signer.getAccounts();
 
         setStage(STAGE_WAIT);
         const validatorAddres = getValidatorAddres(validators);
         const response = await signingClient.redelegateTokens(
-          addressKeplr,
+          signerAddress,
           validatorAddres,
           valueSelect,
           coin(amount, BASE_DENOM),
           fee,
-          MEMO_KEPLR
+          MEMO
         );
         checkTxs(response, { setTxHash, setErrorMessage, setStage });
       } catch (error) {
@@ -251,11 +251,11 @@ function ActionBarContainer({ validators, updateFnc }: Props) {
   const claimRewards = async () => {
     if (signer && signingClient && queryClient) {
       try {
-        const [{ address: addressKeplr }] = await signer.getAccounts();
+        const [{ address: signerAddress }] = await signer.getAccounts();
         const validatorAddress: string[] = [];
 
         setStage(LEDGER_GENERATION);
-        const delegationTotalRewards = await queryClient.delegationTotalRewards(addressKeplr);
+        const delegationTotalRewards = await queryClient.delegationTotalRewards(signerAddress);
         if (delegationTotalRewards?.rewards) {
           const { rewards } = delegationTotalRewards;
           Object.keys(rewards).forEach((key) => {
@@ -266,7 +266,7 @@ function ActionBarContainer({ validators, updateFnc }: Props) {
 
           setStage(STAGE_WAIT);
           const response = await signingClient.withdrawAllRewards(
-            addressKeplr,
+            signerAddress,
             validatorAddress,
             fee
           );

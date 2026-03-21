@@ -48,4 +48,4 @@ export const DEFAULT_GAS_LIMITS = 200000;
 
 export const COIN_DECIMALS_RESOURCE = 3;
 
-export const { MEMO_KEPLR } = defaultNetworks[DEFAULT_CHAIN_ID];
+export const { MEMO } = defaultNetworks[DEFAULT_CHAIN_ID];

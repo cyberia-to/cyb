@@ -18,7 +18,7 @@ export type NetworkConfig = {
   INDEX_HTTPS: string;
   INDEX_WEBSOCKET: string;
   BECH32_PREFIX: string;
-  MEMO_KEPLR: string;
+  MEMO: string;
 };
 
 export type NetworksList = {

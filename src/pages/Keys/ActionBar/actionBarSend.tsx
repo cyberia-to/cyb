@@ -19,7 +19,7 @@ const { STAGE_ERROR, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED } = LEDG
 
 const STAGE_SEND = 1.1;
 
-function ActionBarKeplr({ updateAddress, updateBalance, onClickBack }) {
+function ActionBarSendTokens({ updateAddress, updateBalance, onClickBack }) {
   const { signer, signingClient } = useSigningClient();
   const [stage, setStage] = useState(STAGE_SEND);
   const [amountSend, setAmountSend] = useState('');
@@ -143,4 +143,4 @@ function ActionBarKeplr({ updateAddress, updateBalance, onClickBack }) {
   return null;
 }
 
-export default ActionBarKeplr;
+export default ActionBarSendTokens;

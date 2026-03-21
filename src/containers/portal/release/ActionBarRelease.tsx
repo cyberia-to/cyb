@@ -67,7 +67,7 @@ function ActionBarRelease({
   const getRelease = useCallback(async () => {
     try {
       if (signer && signingClient && currentRelease) {
-        const { isNanoLedger, bech32Address: addressKeplr } = await getSignerKeyInfo(signer, CHAIN_ID);
+        const { isNanoLedger, bech32Address: signerAddress } = await getSignerKeyInfo(signer, CHAIN_ID);
 
         const msgs = [];
 
@@ -85,7 +85,7 @@ function ActionBarRelease({
 
         const msgsBroadcast = await mssgsClaim(
           {
-            sender: addressKeplr,
+            sender: signerAddress,
             isNanoLedger,
           },
           msgs,
@@ -108,7 +108,7 @@ function ActionBarRelease({
         const multiplier = new BigNumber(2).multipliedBy(msgsBroadcast.length);
 
         const executeResponseResult = await signingClient.signAndBroadcast(
-          addressKeplr,
+          signerAddress,
           [...msgsBroadcast],
           Soft3MessageFactory.fee(multiplier.toNumber()),
           'cyber'

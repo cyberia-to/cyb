@@ -227,7 +227,7 @@ class ActionBarContainer extends Component<Props> {
 
   onClickSend = () => {
     const { defaultAccount } = this.props;
-    if (defaultAccount.keys === 'keplr') {
+    if (defaultAccount.keys === 'wallet' || defaultAccount.keys === 'ledger') {
       this.generateTxSendKplr();
     }
   };
@@ -338,7 +338,7 @@ class ActionBarContainer extends Component<Props> {
         }
       }
 
-      if (type === 'security' && isOwner && defaultAccount.keys === 'keplr') {
+      if (type === 'security' && isOwner && (defaultAccount.keys === 'wallet' || defaultAccount.keys === 'ledger')) {
         content.push(<Button onClick={this.onClickSend}>Claim rewards</Button>);
       }
 

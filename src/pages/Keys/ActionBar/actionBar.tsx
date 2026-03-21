@@ -11,7 +11,7 @@ import { RootState } from 'src/redux/store';
 import BroadcastChannelSender from 'src/services/backend/channels/BroadcastChannelSender';
 import { KEY_LIST_TYPE, KEY_TYPE } from '../types';
 import ActionBarConnect from './actionBarConnect';
-import ActionBarSend from './actionBarKeplr';
+import ActionBarSend from './actionBarSend';
 
 const STAGE_INIT = 1;
 const STAGE_CONNECT = 2;
@@ -65,7 +65,7 @@ function ActionBar({
   defaultAccounts,
   defaultAccountsKeys,
 }: Props) {
-  const { signer: keplr } = useSigningClient();
+  const { signer } = useSigningClient();
   const [typeActionBar, setTypeActionBar] = useState('');
   const [stage, setStage] = useState(STAGE_INIT);
   const [makeActive, setMakeActive] = useState(false);
@@ -138,19 +138,6 @@ function ActionBar({
     }
   }
 
-  // const onClickDefaultAccountSend = () => {
-  //   if (defaultAccounts !== null && defaultAccounts.cyber) {
-  //     if (defaultAccounts.cyber.keys === 'keplr') {
-  //       setStage(STAGE_SEND_KEPLR);
-  //     }
-  //     if (defaultAccounts.cyber.keys === 'ledger') {
-  //       setStage(STAGE_SEND_LEDGER);
-  //     }
-  //     if (defaultAccounts.cyber.keys === 'read-only') {
-  //       setStage(STAGE_SEND_READ_ONLY);
-  //     }
-  //   }
-  // };
 
   const updateFuncActionBar = () => {
     setTypeActionBar('');
@@ -243,7 +230,7 @@ function ActionBar({
         <ActionBarContainer>
           <Pane>
             {connect && buttonConnect}
-            {keplr && (
+            {signer && (
               <Button style={{ margin: '0 10px' }} onClick={() => setStage(STAGE_SEND)}>
                 Send
               </Button>

@@ -4,7 +4,7 @@ import { ActionBar as ActionBarContainer, Pane } from '@cybercongress/gravity';
 import { useEffect, useRef, useState } from 'react';
 import Button from 'src/components/btnGrd';
 import AddFileButton from 'src/components/buttons/AddFile/AddFile';
-import { MEMO_KEPLR } from 'src/constants/config';
+import { MEMO } from 'src/constants/config';
 import { useSigningClient } from 'src/contexts/signerClient';
 import useCurrentAddress from 'src/hooks/useCurrentAddress';
 import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
@@ -79,7 +79,7 @@ function ActionBar({ updateFnc }) {
             address,
             wasmBytes,
             Soft3MessageFactory.fee(2),
-            MEMO_KEPLR
+            MEMO
           );
           if (response.code === 0) {
             setTxHash(response.transactionHash);

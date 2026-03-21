@@ -28,7 +28,7 @@ const { STAGE_INIT, STAGE_READY, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIR
   LEDGER;
 
 const STAGE_IPFS_HASH = 3.1;
-const STAGE_KEPLR_APPROVE = 3.2;
+const STAGE_SIGNER_APPROVE = 3.2;
 
 // generated
 interface Props {
@@ -140,7 +140,7 @@ class ActionBarContainer extends Component<Props, any> {
     });
   };
 
-  onClickInitKeplr = () => {
+  onClickInitSigner = () => {
     this.calculationIpfsFrom();
     this.calculationIpfsTo();
     this.setState({
@@ -154,7 +154,7 @@ class ActionBarContainer extends Component<Props, any> {
       const { fromCid, toCid, addressLocalStor } = this.state;
 
       this.setState({
-        stage: STAGE_KEPLR_APPROVE,
+        stage: STAGE_SIGNER_APPROVE,
       });
       if (signer && signingClient) {
         const { address } = (await signer.getAccounts())[0];
@@ -281,11 +281,11 @@ class ActionBarContainer extends Component<Props, any> {
       });
     }
 
-    this.onClickInitKeplr();
+    this.onClickInitSigner();
   };
 
   onClickInit = () => {
-    this.onClickInitKeplr();
+    this.onClickInitSigner();
   };
 
   render() {
@@ -351,7 +351,7 @@ class ActionBarContainer extends Component<Props, any> {
       );
     }
 
-    if (stage === STAGE_KEPLR_APPROVE) {
+    if (stage === STAGE_SIGNER_APPROVE) {
       return (
         <ActionBar>
           <ActionBarContentText>

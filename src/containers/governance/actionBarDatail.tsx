@@ -4,7 +4,7 @@ import BigNumber from 'bignumber.js';
 import { ProposalStatus, VoteOption } from 'cosmjs-types/cosmos/gov/v1beta1/gov';
 import { useEffect, useState } from 'react';
 import { NumericFormat } from 'react-number-format';
-import { BASE_DENOM, DEFAULT_GAS_LIMITS, MEMO_KEPLR } from 'src/constants/config';
+import { BASE_DENOM, DEFAULT_GAS_LIMITS, MEMO } from 'src/constants/config';
 import { useSigningClient } from 'src/contexts/signerClient';
 import useCurrentAddress from 'src/hooks/useCurrentAddress';
 import { getTxs } from 'src/services/transactions/lcd';
@@ -86,7 +86,7 @@ function ActionBarDetail({ proposals, id, update }: Props) {
     setValueSelect(1);
   };
 
-  const generateTxKeplr = async () => {
+  const generateTx = async () => {
     if (signingClient && signer && Object.keys(proposals).length > 0) {
       try {
         const [{ address }] = await signer.getAccounts();
@@ -100,12 +100,12 @@ function ActionBarDetail({ proposals, id, update }: Props) {
           setStage(STAGE_SUBMITTED);
 
           if (proposals.status === ProposalStatus.PROPOSAL_STATUS_VOTING_PERIOD) {
-            response = await signingClient.voteProposal(address, id, valueSelect, fee, MEMO_KEPLR);
+            response = await signingClient.voteProposal(address, id, valueSelect, fee, MEMO);
           }
 
           if (proposals.status === ProposalStatus.PROPOSAL_STATUS_DEPOSIT_PERIOD) {
             const amount = coins(parseFloat(valueDeposit), BASE_DENOM);
-            response = await signingClient.depositProposal(address, id, amount, fee, MEMO_KEPLR);
+            response = await signingClient.depositProposal(address, id, amount, fee, MEMO);
           }
 
           if (response.code === 0) {
@@ -168,7 +168,7 @@ function ActionBarDetail({ proposals, id, update }: Props) {
         <BtnGrd
           text="Deposit"
           disabled={!parseFloat(valueDeposit) > 0}
-          onClick={() => generateTxKeplr()}
+          onClick={() => generateTx()}
         />
       </ActionBar>
     );
@@ -198,7 +198,7 @@ function ActionBarDetail({ proposals, id, update }: Props) {
           />
         </ActionBarContentText>
         <BtnGrd
-          onClick={() => generateTxKeplr()}
+          onClick={() => generateTx()}
           text="Vote"
         />
       </ActionBar>

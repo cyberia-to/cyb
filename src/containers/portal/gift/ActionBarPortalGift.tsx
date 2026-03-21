@@ -119,7 +119,7 @@ function ActionBarPortalGift({
   const { signer, signingClient, isLedgerAccount, getSignerForChain } = useSigningClient();
   const [selectMethod, setSelectMethod] = useState('');
   const [selectNetwork, setSelectNetwork] = useState('');
-  const [signedMessageKeplr, setSignedMessageKeplr] = useState(null);
+  const [signedMessage, setSignedMessageKeplr] = useState(null);
 
   const currentAddress = useCurrentAddress();
 
@@ -179,7 +179,7 @@ function ActionBarPortalGift({
     return '';
   }, [citizenship, addressActive]);
 
-  const signMsgKeplr = useCallback(async () => {
+  const signMsgCosmos = useCallback(async () => {
     if (!citizenship || selectNetwork === '') return null;
 
     const { owner, extension } = citizenship;
@@ -252,13 +252,13 @@ function ActionBarPortalGift({
   }, [citizenship, setStepApp]);
 
   const sendSignedMessage = useCallback(async () => {
-    if (signer && signingClient && citizenship && signedMessageKeplr !== null) {
+    if (signer && signingClient && citizenship && signedMessage !== null) {
       const { nickname } = citizenship.extension;
 
       const msgObject = proofAddressMsg(
-        signedMessageKeplr.address,
+        signedMessage.address,
         nickname,
-        signedMessageKeplr.signature
+        signedMessage.signature
       );
 
       try {
@@ -283,7 +283,7 @@ function ActionBarPortalGift({
             onSuccess: () => {
               dispatch(
                 addAddress({
-                  address: signedMessageKeplr.address,
+                  address: signedMessage.address,
                   currentAddress,
                 })
               );
@@ -304,7 +304,7 @@ function ActionBarPortalGift({
           });
         }
         if (isIpfsInitialized) {
-          ipfsApi?.addContent(signedMessageKeplr.address);
+          ipfsApi?.addContent(signedMessage.address);
         }
       } catch (error) {
         console.log('error', error);
@@ -315,7 +315,7 @@ function ActionBarPortalGift({
     signer,
     signingClient,
     citizenship,
-    signedMessageKeplr,
+    signedMessage,
     isIpfsInitialized,
     ipfsApi,
     currentAddress,
@@ -584,7 +584,7 @@ function ActionBarPortalGift({
       <ActionBarSteps
         onClickBack={() => setStepApp(STEP_INFO.STATE_PROVE_CONNECT)}
         button={{
-          onClick: () => signMsgKeplr(),
+          onClick: () => signMsgCosmos(),
           text: 'sign Moon Code',
           disabled: selectNetwork === '',
         }}

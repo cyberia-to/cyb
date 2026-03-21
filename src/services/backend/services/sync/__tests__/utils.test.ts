@@ -119,7 +119,7 @@ const mockTransaction = [
         timestamp: '2023-12-18T10:28:13.942406',
         height: 11324342,
       },
-      memo: '[bostrom] cyb.ai, using keplr',
+      memo: '[bostrom] cyb.ai',
     },
     type: 'cosmwasm.wasm.v1.MsgExecuteContract',
   },

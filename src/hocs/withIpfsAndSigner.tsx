@@ -4,7 +4,7 @@ import { useQueryClient } from 'src/contexts/queryClient';
 import { useSigningClient } from 'src/contexts/signerClient';
 
 const withIpfsAndSigner = (Component: React.ComponentType) =>
-  function WithIpfsAndKeplr(props: any) {
+  function WithIpfsAndSigner(props: any) {
     const { ipfsApi, senseApi } = useBackend();
     const { signer, signingClient } = useSigningClient();
     const queryClient = useQueryClient();

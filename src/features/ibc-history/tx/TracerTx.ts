@@ -7,7 +7,7 @@ type Listeners = {
 };
 
 /**
- * TxTracer is almost same with the `TendermintTxTracer` in the @keplr-wallet/cosmos library.
+ * TxTracer is based on the `TendermintTxTracer` pattern from @cosmjs/tendermint-rpc.
  * Changes for some mistake on the original `TendermintTxTracer` and this would be remove if the changes are merged to the original library.
  */
 class TxTracer {
