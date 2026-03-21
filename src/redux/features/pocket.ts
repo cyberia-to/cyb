@@ -3,6 +3,7 @@ import { Dispatch } from 'redux';
 import { localStorageKeys } from 'src/constants/localStorageKeys';
 import { Account, Accounts, AccountValue, DefaultAccount } from 'src/types/defaultAccount';
 import { POCKET } from '../../utils/config';
+import { removeEncryptedMnemonic } from '../../utils/utils';
 import { RootState } from '../store';
 
 type SliceState = {
@@ -80,6 +81,10 @@ const slice = createSlice({
         Object.keys(state.accounts).forEach((accountKey) => {
           Object.keys(state.accounts[accountKey]).forEach((networkKey) => {
             if (state.accounts[accountKey][networkKey].bech32 === payload) {
+              // Clean up encrypted mnemonic from localStorage if this was a wallet account
+              if (state.accounts[accountKey][networkKey].keys === 'wallet') {
+                removeEncryptedMnemonic(payload);
+              }
               delete state.accounts[accountKey][networkKey];
 
               if (Object.keys(state.accounts[accountKey]).length === 0) {
@@ -122,7 +127,57 @@ export const { setDefaultAccount, setAccounts, setStageTweetActionBar, deleteAdd
 export default slice.reducer;
 
 // refactor this
+// Migrate legacy 'keplr' accounts to 'read-only' (one-time, idempotent)
+function migrateKeplrAccounts() {
+  try {
+    const raw = localStorage.getItem(localStorageKeys.pocket.POCKET_ACCOUNT);
+    if (!raw) return;
+
+    let changed = false;
+    const accounts: Accounts = JSON.parse(raw);
+
+    Object.keys(accounts).forEach((name) => {
+      Object.keys(accounts[name]).forEach((network) => {
+        if (accounts[name][network].keys === 'keplr') {
+          accounts[name][network].keys = 'read-only';
+          changed = true;
+        }
+      });
+    });
+
+    if (changed) {
+      localStorage.setItem(localStorageKeys.pocket.POCKET_ACCOUNT, JSON.stringify(accounts));
+
+      // Also patch the default account pocket entry
+      const pocketRaw = localStorage.getItem(localStorageKeys.pocket.POCKET);
+      if (pocketRaw) {
+        const pocket = JSON.parse(pocketRaw);
+        Object.keys(pocket).forEach((name) => {
+          if (pocket[name]) {
+            Object.keys(pocket[name]).forEach((network) => {
+              if (pocket[name][network]?.keys === 'keplr') {
+                pocket[name][network].keys = 'read-only';
+              }
+            });
+          }
+        });
+        localStorage.setItem(localStorageKeys.pocket.POCKET, JSON.stringify(pocket));
+      }
+
+      // Flag for one-time adviser notification
+      if (!localStorage.getItem('cyb:keplr-migrated')) {
+        localStorage.setItem('cyb:keplr-migrated', '1');
+      }
+    }
+  } catch (e) {
+    console.warn('keplr account migration skipped due to corrupt localStorage:', e);
+  }
+}
+
 export const initPocket = () => (dispatch: Dispatch) => {
+  // Migrate keplr accounts before loading
+  migrateKeplrAccounts();
+
   let defaultAccounts = null;
   let defaultAccountsKeys = null;
   let accountsTemp: Accounts | null = null;

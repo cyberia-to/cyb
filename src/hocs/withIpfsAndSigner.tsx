@@ -3,8 +3,8 @@ import { useBackend } from 'src/contexts/backend/backend';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { useSigningClient } from 'src/contexts/signerClient';
 
-const withIpfsAndKeplr = (Component: React.ComponentType) =>
-  function WithIpfsAndKeplr(props: any) {
+const withIpfsAndSigner = (Component: React.ComponentType) =>
+  function WithIpfsAndSigner(props: any) {
     const { ipfsApi, senseApi } = useBackend();
     const { signer, signingClient } = useSigningClient();
     const queryClient = useQueryClient();
@@ -21,4 +21,4 @@ const withIpfsAndKeplr = (Component: React.ComponentType) =>
     );
   };
 
-export default withIpfsAndKeplr;
+export default withIpfsAndSigner;

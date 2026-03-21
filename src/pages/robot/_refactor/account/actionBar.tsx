@@ -21,8 +21,9 @@ import {
   TransactionError,
   TransactionSubmitted,
 } from '../../../../components';
-import withIpfsAndKeplr from '../../../../hocs/withIpfsAndKeplr';
+import withIpfsAndSigner from '../../../../hocs/withIpfsAndSigner';
 import { LEDGER } from '../../../../utils/config';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 
 const { STAGE_INIT, STAGE_READY, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED, STAGE_ERROR } =
   LEDGER;
@@ -144,7 +145,7 @@ class ActionBarContainer extends Component<Props> {
               txHash = response.transactionHash;
 
               if (response.code) {
-                throw Error(response.rawLog.toString());
+                throw Error(friendlyErrorMessage(response.rawLog));
               }
             }
           }
@@ -204,7 +205,7 @@ class ActionBarContainer extends Component<Props> {
           this.setState({
             stage: STAGE_ERROR,
             txHeight: data.height,
-            errorMessage: data.raw_log,
+            errorMessage: friendlyErrorMessage(data.raw_log),
           });
           return;
         }
@@ -227,7 +228,7 @@ class ActionBarContainer extends Component<Props> {
 
   onClickSend = () => {
     const { defaultAccount } = this.props;
-    if (defaultAccount.keys === 'keplr') {
+    if (defaultAccount.keys === 'wallet' || defaultAccount.keys === 'ledger') {
       this.generateTxSendKplr();
     }
   };
@@ -338,7 +339,7 @@ class ActionBarContainer extends Component<Props> {
         }
       }
 
-      if (type === 'security' && isOwner && defaultAccount.keys === 'keplr') {
+      if (type === 'security' && isOwner && (defaultAccount.keys === 'wallet' || defaultAccount.keys === 'ledger')) {
         content.push(<Button onClick={this.onClickSend}>Claim rewards</Button>);
       }
 
@@ -396,4 +397,4 @@ class ActionBarContainer extends Component<Props> {
   }
 }
 
-export default withIpfsAndKeplr(ActionBarContainer);
+export default withIpfsAndSigner(ActionBarContainer);

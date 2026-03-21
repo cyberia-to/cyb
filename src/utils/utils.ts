@@ -3,7 +3,6 @@
 import { Sha256 } from '@cosmjs/crypto';
 import { fromBase64, fromUtf8, toBech32 } from '@cosmjs/encoding';
 import { Pool } from '@cybercongress/cyber-js/build/codec/tendermint/liquidity/v1beta1/liquidity';
-import { Key } from '@keplr-wallet/types';
 import bech32 from 'bech32';
 import BigNumber from 'bignumber.js';
 import { BECH32_PREFIX, BECH32_PREFIX_VAL_CONS } from 'src/constants/config';
@@ -14,8 +13,6 @@ import { toHex } from 'src/utils/encoding';
 import cyberBostrom from '../image/large-green.png';
 import customNetwork from '../image/large-orange-circle.png';
 import cyberSpace from '../image/large-purple-circle.png';
-import { LEDGER } from './config';
-
 const DEFAULT_DECIMAL_DIGITS = 3;
 const DEFAULT_CURRENCY = 'GoL';
 
@@ -381,22 +378,21 @@ const getNowUtcTime = (): number => {
   return utcTime.getTime();
 };
 
-const accountsKeplr = (accounts: Key): AccountValue => {
-  const { pubKey, bech32Address, name } = accounts;
-  const pk = toHex(new Uint8Array(pubKey));
-
-  return {
-    bech32: bech32Address,
-    keys: 'keplr',
-    pk,
-    path: LEDGER.HDPATH,
-    name,
-  };
-};
-
 export function covertUint8ArrayToString(data: Uint8Array): string {
   return new TextDecoder().decode(data);
 }
+
+export const setEncryptedMnemonic = (encrypted: string, bech32: string) => {
+  localStorage.setItem(`cyb:mnemonic:${bech32}`, encrypted);
+};
+
+export const getEncryptedMnemonic = (bech32: string): string | null => {
+  return localStorage.getItem(`cyb:mnemonic:${bech32}`);
+};
+
+export const removeEncryptedMnemonic = (bech32: string) => {
+  localStorage.removeItem(`cyb:mnemonic:${bech32}`);
+};
 
 export {
   formatNumber,
@@ -426,5 +422,4 @@ export {
   isNative,
   findPoolDenomInArr,
   getNowUtcTime,
-  accountsKeplr,
 };

@@ -4,11 +4,12 @@ import { ActionBar as ActionBarContainer, Pane } from '@cybercongress/gravity';
 import { useEffect, useRef, useState } from 'react';
 import Button from 'src/components/btnGrd';
 import AddFileButton from 'src/components/buttons/AddFile/AddFile';
-import { MEMO_KEPLR } from 'src/constants/config';
+import { MEMO } from 'src/constants/config';
 import { useSigningClient } from 'src/contexts/signerClient';
 import useCurrentAddress from 'src/hooks/useCurrentAddress';
 import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 import { getTxs } from 'src/services/transactions/lcd';
 import {
   Account,
@@ -56,7 +57,7 @@ function ActionBar({ updateFnc }) {
           if (response.code) {
             setStage(STAGE_ERROR);
             setTxHeight(response.height);
-            setErrorMessage(response.raw_log);
+            setErrorMessage(friendlyErrorMessage(response.raw_log));
             return;
           }
         }
@@ -79,13 +80,13 @@ function ActionBar({ updateFnc }) {
             address,
             wasmBytes,
             Soft3MessageFactory.fee(2),
-            MEMO_KEPLR
+            MEMO
           );
           if (response.code === 0) {
             setTxHash(response.transactionHash);
           } else {
             setTxHash(null);
-            setErrorMessage(response.rawLog.toString());
+            setErrorMessage(friendlyErrorMessage(response.rawLog?.toString()));
             setStage(STAGE_ERROR);
           }
         } else {
@@ -99,7 +100,7 @@ function ActionBar({ updateFnc }) {
       } catch (e) {
         console.log(`e`, e);
         setStage(STAGE_ERROR);
-        setErrorMessage(e.toString());
+        setErrorMessage(friendlyErrorMessage(e?.message || e?.toString()));
       }
     }
   };

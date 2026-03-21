@@ -4,7 +4,7 @@ import BigNumber from 'bignumber.js';
 import { ProposalStatus, VoteOption } from 'cosmjs-types/cosmos/gov/v1beta1/gov';
 import { useEffect, useState } from 'react';
 import { NumericFormat } from 'react-number-format';
-import { BASE_DENOM, DEFAULT_GAS_LIMITS, MEMO_KEPLR } from 'src/constants/config';
+import { BASE_DENOM, DEFAULT_GAS_LIMITS, MEMO } from 'src/constants/config';
 import { useSigningClient } from 'src/contexts/signerClient';
 import useCurrentAddress from 'src/hooks/useCurrentAddress';
 import { getTxs } from 'src/services/transactions/lcd';
@@ -26,8 +26,8 @@ import {
 // import styles from './ActionBarDetail.module.scss';
 
 import { LEDGER } from '../../utils/config';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 
-const imgKeplr = require('../../image/keplr-icon.svg');
 const imgCyber = require('../../image/blue-circle.png');
 
 const { STAGE_INIT, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED, STAGE_ERROR } = LEDGER;
@@ -67,7 +67,7 @@ function ActionBarDetail({ proposals, id, update }: Props) {
           if (response.code) {
             setStage(STAGE_ERROR);
             setTxHeight(response.height);
-            setErrorMessage(response.raw_log);
+            setErrorMessage(friendlyErrorMessage(response.raw_log));
             return;
           }
         }
@@ -87,7 +87,7 @@ function ActionBarDetail({ proposals, id, update }: Props) {
     setValueSelect(1);
   };
 
-  const generateTxKeplr = async () => {
+  const generateTx = async () => {
     if (signingClient && signer && Object.keys(proposals).length > 0) {
       try {
         const [{ address }] = await signer.getAccounts();
@@ -101,19 +101,19 @@ function ActionBarDetail({ proposals, id, update }: Props) {
           setStage(STAGE_SUBMITTED);
 
           if (proposals.status === ProposalStatus.PROPOSAL_STATUS_VOTING_PERIOD) {
-            response = await signingClient.voteProposal(address, id, valueSelect, fee, MEMO_KEPLR);
+            response = await signingClient.voteProposal(address, id, valueSelect, fee, MEMO);
           }
 
           if (proposals.status === ProposalStatus.PROPOSAL_STATUS_DEPOSIT_PERIOD) {
             const amount = coins(parseFloat(valueDeposit), BASE_DENOM);
-            response = await signingClient.depositProposal(address, id, amount, fee, MEMO_KEPLR);
+            response = await signingClient.depositProposal(address, id, amount, fee, MEMO);
           }
 
           if (response.code === 0) {
             setTxHash(response.transactionHash);
           } else {
             setTxHash(null);
-            setErrorMessage(response.rawLog.toString());
+            setErrorMessage(friendlyErrorMessage(response.rawLog));
             setStage(STAGE_ERROR);
           }
         } else {
@@ -127,7 +127,7 @@ function ActionBarDetail({ proposals, id, update }: Props) {
       } catch (e) {
         console.log(e);
         setTxHash(null);
-        setErrorMessage(e.toString());
+        setErrorMessage(friendlyErrorMessage(e?.message || e));
         setStage(STAGE_ERROR);
       }
     }
@@ -169,7 +169,7 @@ function ActionBarDetail({ proposals, id, update }: Props) {
         <BtnGrd
           text="Deposit"
           disabled={!parseFloat(valueDeposit) > 0}
-          onClick={() => generateTxKeplr()}
+          onClick={() => generateTx()}
         />
       </ActionBar>
     );
@@ -198,25 +198,9 @@ function ActionBarDetail({ proposals, id, update }: Props) {
             onChangeSelect={(value) => setValueSelect(Number(value))}
           />
         </ActionBarContentText>
-        <ButtonImgText
-          text={
-            <Pane alignItems="center" display="flex">
-              Vote
-              <img
-                src={imgCyber}
-                alt="cyber"
-                style={{
-                  width: 20,
-                  height: 20,
-                  marginLeft: '5px',
-                  paddingTop: '2px',
-                  objectFit: 'contain',
-                }}
-              />
-            </Pane>
-          }
-          onClick={() => generateTxKeplr()}
-          img={imgKeplr}
+        <BtnGrd
+          onClick={() => generateTx()}
+          text="Vote"
         />
       </ActionBar>
     );

@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import { MainContainer } from 'src/components';
 import { useDevice } from 'src/contexts/device';
 import { useAdviser } from 'src/features/adviser/context';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 import ActionBarContainer from '../Search/ActionBarContainer';
 import { getTxs } from './api/data';
 import { mapResponseDataGetTxs } from './api/mapping';
@@ -28,7 +29,7 @@ function TxsDetails() {
       setMsgs(messages);
 
       if (rawLog) {
-        setAdviser(rawLog, 'red');
+        setAdviser(friendlyErrorMessage(rawLog), 'red');
       }
     });
   }, [txHash, setAdviser]);

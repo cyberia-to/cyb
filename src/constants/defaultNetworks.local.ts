@@ -15,7 +15,7 @@ const defaultNetworks: NetworksList = {
     INDEX_HTTPS: 'http://localhost:8090/v1/graphql', //'https://index.bostrom.cybernode.ai/v1/graphql',
     INDEX_WEBSOCKET: 'ws://localhost:8090/v1/graphql', // 'wss://index.bostrom.cybernode.ai/v1/graphql',
     BECH32_PREFIX: 'bostrom',
-    MEMO_KEPLR: '[bostrom] cyb.ai, using keplr',
+    MEMO: '[bostrom] cyb.ai',
   },
   'space-pussy': {
     CHAIN_ID: Networks.SPACE_PUSSY,
@@ -27,7 +27,7 @@ const defaultNetworks: NetworksList = {
     INDEX_HTTPS: 'https://index.space-pussy.cybernode.ai/v1/graphql',
     INDEX_WEBSOCKET: 'wss://index.space-pussy.cybernode.ai/v1/graphql',
     BECH32_PREFIX: 'pussy',
-    MEMO_KEPLR: '[space-pussy] cyb.ai, using keplr',
+    MEMO: '[space-pussy] cyb.ai',
   },
 };
 

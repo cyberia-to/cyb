@@ -11,6 +11,7 @@ import { sendCyberlinkArray } from 'src/services/neuron/neuronApi';
 import { addIfpsMessageOrCid } from 'src/utils/ipfs/helpers';
 import useAdviserTexts from '../adviser/useAdviserTexts';
 import { KeywordsItem, useStudioContext } from './studio.context';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 import { checkLoopLinks, mapLinks, reduceLoopKeywords } from './utils/utils';
 
 // function execute (content: any[]) {
@@ -164,7 +165,7 @@ function ActionBarContainer() {
         });
       })
       .catch((e) => {
-        setError(e.toString());
+        setError(friendlyErrorMessage(e?.message || e));
         console.error(error);
         setLoading(false);
       });

@@ -12,6 +12,7 @@ import { Option } from 'src/types';
 import { addIfpsMessageOrCid } from 'src/utils/ipfs/helpers';
 import { Account, ActionBar as ActionBarCenter } from '../../../components';
 
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 import { LEDGER } from '../../../utils/config';
 import { convertAmountReverce } from '../../../utils/utils';
 
@@ -68,7 +69,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
           .catch((e) => {
             setTxHash(undefined);
             setStage(STAGE_ERROR);
-            setErrorMessage(e.toString());
+            setErrorMessage(friendlyErrorMessage(e?.message || e));
           });
       } else {
         setStage(STAGE_ERROR);

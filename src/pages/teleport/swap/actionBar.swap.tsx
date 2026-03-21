@@ -16,6 +16,7 @@ import { Account, ActionBar as ActionBarCenter, Confirmed, TransactionError } fr
 import { LEDGER } from '../../../utils/config';
 import ActionBarPingTxs from '../components/actionBarPingTxs';
 import { sortReserveCoinDenoms } from './utils';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 
 const POOL_TYPE_INDEX = 1;
 
@@ -110,12 +111,12 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
             }
           } else {
             setTxHash(undefined);
-            setErrorMessage(response.rawLog.toString());
+            setErrorMessage(friendlyErrorMessage(response.rawLog));
             setStage(STAGE_ERROR);
           }
         } catch (error) {
           setTxHash(undefined);
-          setErrorMessage(error.toString());
+          setErrorMessage(friendlyErrorMessage(error?.message || error));
           setStage(STAGE_ERROR);
         }
       } else {

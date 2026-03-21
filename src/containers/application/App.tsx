@@ -106,6 +106,20 @@ function App() {
   //   }
   // };
 
+  // Notify user when wallet auto-locks after 15 min
+  useEffect(() => {
+    const handleAutoLock = () => {
+      adviserContext.setAdviser(
+        'Wallet locked after inactivity. Enter your password to continue',
+        AdviserColors.yellow
+      );
+      adviserContext.setIsOpen(true);
+    };
+
+    window.addEventListener('__cyb_wallet_locked', handleAutoLock);
+    return () => window.removeEventListener('__cyb_wallet_locked', handleAutoLock);
+  }, [adviserContext.setAdviser, adviserContext.setIsOpen]);
+
   // initial focus on commander
   useEffect(() => {
     const isGraphPages = window.location.pathname.includes('/brain');

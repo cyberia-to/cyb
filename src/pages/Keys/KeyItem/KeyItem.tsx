@@ -101,11 +101,6 @@ function KeyItem({ account, selected, selectKey }: Props) {
 
       <div className={styles.content}>
         key <Pill color="white" text={name || 'noname'} /> <br />
-        {['keplr'].includes(keys) && (
-          <>
-            signed by <Pill color="red" text={keys} />{' '}
-          </>
-        )}
         {isHardware && (
           <>
             stored in <Pill color="red" text={keys} />

@@ -1,8 +1,10 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { CHAIN_ID } from 'src/constants/config';
 import { useDevice } from 'src/contexts/device';
 import { useSigningClient } from 'src/contexts/signerClient';
+import { useAdviser } from 'src/features/adviser/context';
+import { AdviserColors } from 'src/features/adviser/Adviser/Adviser';
 import usePassportByAddress from 'src/features/passport/hooks/usePassportByAddress';
 import { selectCurrentAddress } from 'src/redux/features/pocket';
 import { useAppSelector } from 'src/redux/hooks';
@@ -12,6 +14,7 @@ import { $TsFixMeFunc } from 'src/types/tsfix';
 import { trimString } from 'src/utils/utils';
 import Button from '../btnGrd';
 import ButtonIcon from '../buttons/ButtonIcon';
+import { Input } from '../Input';
 import styles from './styles.module.scss';
 
 const back = require('../../image/arrow-left-img.svg');
@@ -107,6 +110,17 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
     !location.pathname.includes(routes.gift.path) &&
     !location.pathname.includes('/brain') // both full and robot
   ) {
+    const isWallet = defaultAccount.account?.cyber.keys === 'wallet';
+    const isLedger = defaultAccount.account?.cyber.keys === 'ledger';
+
+    if (isWallet) {
+      return <UnlockWalletBar />;
+    }
+
+    if (isLedger) {
+      return <ConnectLedgerBar />;
+    }
+
     const activeAddress =
       defaultAccount.account?.cyber.name || trimString(defaultAccount.account?.cyber.bech32, 10, 4);
 
@@ -114,7 +128,7 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
       <ActionBarContainer>
         <span>
           choose {defaultAccount.account?.cyber.name ? 'account' : 'address'}{' '}
-          <span className={styles.chooseAccount}>{activeAddress}</span> in keplr
+          <span className={styles.chooseAccount}>{activeAddress}</span> in your wallet
         </span>
       </ActionBarContainer>
     );
@@ -157,6 +171,88 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
   // return portalEl ? createPortal(contentPortal, portalEl) : contentPortal;
 
   return contentPortal;
+}
+
+function UnlockWalletBar() {
+  const { unlockWallet } = useSigningClient();
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  const handleUnlock = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      await unlockWallet(password);
+      setPassword('');
+    } catch (err) {
+      setError('Wrong password');
+      setPassword('');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <ActionBarContainer>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <Input
+          width="200px"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          placeholder="enter password to unlock"
+          type="password"
+          onKeyDown={(e) => e.key === 'Enter' && handleUnlock()}
+          autoFocus
+        />
+        <Button onClick={handleUnlock} disabled={!password || loading}>
+          {loading ? 'Unlocking...' : 'Unlock'}
+        </Button>
+        {error && <span style={{ color: '#ff4d4d', fontSize: '14px' }}>{error}</span>}
+      </span>
+    </ActionBarContainer>
+  );
+}
+
+function ConnectLedgerBar() {
+  const { reconnectLedger } = useSigningClient();
+  const { setAdviser } = useAdviser();
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+
+  useEffect(() => {
+    setAdviser(
+      'Ledger is not connected. Wake up your device and open the Cosmos app',
+      AdviserColors.yellow
+    );
+  }, [setAdviser]);
+
+  const handleConnect = async () => {
+    setError('');
+    setLoading(true);
+    try {
+      await reconnectLedger();
+    } catch (err: any) {
+      setError(err?.message || 'Connection failed');
+      setAdviser(
+        `Could not connect to Ledger: ${err?.message || 'unknown error'}`,
+        AdviserColors.red
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <ActionBarContainer>
+      <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+        <Button onClick={handleConnect} disabled={loading}>
+          {loading ? 'Connecting...' : 'Connect Ledger'}
+        </Button>
+        {error && <span style={{ color: '#ff4d4d', fontSize: '14px' }}>{error}</span>}
+      </span>
+    </ActionBarContainer>
+  );
 }
 
 export default ActionBar;
