@@ -1,6 +1,6 @@
 import TransportWebUSB from '@ledgerhq/hw-transport-webusb';
 import { LedgerSigner } from '@cosmjs/ledger-amino';
-import { makeCosmoshubPath } from '@cosmjs/crypto';
+import { makeCosmoshubPath } from '@cosmjs/amino';
 
 const IDLE_TIMEOUT_MS = 5 * 60_000; // 5 minutes — signing on device can take time
 
