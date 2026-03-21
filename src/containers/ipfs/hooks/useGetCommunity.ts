@@ -20,7 +20,7 @@ const limit = '20';
 const fetchFunc = async (hash, func) => {
   try {
     const responseSearchResults = await func(hash, offset, limit);
-    return responseSearchResults.txs || [];
+    return responseSearchResults?.txs || [];
   } catch (_error) {
     return [];
   }
@@ -39,6 +39,8 @@ function useGetCommunity(cid: string) {
     },
     {
       enabled: Boolean(cid),
+      retry: false,
+      staleTime: 5 * 60 * 1000,
     }
   );
   return { community: data };

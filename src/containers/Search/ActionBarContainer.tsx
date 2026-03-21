@@ -24,6 +24,7 @@ import { trimString } from '../../utils/utils';
 
 const imgKeplr = require('../../image/keplr-icon.svg');
 const imgLedger = require('../../image/ledger.svg');
+const imgWallet = require('../../image/wallet-outline.svg');
 const imgCyber = require('../../image/blue-circle.png');
 
 const { STAGE_INIT, STAGE_READY, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED, STAGE_ERROR } =
@@ -283,7 +284,7 @@ class ActionBarContainer extends Component<Props, any> {
       });
     }
 
-    if (addressLocalStor.keys === 'keplr') {
+    if (addressLocalStor.keys === 'keplr' || addressLocalStor.keys === 'wallet') {
       this.onClickInitKeplr();
     }
   };
@@ -291,7 +292,7 @@ class ActionBarContainer extends Component<Props, any> {
   onClickInit = () => {
     const { addressLocalStor } = this.state;
 
-    if (addressLocalStor.keys === 'keplr') {
+    if (addressLocalStor.keys === 'keplr' || addressLocalStor.keys === 'wallet') {
       this.onClickInitKeplr();
     }
   };
@@ -327,7 +328,7 @@ class ActionBarContainer extends Component<Props, any> {
                 </Pane>
               }
               onClick={() => this.onClickBtnRank()}
-              img={keys === 'ledger' ? imgLedger : imgKeplr}
+              img={keys === 'ledger' ? imgLedger : keys === 'wallet' ? imgWallet : imgKeplr}
             />
           </ActionBarContentText>
         </ActionBar>
@@ -341,7 +342,6 @@ class ActionBarContainer extends Component<Props, any> {
           keys={addressLocalStor !== null ? addressLocalStor.keys : false}
           onClickBtn={this.onClickInit}
           contentHash={file?.name || contentHash}
-          searchHash={this.props.keywordHash}
           onChangeInputContentHash={this.onChangeInput}
           inputOpenFileRef={this.inputOpenFileRef}
           showOpenFileDlg={this.showOpenFileDlg}

@@ -115,8 +115,8 @@ function useGetBalances(addressActive: string | undefined) {
 
       const getAccount = await authAccounts(addressActive);
       if (
-        getAccount.account.vesting_periods &&
-        getAccount.account.base_vesting_account.original_vesting
+        getAccount?.account?.vesting_periods &&
+        getAccount.account.base_vesting_account?.original_vesting
       ) {
         const { vesting_periods: vestingPeriods } = getAccount.account;
         const { original_vesting: originalVestingAmount } = getAccount.account.base_vesting_account;

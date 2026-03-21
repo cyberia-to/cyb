@@ -21,10 +21,16 @@ import { Option } from 'src/types';
 import { createSenseApi, SenseApi } from './services/senseApi';
 
 const setupStoragePersistence = async () => {
-  let isPersistedStorage = await navigator.storage.persisted();
-  if (!isPersistedStorage) {
-    await navigator.permissions.query({ name: 'persistent-storage' });
+  let isPersistedStorage: boolean;
+  try {
     isPersistedStorage = await navigator.storage.persisted();
+    if (!isPersistedStorage) {
+      await navigator.permissions.query({ name: 'persistent-storage' });
+      isPersistedStorage = true;
+    }
+  } catch (error) {
+    console.log('[Backend] failed to get persistence status', error);
+    isPersistedStorage = false;
   }
   const message = isPersistedStorage ? `🔰 storage is persistent` : `⚠️ storage is non-persitent`;
 
@@ -81,6 +87,7 @@ function BackendProvider({ children }: { children: React.ReactNode }) {
   const isSyncInitialized = useAppSelector(
     (state) => state.backend.services.sync.status === 'started'
   );
+  const [needPFSInitialize, setNeedPFSInitialize] = useState(false);
 
   const myAddress = useAppSelector(selectCurrentAddress);
 
@@ -91,7 +98,10 @@ function BackendProvider({ children }: { children: React.ReactNode }) {
     return Array.from(new Set([...friends, ...following]));
   }, [friends, following]);
 
-  const isReady = isDbInitialized && isIpfsInitialized && isSyncInitialized;
+  const isReady = isDbInitialized &&
+      isIpfsInitialized &&
+      isSyncInitialized &&
+      !needPFSInitialize;
   const [_embeddingApi$, setEmbeddingApi] = useState<Option<Observable<EmbeddingApi>>>(undefined);
   // const embeddingApiRef = useRef<Observable<EmbeddingApi>>();
   useEffect(() => {
@@ -161,6 +171,7 @@ function BackendProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     isReady && console.log('🟢 backend started!');
   }, [isReady]);
+
 
   const [dbApi, setDbApi] = useState<DbApiWrapper | null>(null);
 

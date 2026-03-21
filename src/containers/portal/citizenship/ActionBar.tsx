@@ -249,7 +249,7 @@ function ActionBar({
         {!signer ? (
           <BtnGrd onClick={() => document.location.reload(true)} text="update page" />
         ) : (
-          <BtnGrd onClick={() => connectAccToCyber()} text="connect" />
+          <BtnGrd onClick={connectAccToCyber} text="connect" />
           // <Button onClick={() => connectAccToCyber()}>connect</Button>
         )}
       </ActionBarSteps>

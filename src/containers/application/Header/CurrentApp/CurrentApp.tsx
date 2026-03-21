@@ -1,3 +1,4 @@
+import cx from 'classnames';
 import { useMemo, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import SubMenu from 'src/components/appMenu/SubMenu/SubMenu';
@@ -47,8 +48,8 @@ function CurrentApp() {
         >
           <img
             alt="cyb"
-            src={getRoute[0]?.icon || selectNetworkImg(CHAIN_ID)}
-            className={styles.networkBtnImg}
+            src={getRoute[0]?.largeIcon || getRoute[0]?.icon || selectNetworkImg(CHAIN_ID)}
+            className={cx(styles.networkBtnImg, { [styles.portalGlow]: getRoute[0]?.name === 'Portal' })}
           />
         </Link>
         {mediaQuery && <ChainInfo />}

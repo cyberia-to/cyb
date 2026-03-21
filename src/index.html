@@ -13,20 +13,19 @@
       content="
         default-src 'self';
         script-src 'self' 'unsafe-eval' 'unsafe-inline' https://plausible.io;
-        style-src 'self' 'unsafe-inline';
-        img-src 'self' data: blob: https://*.cybernode.ai https://gateway.ipfs.cybernode.ai https://keybase.io https://s3.amazonaws.com https://robohash.org;
-        font-src 'self' data:;
-        connect-src 'self' https://*.cybernode.ai wss://*.cybernode.ai https://rpc-osmosis.ecostake.com https://rpc.cosmoshub-4.bronbro.io:443 https://rpc-juno.itastakers.com https://gravitychain.io:26657 https://rpc.mainnet.desmos.network https://rpc.evmos-9001-2.bronbro.io https://keybase.io https://api.github.com https://plausible.io https://titan.cybernode.ai https://*.libp2p.io wss://*.libp2p.io https://io.cybernode.ai https://openrouter.ai;
-        frame-src https://*.cybernode.ai https://gateway.ipfs.cybernode.ai;
+        style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+        img-src 'self' data: blob: https:;
+        font-src 'self' data: https://fonts.gstatic.com;
+        connect-src 'self' ipc: https://cyb.ai https://*.cybernode.ai wss://*.cybernode.ai https://rpc-osmosis.ecostake.com https://rpc.cosmoshub-4.bronbro.io:443 https://rpc-juno.itastakers.com https://gravitychain.io:26657 https://rpc.mainnet.desmos.network https://rpc.evmos-9001-2.bronbro.io https://keybase.io https://api.github.com https://plausible.io https://titan.cybernode.ai https://*.libp2p.io wss://*.libp2p.io https://io.cybernode.ai https://openrouter.ai http://127.0.0.1:5001 http://127.0.0.1:8080 http://localhost:5001 http://localhost:8080;
+        frame-src blob: https://*.cybernode.ai https://gateway.ipfs.cybernode.ai;
         worker-src 'self' blob:;
-        frame-ancestors 'self';
         base-uri 'self';
         form-action 'self';
       "
     />
     <meta
       name="viewport"
-      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=0"
+      content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=0,viewport-fit=cover"
     />
     <meta name="theme-color" content="#000000" />
 
@@ -92,10 +91,17 @@
         <div id="progress-data"></div>
       </div>
     </div>
-    <script async src="https://plausible.io/js/pa-y_Wu-ZzUf5openXka4CNr.js"></script>
+    <!-- Privacy-friendly analytics by Plausible — skip in Tauri (localhost) -->
     <script>
-      window.plausible=window.plausible||function(){(plausible.q=plausible.q||[]).push(arguments)},plausible.init=plausible.init||function(i){plausible.o=i||{}};
-      plausible.init()
+      if (location.hostname === 'cyb.ai' || location.hostname.endsWith('.cyb.ai')) {
+        var s = document.createElement('script');
+        s.async = true;
+        s.src = 'https://plausible.io/js/pa-y_Wu-ZzUf5openXka4CNr.js';
+        document.body.appendChild(s);
+        window.plausible = window.plausible || function(){(plausible.q = plausible.q || []).push(arguments)};
+        plausible.init = plausible.init || function(i){plausible.o = i || {}};
+        plausible.init();
+      }
     </script>
   </body>
 </html>

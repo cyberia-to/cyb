@@ -10,7 +10,8 @@ module.exports = merge(commonConfig, {
     server: 'https',
     host: 'localhost',
     port: process.env.PORT_APP || '3001',
-    hot: true,
+    hot: false,
+    liveReload: false,
     client: {
       overlay: false,
     },
@@ -20,6 +21,15 @@ module.exports = merge(commonConfig, {
       'Access-Control-Allow-Origin': '*',
     },
     historyApiFallback: true,
+    proxy: [
+      {
+        context: ['/api/boot'],
+        target: 'https://cyb.ai',
+        changeOrigin: true,
+        secure: false,
+        logLevel: 'debug',
+      },
+    ],
     // Fix .ts worker files served with video/mp2t MIME type
     setupMiddlewares: (middlewares, devServer) => {
       devServer.app.use((req, res, next) => {
@@ -63,9 +73,6 @@ module.exports = merge(commonConfig, {
   plugins: [
     new ReactRefreshPlugin({ overlay: false }),
     new rspack.DefinePlugin({
-      ...commonConfig.plugins.find(
-        (plugin) => plugin.constructor.name === 'DefinePlugin'
-      ).definitions,
       'process.env.IS_DEV': JSON.stringify(true),
     }),
   ],

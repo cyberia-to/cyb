@@ -32,8 +32,8 @@ const getCreator = async (cid) => {
       },
     });
 
-    const h1 = Number(response.txResponses?.[0]?.height || 0);
-    const h2 = Number(response2.txResponses?.[0]?.height || 0);
+    const h1 = Number(response?.txResponses?.[0]?.height || 0);
+    const h2 = Number(response2?.txResponses?.[0]?.height || 0);
 
     if (h1 === 0) {
       return response2;
@@ -57,6 +57,8 @@ function useGetCreator(cid: string) {
     },
     {
       enabled: Boolean(cid),
+      retry: false,
+      staleTime: 5 * 60 * 1000,
     }
   );
 

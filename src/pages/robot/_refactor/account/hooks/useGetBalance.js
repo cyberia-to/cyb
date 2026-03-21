@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { BASE_DENOM, BECH32_PREFIX_VALOPER, DENOM_LIQUID } from 'src/constants/config';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { useCyberClient } from 'src/contexts/queryCyberClient';
@@ -127,7 +127,7 @@ function useGetBalance(address, updateAddress) {
     getBalance();
   }, [queryClient, rpc, addressActive]);
 
-  const getCalculationBalance = (data) => {
+  const getCalculationBalance = useCallback((data) => {
     const balances = {};
     if (Object.keys(data).length > 0) {
       data.forEach((item) => {
@@ -136,7 +136,7 @@ function useGetBalance(address, updateAddress) {
     }
 
     return balances;
-  };
+  }, []);
 
   useEffect(() => {
     const getBalance = async () => {
@@ -186,7 +186,6 @@ function useGetBalance(address, updateAddress) {
           console.error('getBalance tokens error:', e);
         }
       }
-      // console.log(`initValueTokenAmount`, initValueTokenAmount);
       setBalanceToken(initValueTokenAmount);
       setLoadingBalanceToken(false);
     };

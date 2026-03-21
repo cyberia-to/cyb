@@ -3,7 +3,7 @@ import { Dispatch } from 'redux';
 import { localStorageKeys } from 'src/constants/localStorageKeys';
 import { Account, Accounts, AccountValue, DefaultAccount } from 'src/types/defaultAccount';
 import { POCKET } from '../../utils/config';
-import { RootState } from '../store';
+import type { RootState } from '../store';
 
 type SliceState = {
   actionBar: {
@@ -228,7 +228,10 @@ export const addAddressPocket = (accounts: AccountValue) => (dispatch: Dispatch)
   if (Object.keys(pocketAccount).length > 0) {
     dispatch(setAccounts(pocketAccount));
     if (accounts.keys !== 'read-only') {
-      dispatch(setDefaultAccount({ name: key, account: cyberAccounts }));
+      const currentPocket = localStorage.getItem(localStorageKeys.pocket.POCKET);
+      if (!currentPocket) {
+        dispatch(setDefaultAccount({ name: key, account: cyberAccounts }));
+      }
     }
   }
 };

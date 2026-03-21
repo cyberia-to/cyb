@@ -35,13 +35,17 @@ function createCozoDb() {
 
   const loadCozoDb = async () => {
     db = await CozoDb.new_from_indexed_db(DB_NAME, DB_STORE_NAME, onIndexedDbWrite);
+
     await initDbSchema();
   };
 
   async function init(onWrite?: OnWrite): Promise<void> {
     onIndexedDbWrite = onWrite;
     await initCozoDb();
+
+    // console.log('[CozoDB] going to load cozo db');
     await loadCozoDb();
+    // console.log('[CozoDB] cozo db loaded');
 
     await performHardReset();
   }
@@ -156,12 +160,16 @@ function createCozoDb() {
     // console.log(`DB Version ${version}`);
   };
 
+  const runWasmCommand = (command: string, immutable = false) =>
+    db!.run(command, '', immutable).then((resultStr) => JSON.parse(resultStr));
+
   const runCommand = async (command: string, immutable = false): Promise<IDBResult> => {
     if (!db) {
       throw new Error('DB is not initialized');
     }
-    const resultStr = await db.run(command, '', immutable);
-    const result = JSON.parse(resultStr);
+    const result = await runWasmCommand(command, immutable);
+
+    // console.log('[CozoDB] command result:', result);
 
     if (!result.ok) {
       console.log('----> runCommand error ', command, result);

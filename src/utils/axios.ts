@@ -1,3 +1,4 @@
+/* eslint-disable import/prefer-default-export */
 import { AxiosResponse } from 'axios';
 
 export function dataOrNull<T>(response: AxiosResponse<T>) {

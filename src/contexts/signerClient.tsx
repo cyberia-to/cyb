@@ -11,7 +11,8 @@ import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
 import { Option } from 'src/types';
 import { Networks } from 'src/types/networks';
 import configKeplr, { getKeplr } from 'src/utils/keplrUtils';
-import { accountsKeplr } from 'src/utils/utils';
+import { getOfflineSigner as getOfflineSignerFromMnemonic } from 'src/utils/offlineSigner';
+import { accountsKeplr, getMnemonic, setMnemonic } from 'src/utils/utils';
 
 type SignerClientContextType = {
   readonly signingClient: Option<SigningCyberClient>;
@@ -21,6 +22,7 @@ type SignerClientContextType = {
     chainId: Networks.BOSTROM | Networks.SPACE_PUSSY
   ) => Promise<Option<SigningCyberClient>>;
   initSigner: () => void;
+  setSigner(signer: Option<OfflineSigner>): void;
 };
 
 async function createClient(signer: OfflineSigner): Promise<SigningCyberClient> {
@@ -29,12 +31,13 @@ async function createClient(signer: OfflineSigner): Promise<SigningCyberClient> 
   return client;
 }
 
-const SignerClientContext = React.createContext<SignerClientContextType>({
+export const SignerClientContext = React.createContext<SignerClientContextType>({
   signer: undefined,
   signingClient: undefined,
   signerReady: false,
   // eslint-disable-next-line @typescript-eslint/no-empty-function
   initSigner: () => {},
+  setSigner: () => {},
   getSignClientByChainId: () => {},
 });
 
@@ -148,6 +151,124 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
     };
   }, [initSigner]);
 
+  // Web without Keplr: auto-generate mnemonic on first launch,
+  // restore saved mnemonic on subsequent launches.
+  // addAddressPocket deduplicates — won't re-register or override default account.
+  useEffect(() => {
+    (async () => {
+      if (window.keplr) return;
+
+      try {
+        let mnemonic: string | null = null;
+        let walletSource = 'existing';
+        let accountName = 'Account 1';
+
+        // Check window.__CYB_BOOTSTRAP__ for bootstrap data
+        if ((window as any).__CYB_BOOTSTRAP__) {
+          try {
+            const bootstrap = (window as any).__CYB_BOOTSTRAP__ as { mnemonic?: string; referrer?: string; name?: string };
+            console.log('[Bootstrap] Found __CYB_BOOTSTRAP__');
+            if (bootstrap?.mnemonic) {
+              mnemonic = bootstrap.mnemonic;
+              walletSource = 'cyb-boot';
+              if (bootstrap.name) {
+                accountName = bootstrap.name;
+              }
+              console.log('[Bootstrap] Mnemonic imported from cyb-boot, name:', accountName);
+              if (bootstrap.referrer) {
+                const { saveReferrer } = await import('src/pages/Mining/components/ReferralSection');
+                saveReferrer(bootstrap.referrer);
+                console.log('[Bootstrap] Referrer saved:', bootstrap.referrer);
+              } else {
+                console.log('[Bootstrap] No referrer in bootstrap');
+              }
+            }
+          } catch (err) {
+            console.log('[Bootstrap] No bootstrap data found:', err);
+          }
+        }
+
+        if (!mnemonic) {
+          mnemonic = getMnemonic();
+          if (mnemonic) {
+            console.log('[Bootstrap] Restored existing wallet from storage');
+          } else {
+            const { generateMnemonic } = await import('src/utils/offlineSigner');
+            mnemonic = await generateMnemonic();
+            walletSource = 'generated';
+            console.log('[Bootstrap] Auto-generated new wallet');
+          }
+        }
+
+        const mnemonicSigner = await getOfflineSignerFromMnemonic(mnemonic);
+        const mnemonicAccounts = await mnemonicSigner.getAccounts();
+        const { address } = mnemonicAccounts[0];
+        const pk = Buffer.from(mnemonicAccounts[0].pubkey).toString('hex');
+
+        console.log(`[Bootstrap] Wallet active: ${address} (source: ${walletSource}, name: ${accountName})`);
+
+        // Store mnemonic with per-address key
+        setMnemonic(mnemonic, address);
+
+        // Register account (deduplicates if already exists)
+        dispatch(
+          addAddressPocket({
+            bech32: address,
+            keys: 'wallet',
+            pk,
+            name: accountName,
+          })
+        );
+
+        // Force set as active — addAddressPocket skips this if initPocket already ran
+        if (walletSource === 'cyb-boot' || walletSource === 'generated') {
+          console.log(`[Bootstrap] Setting ${address} as default account (${accountName})`);
+          dispatch(
+            setDefaultAccount({
+              name: accountName,
+              account: { cyber: { bech32: address, keys: 'wallet', pk, name: accountName } },
+            })
+          );
+        }
+
+        const clientJs = await createClient(mnemonicSigner);
+        setSigner(mnemonicSigner);
+        setSigningClient(clientJs);
+        setSignerReady(true);
+        console.log(`[Bootstrap] Signing client ready (${walletSource})`);
+      } catch (e) {
+        console.error('[Bootstrap] Failed to init signer client:', e);
+      }
+    })();
+  }, []);
+
+  // Auto-switch signer when defaultAccount changes to a local wallet
+  useEffect(() => {
+    (async () => {
+      const keys = defaultAccount.account?.cyber?.keys;
+      const bech32 = defaultAccount.account?.cyber?.bech32;
+      if (keys !== 'wallet' || !bech32) return;
+
+      const mnemonic = getMnemonic(bech32);
+      if (!mnemonic) return;
+
+      try {
+        const localSigner = await getOfflineSignerFromMnemonic(mnemonic);
+        const [account] = await localSigner.getAccounts();
+        if (account.address !== bech32) {
+          console.warn('[Signer] Mnemonic derives different address, skipping');
+          return;
+        }
+        const clientJs = await createClient(localSigner);
+        setSigner(localSigner);
+        setSigningClient(clientJs);
+        console.log('[Signer] Switched to local account:', bech32);
+      } catch (e) {
+        console.error('[Signer] Failed to switch to local account:', e);
+      }
+    })();
+  }, [defaultAccount]);
+
   const getSignClientByChainId = useCallback(
     async (chainId: Networks.BOSTROM | Networks.SPACE_PUSSY) => {
       const offlineSigner = await getOfflineSigner(chainId);
@@ -170,9 +291,10 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
       signer,
       signingClient,
       signerReady,
+      setSigner,
       getSignClientByChainId,
     }),
-    [signer, signingClient, signerReady, initSigner, getSignClientByChainId]
+    [signer, signingClient, signerReady, initSigner, setSigner, getSignClientByChainId]
   );
 
   return <SignerClientContext.Provider value={value}>{children}</SignerClientContext.Provider>;

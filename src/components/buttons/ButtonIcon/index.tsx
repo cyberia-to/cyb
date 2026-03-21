@@ -1,4 +1,5 @@
 import cx from 'classnames';
+import type { CSSProperties } from 'react';
 import { $TsFixMe } from 'src/types/tsfix';
 import Tooltip, { TooltipProps } from '../../tooltip/tooltip';
 import styles from './ButtonIcon.module.scss';
@@ -10,7 +11,8 @@ export type Props = {
   text?: TooltipProps['tooltip'];
   placement?: TooltipProps['placement'];
   styleContainer?: $TsFixMe;
-  onClick: () => void;
+  style?: CSSProperties;
+  onClick?: () => void;
 };
 
 function ButtonIcon({

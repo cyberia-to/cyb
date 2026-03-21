@@ -534,7 +534,7 @@ export const {
   clearLLMThreads,
 } = slice.actions;
 
-export { getSenseList, getSenseChat, markAsRead };
+export { getSenseChat, getSenseList, markAsRead };
 
 // selectors
 export { selectUnreadCounts };

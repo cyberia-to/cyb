@@ -1,6 +1,9 @@
-import { useEffect } from 'react';
-import { matchPath, Outlet, useLocation } from 'react-router-dom';
+import { useEffect, useRef } from 'react';
+import { Link, matchPath, Outlet, useLocation } from 'react-router-dom';
 import { MainContainer } from 'src/components';
+import SignerModal, {
+  SignerModalRef,
+} from 'src/components/signer-modal/signer-modal';
 import { useBackend } from 'src/contexts/backend/backend';
 import { useDevice } from 'src/contexts/device';
 import { PreviousPageProvider } from 'src/contexts/previousPage';
@@ -15,6 +18,8 @@ import MainLayout from 'src/layouts/Main';
 import { initPocket } from 'src/redux/features/pocket';
 import { useAppDispatch } from 'src/redux/hooks';
 import { routes } from 'src/routes';
+import { signerModalHandler } from 'src/services/signer/signer-modal-handler';
+import useMiningMonitor from 'src/hooks/useMiningMonitor';
 import { initCyblog } from 'src/utils/logging/bootstrap';
 import AdviserContainer from '../../features/adviser/AdviserContainer';
 import { setFocus } from './Header/Commander/commander.redux';
@@ -30,19 +35,24 @@ function App() {
   const dispatch = useAppDispatch();
   const address = useCurrentAddress();
 
-  // const { community, communityLoaded } = useGetCommunity(address || null, {
-  //   main: true,
-  // });
+  const signerModalRef = useRef<SignerModalRef>(null);
 
   const location = useLocation();
   const adviserContext = useAdviser();
   useSenseManager();
+  useMiningMonitor();
 
   const { ipfsError } = useBackend();
 
   useEffect(() => {
     dispatch(initPocket());
   }, [dispatch]);
+
+  useEffect(() => {
+    if (signerModalRef?.current) {
+      signerModalHandler.setSignerModalRef(signerModalRef.current);
+    }
+  }, [signerModalRef]);
 
   useEffect(() => {
     if (!address) {
@@ -82,7 +92,11 @@ function App() {
   }, [location.pathname, dispatch]);
 
   useEffect(() => {
-    if (ipfsError && !location.pathname.includes('/drive')) {
+    if (
+      ipfsError &&
+      !location.pathname.includes('/drive') &&
+      !location.pathname.includes('/mining')
+    ) {
       adviserContext.setAdviser(
         <p>
           Could not connect to the IPFS API <br />
@@ -92,6 +106,9 @@ function App() {
       );
 
       adviserContext.setIsOpen(true);
+    } else if (!ipfsError) {
+      // Clear the IPFS error message when connection recovers
+      adviserContext.setAdviser(null);
     }
   }, [ipfsError, location.pathname, adviserContext.setAdviser, adviserContext.setIsOpen]);
 
@@ -141,6 +158,7 @@ function App() {
           <Outlet />
         )}
       </MainLayout>
+      <SignerModal ref={signerModalRef} />
     </PreviousPageProvider>
   );
 }

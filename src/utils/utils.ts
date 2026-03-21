@@ -7,6 +7,7 @@ import { Key } from '@keplr-wallet/types';
 import bech32 from 'bech32';
 import BigNumber from 'bignumber.js';
 import { BECH32_PREFIX, BECH32_PREFIX_VAL_CONS } from 'src/constants/config';
+import { localStorageKeys } from 'src/constants/localStorageKeys';
 import { Option } from 'src/types';
 import { ObjKeyValue } from 'src/types/data';
 import { AccountValue } from 'src/types/defaultAccount';
@@ -427,4 +428,19 @@ export {
   findPoolDenomInArr,
   getNowUtcTime,
   accountsKeplr,
+};
+
+export const getMnemonic = (bech32?: string): string | null => {
+  if (bech32) {
+    const perAddr = localStorage.getItem(`cyb:mnemonic:${bech32}`);
+    if (perAddr) return perAddr;
+  }
+  return localStorage.getItem(localStorageKeys.signer.mnemonic);
+};
+
+export const setMnemonic = (mnemonic: string, bech32?: string) => {
+  localStorage.setItem(localStorageKeys.signer.mnemonic, mnemonic);
+  if (bech32) {
+    localStorage.setItem(`cyb:mnemonic:${bech32}`, mnemonic);
+  }
 };

@@ -148,7 +148,6 @@ function ActionBarContainer({ validators, updateFnc }: Props) {
     delegationsData,
   } = useSphereContext();
   const queryClient = useQueryClient();
-  const navigate = useNavigate();
   const [stage, setStage] = useState(STAGE_INIT);
   const [txType, setTxType] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
@@ -303,10 +302,6 @@ function ActionBarContainer({ validators, updateFnc }: Props) {
     }
     return false;
   }, [balance]);
-
-  const _handleHistory = (to) => {
-    navigate(to);
-  };
 
   const amountChangeHandler = (values: string) => {
     setAmount(values);

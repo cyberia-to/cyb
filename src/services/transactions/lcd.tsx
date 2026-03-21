@@ -15,7 +15,7 @@ type PropsTx = {
   orderBy?: GetTxsEventRequest['orderBy'];
 };
 
-export const getTxs = async (txsHash) => {
+export const getTxs = async (txsHash: string) => {
   try {
     const response = await axios({
       method: 'get',

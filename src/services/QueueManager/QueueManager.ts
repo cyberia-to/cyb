@@ -274,7 +274,7 @@ class QueueManager {
       }
     });
 
-    this.strategy = strategy || strategies.embedded;
+    this.strategy = strategy || strategies.external;
     this.queueDebounceMs = queueDebounceMs || QUEUE_DEBOUNCE_MS;
 
     // Little hack to handle keep-alive connection to swarm cyber node

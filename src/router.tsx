@@ -36,20 +36,22 @@ import Txs from './containers/txs';
 import TxsDetails from './containers/txs/txsDetails';
 import Warp from './containers/warp/Warp';
 import WarpDashboardPools from './containers/warp/WarpDashboardPools';
-// import IpfsSettings from './features/ipfs/ipfsSettings';
 import { CodePage, Codes, ContractPage, DashboardPage } from './containers/wasm';
 
 import StudioWrapper from './features/studio/StudioWrapper';
 import Keys from './pages/Keys/Keys';
+import OracleLanding from './pages/oracle/landing/OracleLanding';
 import Learn from './pages/oracle/Learn/Learn';
 import OracleLanding from './pages/oracle/landing/OracleLanding';
 import Map from './pages/Portal/Map/Map';
 import ToOracleAsk from './pages/redirects/ToOracleAsk';
 import Robot from './pages/robot/Robot';
+import Mining from './pages/Mining/Mining';
 // import Cybernet from './features/cybernet/ui/Cybernet';
 import FreestyleIde from './pages/robot/Soul/RuneEditor/FreestyleIde/FreestyleIde';
 import Filtering from './pages/Settings/Filtering/Filtering';
 import Settings from './pages/Settings/Settings';
+import Sign from './pages/Sign/Sign';
 import Social from './pages/Social/Social';
 import Sphere from './pages/Sphere/Sphere';
 import Teleport from './pages/teleport/Teleport';
@@ -75,7 +77,7 @@ function PageNotExist() {
         textAlign: 'center',
       }}
     >
-      page not exists
+      page does not exists
       <br />
       <Link to={routes.home.path}>Home</Link>
     </div>
@@ -120,6 +122,8 @@ function AppRouter() {
             />
             <Route path="/ipfs" element={<Navigate to={routes.settings.path} />} />
 
+            <Route path="/sign" element={<Sign />} />
+
             <Route path={routes.temple.path} element={<Temple />} />
             <Route path={routes.neuron.path} element={<Robot />} />
 
@@ -135,6 +139,8 @@ function AppRouter() {
 
             <Route path="/search" element={<Navigate to={routes.oracle.path} />} />
             <Route path="/search/:query" element={<ToOracleAsk />} />
+
+            <Route path={routes.mining.path} element={<Mining />} />
 
             <Route
               path="/senate/*"

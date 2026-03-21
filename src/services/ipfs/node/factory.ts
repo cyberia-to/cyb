@@ -1,6 +1,3 @@
-// import { getNodeAutoDialInterval } from './utils-ipfs';
-
-// import EnhancedIpfsNode from './node/enhancedNode';
 import {
   CYBER_NODE_SWARM_PEER_ID,
   CYBERNODE_SWARM_ADDR_TCP,
@@ -13,8 +10,6 @@ import KuboNode from './impl/kubo';
 import { withCybFeatures } from './mixins/withCybFeatures';
 
 const nodeClassMap: Record<IpfsNodeType, new () => IpfsNode> = {
-  helia: HeliaNode,
-  embedded: JsIpfsNode,
   external: KuboNode,
 };
 
@@ -26,16 +21,27 @@ export async function initIpfsNode(options: IpfsOptsType): Promise<CybIpfsNode> 
 
   const swarmPeerAddress =
     ipfsNodeType === 'external' ? CYBERNODE_SWARM_ADDR_TCP : CYBERNODE_SWARM_ADDR_WSS;
+  console.log('[Worker] initIpfsNode', {
+    swarmPeerId,
+    swarmPeerAddress,
+    ipfsNodeType,
+  });
 
   const EnhancedClass = withCybFeatures(nodeClassMap[ipfsNodeType], {
     swarmPeerId,
     swarmPeerAddress,
   });
+  console.log('[Worker] initIpfsNode', { EnhancedClass });
 
   const instance = new EnhancedClass();
+  console.log('[Worker] initIpfsNode before init', { instance });
 
-  await instance.init({ url: restOptions.urlOpts });
+  await instance.init({ url: restOptions.urlOpts, userGateway: restOptions.userGateway });
+  console.log('[Worker] initIpfsNode after instance init');
 
-  await instance.reconnectToSwarm();
+  // Swarm connection is best-effort — don't block initialization
+  await instance.reconnectToSwarm().catch((err) => {
+    console.warn('[Worker] reconnectToSwarm failed (non-fatal):', err?.message);
+  });
   return instance;
 }

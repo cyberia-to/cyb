@@ -22,7 +22,7 @@ function CircularMenuItem({ item, onClick, selected }: Props) {
           className={styles.navLink}
           {...(isExternal && { target: '_blank', rel: 'noreferrer noopener' })}
         >
-          <img src={item.icon} className={styles.icon} alt="img" />
+          <img src={item.icon} className={cx(styles.icon, { [styles.portalGlow]: item.name === 'Portal' })} alt="img" />
           {isExternal && <span className={styles.external}></span>}
         </NavLink>
       </AdviserHoverWrapper>

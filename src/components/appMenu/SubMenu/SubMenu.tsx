@@ -45,7 +45,7 @@ function SubMenu({ selectedApp, closeMenu }: Props) {
             (checkIsEmoji(item.icon) ? (
               <span>{item.icon}</span>
             ) : (
-              <img src={item.icon} className={styles.icon} alt={`${item.name} icon`} />
+              <img src={item.icon} className={cx(styles.icon, { [styles.portalGlow]: item.icon === selectedApp.icon && selectedApp.name === 'Portal' })} alt={`${item.name} icon`} />
             ))}
           <span className={styles.nameApp}>{item.name}</span>
         </NavLink>

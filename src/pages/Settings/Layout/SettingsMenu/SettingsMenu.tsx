@@ -24,6 +24,15 @@ const links: Array<MenuItem[]> = [
       icon: '🗝',
     },
   ],
+  !window.keplr
+    ? [
+        {
+          text: 'Signer',
+          link: './signer',
+          icon: '🖋️',
+        },
+      ]
+    : undefined,
   [
     {
       text: 'Tokens',
@@ -50,43 +59,35 @@ const links: Array<MenuItem[]> = [
   // ],
   [{ text: 'Hotkeys', link: './hotkeys', icon: '⌨️' }],
   [{ text: 'LLM', link: './llm', icon: '👾' }],
-];
+].filter(Boolean);
 
 function SettingsMenu() {
-  const renderLinks = (links: Array<MenuItem[]>) => {
-    return (
-      <div className={styles.links}>
-        {links.map((link, indexUl) => {
-          return (
-            <ul key={indexUl}>
-              {link.map((item, index) => {
-                return (
-                  <li key={index}>
-                    <NavLink
-                      className={({ isActive }) => {
-                        return cx({
-                          [styles.active]: isActive,
-                        });
-                      }}
-                      to={item.link}
-                      end
-                    >
-                      <span className={styles.icon}>{item.icon}</span>
-                      <span className={styles.text}>{item.text}</span>
-                    </NavLink>
-                  </li>
-                );
-              })}
-            </ul>
-          );
-        })}
-      </div>
-    );
-  };
-
   return (
     <div className={styles.wrapper}>
-      <Display>{renderLinks(links)}</Display>
+      <Display>
+        <div className={styles.links}>
+          {links.map((link, indexUl) => (
+            <ul key={indexUl}>
+              {link.map((item, index) => (
+                <li key={index}>
+                  <NavLink
+                    className={({ isActive }) =>
+                      cx({
+                        [styles.active]: isActive,
+                      })
+                    }
+                    to={item.link}
+                    end
+                  >
+                    <span className={styles.icon}>{item.icon}</span>
+                    <span className={styles.text}>{item.text}</span>
+                  </NavLink>
+                </li>
+              ))}
+            </ul>
+          ))}
+        </div>
+      </Display>
     </div>
   );
 }

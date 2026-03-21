@@ -7,7 +7,6 @@ import { toAscii, toBase64 } from '@cosmjs/encoding';
 import { GasPrice } from '@cosmjs/launchpad';
 import BigNumber from 'bignumber.js';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useDispatch } from 'react-redux';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { CHAIN_ID } from 'src/constants/config';
 import { PATTERN_CYBER } from 'src/constants/patterns';
@@ -15,6 +14,7 @@ import { useBackend } from 'src/contexts/backend/backend';
 import { useSigningClient } from 'src/contexts/signerClient';
 import useCurrentAddress from 'src/hooks/useCurrentAddress';
 import useWaitForTransaction from 'src/hooks/useWaitForTransaction';
+import { useAppDispatch } from 'src/redux/hooks';
 import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
 import { Nullable } from 'src/types';
 import { Citizenship } from 'src/types/citizenship';
@@ -129,7 +129,7 @@ function ActionBarPortalGift({
     onSuccess: () => void;
   }>();
 
-  const dispatch = useDispatch();
+  const dispatch = useAppDispatch();
 
   useWaitForTransaction({
     hash: currentTx?.hash,

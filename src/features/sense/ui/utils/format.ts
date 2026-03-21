@@ -20,7 +20,7 @@ export function formatSenseItemDataToUI(
   isAmountSendToMyAddress: boolean;
   isFollow: boolean;
 } {
-  const { type, memo, meta, id } = senseItem;
+  const { type, memo, meta } = senseItem ?? {};
 
   let amount: Coin[] | undefined;
   let isAmountSendToMyAddress = false;
@@ -38,7 +38,7 @@ export function formatSenseItemDataToUI(
     }
 
     case 'cosmos.bank.v1beta1.MsgMultiSend': {
-      const v = meta as MsgMultiSendTransaction['value'];
+      const v = meta as unknown as MsgMultiSendTransaction['value'];
 
       const a = v.outputs.find((output) => output.address === currentAddress)?.coins;
 

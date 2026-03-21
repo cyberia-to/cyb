@@ -30,7 +30,7 @@ export const getFollowsAsCid = async (
     return [];
   }
 
-  return response.txResponses.map((item) => item?.tx?.body.messages[0].links[0].to);
+  return response.txResponses.map((item) => item?.tx?.body?.messages[0].links[0].to);
 };
 
 // use src/services/transactions/lcd.tsx
@@ -63,5 +63,10 @@ export const getFollowers = async (
     return [];
   }
 
-  return response.txResponses.map((item) => item?.tx?.body.messages[0].neuron);
+  // debugger;
+  // check
+
+  return response.txResponses
+    .map((item) => item?.tx?.body?.messages?.[0].value?.neuron)
+    .filter(Boolean);
 };

@@ -16,7 +16,7 @@ import BroadcastChannelSender from 'src/services/backend/channels/BroadcastChann
 import useMediaQuery from '../../../../hooks/useMediaQuery';
 import robot from '../../../../image/temple/robot.png';
 import { AvataImgIpfs } from '../../../portal/components/avataIpfs';
-import Karma from '../../Karma/Karma';
+import MiningBadge from '../../MiningBadge/MiningBadge';
 import networkStyles from '../CurrentApp/CurrentApp.module.scss';
 import styles from './SwitchAccount.module.scss';
 
@@ -63,7 +63,7 @@ function AccountItem({
             {name}
           </span>
         )}
-        {address && <Karma address={address} />}
+        <MiningBadge />
       </div>
       <div className={cx(styles.containerAvatarConnect)}>
         <div className={styles.containerAvatarConnectTrue}>
@@ -182,7 +182,7 @@ function SwitchAccount() {
             {isReadOnly && <Pill color="yellow" text="read only" />}
             {!isReadOnly && !signerReady && isOnline && <Pill color="red" text="switch keplr" />}
             {!isOnline && <Pill color="red" text="offline" />}
-            <Karma address={useGetAddress} />
+            <MiningBadge />
           </div>
         )}
         <Link

@@ -1,23 +1,27 @@
 /* eslint-disable */
-
 import { Pane } from '@cybercongress/gravity';
-import { useEffect, useState } from 'react';
+import { useContext, useEffect, useState } from 'react';
 import { useDispatch } from 'react-redux';
 import { ActionBar, ConnectAddress, Dots, Input, TransactionError } from 'src/components';
+import { toHex } from '@cosmjs/encoding';
 import { CHAIN_ID } from 'src/constants/config';
 import { PATTERN_CYBER } from 'src/constants/patterns';
-import { useSigningClient } from 'src/contexts/signerClient';
+import { SignerClientContext } from 'src/contexts/signerClient';
 import { addAddressPocket } from 'src/redux/features/pocket';
 import { AccountValue } from 'src/types/defaultAccount';
 import { LEDGER } from 'src/utils/config';
-import { toHex } from 'src/utils/encoding';
+import { getOfflineSigner } from 'src/utils/offlineSigner';
 import { KEY_TYPE } from '../types';
 import ActionBarSecrets from './actionBarSecrets';
+import ConnectWalletModal from './ConnectWalletModal/ConnectWalletModal';
+import { ConnectMethod } from './types';
+import { setMnemonic } from 'src/utils/utils';
 
 const { STAGE_INIT, HDPATH, STAGE_ERROR } = LEDGER;
 
 const STAGE_ADD_ADDRESS_USER = 2.1;
 const STAGE_ADD_ADDRESS_OK = 2.2;
+const STAGE_OPEN_MODAL = 2.5;
 const STAGE_ADD_SECRETS = 100;
 
 const _checkAddress = (obj, network, address) =>
@@ -27,13 +31,17 @@ const _checkAddress = (obj, network, address) =>
     }
   });
 
-function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onClickBack }) {
-  const { signer } = useSigningClient();
+function ActionBarConnect({
+  addAddress,
+  updateAddress,
+  updateFuncActionBar,
+  onClickBack,
+}) {
+  const { signer, setSigner } = useContext(SignerClientContext);
   const [stage, setStage] = useState(STAGE_INIT);
   const [valueInputAddres, setValueInputAddres] = useState('');
-  const [selectMethod, setSelectMethod] = useState('');
+  const [connectMethod, setConnectMethod] = useState<ConnectMethod | ''>('');
   const selectNetwork = 'cyber';
-  const [_addCyberAddress, setAddCyberAddress] = useState(false);
   const [validAddressAddedUser, setValidAddressAddedUser] = useState(true);
 
   const dispatch = useDispatch();
@@ -41,8 +49,7 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
   const clearState = () => {
     setStage(STAGE_INIT);
     setValueInputAddres('');
-    setSelectMethod('');
-    setAddCyberAddress(false);
+    setConnectMethod('');
     setValidAddressAddedUser(true);
   };
 
@@ -61,12 +68,15 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
   }, [valueInputAddres]);
 
   const connectAddress = () => {
-    switch (selectMethod) {
+    switch (connectMethod) {
       case KEY_TYPE.keplr:
         connectKeplr();
         break;
       case KEY_TYPE.secrets:
         onClickToggleSecrets();
+        break;
+      case KEY_TYPE.wallet:
+        setStage(STAGE_OPEN_MODAL);
         break;
       default:
         onClickAddAddressUser();
@@ -96,18 +106,16 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
     setStage(STAGE_ADD_ADDRESS_OK);
 
     clearState();
-    if (updateAddress) {
-      updateAddress();
-    }
-    if (updateFuncActionBar) {
-      updateFuncActionBar();
-    }
+    updateAddress?.();
+    updateFuncActionBar?.();
   };
 
   const connectKeplr = async () => {
     if (signer) {
-      const { bech32Address, pubKey, name } = await signer.keplr.getKey(CHAIN_ID);
-      const pk = toHex(new Uint8Array(pubKey));
+      const { bech32Address, pubKey, name } = await signer.keplr.getKey(
+        CHAIN_ID
+      );
+      const pk = toHex(pubKey);
 
       const accounts: AccountValue = {
         bech32: bech32Address,
@@ -132,22 +140,66 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
     }
   };
 
-  const selectMethodFunc = (method) => {
-    if (method !== selectMethod) {
-      setSelectMethod(method);
-    } else {
-      setSelectMethod('');
+  const connectKeplrFromMnemonic = async (name: string, mnemonic: string) => {
+    const offlineSigner = await getOfflineSigner(mnemonic);
+
+    if (offlineSigner) {
+      setSigner(offlineSigner);
+      const [{ address, pubkey: pubKey }] = await offlineSigner.getAccounts();
+      const pk = toHex(pubKey);
+
+      setMnemonic(mnemonic, address);
+
+      const accounts: AccountValue = {
+        pk,
+        keys: 'wallet',
+        path: HDPATH,
+        name,
+        bech32: address,
+      };
+
+      setStage(STAGE_ADD_ADDRESS_OK);
+      setTimeout(() => {
+        dispatch(addAddressPocket(accounts));
+      }, 100);
+
+      clearState();
+      if (updateAddress) {
+        updateAddress();
+      }
+      if (updateFuncActionBar) {
+        updateFuncActionBar();
+      }
     }
   };
+
+  const selectMethodFunc = (method: ConnectMethod) => {
+    if (method !== connectMethod) {
+      setConnectMethod(method);
+    } else {
+      setConnectMethod('');
+    }
+  };
+
+  if (stage === STAGE_OPEN_MODAL) {
+    return (
+      <ConnectWalletModal
+        onAdd={connectKeplrFromMnemonic}
+        onCancel={() => {
+          setStage(STAGE_INIT);
+        }}
+      />
+    );
+  }
 
   if (stage === STAGE_INIT) {
     return (
       <ConnectAddress
         selectMethodFunc={selectMethodFunc}
-        selectMethod={selectMethod}
+        selectMethod={connectMethod}
         selectNetwork={selectNetwork}
         connectAddress={connectAddress}
-        keplr={signer}
+        signer={signer}
         onClickBack={onClickBack}
       />
     );

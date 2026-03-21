@@ -86,6 +86,8 @@ function CyberlinksGraphContainer({
 
   const portalEl = document.getElementById(PORTAL_ID);
 
+  console.log('CyberlinksGraphContainer', { data, fetchData });
+
   return toPortal ? portalEl && createPortal(content, portalEl) : content;
 }
 

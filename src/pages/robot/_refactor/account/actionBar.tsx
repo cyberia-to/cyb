@@ -1,3 +1,4 @@
+/* eslint-disable */
 import { ActionBar } from '@cybercongress/gravity';
 import React, { Component } from 'react';
 import { createSearchParams } from 'react-router-dom';
@@ -289,7 +290,11 @@ class ActionBarContainer extends Component<Props> {
     const isOwner = defaultAccount && defaultAccount.bech32 === addressSend;
 
     if (stage === STAGE_INIT) {
-      const followBtn = <Button onClick={this.onClickSend}>Follow</Button>;
+      const followBtn = (
+        <Button key={'action-bar-button-follow'} onClick={this.onClickSend}>
+          Follow
+        </Button>
+      );
 
       const content = [];
 
@@ -339,7 +344,14 @@ class ActionBarContainer extends Component<Props> {
       }
 
       if (type === 'security' && isOwner && defaultAccount.keys === 'keplr') {
-        content.push(<Button onClick={this.onClickSend}>Claim rewards</Button>);
+        content.push(
+          <Button
+            key={'action-bar-button-claim-rewards'}
+            onClick={this.onClickSend}
+          >
+            Claim rewards
+          </Button>
+        );
       }
 
       return <ActionBarComp>{content}</ActionBarComp>;

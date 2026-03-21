@@ -52,7 +52,7 @@ export function createIndexerWebsocket<T>(query: DocumentNode, variables: object
         subscriber.next(result.data as T);
       },
       error(err) {
-        subscriber.error(err);
+        subscriber.error(typeof err === 'string' ? err : String(err));
       },
       complete() {
         subscriber.complete();

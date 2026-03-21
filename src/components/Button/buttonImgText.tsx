@@ -1,6 +1,11 @@
+import { ComponentProps } from 'react';
 import Button from '../btnGrd';
 
-function ButtonImgText({ img, text = 'Send', ...props }) {
+interface Props extends ComponentProps<typeof Button> {
+  img: string;
+}
+
+function ButtonImgText({ img, text = 'Send', ...props }: Props) {
   return (
     <Button style={{ margin: '0 10px' }} {...props}>
       {text}{' '}

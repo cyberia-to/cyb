@@ -1,3 +1,5 @@
+/* eslint-disable import/prefer-default-export */
+/* eslint-disable import/no-unused-modules */
 // eslint-disable-next-line import/no-unused-modules
 import 'core-js/stable';
 import 'regenerator-runtime/runtime';
@@ -12,9 +14,9 @@ import ErrorBoundary from './components/ErrorBoundary/ErrorBoundary';
 import store from './redux/store';
 import AppRouter from './router';
 
-import './style/main.css';
-import './style/index.scss';
 import './image/favicon.ico';
+import './style/index.scss';
+import './style/main.css';
 
 // for boot loading
 import './image/robot.svg';

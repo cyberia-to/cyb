@@ -1,35 +1,47 @@
 import { CyberClient } from '@cybercongress/cyber-js';
 import { useQuery } from '@tanstack/react-query';
-import { useMemo } from 'react';
+import { useRef } from 'react';
 import { useQueryClient } from 'src/contexts/queryClient';
 
 function useQueryClientMethod<T extends keyof CyberClient>(
   methodName: T,
-  params?: Parameters<CyberClient[T]>
+  params?: Parameters<CyberClient[T]>,
+  options?: { refetchInterval?: number | false }
 ) {
   const queryClient = useQueryClient();
 
-  // TODO: think how to memo params correctly
-  const memoParams = useMemo(() => params, [params]);
+  // Stabilize params by comparing JSON content instead of reference
+  const paramsJson = JSON.stringify(params);
+  const stableParamsRef = useRef(params);
+  const prevJsonRef = useRef(paramsJson);
+  if (paramsJson !== prevJsonRef.current) {
+    prevJsonRef.current = paramsJson;
+    stableParamsRef.current = params;
+  }
+  const stableParams = stableParamsRef.current;
 
-  const { isLoading, data, error } = useQuery<
+  const refetchInterval = options?.refetchInterval ?? false;
+
+  const { isLoading, data, error, refetch, dataUpdatedAt } = useQuery<
     unknown,
     unknown,
     Awaited<ReturnType<CyberClient[T]>>
   >(
-    ['queryClientMethod', methodName, memoParams],
+    ['queryClientMethod', methodName, paramsJson],
     () => {
       const func = queryClient![methodName].bind(queryClient);
 
-      // refactor
-      if (memoParams) {
-        return func(...memoParams);
+      if (stableParams) {
+        return func(...stableParams);
       }
 
       return func();
     },
     {
       enabled: !!queryClient,
+      keepPreviousData: true,
+      refetchInterval,
+      staleTime: typeof refetchInterval === 'number' ? refetchInterval - 1000 : 10_000,
     }
   );
 
@@ -37,6 +49,8 @@ function useQueryClientMethod<T extends keyof CyberClient>(
     error,
     data,
     loading: isLoading,
+    refetch,
+    dataUpdatedAt,
   };
 }
 

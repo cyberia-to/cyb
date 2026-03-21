@@ -30,10 +30,9 @@ export const sendCyberlink = async (
   },
   fee: StdFee = defaultFee
 ) => {
-  const response = await signingClient!.cyberlink(neuron, from, to, fee);
-  const result = throwErrorOrResponse(response);
+  const response = await signingClient.cyberlink(neuron, from, to, fee);
+  const { transactionHash } = throwErrorOrResponse(response as any);
 
-  const { transactionHash } = result;
   const link = {
     from,
     to,

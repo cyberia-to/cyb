@@ -13,14 +13,32 @@ export const CYBER_GATEWAY_URL = 'https://gateway.ipfs.cybernode.ai';
 export const FILE_SIZE_DOWNLOAD = 20 * 10 ** 6;
 
 const defaultIpfsOpts: IpfsOptsType = {
-  ipfsNodeType: IPFSNodes.HELIA,
-  urlOpts: '/ip4/127.0.0.1/tcp/5001',
-  userGateway: 'http://127.0.0.1:8080',
+  ipfsNodeType: IPFSNodes.EXTERNAL,
+  urlOpts: 'https://io.cybernode.ai',
+  userGateway: 'https://gateway.ipfs.cybernode.ai',
 };
+
+function isValidUrl(url: string): boolean {
+  try {
+    new URL(url);
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 export const getIpfsOpts = (): IpfsOptsType => {
   const stored = safeLocalStorage.getJSON<Partial<IpfsOptsType>>('ipfsState', {});
   const ipfsOpts = { ...defaultIpfsOpts, ...stored };
+
+  // Always use EXTERNAL — browser uses cybernode
+  ipfsOpts.ipfsNodeType = IPFSNodes.EXTERNAL;
+
+  // Discard invalid URLs
+  if (ipfsOpts.urlOpts && !isValidUrl(ipfsOpts.urlOpts)) {
+    ipfsOpts.urlOpts = defaultIpfsOpts.urlOpts;
+    ipfsOpts.userGateway = defaultIpfsOpts.userGateway;
+  }
 
   safeLocalStorage.setJSON('ipfsState', ipfsOpts);
 

@@ -123,7 +123,11 @@ const slice = createSlice({
     });
 
     builder.addCase(getPassport.rejected, (state, action) => {
-      if (action.error.message !== PASSPORT_NOT_EXISTS_ERROR) {
+      const msg = action.error.message || '';
+      const isExpected = msg === PASSPORT_NOT_EXISTS_ERROR
+        || msg.includes('not found')
+        || msg.includes('Request failed with status code 500');
+      if (!isExpected) {
         console.error(action);
       }
 

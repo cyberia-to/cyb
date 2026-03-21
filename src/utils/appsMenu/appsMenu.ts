@@ -1,8 +1,10 @@
 import portal from 'images/space-pussy.svg';
+import portalGlow from 'src/image/space-pussy-glow.svg';
 import { CHAIN_ID } from 'src/constants/config';
 import { cybernetRoutes } from 'src/features/cybernet/ui/routes';
 import congress from 'src/image/new_icons/congress.svg';
 import hfr from 'src/image/new_icons/hfr.svg';
+import mining from 'src/image/new_icons/mining.svg';
 import nebulaIcon from 'src/image/new_icons/nebula.svg';
 import oracle from 'src/image/new_icons/oracle.svg';
 import robot from 'src/image/new_icons/robot.svg';
@@ -135,6 +137,7 @@ const getMenuItems = () => {
       ],
     },
     { name: 'HFR', icon: hfr, to: '/hfr', subItems: [] },
+    { name: 'Mining', icon: mining, to: '/mining', subItems: [] },
     // { name: 'Lifeforms', to: '/contracts', subItems: [] },
     // {
     //   name: 'Hub',
@@ -248,7 +251,8 @@ const getMenuItems = () => {
   if (CHAIN_ID === Networks.BOSTROM) {
     listItemMenu.splice(2, 0, {
       name: 'Portal',
-      icon: portal,
+      icon: portalGlow,
+      largeIcon: portal,
       to: '/portal',
       subItems: [
         {

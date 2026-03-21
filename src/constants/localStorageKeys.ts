@@ -1,3 +1,4 @@
+/* eslint-disable import/prefer-default-export */
 export const localStorageKeys = {
   pocket: {
     POCKET: 'pocket',
@@ -7,5 +8,9 @@ export const localStorageKeys = {
   settings: {
     adviserAudio: 'adviserAudio',
     adviserVoice: 'adviserVoice',
+  },
+  signer: {
+    mnemonic: 'cyb:mnemonic',
+    confirmation: 'cyb:confirmation',
   },
 };

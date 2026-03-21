@@ -179,7 +179,7 @@ function ActionBarWrapper({ id, adviser }: Props) {
       if (message.includes('insufficient funds')) {
         message = (
           <div className={styles.error}>
-            sending message needs at least 1 <DenomArr denomValue={'boot'} onlyImg /> <br />
+            sending message needs at least 1 <DenomArr denomValue="boot" onlyImg /> <br />
             <Link
               to={{
                 pathname: routes.teleport.swap.path,
@@ -207,11 +207,7 @@ function ActionBarWrapper({ id, adviser }: Props) {
 
   if (step === STEPS.MESSAGE) {
     return (
-      <ActionBar
-      // onClickBack={() => {
-      //   setStep(STEPS.INITIAL);
-      // }}
-      >
+      <ActionBar>
         <Input
           width={480}
           classNameTextbox={styles.messageInput}

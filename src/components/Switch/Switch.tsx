@@ -1,4 +1,7 @@
-import { useEffect, useRef } from 'react';
+import React, {
+  useEffect,
+  useRef,
+} from 'react';
 import styles from './Switch.module.scss';
 
 type Props = {
@@ -26,4 +29,4 @@ function Switch({ label, onChange, value }: Props) {
   );
 }
 
-export default Switch;
+export default React.memo(Switch);

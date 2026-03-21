@@ -78,7 +78,7 @@ const _getPromise = (result = 'result', timeout = 500, signal?: AbortSignal): Pr
   );
 
 const mockNode: jest.Mocked<CybIpfsNode> = {
-  nodeType: 'helia',
+  nodeType: 'external',
   reconnectToSwarm: jest.fn(),
 };
 jest.useFakeTimers();

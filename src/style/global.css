@@ -69,7 +69,7 @@ a:hover {
   /* background-size: cover !important; */
   /* background-repeat: no-repeat !important; */
 
-  padding: 0 1em 135px 1em;
+  padding: 0 1em calc(135px + env(safe-area-inset-bottom, 0px)) 1em;
   position: relative;
   background-color: #000000;
 }
@@ -122,19 +122,15 @@ input:active {
 }
 
 ::placeholder {
-  /* Chrome, Firefox, Opera, Safari 10.1+ */
-  color: #3ab793;
-  /* Firefox */
+  color: #777;
 }
 
 :-ms-input-placeholder {
-  /* Internet Explorer 10-11 */
-  color: #3ab793;
+  color: #777;
 }
 
 ::-ms-input-placeholder {
-  /* Microsoft Edge */
-  color: #3ab793;
+  color: #777;
 }
 
 ::-webkit-scrollbar {
@@ -260,25 +256,6 @@ input:-ms-input-placeholder {
   transition: opacity 0.3s ease;
 }
 
-input:focus::-webkit-input-placeholder {
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-input:focus::-moz-placeholder {
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-input:focus:-moz-placeholder {
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
-
-input:focus:-ms-input-placeholder {
-  opacity: 0;
-  transition: opacity 0.3s ease;
-}
 
 .resize-none {
   resize: none;

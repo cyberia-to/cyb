@@ -205,6 +205,27 @@ const Bootloader = () => {
 };
 
 function bootstrap() {
+  if ('serviceWorker' in navigator) {
+    console.log('Going to install service worker');
+
+    window.addEventListener('load', () => {
+      console.log('Starting to load service worker');
+      navigator.serviceWorker
+        .register('/service-worker.js')
+        .then((registration) => {
+          console.log('service worker registered: ', registration);
+        })
+        .catch((registrationError) => {
+          console.log(
+            'service worker registration failed: ',
+            registrationError
+          );
+        });
+    });
+  } else {
+    console.log('No service worker is available');
+  }
+
   let _a;
   const assets =
     ((_a = window === null || window === void 0 ? void 0 : window.$bootloader) === null ||

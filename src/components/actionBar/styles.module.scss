@@ -7,6 +7,7 @@
   bottom: 0px;
   left: 0;
   padding: 10px 0;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom, 0px));
   background: linear-gradient(0deg,
       rgba(0, 0, 0, 0.93) 76%,
       rgba(0, 0, 0, 0) 100%);
@@ -55,7 +56,7 @@
   justify-content: center;
   width: 62%;
   position: fixed;
-  bottom: 20px;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
   left: 50%;
   transform: translate(-50%, 10px);
   // padding: 10px 0;

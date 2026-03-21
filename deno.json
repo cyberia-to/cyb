@@ -2,6 +2,7 @@
   "tasks": {
     "start": "DENO_NO_PACKAGE_JSON=1 ./node_modules/.bin/rspack serve --config=rspack.config.dev.js",
     "build": "DENO_NO_PACKAGE_JSON=1 ./node_modules/.bin/rspack build --config=rspack.config.prod.js && cp -r public/* build/",
+    "build-tauri": "DENO_NO_PACKAGE_JSON=1 IS_TAURI=true ./node_modules/.bin/rspack build --config=rspack.config.prod.js && cp -r public/* build/",
     "build-ipfs": "DENO_NO_PACKAGE_JSON=1 IPFS_DEPLOY=1 ./node_modules/.bin/rspack build --config=rspack.config.prod.js --mode production",
     "build-report": "DENO_NO_PACKAGE_JSON=1 ./node_modules/.bin/rspack build --config=rspack.config.prod.js --profile --json > stats.json",
     "lint": "DENO_NO_PACKAGE_JSON=1 ./node_modules/.bin/biome check src/",

@@ -16,18 +16,10 @@ import styles from './styles.module.scss';
 
 const back = require('../../image/arrow-left-img.svg');
 
-function ActionBarContainer({ children }) {
+function ActionBarContainer({ children }: { children: React.ReactNode }) {
   return (
     <div className={styles.ActionBarContainer}>
       <div className={styles.ActionBarContainerContent}>{children}</div>
-    </div>
-  );
-}
-
-function ActionBarContentText({ children, ...props }) {
-  return (
-    <div className={styles.ActionBarContentText} {...props}>
-      {children}
     </div>
   );
 }
@@ -49,12 +41,8 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
   const { signerReady } = useSigningClient();
   const location = useLocation();
 
-  const { defaultAccount, commander } = useAppSelector((store) => {
-    return {
-      defaultAccount: store.pocket.defaultAccount,
-      commander: store.commander,
-    };
-  });
+  const defaultAccount = useAppSelector((store) => store.pocket.defaultAccount);
+  const commander = useAppSelector((store) => store.commander);
 
   const address = useAppSelector(selectCurrentAddress);
   const { passport } = usePassportByAddress(address);
@@ -88,6 +76,8 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
     exception &&
     !location.pathname.includes(routes.gift.path) &&
     !location.pathname.includes('/brain') && // both full and robot
+    !location.pathname.includes('/mining') &&
+    !location.pathname.includes('/network/bostrom/tx') &&
     !isMobile
   ) {
     return (
@@ -136,7 +126,7 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
         />
       )}
 
-      {content && <ActionBarContentText>{content}</ActionBarContentText>}
+      {content && <div className={styles.ActionBarContentText}>{content}</div>}
 
       {button?.text && (
         <Button

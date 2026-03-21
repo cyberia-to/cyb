@@ -6,7 +6,8 @@ type WorkerType = SharedWorker | Worker;
 
 const isSharedWorkersSupported = typeof SharedWorker !== 'undefined';
 
-const isSharedWorkerUsed = isSharedWorkersSupported && !process.env.IS_DEV;
+const isSharedWorkerUsed =
+  isSharedWorkersSupported && !process.env.IS_DEV;
 
 // apply serializers for custom types
 export function installTransferHandlers() {
@@ -42,7 +43,7 @@ export function installTransferHandlers() {
         subscribe: (observer: Remote<Observer<unknown>>) =>
           value.subscribe({
             next: (next: unknown) => observer.next(next).then(),
-            error: (error: unknown) => observer.error(error).then(),
+            error: (error: unknown) => observer.error(typeof error === 'string' ? error : String(error)).then(),
             complete: () => observer.complete().then(),
           }),
       });
@@ -121,7 +122,7 @@ export function createWorkerApi<T>(
   workerName: string
 ): { worker: WorkerType; workerApiProxy: Remote<T> } {
   installTransferHandlers();
-  //&& !process.env.IS_DEV
+  // && !process.env.IS_DEV
   if (isSharedWorkerUsed) {
     const worker = new SharedWorker(workerUrl, { name: workerName });
     installLoggingHandler(worker.port, workerName);

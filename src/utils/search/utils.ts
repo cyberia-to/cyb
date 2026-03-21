@@ -93,7 +93,7 @@ export const keybaseCheck = async (identity) => {
   }
 };
 
-export const keybaseAvatar = async (identity) => {
+export const keybaseAvatar = async (identity: string) => {
   try {
     const response = await axios({
       method: 'get',

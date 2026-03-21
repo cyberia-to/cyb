@@ -22,7 +22,7 @@ function CyberlinksGraph({ data, size, minVersion }: Props) {
   const [touched, setTouched] = useState(false);
   const [hoverNode, setHoverNode] = useState(null);
 
-  const fgRef = useRef();
+  const fgRef = useRef<any>();
 
   // debug, remove later
   useEffect(() => {
@@ -78,29 +78,37 @@ function CyberlinksGraph({ data, size, minVersion }: Props) {
     };
   }, []);
 
-  // orbit camera
+  // orbit camera using requestAnimationFrame (avoids 10ms setInterval CPU drain)
   useEffect(() => {
     if (!fgRef.current || touched || isRendering) {
       return;
     }
 
     let angle = 0;
+    let rafId: number | null = null;
+    let lastTime = 0;
 
-    let interval = null;
+    const orbit = (time: number) => {
+      if (time - lastTime >= 33) { // ~30fps
+        lastTime = time;
+        if (fgRef.current) {
+          fgRef.current.cameraPosition({
+            x: DEFAULT_CAMERA_DISTANCE * Math.sin(angle),
+            z: DEFAULT_CAMERA_DISTANCE * Math.cos(angle),
+          });
+          angle += Math.PI / 900; // same visual speed at 30fps
+        }
+      }
+      rafId = requestAnimationFrame(orbit);
+    };
 
     const timeout = setTimeout(() => {
-      interval = setInterval(() => {
-        fgRef.current.cameraPosition({
-          x: DEFAULT_CAMERA_DISTANCE * Math.sin(angle),
-          z: DEFAULT_CAMERA_DISTANCE * Math.cos(angle),
-        });
-        angle += Math.PI / 3000;
-      }, 10);
+      rafId = requestAnimationFrame(orbit);
     }, CAMERA_ZOOM_IN_EFFECT_DURATION + CAMERA_ZOOM_IN_EFFECT_DELAY);
 
     return () => {
       clearTimeout(timeout);
-      clearInterval(interval);
+      if (rafId !== null) cancelAnimationFrame(rafId);
     };
   }, [touched, isRendering]);
 
