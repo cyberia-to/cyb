@@ -7,6 +7,8 @@ import type { AccountData, AminoSignResponse, OfflineAminoSigner, StdSignDoc } f
 const HD_PATH = "m/44'/118'/0'/0/0";
 const IDLE_TIMEOUT_MS = 5 * 60_000; // 5 minutes — signing on device can take time
 const HEALTH_CHECK_TIMEOUT_MS = 3_000; // 3 seconds — ping timeout
+const MAX_LEDGER_MSG_BYTES = 10_240; // 10 KB — Cosmos Ledger app buffer limit
+const CHUNK_SIZE = 250; // bytes per APDU data chunk
 
 let _transport: TransportWebUSB | null = null;
 let _idleTimer: ReturnType<typeof setTimeout> | null = null;
@@ -109,35 +111,99 @@ async function getCosmosAccount(prefix: string): Promise<AccountData> {
 
 /**
  * Sign an amino sign doc using the Ledger device.
- * Uses @zondax/ledger-cosmos-js which sends HRP in the INIT chunk —
- * required by Cosmos Ledger app v2.35+.
+ *
+ * Detects the Cosmos Ledger app version and uses the appropriate signing
+ * strategy:
+ *   - v2.34+  → sends HRP in the INIT chunk (required by modern firmware)
+ *   - < v2.34 → path-only INIT chunk (legacy firmware)
+ *
+ * If the first attempt returns DataIsInvalid (0x6984), retries with the
+ * opposite HRP strategy as a fallback.
  */
 async function signWithLedger(
   signDoc: StdSignDoc,
-  prefix: string
+  prefix: string,
+  cachedPubkey?: Uint8Array
 ): Promise<AminoSignResponse> {
   const transport = await getTransport();
   const app = new CosmosApp(transport);
 
-  // Get account for the signature envelope
-  const response = await app.getAddressAndPubKey(HD_PATH, prefix);
-  const pubkey = Uint8Array.from(response.compressed_pk);
+  // ── 1. Detect firmware version ────────────────────────────────────
+  let ver: { major: number; minor: number; patch: number } | null = null;
+  try {
+    ver = await app.getVersion();
+    console.log('[Ledger] Cosmos app version:', `${ver.major}.${ver.minor}.${ver.patch}`);
+  } catch (e) {
+    console.warn('[Ledger] Could not read app version:', e);
+  }
 
-  // Serialize sign doc to canonical JSON bytes
-  const message = Buffer.from(serializeSignDoc(signDoc));
+  // ── 2. Resolve pubkey ─────────────────────────────────────────────
+  let pubkey: Uint8Array;
+  if (cachedPubkey) {
+    pubkey = cachedPubkey;
+  } else {
+    const response = await app.getAddressAndPubKey(HD_PATH, prefix);
+    pubkey = Uint8Array.from(response.compressed_pk);
+  }
 
-  // Sign with HRP — the key fix for Cosmos Ledger app v2.35+
-  const signResponse = await app.sign(HD_PATH, message, prefix);
+  // ── 3. Serialize sign doc ─────────────────────────────────────────
+  const serialized = serializeSignDoc(signDoc);
+  const message = Buffer.from(serialized);
+  const jsonStr = new TextDecoder().decode(serialized);
+  const numChunks = Math.ceil(message.length / CHUNK_SIZE) + 1; // +1 for INIT
 
-  // Convert DER signature to fixed-length 64-byte format
-  const signature = Secp256k1Signature.fromDer(
-    Uint8Array.from(signResponse.signature)
-  ).toFixedLength();
+  console.log('[Ledger] sign doc JSON:', jsonStr);
+  console.log('[Ledger] message length:', message.length, 'bytes,', numChunks, 'chunks');
+  console.log('[Ledger] HRP (prefix):', prefix);
 
-  return {
-    signed: signDoc,
-    signature: encodeSecp256k1Signature(pubkey, signature),
+  // ── 4. Guard: message size ────────────────────────────────────────
+  if (message.length > MAX_LEDGER_MSG_BYTES) {
+    throw new Error(
+      `Transaction too large for Ledger device ` +
+      `(${message.length} bytes, limit ~${MAX_LEDGER_MSG_BYTES}). ` +
+      `Try claiming rewards from fewer validators.`
+    );
+  }
+
+  // ── 5. Sign with version-appropriate strategy ─────────────────────
+  // v2.34+ expects HRP; older firmware rejects it
+  const useHRP = !ver || ver.major > 2 || (ver.major === 2 && ver.minor >= 34);
+  console.log('[Ledger] signing strategy:', useHRP ? 'with HRP (modern)' : 'path-only (legacy)');
+
+  const attemptSign = async (withHRP: boolean) => {
+    const signResponse = withHRP
+      ? await app.sign(HD_PATH, message, prefix)
+      : await app.sign(HD_PATH, message);
+
+    const signature = Secp256k1Signature.fromDer(
+      Uint8Array.from(signResponse.signature)
+    ).toFixedLength();
+
+    return {
+      signed: signDoc,
+      signature: encodeSecp256k1Signature(pubkey, signature),
+    };
   };
+
+  try {
+    return await attemptSign(useHRP);
+  } catch (err: any) {
+    const isDataInvalid = err?.returnCode === 27012;
+
+    // Fallback: if DataIsInvalid, retry with the opposite HRP mode
+    if (isDataInvalid) {
+      console.warn('[Ledger] DataIsInvalid — retrying', useHRP ? 'WITHOUT' : 'WITH', 'HRP');
+      try {
+        return await attemptSign(!useHRP);
+      } catch (retryErr: any) {
+        console.error('[Ledger] fallback also failed:', retryErr?.returnCode, retryErr?.errorMessage || retryErr?.message);
+      }
+    }
+
+    console.error('[Ledger] sign failed:', err?.returnCode, err?.errorMessage || err?.message);
+    console.error('[Ledger] sign doc was:', jsonStr);
+    throw err;
+  }
 }
 
 /**
@@ -184,7 +250,9 @@ export class ReconnectingLedgerSigner implements OfflineAminoSigner {
     // Block health-check pings while Ledger shows "Review Transaction"
     _signingInProgress = true;
     try {
-      return await signWithLedger(signDoc, this.prefix);
+      // Pass cached pubkey to avoid extra APDU round-trip before signing
+      const cachedPubkey = this._cachedAccounts?.[0]?.pubkey;
+      return await signWithLedger(signDoc, this.prefix, cachedPubkey);
     } finally {
       _signingInProgress = false;
     }
