@@ -1,17 +1,15 @@
 /* eslint-disable no-restricted-syntax */
 
-import { Decimal } from '@cosmjs/math';
 import { GasPrice, SigningStargateClient } from '@cosmjs/stargate';
 import { useEffect, useState } from 'react';
 import { CHAIN_ID } from 'src/constants/config';
 import { useSigningClient } from 'src/contexts/signerClient';
-import { getKeplr } from 'src/utils/keplrUtils';
 
 import networks from '../../../utils/networkListIbc';
 import useGetBalancesIbc from './useGetBalancesIbc';
 
 function useSetupIbcClient(denom, network) {
-  const { signingClient } = useSigningClient();
+  const { signingClient, getSignerForChain } = useSigningClient();
   const [ibcClient, setIbcClient] = useState(null);
   const { balanceIbc, denomIbc, refresh: refreshBalanceIbc } = useGetBalancesIbc(ibcClient, denom);
 
@@ -21,21 +19,19 @@ function useSetupIbcClient(denom, network) {
 
       let client = null;
       if (network && network !== CHAIN_ID) {
-        const keplr = await getKeplr();
-        const { rpc, prefix, chainId } = networks[network];
-        await keplr.enable(chainId);
-        const offlineSigner = await keplr.getOfflineSignerAuto(chainId);
+        const networkConfig = networks[network];
+        if (!networkConfig) return;
 
-        const chainInfos = await keplr.getChainInfosWithoutEndpoints();
-        const chainInfoA = chainInfos.find((item) => item.chainId === chainId);
-        const feeCurrenciesA = chainInfoA.feeCurrencies[0];
+        const { rpc, prefix, chainId, gasPrice: gasPriceStr, coinMinimalDenom } = networkConfig;
 
-        const GasPriceA = new GasPrice(
-          Decimal.fromUserInput(feeCurrenciesA.gasPriceStep?.average.toString() || '0', 3),
-          feeCurrenciesA?.coinMinimalDenom
-        );
+        const offlineSigner = await getSignerForChain(chainId);
+        if (!offlineSigner) return;
 
-        const options = { prefix, gasPrice: GasPriceA };
+        const gasPrice = gasPriceStr
+          ? GasPrice.fromString(gasPriceStr)
+          : GasPrice.fromString(`0.025${coinMinimalDenom}`);
+
+        const options = { prefix, gasPrice };
         client = await SigningStargateClient.connectWithSigner(rpc, offlineSigner, options);
       } else {
         client = signingClient;

@@ -13,6 +13,7 @@ export type NetworkCons = {
   rpc: string;
   prefix: string;
   explorerUrlToTx: string;
+  gasPrice?: string;
 };
 
 const networkList: ObjectKey<NetworkCons> = {
@@ -20,6 +21,7 @@ const networkList: ObjectKey<NetworkCons> = {
     chainId: defaultNetworks.bostrom.CHAIN_ID,
     rpc: defaultNetworks.bostrom.RPC_URL,
     coinMinimalDenom: defaultNetworks.bostrom.BASE_DENOM,
+    prefix: defaultNetworks.bostrom.BECH32_PREFIX,
     explorerUrlToTx: '/network/bostrom/tx/{txHash}',
   },
   'osmosis-1': {
@@ -34,6 +36,7 @@ const networkList: ObjectKey<NetworkCons> = {
     rpc: 'https://rpc-osmosis.ecostake.com',
     prefix: 'osmo',
     explorerUrlToTx: 'https://www.mintscan.io/osmosis/txs/{txHash}',
+    gasPrice: '0.025uosmo',
   },
   'cosmoshub-4': {
     chainId: 'cosmoshub-4',
@@ -47,6 +50,7 @@ const networkList: ObjectKey<NetworkCons> = {
     rpc: 'https://rpc.cosmoshub-4.bronbro.io:443',
     prefix: 'cosmos',
     explorerUrlToTx: 'https://www.mintscan.io/cosmos/txs/{txHash}',
+    gasPrice: '0.025uatom',
   },
   'space-pussy': {
     chainId: 'space-pussy',
@@ -60,6 +64,7 @@ const networkList: ObjectKey<NetworkCons> = {
     destinationChainId: 'space-pussy',
     destChannelId: 'channel-0',
     explorerUrlToTx: 'https://space-pussy.cyb.ai/network/bostrom/tx/{txHash}',
+    gasPrice: '0.01pussy',
   },
   'juno-1': {
     chainId: 'juno-1',
@@ -73,6 +78,7 @@ const networkList: ObjectKey<NetworkCons> = {
     destChannelId: 'channel-93',
     prefix: 'juno',
     explorerUrlToTx: 'https://www.mintscan.io/juno/txs/{txHash}',
+    gasPrice: '0.075ujuno',
   },
   'gravity-bridge-3': {
     chainId: 'gravity-bridge-3',
@@ -86,6 +92,7 @@ const networkList: ObjectKey<NetworkCons> = {
     destChannelId: 'channel-103',
     prefix: 'gravity',
     explorerUrlToTx: 'https://www.mintscan.io/gravity-bridge/txs/{txHash}',
+    gasPrice: '0.025ugraviton',
   },
   'desmos-mainnet': {
     chainId: 'desmos-mainnet',
@@ -99,6 +106,7 @@ const networkList: ObjectKey<NetworkCons> = {
     destChannelId: 'channel-6',
     prefix: 'desmos',
     explorerUrlToTx: 'https://www.mintscan.io/desmos/txs/{txHash}',
+    gasPrice: '0.01udsm',
   },
   'evmos_9001-2': {
     chainId: 'evmos_9001-2',
@@ -112,6 +120,7 @@ const networkList: ObjectKey<NetworkCons> = {
     coinDecimals: 18,
     coinMinimalDenom: 'aevmos',
     denom: 'EVMOS',
+    gasPrice: '25000000000aevmos',
   },
   'chihuahua-1': {
     chainId: 'chihuahua-1',
@@ -125,6 +134,7 @@ const networkList: ObjectKey<NetworkCons> = {
     destChannelId: 'channel-6',
     prefix: 'chihuahua',
     explorerUrlToTx: 'https://www.mintscan.io/chihuahua/txs/{txHash}',
+    gasPrice: '1uhuahua',
   },
   'axelar-dojo-1': {
     chainId: 'axelar-dojo-1',
@@ -138,6 +148,7 @@ const networkList: ObjectKey<NetworkCons> = {
     destChannelId: 'channel-52',
     prefix: 'axelar',
     explorerUrlToTx: 'https://mintscan.io/axelar/txs/{txHash}',
+    gasPrice: '0.007uaxl',
   },
 };
 

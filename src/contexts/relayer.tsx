@@ -1,4 +1,3 @@
-import { Decimal } from '@cosmjs/math';
 import { GasPrice } from '@cosmjs/stargate';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useChannels } from 'src/hooks/useHub';
@@ -6,8 +5,8 @@ import loadConnections from 'src/services/relayer/loadConnections';
 import relay from 'src/services/relayer/relay';
 import { ObjectKey } from 'src/types/data';
 import { Channel } from 'src/types/hub';
-import { getKeplr } from 'src/utils/keplrUtils';
 import networkList from 'src/utils/networkListIbc';
+import { useSigningClient } from './signerClient';
 
 const RelayerContext = React.createContext<{
   channels: undefined | ObjectKey<Channel>;
@@ -35,6 +34,7 @@ export const useRelayer = () => React.useContext(RelayerContext);
 
 function RelayerContextProvider({ children }: { children: React.ReactNode }) {
   const { channels } = useChannels();
+  const { getSignerForChain } = useSigningClient();
 
   const stopFn = useRef<() => void>();
 
@@ -64,43 +64,39 @@ function RelayerContextProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       if (selectChain.length > 0) {
         setIsRelaying(true);
-        const keplrWindow = await getKeplr();
 
         stopFn.current?.();
 
-        if (!channels || !keplrWindow) {
+        if (!channels) {
           return;
         }
-
-        const chainInfos = await keplrWindow.getChainInfosWithoutEndpoints();
 
         const { source_chain_id: chainIdA, destination_chain_id: chainIdB } = channels[selectChain];
 
-        const chainInfoA = chainInfos.find((item) => item.chainId === chainIdA);
-        const chainInfoB = chainInfos.find((item) => item.chainId === chainIdB);
+        const networkA = findNetwork(chainIdA);
+        const networkB = findNetwork(chainIdB);
 
-        if (!chainInfoA || !chainInfoB) {
+        if (!networkA || !networkB) {
           return;
         }
 
-        const feeCurrenciesA = chainInfoA.feeCurrencies[0];
-        const feeCurrenciesB = chainInfoB.feeCurrencies[0];
+        const signerA = await getSignerForChain(chainIdA);
+        const signerB = await getSignerForChain(chainIdB);
 
-        const GasPriceA = new GasPrice(
-          Decimal.fromUserInput(feeCurrenciesA.gasPriceStep?.average.toString() || '0', 3),
-          feeCurrenciesA?.coinMinimalDenom
-        );
+        if (!signerA || !signerB) {
+          return;
+        }
 
-        const GasPriceB = new GasPrice(
-          Decimal.fromUserInput(feeCurrenciesB.gasPriceStep?.average.toString() || '0', 3),
-          feeCurrenciesB?.coinMinimalDenom
-        );
+        const GasPriceA = networkA.gasPrice
+          ? GasPrice.fromString(networkA.gasPrice)
+          : GasPrice.fromString(`0.025${networkA.coinMinimalDenom}`);
 
-        const { rpc: rpcA } = findNetwork(chainIdA);
-        const { rpc: rpcB } = findNetwork(chainIdB);
+        const GasPriceB = networkB.gasPrice
+          ? GasPrice.fromString(networkB.gasPrice)
+          : GasPrice.fromString(`0.025${networkB.coinMinimalDenom}`);
 
-        const signerA = await keplrWindow.getOfflineSignerAuto(chainIdA);
-        const signerB = await keplrWindow.getOfflineSignerAuto(chainIdB);
+        const { rpc: rpcA } = networkA;
+        const { rpc: rpcB } = networkB;
 
         const [{ address: addressSignerA }] = await signerA.getAccounts();
         const [{ address: addressSignerB }] = await signerB.getAccounts();

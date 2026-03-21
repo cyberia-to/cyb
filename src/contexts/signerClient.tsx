@@ -7,6 +7,7 @@ import { useAppSelector } from 'src/redux/hooks';
 import { Option } from 'src/types';
 import { Networks } from 'src/types/networks';
 import { decryptMnemonic } from 'src/utils/mnemonicCrypto';
+import { connectLedger as connectLedgerDevice, createLedgerSigner, closeTransport } from 'src/utils/ledgerSigner';
 import { getOfflineSigner as getOfflineSignerFromMnemonic } from 'src/utils/offlineSigner';
 import { getEncryptedMnemonic } from 'src/utils/utils';
 
@@ -16,12 +17,15 @@ type SignerClientContextType = {
   readonly signingClient: Option<SigningCyberClient>;
   readonly signer: Option<OfflineSigner>;
   readonly signerReady: boolean;
+  readonly isLedgerAccount: boolean;
   readonly getSignClientByChainId: (
     chainId: Networks.BOSTROM | Networks.SPACE_PUSSY
   ) => Promise<Option<SigningCyberClient>>;
   setSigner: (signer: Option<OfflineSigner>) => void;
   activateWalletSigner: (signer: OfflineSigner, mnemonic: string) => void;
   unlockWallet: (password: string) => Promise<void>;
+  connectLedger: () => Promise<{ address: string; pubkey: Uint8Array }>;
+  reconnectLedger: () => Promise<void>;
   getSignerForChain: (chainId: string) => Promise<Option<OfflineSigner>>;
 };
 
@@ -35,16 +39,18 @@ const SignerClientContext = React.createContext<SignerClientContextType>({
   signer: undefined,
   signingClient: undefined,
   signerReady: false,
+  isLedgerAccount: false,
   setSigner: () => {},
   activateWalletSigner: () => {},
   unlockWallet: async () => {},
+  connectLedger: async () => ({ address: '', pubkey: new Uint8Array() }),
+  reconnectLedger: async () => {},
   getSignerForChain: async () => undefined,
   getSignClientByChainId: async () => undefined,
 });
 
 export function useSigningClient() {
-  const signingClient = useContext(SignerClientContext);
-  return signingClient;
+  return useContext(SignerClientContext);
 }
 
 function SigningClientProvider({ children }: { children: React.ReactNode }) {
@@ -54,6 +60,9 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
   const [signingClient, setSigningClient] = useState<SignerClientContextType['signingClient']>();
   const mnemonicRef = useRef<string | null>(null);
   const mnemonicTimerRef = useRef<ReturnType<typeof setTimeout>>();
+
+  const isWalletAccount = defaultAccount.account?.cyber?.keys === 'wallet';
+  const isLedgerAccount = defaultAccount.account?.cyber?.keys === 'ledger';
 
   useEffect(() => {
     (async () => {
@@ -76,13 +85,21 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
     }
   }, [signer]);
 
-  const isWalletAccount = defaultAccount.account?.cyber?.keys === 'wallet';
-  const isLedgerAccount = defaultAccount.account?.cyber?.keys === 'ledger';
+  // Ledger disconnect detection on page refresh
+  useEffect(() => {
+    if (isLedgerAccount && !signer) {
+      window.dispatchEvent(new CustomEvent('__cyb_ledger_disconnected'));
+    }
+  }, [isLedgerAccount, signer]);
 
   const getSignClientByChainId = useCallback(
     async (chainId: Networks.BOSTROM | Networks.SPACE_PUSSY) => {
       let offlineSigner: Option<OfflineSigner>;
-      if (isWalletAccount && mnemonicRef.current) {
+
+      if (isLedgerAccount) {
+        const { BECH32_PREFIX: prefix } = defaultNetworks[chainId];
+        offlineSigner = await createLedgerSigner(prefix);
+      } else if (isWalletAccount && mnemonicRef.current) {
         offlineSigner = await getOfflineSignerFromMnemonic(mnemonicRef.current, chainId);
       }
 
@@ -95,7 +112,7 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
 
       return SigningCyberClient.connectWithSigner(rpcUrl, offlineSigner);
     },
-    [isWalletAccount]
+    [isWalletAccount, isLedgerAccount]
   );
 
   const setMnemonicWithAutoClear = useCallback((mnemonic: string | null) => {
@@ -166,14 +183,38 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
     [defaultAccount, setMnemonicWithAutoClear]
   );
 
+  // Connect Ledger — requires user gesture (WebUSB)
+  const connectLedgerFn = useCallback(async () => {
+    const { signer: ledgerSigner, address, pubkey } = await connectLedgerDevice();
+    setSigner(ledgerSigner);
+    return { address, pubkey };
+  }, []);
+
+  // Reconnect Ledger — for when signer was lost (page refresh)
+  const reconnectLedger = useCallback(async () => {
+    if (!isLedgerAccount) return;
+    const ledgerSigner = await createLedgerSigner();
+    setSigner(ledgerSigner);
+  }, [isLedgerAccount]);
+
+  // Close transport on unmount
+  useEffect(() => {
+    return () => {
+      closeTransport();
+    };
+  }, []);
+
   const getSignerForChain = useCallback(
     async (chainId: string): Promise<Option<OfflineSigner>> => {
+      if (isLedgerAccount && chainId === CHAIN_ID) {
+        return createLedgerSigner();
+      }
       if (mnemonicRef.current) {
         return getOfflineSignerFromMnemonic(mnemonicRef.current, chainId);
       }
       return undefined;
     },
-    []
+    [isLedgerAccount]
   );
 
   const value = useMemo(
@@ -183,11 +224,14 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
       activateWalletSigner,
       signingClient,
       signerReady,
+      isLedgerAccount,
       unlockWallet,
+      connectLedger: connectLedgerFn,
+      reconnectLedger,
       getSignerForChain,
       getSignClientByChainId,
     }),
-    [signer, signingClient, signerReady, setSigner, activateWalletSigner, unlockWallet, getSignerForChain, getSignClientByChainId]
+    [signer, signingClient, signerReady, isLedgerAccount, setSigner, activateWalletSigner, unlockWallet, connectLedgerFn, reconnectLedger, getSignerForChain, getSignClientByChainId]
   );
 
   return <SignerClientContext.Provider value={value}>{children}</SignerClientContext.Provider>;
