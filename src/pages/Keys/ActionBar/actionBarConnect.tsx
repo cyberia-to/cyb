@@ -12,6 +12,7 @@ import { LEDGER } from 'src/utils/config';
 import { toHex } from 'src/utils/encoding';
 import { encryptMnemonic } from 'src/utils/mnemonicCrypto';
 import { getOfflineSigner } from 'src/utils/offlineSigner';
+import { isWebUSBSupported } from 'src/utils/ledgerSigner';
 import { setEncryptedMnemonic } from 'src/utils/utils';
 import { useAdviser } from 'src/features/adviser/context';
 import { AdviserColors } from 'src/features/adviser/Adviser/Adviser';
@@ -84,6 +85,16 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
   useEffect(() => {
     if (stage === STAGE_SET_PASSWORD) {
       setAdviser(PASSWORD_HINT, AdviserColors.yellow);
+    }
+  }, [stage, setAdviser]);
+
+  // Notify about Ledger availability when on connect screen
+  useEffect(() => {
+    if (stage === STAGE_INIT && !isWebUSBSupported()) {
+      setAdviser(
+        'Ledger hardware wallet requires Chrome, Edge, or the cyb.ai desktop app',
+        AdviserColors.yellow
+      );
     }
   }, [stage, setAdviser]);
 
