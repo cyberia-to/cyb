@@ -2,7 +2,7 @@ import { SigningCyberClient } from '@cybercongress/cyber-js';
 import { OfflineSigner } from '@cybercongress/cyber-js/build/signingcyberclient';
 import { Keplr } from '@keplr-wallet/types';
 import _ from 'lodash';
-import React, { useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CHAIN_ID, RPC_URL } from 'src/constants/config';
 import defaultNetworks, { getHealthyRpcUrl } from 'src/constants/defaultNetworks';
 import usePrevious from 'src/hooks/usePrevious';
@@ -11,7 +11,11 @@ import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
 import { Option } from 'src/types';
 import { Networks } from 'src/types/networks';
 import configKeplr, { getKeplr } from 'src/utils/keplrUtils';
-import { accountsKeplr } from 'src/utils/utils';
+import { decryptMnemonic } from 'src/utils/mnemonicCrypto';
+import { getOfflineSigner as getOfflineSignerFromMnemonic } from 'src/utils/offlineSigner';
+import { accountsKeplr, getEncryptedMnemonic } from 'src/utils/utils';
+
+const MNEMONIC_AUTO_CLEAR_MS = 15 * 60 * 1000; // 15 minutes
 
 type SignerClientContextType = {
   readonly signingClient: Option<SigningCyberClient>;
@@ -21,6 +25,10 @@ type SignerClientContextType = {
     chainId: Networks.BOSTROM | Networks.SPACE_PUSSY
   ) => Promise<Option<SigningCyberClient>>;
   initSigner: () => void;
+  setSigner: (signer: Option<OfflineSigner>) => void;
+  activateWalletSigner: (signer: OfflineSigner, mnemonic: string) => void;
+  unlockWallet: (password: string) => Promise<void>;
+  getSignerForChain: (chainId: string) => Promise<Option<OfflineSigner>>;
 };
 
 async function createClient(signer: OfflineSigner): Promise<SigningCyberClient> {
@@ -35,7 +43,11 @@ const SignerClientContext = React.createContext<SignerClientContextType>({
   signerReady: false,
   // eslint-disable-next-line @typescript-eslint/no-empty-function
   initSigner: () => {},
-  getSignClientByChainId: () => {},
+  setSigner: () => {},
+  activateWalletSigner: () => {},
+  unlockWallet: async () => {},
+  getSignerForChain: async () => undefined,
+  getSignClientByChainId: async () => undefined,
 });
 
 export function useSigningClient() {
@@ -49,6 +61,8 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
   const [signer, setSigner] = useState<SignerClientContextType['signer']>();
   const [signerReady, setSignerReady] = useState(false);
   const [signingClient, setSigningClient] = useState<SignerClientContextType['signingClient']>();
+  const mnemonicRef = useRef<string | null>(null);
+  const mnemonicTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const prevAccounts = usePrevious(accounts);
 
   const selectAddress = useCallback(
@@ -115,6 +129,15 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
     [selectAddress]
   );
 
+  // Rebuild signingClient whenever signer changes
+  useEffect(() => {
+    if (signer) {
+      createClient(signer).then(setSigningClient);
+    } else {
+      setSigningClient(undefined);
+    }
+  }, [signer]);
+
   const initSigner = useCallback(async () => {
     const offlineSigner = await getOfflineSigner(CHAIN_ID);
 
@@ -122,22 +145,18 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const clientJs = await createClient(offlineSigner);
-
     setSigner(offlineSigner);
-    setSigningClient(clientJs);
   }, [getOfflineSigner]);
 
-  useEffect(() => {
-    (async () => {
-      const windowKeplr = await getKeplr();
-      if (windowKeplr) {
-        initSigner();
-      }
-    })();
-  }, [initSigner]);
+  // Keplr auto-init disabled — wallet uses mnemonic signer, Keplr only for IBC
+  const isWalletAccount = defaultAccount.account?.cyber?.keys === 'wallet';
 
+  // keplr_keystorechange listener — only for keplr accounts
   useEffect(() => {
+    if (isWalletAccount) {
+      return;
+    }
+
     const handleKeystoreChange = () => {
       initSigner();
     };
@@ -146,11 +165,17 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
     return () => {
       window.removeEventListener('keplr_keystorechange', handleKeystoreChange);
     };
-  }, [initSigner]);
+  }, [initSigner, isWalletAccount]);
 
   const getSignClientByChainId = useCallback(
     async (chainId: Networks.BOSTROM | Networks.SPACE_PUSSY) => {
-      const offlineSigner = await getOfflineSigner(chainId);
+      // Use mnemonic signer for wallet accounts, Keplr only for keplr accounts
+      let offlineSigner: Option<OfflineSigner>;
+      if (isWalletAccount && mnemonicRef.current) {
+        offlineSigner = await getOfflineSignerFromMnemonic(mnemonicRef.current, chainId);
+      } else if (!isWalletAccount) {
+        offlineSigner = await getOfflineSigner(chainId);
+      }
 
       if (!offlineSigner) {
         return undefined;
@@ -161,18 +186,108 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
 
       return SigningCyberClient.connectWithSigner(rpcUrl, offlineSigner);
     },
-    [getOfflineSigner]
+    [getOfflineSigner, isWalletAccount]
+  );
+
+  const setMnemonicWithAutoClear = useCallback((mnemonic: string | null) => {
+    if (mnemonicTimerRef.current) {
+      clearTimeout(mnemonicTimerRef.current);
+    }
+    mnemonicRef.current = mnemonic;
+    if (mnemonic) {
+      mnemonicTimerRef.current = setTimeout(() => {
+        mnemonicRef.current = null;
+        setSigner(undefined);
+        window.dispatchEvent(new CustomEvent('__cyb_wallet_locked'));
+      }, MNEMONIC_AUTO_CLEAR_MS);
+    }
+  }, []);
+
+  // Clear mnemonic on unmount
+  useEffect(() => {
+    return () => {
+      mnemonicRef.current = null;
+      if (mnemonicTimerRef.current) clearTimeout(mnemonicTimerRef.current);
+    };
+  }, []);
+
+  // Auto-lock when tab becomes hidden (user switches tab / minimizes / locks screen)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.hidden && mnemonicRef.current) {
+        mnemonicRef.current = null;
+        if (mnemonicTimerRef.current) clearTimeout(mnemonicTimerRef.current);
+        setSigner(undefined);
+        window.dispatchEvent(new CustomEvent('__cyb_wallet_locked'));
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
+
+  const activateWalletSigner = useCallback(
+    (offlineSigner: OfflineSigner, mnemonic: string) => {
+      setMnemonicWithAutoClear(mnemonic);
+      setSigner(offlineSigner);
+    },
+    [setMnemonicWithAutoClear]
+  );
+
+  const unlockWallet = useCallback(
+    async (password: string) => {
+      const address = defaultAccount.account?.cyber.bech32;
+      if (!address) throw new Error('No active account');
+
+      const encrypted = getEncryptedMnemonic(address);
+      if (!encrypted) throw new Error('No encrypted mnemonic found');
+
+      const mnemonic = await decryptMnemonic(encrypted, password);
+      const offlineSigner = await getOfflineSignerFromMnemonic(mnemonic);
+
+      // Verify decrypted mnemonic derives to the expected address
+      const [account] = await offlineSigner.getAccounts();
+      if (account.address !== address) {
+        throw new Error('Decrypted mnemonic does not match expected address');
+      }
+
+      setMnemonicWithAutoClear(mnemonic);
+      setSigner(offlineSigner);
+    },
+    [defaultAccount, setMnemonicWithAutoClear]
+  );
+
+  const getSignerForChain = useCallback(
+    async (chainId: string): Promise<Option<OfflineSigner>> => {
+      if (mnemonicRef.current) {
+        return getOfflineSignerFromMnemonic(mnemonicRef.current, chainId);
+      }
+      // Fall back to Keplr only for non-wallet accounts
+      if (!isWalletAccount) {
+        const windowKeplr = await getKeplr();
+        if (windowKeplr) {
+          await windowKeplr.enable(chainId);
+          return windowKeplr.getOfflineSignerAuto(chainId);
+        }
+      }
+      return undefined;
+    },
+    [isWalletAccount]
   );
 
   const value = useMemo(
     () => ({
       initSigner,
       signer,
+      setSigner,
+      activateWalletSigner,
       signingClient,
       signerReady,
+      unlockWallet,
+      getSignerForChain,
       getSignClientByChainId,
     }),
-    [signer, signingClient, signerReady, initSigner, getSignClientByChainId]
+    [signer, signingClient, signerReady, initSigner, setSigner, activateWalletSigner, unlockWallet, getSignerForChain, getSignClientByChainId]
   );
 
   return <SignerClientContext.Provider value={value}>{children}</SignerClientContext.Provider>;
