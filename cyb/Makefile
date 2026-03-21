@@ -36,14 +36,21 @@ clean:
 portal:
 	cd cyb-portal && trunk build --release
 
+# Build web app (React/TypeScript via Rspack)
+web:
+	cd .. && ~/.deno/bin/deno task build
+
 # Build macOS .dmg
-dmg: release portal
+dmg: release portal web
 	rm -rf target/release/cyb.app
 	mkdir -p target/release/cyb.app/Contents/MacOS
 	mkdir -p target/release/cyb.app/Contents/Resources
 	cp target/release/cyb-shell target/release/cyb.app/Contents/MacOS/cyb-shell
 	@if [ -d "cyb-portal/dist" ]; then \
 		cp -r cyb-portal/dist target/release/cyb.app/Contents/MacOS/cyb-portal; \
+	fi
+	@if [ -d "../build" ]; then \
+		cp -r ../build target/release/cyb.app/Contents/MacOS/cyb-web; \
 	fi
 	/usr/libexec/PlistBuddy -c "Add :CFBundleName string cyb" target/release/cyb.app/Contents/Info.plist
 	/usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string cyb" target/release/cyb.app/Contents/Info.plist
