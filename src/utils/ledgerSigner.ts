@@ -152,7 +152,6 @@ async function signWithLedger(
   const jsonStr = new TextDecoder().decode(serialized);
   const numChunks = Math.ceil(message.length / CHUNK_SIZE) + 1; // +1 for INIT
 
-  console.log('[Ledger] sign doc JSON:', jsonStr);
   console.log('[Ledger] message length:', message.length, 'bytes,', numChunks, 'chunks');
   console.log('[Ledger] HRP (prefix):', prefix);
 
@@ -201,7 +200,6 @@ async function signWithLedger(
     }
 
     console.error('[Ledger] sign failed:', err?.returnCode, err?.errorMessage || err?.message);
-    console.error('[Ledger] sign doc was:', jsonStr);
     throw err;
   }
 }
