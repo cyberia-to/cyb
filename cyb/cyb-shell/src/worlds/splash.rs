@@ -1,31 +1,27 @@
 use bevy::prelude::*;
 
 use super::WorldState;
-use super::legacy::LegacyContentLoaded;
 
 pub struct SplashWorldPlugin;
 
+/// Marker component for all splash entities. Public so Legacy can clean them up.
 #[derive(Component)]
-struct SplashMarker;
+pub struct SplashMarker;
 
 #[derive(Resource)]
-struct SplashState {
-    elapsed: f32,
-    content_ready_at: Option<f32>,
-}
+struct SplashTimer(f32);
+
+const SPLASH_DURATION: f32 = 2.0;
 
 impl Plugin for SplashWorldPlugin {
     fn build(&self, app: &mut App) {
-        app.insert_resource(SplashState {
-            elapsed: 0.0,
-            content_ready_at: None,
-        })
-        .add_systems(OnEnter(WorldState::Splash), show_splash)
-        .add_systems(OnExit(WorldState::Splash), hide_splash)
-        .add_systems(
-            Update,
-            update_splash.run_if(in_state(WorldState::Splash)),
-        );
+        app.insert_resource(SplashTimer(0.0))
+            .add_systems(OnEnter(WorldState::Splash), show_splash)
+            // NOTE: no OnExit cleanup — Legacy handles splash removal after WebView is ready
+            .add_systems(
+                Update,
+                update_splash.run_if(in_state(WorldState::Splash)),
+            );
     }
 }
 
@@ -98,60 +94,25 @@ struct ProgressBar;
 
 fn update_splash(
     time: Res<Time>,
-    mut state: ResMut<SplashState>,
+    mut timer: ResMut<SplashTimer>,
     mut bar_query: Query<&mut Node, With<ProgressBar>>,
-    content_loaded: Option<Res<LegacyContentLoaded>>,
     mut next_state: ResMut<NextState<WorldState>>,
 ) {
-    state.elapsed += time.delta_secs();
+    timer.0 += time.delta_secs();
+    let t = (timer.0 / SPLASH_DURATION).min(1.0);
 
-    // Track when React app actually finished mounting
-    if content_loaded.is_some() && state.content_ready_at.is_none() {
-        state.content_ready_at = Some(state.elapsed);
-        info!("Content ready at {:.1}s", state.elapsed);
-    }
-
-    // Progress:
-    // Phase 1: slow logarithmic climb to ~80% (simulates real loading feel)
-    // Phase 2: when content ready → quick fill to 100%
-    // Phase 3: brief hold then transition
-    let progress = match state.content_ready_at {
-        Some(ready_at) => {
-            let since_ready = state.elapsed - ready_at;
-            let base = base_progress(ready_at);
-            let remaining = 100.0 - base;
-            let fill = (since_ready / 0.5).min(1.0);
-            let p = base + remaining * ease_out(fill);
-
-            if since_ready > 0.8 {
-                next_state.set(WorldState::Legacy);
-            }
-            p
-        }
-        None => base_progress(state.elapsed),
-    };
+    // Ease-out progress
+    let progress = ease_out(t) * 100.0;
 
     for mut node in &mut bar_query {
         node.width = Val::Percent(progress);
     }
-}
 
-/// Logarithmic-feel progress: fast start then slows toward 80%
-fn base_progress(elapsed: f32) -> f32 {
-    // ln(1 + t) / ln(1 + max) * 80
-    let max_time = 15.0; // assume max ~15s loading
-    let t = elapsed.min(max_time);
-    let progress = (1.0 + t).ln() / (1.0 + max_time).ln();
-    progress * 80.0
+    if timer.0 >= SPLASH_DURATION {
+        next_state.set(WorldState::Legacy);
+    }
 }
 
 fn ease_out(t: f32) -> f32 {
     1.0 - (1.0 - t) * (1.0 - t)
-}
-
-fn hide_splash(mut commands: Commands, query: Query<Entity, With<SplashMarker>>) {
-    for entity in &query {
-        commands.entity(entity).despawn();
-    }
-    info!("Splash dismissed");
 }

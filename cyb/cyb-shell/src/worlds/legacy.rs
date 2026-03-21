@@ -1,7 +1,5 @@
 use std::borrow::Cow;
 use std::path::PathBuf;
-use std::sync::Arc;
-use std::sync::atomic::{AtomicBool, Ordering};
 
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
@@ -9,6 +7,7 @@ use bevy::winit::WINIT_WINDOWS;
 use wry::{http, Rect, WebView, WebViewBuilder};
 
 use super::WorldState;
+use super::splash::SplashMarker;
 
 pub struct LegacyWorldPlugin;
 
@@ -20,29 +19,21 @@ pub(crate) struct LegacyWebView {
 #[derive(Resource)]
 struct LegacyPendingCreate;
 
-/// Marker: web content has finished loading (React app mounted)
+/// Timer to clean up splash entities after WebView is up
 #[derive(Resource)]
-pub struct LegacyContentLoaded;
-
-/// Shared flag set by WebView IPC when content is loaded
-#[derive(Resource)]
-struct ContentLoadedFlag(Arc<AtomicBool>);
+struct SplashCleanupTimer(f32);
 
 impl Plugin for LegacyWorldPlugin {
     fn build(&self, app: &mut App) {
-        let flag = Arc::new(AtomicBool::new(false));
-        app.insert_resource(ContentLoadedFlag(flag));
-        app.insert_resource(LegacyPendingCreate);
-
         app.add_systems(OnEnter(WorldState::Legacy), show_legacy)
             .add_systems(OnExit(WorldState::Legacy), hide_legacy)
             .add_systems(
                 Update,
-                preload_legacy_webview.run_if(resource_exists::<LegacyPendingCreate>),
+                deferred_create_legacy.run_if(resource_exists::<LegacyPendingCreate>),
             )
             .add_systems(
                 Update,
-                poll_content_loaded.run_if(not(resource_exists::<LegacyContentLoaded>)),
+                cleanup_splash.run_if(resource_exists::<SplashCleanupTimer>),
             )
             .add_systems(
                 Update,
@@ -51,55 +42,65 @@ impl Plugin for LegacyWorldPlugin {
     }
 }
 
-fn poll_content_loaded(mut commands: Commands, flag: Res<ContentLoadedFlag>) {
-    if flag.0.load(Ordering::Relaxed) {
-        commands.insert_resource(LegacyContentLoaded);
-        info!("Legacy content loaded (React app ready)");
-    }
-}
-
-/// Preload WebView in background (runs during Splash and Legacy states)
-fn preload_legacy_webview(world: &mut World) {
+fn deferred_create_legacy(world: &mut World) {
     if world.get_non_send_resource::<LegacyWebView>().is_some() {
         world.remove_resource::<LegacyPendingCreate>();
         return;
     }
     create_legacy_webview(world);
-    if let Some(wv) = world.get_non_send_resource::<LegacyWebView>() {
-        // Hide it until Legacy state is entered
-        let _ = wv.webview.set_visible(false);
+    if world.get_non_send_resource::<LegacyWebView>().is_some() {
         world.remove_resource::<LegacyPendingCreate>();
-        info!("Legacy WebView preloaded (hidden)");
     }
 }
 
 fn show_legacy(world: &mut World) {
     if let Some(wv) = world.get_non_send_resource::<LegacyWebView>() {
+        // Re-entering Legacy — WebView already exists
         let _ = wv.webview.set_visible(true);
         update_legacy_bounds(world);
         info!("Legacy WebView shown");
         return;
     }
 
-    // WebView not preloaded yet — create now
+    // First time — create transparent WebView (Bevy black shows through)
     create_legacy_webview(world);
-    if world.get_non_send_resource::<LegacyWebView>().is_none() {
+    if world.get_non_send_resource::<LegacyWebView>().is_some() {
+        // Clean up splash entities after a brief delay
+        world.insert_resource(SplashCleanupTimer(0.0));
+        info!("Legacy WebView created (transparent, splash will clean up)");
+    } else {
         world.insert_resource(LegacyPendingCreate);
     }
 }
 
+/// Remove leftover splash entities once WebView is rendering
+fn cleanup_splash(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut timer: ResMut<SplashCleanupTimer>,
+    splash_query: Query<Entity, With<SplashMarker>>,
+) {
+    timer.0 += time.delta_secs();
+    if timer.0 < 0.5 {
+        return;
+    }
+
+    for entity in &splash_query {
+        commands.entity(entity).despawn();
+    }
+    commands.remove_resource::<SplashCleanupTimer>();
+    info!("Splash cleaned up");
+}
+
 fn legacy_build_dir() -> PathBuf {
     if cfg!(debug_assertions) {
-        // Dev: use local build/ from project root
         let manifest_dir = env!("CARGO_MANIFEST_DIR");
         let build = PathBuf::from(manifest_dir).join("../../build");
         if build.exists() {
             return build.canonicalize().unwrap_or(build);
         }
-        // Fallback: dev server
         PathBuf::new()
     } else {
-        // Release: bundled inside .app
         let exe_dir = std::env::current_exe()
             .ok()
             .and_then(|p| p.parent().map(|d| d.to_path_buf()))
@@ -142,19 +143,7 @@ fn mime_from_path(path: &str) -> &'static str {
     }
 }
 
-/// JS injected into WebView to signal when React app is mounted
-const READY_SCRIPT: &str = r#"
-    window.addEventListener('load', function() {
-        // Wait a tick for React to mount
-        setTimeout(function() {
-            if (window.ipc) window.ipc.postMessage('ready');
-        }, 100);
-    });
-"#;
-
 fn create_legacy_webview(world: &mut World) {
-    let flag = world.resource::<ContentLoadedFlag>().0.clone();
-
     let primary_entity = world
         .query_filtered::<Entity, With<PrimaryWindow>>()
         .single(world);
@@ -169,27 +158,12 @@ fn create_legacy_webview(world: &mut World) {
         let inner_size = window_wrapper.inner_size();
         let build_dir = legacy_build_dir();
 
-        let ipc_flag = flag.clone();
-        let ipc_handler = move |msg: wry::http::Request<String>| {
-            let body = msg.body().as_str();
-            if body == "ready" {
-                ipc_flag.store(true, Ordering::Relaxed);
-            }
-        };
-
         // Dev mode: no local build, fall back to dev server
         if build_dir.as_os_str().is_empty() {
             info!("Legacy: no build/, falling back to https://localhost:3001");
-            let ipc_flag2 = flag.clone();
-            let ipc_handler2 = move |msg: wry::http::Request<String>| {
-                if msg.body().as_str() == "ready" {
-                    ipc_flag2.store(true, Ordering::Relaxed);
-                }
-            };
             return match WebViewBuilder::new()
                 .with_url("https://localhost:3001")
-                .with_ipc_handler(ipc_handler2)
-                .with_initialization_script(READY_SCRIPT)
+                .with_transparent(true)
                 .with_bounds(Rect {
                     position: wry::dpi::PhysicalPosition::new(0, 0).into(),
                     size: wry::dpi::PhysicalSize::new(inner_size.width, inner_size.height).into(),
@@ -208,8 +182,7 @@ fn create_legacy_webview(world: &mut World) {
         // Serve local build via custom protocol
         let dist = build_dir.clone();
         match WebViewBuilder::new()
-            .with_ipc_handler(ipc_handler)
-            .with_initialization_script(READY_SCRIPT)
+            .with_transparent(true)
             .with_custom_protocol("cyb".into(), move |_webview_id, request| {
                 let uri_path = request.uri().path();
                 let path = if uri_path == "/" || uri_path.is_empty() {
@@ -229,7 +202,6 @@ fn create_legacy_webview(world: &mut World) {
                             .unwrap()
                     }
                     Err(_) => {
-                        // SPA fallback: serve index.html for client-side routing
                         match std::fs::read(dist.join("index.html")) {
                             Ok(content) => {
                                 http::Response::builder()
@@ -268,7 +240,6 @@ fn create_legacy_webview(world: &mut World) {
     });
 
     if let Some(webview) = result {
-        // Inject bootstrap data (referral, wallet) into WebView if available
         if let Some(bootstrap_js) = load_bootstrap_script() {
             if let Err(e) = webview.evaluate_script(&bootstrap_js) {
                 warn!("Failed to inject bootstrap: {}", e);
@@ -278,9 +249,6 @@ fn create_legacy_webview(world: &mut World) {
     }
 }
 
-/// Load bootstrap.json from app data dir and return JS injection script.
-/// bootstrap.json contains {mnemonic, referrer, name} for wallet+referral import.
-/// File is deleted after reading (one-time import).
 fn load_bootstrap_script() -> Option<String> {
     let home = std::env::var("HOME").ok()?;
     let bootstrap_path = if cfg!(target_os = "macos") {
@@ -294,14 +262,12 @@ fn load_bootstrap_script() -> Option<String> {
     }
 
     let content = std::fs::read_to_string(&bootstrap_path).ok()?;
-    // Basic JSON validation: must start with { and end with }
     let trimmed = content.trim();
     if !trimmed.starts_with('{') || !trimmed.ends_with('}') {
         warn!("Invalid bootstrap.json, skipping");
         return None;
     }
 
-    // Delete after reading (one-time import)
     let _ = std::fs::remove_file(&bootstrap_path);
     info!("Bootstrap data loaded and injected");
 
