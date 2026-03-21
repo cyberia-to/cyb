@@ -120,7 +120,7 @@ const _testFunc = (responseDataPools, _jsCyber) => {
   return 'data';
 };
 
-function TestKeplr() {
+function TestPage() {
   // const { result, error, run } = useWebworker(testFunc);
 
   // console.log('result', result);
@@ -164,4 +164,4 @@ function TestKeplr() {
   );
 }
 
-export default TestKeplr;
+export default TestPage;

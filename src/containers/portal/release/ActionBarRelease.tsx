@@ -14,7 +14,7 @@ import { AccountValue } from 'src/types/defaultAccount';
 import { Account, ActionBar, BtnGrd, Dots } from '../../../components';
 import { trimString } from '../../../utils/utils';
 import { TxHash } from '../hook/usePingTxs';
-import { GIFT_ICON } from '../utils';
+import { GIFT_ICON, getSignerKeyInfo } from '../utils';
 import mssgsClaim from '../utilsMsgs';
 import { CurrentRelease } from './type';
 
@@ -67,7 +67,7 @@ function ActionBarRelease({
   const getRelease = useCallback(async () => {
     try {
       if (signer && signingClient && currentRelease) {
-        const { isNanoLedger, bech32Address: addressKeplr } = await signer.keplr.getKey(CHAIN_ID);
+        const { isNanoLedger, bech32Address: signerAddress } = await getSignerKeyInfo(signer, CHAIN_ID);
 
         const msgs = [];
 
@@ -85,7 +85,7 @@ function ActionBarRelease({
 
         const msgsBroadcast = await mssgsClaim(
           {
-            sender: addressKeplr,
+            sender: signerAddress,
             isNanoLedger,
           },
           msgs,
@@ -94,13 +94,6 @@ function ActionBarRelease({
           true // onlyDelegate
         );
 
-        if (isNanoLedger) {
-          setAdviser(
-            "Ledger Nano-S is temporarily not supported, but don't worry, you can release your gift later",
-            'red'
-          );
-        }
-
         if (!msgsBroadcast.length) {
           return;
         }
@@ -108,7 +101,7 @@ function ActionBarRelease({
         const multiplier = new BigNumber(2).multipliedBy(msgsBroadcast.length);
 
         const executeResponseResult = await signingClient.signAndBroadcast(
-          addressKeplr,
+          signerAddress,
           [...msgsBroadcast],
           Soft3MessageFactory.fee(multiplier.toNumber()),
           'cyber'
@@ -277,7 +270,7 @@ function ActionBarRelease({
   if (step === STATE_CHANGE_ACCOUNT) {
     return (
       <ActionBar onClickBack={() => setStep(STEP_INIT)}>
-        choose {useAddressOwner} in keplr
+        choose {useAddressOwner} in your wallet
       </ActionBar>
     );
   }

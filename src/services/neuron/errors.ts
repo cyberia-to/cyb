@@ -1,4 +1,5 @@
 import { DeliverTxResponse } from '@cosmjs/stargate';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 
 export class SigningCyberClientError extends Error {
   public code: number;
@@ -9,7 +10,7 @@ export class SigningCyberClientError extends Error {
     if (Array.isArray(response)) {
       message = response.join('\r\n');
     } else if (response.rawLog) {
-      message = response.rawLog.toString();
+      message = friendlyErrorMessage(response.rawLog.toString());
       code = response.code;
     } else {
       message = message?.error;

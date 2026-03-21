@@ -1,14 +1,24 @@
-/* eslint-disable import/no-unused-modules */
-/* eslint-disable import/prefer-default-export */
 import {
   DirectSecp256k1HdWallet,
   DirectSecp256k1HdWalletOptions,
 } from '@cosmjs/proto-signing/build/directsecp256k1hdwallet';
 import { Bip39, EnglishMnemonic } from '@cosmjs/crypto';
+import { toBase64, toUtf8 } from '@cosmjs/encoding';
+import {
+  Secp256k1HdWallet,
+  makeSignDoc,
+} from '@cosmjs/amino';
 import defaultNetworks from 'src/constants/defaultNetworks';
 import networkList from './networkListIbc';
 
+export interface ArbSignResult {
+  pub_key: { type: string; value: string };
+  signature: string;
+}
+
 export class CybOfflineSigner extends DirectSecp256k1HdWallet {
+  private _aminoWallet: Secp256k1HdWallet | null = null;
+
   public static async fromMnemonic(
     mnemonic: string,
     options: Partial<DirectSecp256k1HdWalletOptions> = {}
@@ -19,25 +29,70 @@ export class CybOfflineSigner extends DirectSecp256k1HdWallet {
       options.bip39Password
     );
 
-    const signer = new CybOfflineSigner(mnemonicChecked as any, {
+    // Parent constructor expects internal Mnemonic type — EnglishMnemonic satisfies it at runtime
+    return new CybOfflineSigner(mnemonicChecked as unknown as string, {
       ...options,
       seed,
     });
+  }
 
-    return signer;
+  private async getAminoWallet(): Promise<Secp256k1HdWallet> {
+    if (!this._aminoWallet) {
+      const [{ address }] = await this.getAccounts();
+      const prefix = address.substring(0, address.indexOf('1'));
+      this._aminoWallet = await Secp256k1HdWallet.fromMnemonic(
+        this.mnemonic,
+        { prefix }
+      );
+    }
+    return this._aminoWallet;
+  }
+
+  /**
+   * ADR-036 arbitrary message signing — mirrors Keplr's signArbitrary API.
+   */
+  async signArbitrary(
+    _chainId: string,
+    signerAddress: string,
+    data: string
+  ): Promise<ArbSignResult> {
+    const aminoWallet = await this.getAminoWallet();
+
+    // ADR-036 sign doc: wrap data as MsgSignData
+    const signDoc = makeSignDoc(
+      [
+        {
+          type: 'sign/MsgSignData',
+          value: {
+            signer: signerAddress,
+            data: toBase64(toUtf8(data)),
+          },
+        },
+      ],
+      { amount: [], gas: '0' },
+      '',
+      '',
+      0,
+      0
+    );
+
+    const res = await aminoWallet.signAmino(signerAddress, signDoc);
+    return res.signature;
   }
 }
 
-export const getOfflineSigner = (mnemonic: string, network?: string) =>
-  CybOfflineSigner.fromMnemonic(mnemonic, {
-    prefix: network
-      ? networkList[network].prefix
-      : defaultNetworks.bostrom.BECH32_PREFIX,
-  });
-
-export async function generateMnemonic(): Promise<string> {
-  const wallet = await DirectSecp256k1HdWallet.generate(12, {
-    prefix: defaultNetworks.bostrom.BECH32_PREFIX,
-  });
-  return wallet.mnemonic;
+/** Type guard: checks if signer supports ADR-036 signArbitrary */
+export function hasSignArbitrary(
+  signer: unknown
+): signer is CybOfflineSigner {
+  return signer != null && typeof (signer as CybOfflineSigner).signArbitrary === 'function';
 }
+
+export const getOfflineSigner = (mnemonic: string, network?: string) => {
+  const prefix =
+    network && networkList[network]?.prefix
+      ? networkList[network].prefix
+      : defaultNetworks.bostrom.BECH32_PREFIX;
+
+  return CybOfflineSigner.fromMnemonic(mnemonic, { prefix });
+};

@@ -4,9 +4,10 @@ export const backdrop: CSSProperties = {
   position: 'fixed',
   top: 0,
   left: 0,
-  width: '100%',
-  height: '100%',
-  background: 'rgba(0, 0, 0, 0.5)',
+  width: '100vw',
+  height: '100vh',
+  background: 'rgba(0, 0, 0, 0.85)',
+  backdropFilter: 'blur(4px)',
   zIndex: 9999,
 };
 
@@ -15,10 +16,9 @@ export const wrapper: CSSProperties = {
   left: '50%',
   transform: 'translate(-50%, -50%)',
   position: 'fixed',
-  minWidth: '300px',
-  maxWidth: 'calc(100vw - 32px)',
-  maxHeight: 'calc(100vh - 32px)',
+  minWidth: '420px',
+  maxWidth: 'calc(100vw - 64px)',
+  maxHeight: 'calc(100vh - 64px)',
   overflow: 'auto',
-  backgroundColor: 'black',
   zIndex: 10000,
 };

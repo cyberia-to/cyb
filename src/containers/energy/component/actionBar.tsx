@@ -20,6 +20,7 @@ import {
 import { routes } from '../../../routes';
 import { LEDGER } from '../../../utils/config';
 import { ValueImg } from '../ui';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 
 const _back = require('../../../image/arrow-back-outline.svg');
 
@@ -79,7 +80,7 @@ function ActionBar({ selected, updateFnc, addressActive, selectedRoute }) {
           if (response.code) {
             setStage(STAGE_ERROR);
             setTxHeight(response.height);
-            setErrorMessage(response.raw_log);
+            setErrorMessage(friendlyErrorMessage(response.raw_log));
             return;
           }
         }
@@ -156,7 +157,7 @@ function ActionBar({ selected, updateFnc, addressActive, selectedRoute }) {
             setTxHash(response.transactionHash);
           } else {
             setTxHash(null);
-            setErrorMessage(response.rawLog.toString());
+            setErrorMessage(friendlyErrorMessage(response.rawLog));
             setStage(STAGE_ERROR);
           }
         } else {
@@ -170,7 +171,7 @@ function ActionBar({ selected, updateFnc, addressActive, selectedRoute }) {
       } catch (error) {
         console.log(error);
         setTxHash(null);
-        setErrorMessage(error.toString());
+        setErrorMessage(friendlyErrorMessage(error?.message || error));
         setStage(STAGE_ERROR);
       }
     }

@@ -5,7 +5,7 @@ import React, { Component } from 'react';
 import { connect } from 'react-redux';
 import { PATTERN_IPFS_HASH } from 'src/constants/patterns';
 import { SenseApi } from 'src/contexts/backend/services/senseApi';
-import withIpfsAndKeplr from 'src/hocs/withIpfsAndKeplr';
+import withIpfsAndSigner from 'src/hocs/withIpfsAndSigner';
 import { BackgroundWorker } from 'src/services/backend/workers/background/worker';
 import { sendCyberlink } from 'src/services/neuron/neuronApi';
 import { getTxs } from 'src/services/transactions/lcd';
@@ -21,17 +21,15 @@ import {
 } from '../../components';
 import { LEDGER } from '../../utils/config';
 import { trimString } from '../../utils/utils';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 
-const imgKeplr = require('../../image/keplr-icon.svg');
-const imgLedger = require('../../image/ledger.svg');
-const imgWallet = require('../../image/wallet-outline.svg');
 const imgCyber = require('../../image/blue-circle.png');
 
 const { STAGE_INIT, STAGE_READY, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED, STAGE_ERROR } =
   LEDGER;
 
 const STAGE_IPFS_HASH = 3.1;
-const STAGE_KEPLR_APPROVE = 3.2;
+const STAGE_SIGNER_APPROVE = 3.2;
 
 // generated
 interface Props {
@@ -143,7 +141,7 @@ class ActionBarContainer extends Component<Props, any> {
     });
   };
 
-  onClickInitKeplr = () => {
+  onClickInitSigner = () => {
     this.calculationIpfsFrom();
     this.calculationIpfsTo();
     this.setState({
@@ -157,7 +155,7 @@ class ActionBarContainer extends Component<Props, any> {
       const { fromCid, toCid, addressLocalStor } = this.state;
 
       this.setState({
-        stage: STAGE_KEPLR_APPROVE,
+        stage: STAGE_SIGNER_APPROVE,
       });
       if (signer && signingClient) {
         const { address } = (await signer.getAccounts())[0];
@@ -193,7 +191,7 @@ class ActionBarContainer extends Component<Props, any> {
       this.setState({
         stage: STAGE_ERROR,
         txBody: null,
-        errorMessage: e.toString(),
+        errorMessage: friendlyErrorMessage(e?.message || e),
       });
     }
   };
@@ -220,7 +218,7 @@ class ActionBarContainer extends Component<Props, any> {
           this.setState({
             stage: STAGE_ERROR,
             txHeight: data.height,
-            errorMessage: data.raw_log,
+            errorMessage: friendlyErrorMessage(data.raw_log),
           });
           return;
         }
@@ -284,17 +282,11 @@ class ActionBarContainer extends Component<Props, any> {
       });
     }
 
-    if (addressLocalStor.keys === 'keplr' || addressLocalStor.keys === 'wallet') {
-      this.onClickInitKeplr();
-    }
+    this.onClickInitSigner();
   };
 
   onClickInit = () => {
-    const { addressLocalStor } = this.state;
-
-    if (addressLocalStor.keys === 'keplr' || addressLocalStor.keys === 'wallet') {
-      this.onClickInitKeplr();
-    }
+    this.onClickInitSigner();
   };
 
   render() {
@@ -304,10 +296,6 @@ class ActionBarContainer extends Component<Props, any> {
     const { textBtn, placeholder, rankLink } = this.props;
 
     if (stage === STAGE_INIT && rankLink && rankLink !== null) {
-      let keys = 'ledger';
-      if (addressLocalStor !== null) {
-        keys = addressLocalStor.keys;
-      }
       return (
         <ActionBar>
           <ActionBarContentText>
@@ -328,7 +316,7 @@ class ActionBarContainer extends Component<Props, any> {
                 </Pane>
               }
               onClick={() => this.onClickBtnRank()}
-              img={keys === 'ledger' ? imgLedger : (keys === 'wallet' || process.env.IS_TAURI) ? imgWallet : imgKeplr}
+              img={imgCyber}
             />
           </ActionBarContentText>
         </ActionBar>
@@ -342,6 +330,7 @@ class ActionBarContainer extends Component<Props, any> {
           keys={addressLocalStor !== null ? addressLocalStor.keys : false}
           onClickBtn={this.onClickInit}
           contentHash={file?.name || contentHash}
+          searchHash={this.props.keywordHash}
           onChangeInputContentHash={this.onChangeInput}
           inputOpenFileRef={this.inputOpenFileRef}
           showOpenFileDlg={this.showOpenFileDlg}
@@ -363,7 +352,7 @@ class ActionBarContainer extends Component<Props, any> {
       );
     }
 
-    if (stage === STAGE_KEPLR_APPROVE) {
+    if (stage === STAGE_SIGNER_APPROVE) {
       return (
         <ActionBar>
           <ActionBarContentText>
@@ -418,4 +407,4 @@ const mapStateToProps = (store) => {
   };
 };
 
-export default withIpfsAndKeplr(connect(mapStateToProps)(ActionBarContainer));
+export default withIpfsAndSigner(connect(mapStateToProps)(ActionBarContainer));

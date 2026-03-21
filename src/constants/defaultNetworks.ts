@@ -62,7 +62,7 @@ const defaultNetworks: NetworksList = {
     INDEX_HTTPS: 'https://index.bostrom.cybernode.ai/v1/graphql',
     INDEX_WEBSOCKET: 'wss://index.bostrom.cybernode.ai/v1/graphql',
     BECH32_PREFIX: 'bostrom',
-    MEMO_KEPLR: '[bostrom] cyb.ai, using keplr',
+    MEMO: '[bostrom] cyb.ai',
   },
   localbostrom: {
     CHAIN_ID: Networks.LOCAL_BOSTROM,
@@ -74,7 +74,7 @@ const defaultNetworks: NetworksList = {
     INDEX_HTTPS: 'https://index.bostrom.moon.cybernode.ai/v1/graphql',
     INDEX_WEBSOCKET: 'wss://index.bostrom.moon.cybernode.ai/v1/graphql',
     BECH32_PREFIX: 'bostrom',
-    MEMO_KEPLR: '[bostrom] cyb.ai, using keplr',
+    MEMO: '[bostrom] cyb.ai',
   },
 
   'space-pussy': {
@@ -87,7 +87,7 @@ const defaultNetworks: NetworksList = {
     INDEX_HTTPS: 'https://index.space-pussy.cybernode.ai/v1/graphql',
     INDEX_WEBSOCKET: 'wss://index.space-pussy.cybernode.ai/v1/graphql',
     BECH32_PREFIX: 'pussy',
-    MEMO_KEPLR: '[space-pussy] cyb.ai, using keplr',
+    MEMO: '[space-pussy] cyb.ai',
   },
 };
 

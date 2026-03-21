@@ -10,6 +10,7 @@ import {
   TransactionSubmitted,
 } from '../../../components';
 import { LEDGER } from '../../../utils/config';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 
 const { STAGE_ERROR, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED } = LEDGER;
 
@@ -51,7 +52,7 @@ function ActionBarPingTxs({ stageActionBarStaps }) {
           if (response.code) {
             setStage(STAGE_ERROR);
             setTxHeight(response.height);
-            setErrorMessage(response.rawLog);
+            setErrorMessage(friendlyErrorMessage(response.rawLog));
             return;
           }
         }

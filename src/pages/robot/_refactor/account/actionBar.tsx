@@ -1,4 +1,3 @@
-/* eslint-disable */
 import { ActionBar } from '@cybercongress/gravity';
 import React, { Component } from 'react';
 import { createSearchParams } from 'react-router-dom';
@@ -22,8 +21,9 @@ import {
   TransactionError,
   TransactionSubmitted,
 } from '../../../../components';
-import withIpfsAndKeplr from '../../../../hocs/withIpfsAndKeplr';
+import withIpfsAndSigner from '../../../../hocs/withIpfsAndSigner';
 import { LEDGER } from '../../../../utils/config';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 
 const { STAGE_INIT, STAGE_READY, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED, STAGE_ERROR } =
   LEDGER;
@@ -145,7 +145,7 @@ class ActionBarContainer extends Component<Props> {
               txHash = response.transactionHash;
 
               if (response.code) {
-                throw Error(response.rawLog.toString());
+                throw Error(friendlyErrorMessage(response.rawLog));
               }
             }
           }
@@ -205,7 +205,7 @@ class ActionBarContainer extends Component<Props> {
           this.setState({
             stage: STAGE_ERROR,
             txHeight: data.height,
-            errorMessage: data.raw_log,
+            errorMessage: friendlyErrorMessage(data.raw_log),
           });
           return;
         }
@@ -228,7 +228,7 @@ class ActionBarContainer extends Component<Props> {
 
   onClickSend = () => {
     const { defaultAccount } = this.props;
-    if (defaultAccount.keys === 'keplr') {
+    if (defaultAccount.keys === 'wallet' || defaultAccount.keys === 'ledger') {
       this.generateTxSendKplr();
     }
   };
@@ -290,11 +290,7 @@ class ActionBarContainer extends Component<Props> {
     const isOwner = defaultAccount && defaultAccount.bech32 === addressSend;
 
     if (stage === STAGE_INIT) {
-      const followBtn = (
-        <Button key={'action-bar-button-follow'} onClick={this.onClickSend}>
-          Follow
-        </Button>
-      );
+      const followBtn = <Button onClick={this.onClickSend}>Follow</Button>;
 
       const content = [];
 
@@ -343,15 +339,8 @@ class ActionBarContainer extends Component<Props> {
         }
       }
 
-      if (type === 'security' && isOwner && defaultAccount.keys === 'keplr') {
-        content.push(
-          <Button
-            key={'action-bar-button-claim-rewards'}
-            onClick={this.onClickSend}
-          >
-            Claim rewards
-          </Button>
-        );
+      if (type === 'security' && isOwner && (defaultAccount.keys === 'wallet' || defaultAccount.keys === 'ledger')) {
+        content.push(<Button onClick={this.onClickSend}>Claim rewards</Button>);
       }
 
       return <ActionBarComp>{content}</ActionBarComp>;
@@ -408,4 +397,4 @@ class ActionBarContainer extends Component<Props> {
   }
 }
 
-export default withIpfsAndKeplr(ActionBarContainer);
+export default withIpfsAndSigner(ActionBarContainer);

@@ -30,7 +30,7 @@ import Release from './containers/portal/release';
 import SigmaWrapper from './containers/sigma/SigmaWrapper';
 import Story from './containers/story/story';
 import Temple from './containers/temple/Temple';
-import TestKeplr from './containers/testKeplre';
+import TestPage from './containers/testPage';
 import TrollBoxx from './containers/trollBox';
 import Txs from './containers/txs';
 import TxsDetails from './containers/txs/txsDetails';
@@ -187,7 +187,7 @@ function AppRouter() {
               <Route path="blocks/:idBlock" element={<BlockDetails />} />
             </Route>
             <Route path="/degenbox" element={<TrollBoxx />} />
-            <Route path="/test" element={<TestKeplr />} />
+            <Route path="/test" element={<TestPage />} />
             <Route path={routes.hfr.path} element={<Mint />} />
             <Route path="/token" element={<Market />} />
             <Route path="/token/:tab" element={<Market />} />

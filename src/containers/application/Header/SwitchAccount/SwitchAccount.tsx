@@ -180,7 +180,7 @@ function SwitchAccount() {
               </button>
             )}
             {isReadOnly && <Pill color="yellow" text="read only" />}
-            {!isReadOnly && !signerReady && isOnline && <Pill color="red" text="switch keplr" />}
+            {!isReadOnly && !signerReady && isOnline && <Pill color="red" text="unlock wallet" />}
             {!isOnline && <Pill color="red" text="offline" />}
             <MiningBadge />
           </div>

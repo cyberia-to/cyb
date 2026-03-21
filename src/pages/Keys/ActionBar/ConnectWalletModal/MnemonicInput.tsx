@@ -20,22 +20,21 @@ export default function MnemonicInput({
   onWordsDetected,
   onSingleChange,
 }: MnemonicInputProps) {
-  // Handle paste: detect multi-word and delegate to parent
   const handlePaste = useCallback(
     (e: ClipboardEvent<HTMLInputElement>) => {
-      const paste = (e.clipboardData || (window as any).clipboardData)?.getData('text');
+      const paste = e.clipboardData?.getData('text');
       if (!paste) return;
 
       const words = paste.trim().split(/\s+/);
       if (words.length > 1) {
         e.preventDefault();
         onWordsDetected(words, index);
+        navigator.clipboard.writeText('').catch(() => {});
       }
     },
     [index, onWordsDetected]
   );
 
-  // Handle change: detect multi-word paste via onChange (Android fallback)
   const handleChange = useCallback(
     (e: { target: { value: string } }) => {
       const val = e.target.value;
@@ -52,11 +51,15 @@ export default function MnemonicInput({
   return (
     <Input
       title={`${index + 1}`}
-      error={isTouched && !values[index] ? `${index} is missing` : undefined}
+      error={undefined}
       value={values[index] || ''}
       onChange={handleChange}
       onPaste={handlePaste}
       onBlurFnc={onBlurFunc}
+      spellCheck={false}
+      autoComplete="off"
+      autoCorrect="off"
+      autoCapitalize="off"
     />
   );
 }

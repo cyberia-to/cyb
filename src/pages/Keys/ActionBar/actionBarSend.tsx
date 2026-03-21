@@ -14,12 +14,13 @@ import { PATTERN_CYBER } from 'src/constants/patterns';
 import { useSigningClient } from 'src/contexts/signerClient';
 import { getTxs } from 'src/services/transactions/lcd';
 import { LEDGER } from 'src/utils/config';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 
 const { STAGE_ERROR, STAGE_SUBMITTED, STAGE_CONFIRMING, STAGE_CONFIRMED } = LEDGER;
 
 const STAGE_SEND = 1.1;
 
-function ActionBarKeplr({ updateAddress, updateBalance, onClickBack }) {
+function ActionBarSendTokens({ updateAddress, updateBalance, onClickBack }) {
   const { signer, signingClient } = useSigningClient();
   const [stage, setStage] = useState(STAGE_SEND);
   const [amountSend, setAmountSend] = useState('');
@@ -30,9 +31,15 @@ function ActionBarKeplr({ updateAddress, updateBalance, onClickBack }) {
   const [disabledGenerate, setDisabledGenerate] = useState(true);
 
   const generateTxSend = async () => {
+    if (!signer || !signingClient) {
+      setErrorMessage('Unlock your wallet first to send tokens');
+      setStage(STAGE_ERROR);
+      return;
+    }
+
     const amount = parseFloat(amountSend);
-    if (signer && signingClient) {
-      setStage(STAGE_SUBMITTED);
+    setStage(STAGE_SUBMITTED);
+    try {
       const [{ address }] = await signer.getAccounts();
       const fee = {
         amount: [],
@@ -44,10 +51,11 @@ function ActionBarKeplr({ updateAddress, updateBalance, onClickBack }) {
         coins(amount, BASE_DENOM),
         fee
       );
-      console.log('result: ', result);
       const hash = result.transactionHash;
-      console.log('hash :>> ', hash);
       setTxHash(hash);
+    } catch (e: any) {
+      setStage(STAGE_ERROR);
+      setErrorMessage(e?.message || 'Transaction failed');
     }
   };
 
@@ -81,7 +89,7 @@ function ActionBarKeplr({ updateAddress, updateBalance, onClickBack }) {
           if (response.code) {
             setStage(STAGE_ERROR);
             setTxHeight(response.height);
-            setErrorMessage(response.raw_log);
+            setErrorMessage(friendlyErrorMessage(response.raw_log));
             return;
           }
         }
@@ -143,4 +151,4 @@ function ActionBarKeplr({ updateAddress, updateBalance, onClickBack }) {
   return null;
 }
 
-export default ActionBarKeplr;
+export default ActionBarSendTokens;

@@ -42,8 +42,10 @@ function useGetBalancesIbc(client: SigningStargateClient, denom) {
     if (denom.includes('ibc') && ibcDataDenom && ibcDataDenom[denom]) {
       return ibcDataDenom[denom].baseDenom;
     }
+    const network = networkList[responseChainId];
+    if (!network?.destChannelId) return null;
     return ibcDenom(
-      [{ portId: 'transfer', channelId: networkList[responseChainId].destChannelId }],
+      [{ portId: 'transfer', channelId: network.destChannelId }],
       denom
     );
   }, [client, denom, ibcDataDenom]);

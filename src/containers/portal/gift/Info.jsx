@@ -13,7 +13,7 @@ const {
   STATE_PROVE,
   STATE_PROVE_CONNECT,
   STATE_PROVE_SIGN_MM,
-  STATE_PROVE_SIGN_KEPLR,
+  STATE_PROVE_SIGN,
   STATE_PROVE_SEND_SIGN,
   STATE_PROVE_CHANGE_ACCOUNT,
   STATE_PROVE_YOU_ADDED_ADDR,
@@ -88,8 +88,8 @@ function Info({ stepCurrent, useReleasedStage, nextRelease }) {
       content = <span>Sign message in metamask</span>;
       break;
 
-    case STATE_PROVE_SIGN_KEPLR:
-      content = <span>sign message in keplr</span>;
+    case STATE_PROVE_SIGN:
+      content = <span>sign message in your wallet</span>;
       break;
 
     case STATE_PROVE_SEND_SIGN:
@@ -97,7 +97,7 @@ function Info({ stepCurrent, useReleasedStage, nextRelease }) {
       break;
 
     case STATE_PROVE_CHANGE_ACCOUNT:
-      content = <span> you need change account in keplr</span>;
+      content = <span> you need to change account in your wallet</span>;
       break;
 
     case STATE_PROVE_YOU_ADDED_ADDR:

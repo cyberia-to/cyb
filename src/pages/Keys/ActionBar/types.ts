@@ -1,1 +1,1 @@
-export type ConnectMethod = 'keplr' | 'wallet' | 'read-only';
+export type ConnectMethod = 'ledger' | 'wallet' | 'read-only';

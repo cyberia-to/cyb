@@ -1,10 +1,8 @@
-import type { ConnectMethod } from './ActionBar/types';
-
-export const KEY_TYPE: Record<string, ConnectMethod | 'secrets'> = {
-  keplr: 'keplr',
+export const KEY_TYPE = {
+  ledger: 'ledger',
+  wallet: 'wallet',
   readOnly: 'read-only',
   secrets: 'secrets',
-  wallet: 'wallet',
 };
 
 export const KEY_LIST_TYPE = {

@@ -76,6 +76,8 @@ const resolveAlias = {
   '@achingbrain/nat-port-mapper': false,
   'default-gateway': false,
   execa: false,
+  // protobufjs is not hoisted by deno — resolve to the cached copy
+  protobufjs: path.resolve(__dirname, 'node_modules/.deno/protobufjs@6.10.2/node_modules/protobufjs'),
 };
 
 const resolveModules = ['node_modules', path.resolve(__dirname, 'node_modules/.deno/multiformats@13.4.2/node_modules')];

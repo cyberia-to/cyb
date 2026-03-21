@@ -15,6 +15,7 @@ import networks from '../../../utils/networkListIbc';
 import { convertAmountReverce, fromBech32, trimString } from '../../../utils/utils';
 import ActionBarPingTxs from '../components/actionBarPingTxs';
 import { TxsType, TypeTxsT } from '../type';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 
 const { STAGE_INIT, STAGE_ERROR, STAGE_SUBMITTED } = LEDGER;
 
@@ -129,19 +130,20 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
           amount: coinFunc(amount, tokenSelect),
         };
         pingTxsIbc(ibcClient, transferData);
+        updateFunc();
         setStage(STAGE_CONFIRMED_IBC);
         // if (response.rawLog.length > 0) {
         //   parseRawLog(response.rawLog);
         // }
       } else {
         setTxHashIbc(null);
-        setErrorMessage(response.rawLog.toString());
+        setErrorMessage(friendlyErrorMessage(response.rawLog));
         setStage(STAGE_ERROR);
       }
     } catch (e) {
       console.error(`error: `, e);
       setTxHashIbc(null);
-      setErrorMessage(e.toString());
+      setErrorMessage(friendlyErrorMessage(e?.message || e));
       setStage(STAGE_ERROR);
     }
 
@@ -156,6 +158,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
     signer,
     sourceChannel,
     tokenSelect,
+    updateFunc,
   ]);
 
   const withdrawOnClick = useCallback(async () => {
@@ -175,16 +178,16 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
 
     const amount = convertAmountReverce(tokenAmount, coinDecimals);
     const transferAmount = coinFunc(amount, tokenSelect);
-    const msg = {
+    const msg: MsgTransferEncodeObject = {
       typeUrl: '/ibc.applications.transfer.v1.MsgTransfer',
-      value: {
+      value: MsgTransfer.fromPartial({
         sourcePort,
         sourceChannel,
         sender: address,
         receiver: counterpartyAccount,
         timeoutTimestamp: BigInt(timeoutTimestamp.toNumber()),
         token: transferAmount,
-      },
+      }),
     };
     try {
       const response = await signingClient.signAndBroadcast(address, [msg], fee, '');
@@ -204,13 +207,13 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
         pingTxsIbc(signingClient, transferData);
       } else {
         setTxHash(undefined);
-        setErrorMessage(response.rawLog.toString());
+        setErrorMessage(friendlyErrorMessage(response.rawLog));
         setStage(STAGE_ERROR);
       }
     } catch (e) {
       console.error(`error: `, e);
       setTxHash(undefined);
-      setErrorMessage(e.toString());
+      setErrorMessage(friendlyErrorMessage(e?.message || e));
       setStage(STAGE_ERROR);
     }
 
@@ -246,7 +249,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
 
   if (stage === STAGE_CONFIRMED_IBC) {
     return (
-      <ActionBarCenter button={{ text: 'Fuck Google', onClick: clearState }}>
+      <ActionBarCenter button={{ text: 'Grow', onClick: clearState }}>
         <span>
           Transaction successful:{' '}
           <LinkWindow to={linkIbcTxs}>{trimString(txHashIbc, 6, 6)}</LinkWindow>

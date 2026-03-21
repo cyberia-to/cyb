@@ -1,4 +1,5 @@
 import { CyberClient } from '@cybercongress/cyber-js';
+import { OfflineSigner } from '@cybercongress/cyber-js/build/signingcyberclient';
 import { useQuery } from '@tanstack/react-query';
 import axios from 'axios';
 import { useEffect } from 'react';
@@ -7,6 +8,7 @@ import { getPassport } from 'src/services/passports/lcd';
 import { Nullable } from 'src/types';
 import { Citizenship } from 'src/types/citizenship';
 import { AccountValue } from 'src/types/defaultAccount';
+import { isLedgerSigner } from 'src/utils/ledgerSigner';
 
 const AMOUNT_ALL_STAGE = 90;
 const NEW_RELEASE = 1000; // release 1% every 1k claims
@@ -271,8 +273,34 @@ const parseRowLog = (rawlog) => {
   return rawlog;
 };
 
+type SignerKeyInfo = {
+  bech32Address: string;
+  isNanoLedger: boolean;
+  pubKey: Uint8Array;
+  name: string;
+};
+
+/**
+ * Get key info from signer — works for wallet (mnemonic) and Ledger signers.
+ */
+async function getSignerKeyInfo(
+  signer: OfflineSigner,
+  _chainId: string
+): Promise<SignerKeyInfo> {
+  const [account] = await signer.getAccounts();
+  const isLedger = isLedgerSigner(signer);
+
+  return {
+    bech32Address: account.address,
+    isNanoLedger: isLedger,
+    pubKey: account.pubkey,
+    name: isLedger ? 'Ledger' : 'Wallet',
+  };
+}
+
 export {
   activePassport,
+  getSignerKeyInfo,
   CONTRACT_ADDRESS_PASSPORT,
   useGetActivePassport,
   CONSTITUTION_HASH,

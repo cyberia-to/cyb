@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { MEMO_KEPLR } from 'src/constants/config';
+import { MEMO } from 'src/constants/config';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { useSigningClient } from 'src/contexts/signerClient';
 import Soft3MessageFactory from 'src/services/soft.js/api/msgs';
@@ -76,7 +76,7 @@ function RenderAbiExecute({ contractAddress, schema, updateFnc }) {
         contractAddress,
         formData,
         Soft3MessageFactory.fee(2),
-        MEMO_KEPLR
+        MEMO
         // coinsPlaceholder
       );
       console.log(`executeResponseResult`, executeResponseResult);
