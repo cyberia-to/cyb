@@ -7,6 +7,7 @@ import Button from 'src/components/btnGrd';
 import { BASE_DENOM, MEMO } from 'src/constants/config';
 import { useQueryClient } from 'src/contexts/queryClient';
 import { useSigningClient } from 'src/contexts/signerClient';
+import { isLedgerSigner } from 'src/utils/ledgerSigner';
 import { useSphereContext } from 'src/pages/Sphere/Sphere.context';
 import {
   ActionBar,
@@ -36,6 +37,7 @@ const TXTYPE_DELEGATE = 0;
 const TXTYPE_UNDELEGATE = 1;
 const TXTYPE_REDELEGATE = 2;
 const LEDGER_GENERATION = 23;
+const LEDGER_CLAIM_BATCH = 5; // max validators per Ledger sign doc
 
 function StatusTx({ stage, clearState, errorMessage, txHash, txHeight }) {
   if (stage === LEDGER_GENERATION) {
@@ -267,12 +269,51 @@ function ActionBarContainer({ validators, updateFnc }: Props) {
           });
 
           setStage(STAGE_WAIT);
-          const response = await signingClient.withdrawAllRewards(
-            signerAddress,
-            validatorAddress,
-            fee
-          );
-          checkTxs(response, { setTxHash, setErrorMessage, setStage });
+
+          // Ledger JSON parser can't handle large sign docs — batch validators
+          if (isLedgerSigner(signer) && validatorAddress.length > LEDGER_CLAIM_BATCH) {
+            const totalBatches = Math.ceil(validatorAddress.length / LEDGER_CLAIM_BATCH);
+
+            for (let i = 0; i < validatorAddress.length; i += LEDGER_CLAIM_BATCH) {
+              const batch = validatorAddress.slice(i, i + LEDGER_CLAIM_BATCH);
+              const batchIdx = Math.floor(i / LEDGER_CLAIM_BATCH) + 1;
+
+              setStage(STAGE_WAIT);
+              const response = await signingClient.withdrawAllRewards(signerAddress, batch, fee);
+
+              if (response.code !== 0) {
+                checkTxs(response, { setTxHash, setErrorMessage, setStage });
+                return;
+              }
+
+              // Wait for tx to confirm before next batch (sequence must increment)
+              if (batchIdx < totalBatches) {
+                setTxHash(response.transactionHash);
+                setStage(STAGE_CONFIRMING);
+                await new Promise<void>((resolve, reject) => {
+                  let attempts = 0;
+                  const poll = async () => {
+                    attempts += 1;
+                    const tx = await queryClient.getTx(response.transactionHash);
+                    if (tx && tx.code === 0) { resolve(); return; }
+                    if (tx && tx.code !== 0) { reject(new Error(tx.rawLog || `Batch ${batchIdx}/${totalBatches} failed`)); return; }
+                    if (attempts > 30) { reject(new Error(`Batch ${batchIdx}/${totalBatches} timed out`)); return; }
+                    setTimeout(poll, 2000);
+                  };
+                  poll();
+                });
+              } else {
+                checkTxs(response, { setTxHash, setErrorMessage, setStage });
+              }
+            }
+          } else {
+            const response = await signingClient.withdrawAllRewards(
+              signerAddress,
+              validatorAddress,
+              fee
+            );
+            checkTxs(response, { setTxHash, setErrorMessage, setStage });
+          }
         }
       } catch (error) {
         errorState(error);
