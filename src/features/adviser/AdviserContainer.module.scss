@@ -12,13 +12,14 @@
     position: fixed;
     top: calc(32px + env(safe-area-inset-top, 0px));
     transform: translateY(-50%);
-    left: 65px;
-    right: 65px;
+    left: 70px;
+    right: 70px;
     width: auto;
     margin: 0;
     min-height: unset;
     z-index: 3;
     overflow: hidden;
+    max-height: 40px;
   }
 }
 
@@ -40,10 +41,18 @@
   @media (max-width: 768px) {
     position: relative;
     width: 100%;
-    font-size: 12px;
+    font-size: 11px;
+    line-height: 14px;
     text-align: center;
-    padding: 0 4px;
+    padding: 2px 4px;
     overflow: hidden;
-    text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+
+    * {
+      font-size: 11px !important;
+      line-height: 14px !important;
+    }
   }
 }
