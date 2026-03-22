@@ -14,9 +14,10 @@ export type CallBackFuncStatus = (a: string) => void;
 
 export enum IPFSNodes {
   EXTERNAL = 'external',
+  HELIA = 'helia',
 }
 
-export type IpfsNodeType = 'external';
+export type IpfsNodeType = 'external' | 'helia';
 
 export type IpfsFileStats = {
   type: 'file' | 'directory' | 'raw';

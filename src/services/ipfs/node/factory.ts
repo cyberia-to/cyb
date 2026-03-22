@@ -11,6 +11,7 @@ import { withCybFeatures } from './mixins/withCybFeatures';
 
 const nodeClassMap: Record<IpfsNodeType, new () => IpfsNode> = {
   external: KuboNode,
+  helia: HeliaNode,
 };
 
 // eslint-disable-next-line import/no-unused-modules, import/prefer-default-export

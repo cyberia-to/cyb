@@ -19,6 +19,8 @@ import Ipfs from './containers/ipfs/ipfs';
 import Market from './containers/market';
 import Mint from './containers/mint';
 import Movie from './containers/movie';
+import AOS from './pages/AOS/AOS';
+import NodePage from './pages/Node/Node';
 import Nebula from './containers/nebula';
 import Objects from './containers/Objects';
 import Oracle from './containers/oracle';
@@ -205,6 +207,8 @@ function AppRouter() {
             <Route path="/warp" element={<WarpDashboardPools />} />
             <Route path="/warp/:tab" element={<Warp />} />
             <Route path="/genesis" element={<Movie />} />
+            <Route path="/aos" element={<AOS />} />
+            <Route path="/node" element={<NodePage />} />
             <Route path="/citizenship" element={<PortalCitizenship />} />
             <Route path="/gift" element={<PortalGift />} />
             <Route path="/release" element={<Release />} />

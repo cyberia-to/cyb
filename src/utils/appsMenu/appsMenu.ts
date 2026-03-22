@@ -1,7 +1,6 @@
 import portal from 'images/space-pussy.svg';
 import portalGlow from 'src/image/space-pussy-glow.svg';
 import { CHAIN_ID } from 'src/constants/config';
-import { cybernetRoutes } from 'src/features/cybernet/ui/routes';
 import congress from 'src/image/new_icons/congress.svg';
 import hfr from 'src/image/new_icons/hfr.svg';
 import mining from 'src/image/new_icons/mining.svg';
@@ -18,22 +17,6 @@ import { isPussyChain } from '../chains/pussy';
 
 const getMenuItems = () => {
   const listItemMenu = [
-    {
-      name: 'robot',
-      icon: robot,
-      to: '/robot',
-      subItems: [
-        { name: 'sense', to: 'sense', icon: require('./images/dna.png') },
-        { name: 'brain', to: 'brain', icon: require('./images/brain.png') },
-        {
-          name: 'time',
-          to: 'time',
-          icon: require('./images/horizontal-traffic-light.png'),
-        },
-        { name: 'sigma', to: 'sigma', icon: require('./images/sigma@2x.png') },
-      ],
-      // subItems: myRobotLinks,
-    },
     {
       name: 'Oracle',
       to: '/',
@@ -72,18 +55,11 @@ const getMenuItems = () => {
         { name: 'Libs', to: '/libs', icon: require('./images/database.png') },
       ],
     },
-    {
-      name: 'Docs',
-      to: 'https://docs.cyb.ai',
-      subItems: [],
-      icon: require('src/image/new_icons/docs.svg'),
-    },
-    { name: 'Nebula', to: '/nebula', subItems: [], icon: nebulaIcon },
+    { name: 'Mining', icon: mining, to: '/mining', subItems: [] },
     {
       name: 'Teleport',
       to: '/teleport',
       icon: teleport,
-      active: false,
       subItems: [
         {
           name: 'Send',
@@ -103,149 +79,18 @@ const getMenuItems = () => {
       ],
     },
     {
-      name: 'Warp',
-      icon: warp,
-      to: '/warp',
-      subItems: [
-        {
-          name: 'Add liquidity',
-          to: '/warp/add-liquidity',
-          icon: require('images/msgs_ic_pooladd.svg'),
-        },
-        {
-          name: 'Create pool',
-          to: '/warp/create-pool',
-          icon: require('images/flask-outline.svg'),
-        },
-        {
-          name: 'Sub liquidity',
-          to: '/warp/sub-liquidity',
-          icon: require('images/msgs_ic_poolremove.svg'),
-        },
-      ],
-    },
-    {
-      name: 'Sphere',
-      icon: shpere,
-      to: routes.sphere.path,
-      subItems: [
-        // {
-        //   name: 'space-pussy',
-        //   to: `${routes.sphere.path}/${Networks.SPACE_PUSSY}`,
-        //   icon: require('./images/astronaut.png'),
-        // },
-      ],
-    },
-    { name: 'HFR', icon: hfr, to: '/hfr', subItems: [] },
-    { name: 'Mining', icon: mining, to: '/mining', subItems: [] },
-    // { name: 'Lifeforms', to: '/contracts', subItems: [] },
-    // {
-    //   name: 'Hub',
-    //   to: '/search/hub',
-    //   icon: hub,
-    //   subItems: [
-    //     { name: 'Networks', to: '/networks' },
-    //     { name: 'Add network', to: '/networks/add' },
-    //   ],
-    // },
-    { name: 'Senate', icon: senate, to: '/senate', subItems: [] },
-
-    !isPussyChain
-      ? {
-          name: 'Cyberver 🟣',
-          icon: require('src/image/new_icons/cyberver.svg'),
-          to: 'https://spacepussy.ai/cyberver',
-          subItems: [],
-        }
-      : {
-          name: 'cyberver',
-          icon: require('./images/cyberver.png'),
-          to: '/cyberver',
-          subItems: [
-            {
-              name: '👑  board',
-              to: '/cyberver/faculties/board',
-              // not good, fix
-              matchPathname: cybernetRoutes.subnet.path.replace(':nameOrUid', 'board'),
-            },
-            {
-              name: '🏫  faculties',
-              to: '/cyberver/faculties',
-              matchPathname: cybernetRoutes.subnets.path,
-            },
-            {
-              name: '💼  mentors',
-              to: '/cyberver/mentors',
-              matchPathname: cybernetRoutes.delegators.path,
-            },
-            {
-              name: '👨‍🎓  my mentor',
-              to: '/cyberver/mentors/my',
-              matchPathname: cybernetRoutes.myMentor.path,
-            },
-            {
-              name: '👨‍🎓  my learner',
-              to: '/cyberver/learners/my',
-              matchPathname: cybernetRoutes.myLearner.path,
-            },
-            {
-              name: '𝚺 sigma',
-              to: '/cyberver/sigma',
-            },
-          ],
-        },
-
-    { name: 'About', icon: congress, to: routes.social.path, subItems: [] },
-    {
       name: 'Studio',
       icon: require('./images/studio.png'),
       to: routes.studio.path,
       subItems: [],
     },
-    // {
-    //   name: 'Help',
-    //   icon: zhdun,
-    //   to: '/help',
-    //   subItems: [
-    //     {
-    //       name: 'Guide',
-    //       to: '/ipfs/QmRumrGFrqxayDpySEkhjZS1WEtMyJcfXiqeVsngqig3ak',
-    //     },
-    //     { name: 'story', to: '/genesis' },
-    //     {
-    //       name: 'vision',
-    //       to: '/ipfs/QmXzGkfxZV2fzpFmq7CjAYsYL1M581ZD4yuF9jztPVTpCn',
-    //     },
-    //     {
-    //       name: 'great web',
-    //       to: '/ipfs/QmUamt7diQP54eRnmzqMZNEtXNTzbgkQvZuBsgM6qvbd57',
-    //     },
-    //     {
-    //       name: 'vs govs',
-    //       to: '/ipfs/QmPmJ4JwzCi82HZp7adtv5GVBFTsKF5Yoy43wshHH7x3ty',
-    //     },
-    //     {
-    //       name: 'vs corps',
-    //       to: '/ipfs/QmQvKF9Jb6QKmsqHJzEZJUfcbB9aBBKwa5dh3pMxYEj7oi',
-    //     },
-    //     {
-    //       name: 'roadmap',
-    //       to: '/ipfs/QmSBYCCYFNfHNQD7MWm4zBaNuztMaT2KghA2SbeZZm9vLH',
-    //     },
-    //     {
-    //       name: 'distribution',
-    //       to: '/ipfs/QmVPgNeay23Ae5itAamMcr4iEAUKuhw5qD9U1zNqN4gpew',
-    //     },
-    //     {
-    //       name: 'gift',
-    //       to: '/ipfs/QmPAi1h1rwWnHkNnxnHZg28eGivpUK8wy8eciqoPSR4PHv',
-    //     },
-    //     {
-    //       name: 'congress',
-    //       to: '/network/bostrom/contract/bostrom1xszmhkfjs3s00z2nvtn7evqxw3dtus6yr8e4pw',
-    //     },
-    //   ],
-    // },
+    { name: 'Node', icon: shpere, to: '/node', subItems: [] },
+    {
+      name: 'AOS',
+      icon: require('./images/aos.png'),
+      to: '/aos',
+      subItems: [],
+    },
   ];
 
   if (CHAIN_ID === Networks.BOSTROM) {
@@ -270,12 +115,6 @@ const getMenuItems = () => {
           to: routes.portal.routes.map.path,
           icon: require('./images/world-map.png'),
         },
-        {
-          name: 'AOS',
-          to: '/genesis',
-          icon: require('./images/aos.png'),
-        },
-        // { name: 'Release', to: '/release' },
       ],
     });
   }

@@ -94,11 +94,7 @@ fn cleanup_splash(
 
 fn legacy_build_dir() -> PathBuf {
     if cfg!(debug_assertions) {
-        let manifest_dir = env!("CARGO_MANIFEST_DIR");
-        let build = PathBuf::from(manifest_dir).join("../../build");
-        if build.exists() {
-            return build.canonicalize().unwrap_or(build);
-        }
+        // Debug: always use dev server (deno task start) for live reload
         PathBuf::new()
     } else {
         let exe_dir = std::env::current_exe()

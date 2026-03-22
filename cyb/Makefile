@@ -37,8 +37,10 @@ portal:
 	cd cyb-portal && trunk build --release
 
 # Build web app (React/TypeScript via Rspack)
+# Rspack exits 1 on size warnings — ignore, check build/ exists instead
 web:
-	cd .. && ~/.deno/bin/deno task build
+	-cd .. && ~/.deno/bin/deno task build
+	@test -f ../build/index.html || (echo "ERROR: web build failed" && exit 1)
 
 # Build macOS .dmg
 dmg: release portal web
@@ -46,6 +48,7 @@ dmg: release portal web
 	mkdir -p target/release/cyb.app/Contents/MacOS
 	mkdir -p target/release/cyb.app/Contents/Resources
 	cp target/release/cyb-shell target/release/cyb.app/Contents/MacOS/cyb-shell
+	cp cyb-shell/assets/icon.icns target/release/cyb.app/Contents/Resources/icon.icns
 	@if [ -d "cyb-portal/dist" ]; then \
 		cp -r cyb-portal/dist target/release/cyb.app/Contents/MacOS/cyb-portal; \
 	fi
@@ -61,10 +64,20 @@ dmg: release portal web
 	/usr/libexec/PlistBuddy -c "Add :CFBundlePackageType string APPL" target/release/cyb.app/Contents/Info.plist
 	/usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 13.0" target/release/cyb.app/Contents/Info.plist
 	/usr/libexec/PlistBuddy -c "Add :NSHighResolutionCapable bool true" target/release/cyb.app/Contents/Info.plist
+	/usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string icon" target/release/cyb.app/Contents/Info.plist
 	rm -f target/release/cyb.dmg
 	hdiutil create -volname "cyb" -srcfolder target/release/cyb.app -ov -format UDZO target/release/cyb.dmg
 
-# Full dev workflow
+# Dev with live reload: starts dev server + Bevy shell
+# Web changes hot-reload instantly via HMR, no rebuilds needed
+dev:
+	@echo "Starting dev server + Bevy shell (live reload)..."
+	@echo "Web HMR on https://localhost:3001 → WebView auto-updates"
+	@cd .. && ~/.deno/bin/deno task start &
+	@sleep 3
+	cargo run -p cyb-shell
+
+# Full dev workflow (manual)
 # Terminal 1: cd .. && deno task start     (cyb-ts HTTPS :3001 → Legacy mode)
 # Terminal 2: cd cyb-portal && trunk serve (Leptos :8090 → Portal mode)
-# Terminal 3: make dev                     (Bevy shell)
+# Terminal 3: cargo run -p cyb-shell       (Bevy shell)

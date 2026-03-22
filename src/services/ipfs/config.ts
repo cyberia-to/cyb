@@ -31,8 +31,10 @@ export const getIpfsOpts = (): IpfsOptsType => {
   const stored = safeLocalStorage.getJSON<Partial<IpfsOptsType>>('ipfsState', {});
   const ipfsOpts = { ...defaultIpfsOpts, ...stored };
 
-  // Always use EXTERNAL — browser uses cybernode
-  ipfsOpts.ipfsNodeType = IPFSNodes.EXTERNAL;
+  // Validate node type
+  if (!Object.values(IPFSNodes).includes(ipfsOpts.ipfsNodeType as IPFSNodes)) {
+    ipfsOpts.ipfsNodeType = IPFSNodes.EXTERNAL;
+  }
 
   // Discard invalid URLs
   if (ipfsOpts.urlOpts && !isValidUrl(ipfsOpts.urlOpts)) {

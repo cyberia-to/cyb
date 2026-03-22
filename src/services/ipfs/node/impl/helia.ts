@@ -9,10 +9,10 @@ import { createLibp2p } from 'libp2p';
 
 import { AddOptions, UnixFS, unixfs } from '@helia/unixfs';
 import { bootstrap } from '@libp2p/bootstrap';
-import { webRTC, webRTCDirect } from '@libp2p/webrtc';
+import { webRTC } from '@libp2p/webrtc';
 import { webSockets } from '@libp2p/websockets';
 // webTransport removed — package not installed, WebSocket+WebRTC sufficient
-import { multiaddr, protocols } from '@multiformats/multiaddr';
+import { multiaddr } from '@multiformats/multiaddr';
 import { LsResult } from 'ipfs-core-types/src/pin';
 import { circuitRelayTransport } from 'libp2p/circuit-relay';
 import { identifyService } from 'libp2p/identify';
@@ -32,48 +32,31 @@ async function* mapToLsResult(iterable: AsyncIterable<Pin>): AsyncIterable<LsRes
 const libp2pFactory = async (datastore: IDBDatastore, bootstrapList: string[] = []) => {
   const libp2p = await createLibp2p({
     datastore,
-    // addresses: {
-    //   listen: [
-    //     '/ip4/127.0.0.1/tcp/0',
-    //     '/dns4/swarm.io.cybernode.ai/tcp/443/wss/p2p/QmUgmRxoLtGERot7Y6G7UyF6fwvnusQZfGR15PuE6pY3aB',
-    //   ],
-    // },
     transports: [
       webSockets(),
       webRTC({
         rtcConfiguration: {
           iceServers: [
             {
-              urls: [
-                'stun:stun.l.google.com:19302',
-                'stun:global.stun.twilio.com:3478',
-                'STUN:freestun.net:3479',
-                'STUN:stun.bernardoprovenzano.net:3478',
-                'STUN:stun.aa.net.uk:3478',
-              ],
-            },
-            {
-              credential: 'free',
-              username: 'free',
-              urls: ['TURN:freestun.net:3479', 'TURNS:freestun.net:5350'],
+              urls: ['stun:stun.l.google.com:19302'],
             },
           ],
         },
       }),
-      webRTCDirect(),
       circuitRelayTransport({
         discoverRelays: 1,
       }),
     ],
     connectionEncryption: [noise()],
     streamMuxers: [yamux()],
+    connectionManager: {
+      maxConnections: 10,
+      minConnections: 2,
+      autoDialInterval: 30000, // slower autodial (default 10s)
+    },
     connectionGater: {
       denyDialMultiaddr: () => {
         return false;
-        // by default we refuse to dial local addresses from the browser since they
-        // are usually sent by remote peers broadcasting undialable multiaddrs but
-        // here we are explicitly connecting to a local node so do not deny dialing
-        // any discovered address
       },
     },
     peerDiscovery: [
@@ -118,10 +101,6 @@ class HeliaNode implements IpfsNode {
     await datastore.open();
 
     const bootstrapList = [
-      '/dnsaddr/bootstrap.libp2p.io/p2p/QmNnooDu7bfjPFoTZYxMNLWUQJyrVwtbZg5gBMjTezGAJN',
-      '/dnsaddr/bootstrap.libp2p.io/p2p/QmQCU2EcMqAqQPR2i9bChDtGNJchTbq5TbXJJ16u19uLTa',
-      '/dnsaddr/bootstrap.libp2p.io/p2p/QmbLHAnMoJPWSCR5Zhtx6BHJX9KiKNN6tpvbUcqanj75Nb',
-      '/dnsaddr/bootstrap.libp2p.io/p2p/QmcZf59bWwK5XFi76CZX8cbJ4BhTzzA3gU1ZjYZcYW3dwt',
       '/dns4/swarm.io.cybernode.ai/tcp/443/wss/p2p/QmUgmRxoLtGERot7Y6G7UyF6fwvnusQZfGR15PuE6pY3aB',
       '/dns4/helia.cybernode.ai/tcp/4444/wss/p2p/12D3KooWLKrsc4qYf3Z9EeUviKBPrp493AEHkrs38wXBs6NuKo2C',
     ];
@@ -138,44 +117,7 @@ class HeliaNode implements IpfsNode {
       window.toCid = stringToCid;
     }
 
-    // DEBUG
-    libp2p.addEventListener('peer:connect', (evt) => {
-      const peerId = evt.detail.toString();
-      const conn = libp2p.getConnections(peerId) || [];
-      const transportsByAddr = Object.fromEntries(
-        conn.map((c) => [
-          c.remoteAddr.toString(),
-          c.remoteAddr.protoCodes().map((v) => protocols(v)?.name),
-        ])
-      );
-      console.debug(`Connected to ${peerId}`, transportsByAddr);
-
-      // console.log(
-      //   '---------ppppp',
-      //   peerId,
-      //   conn,
-      //   conn?.remoteAddr.protoCodes().map((v) => protocols(v)?.name)
-      // ); //.includes(WEBRTC_CODE)
-      // if (conn && conn.stat) {
-      //   const transport = conn.stat.transport; // This might vary based on libp2p version
-      //   console.log(`Connected to ${peerId} using transport ${transport}`);
-      // } else {
-      //   console.log(`Connected to ${peerId}`);
-      // }
-    });
-    libp2p.addEventListener('peer:disconnect', (evt) => {
-      console.debug(`Disconnected from ${evt.detail.toString()}`);
-    });
-    console.log(
-      'IPFS - Helia addrs',
-      libp2p.getMultiaddrs().map((a) => a.toString())
-    );
-    // const webrtcConn = await libp2p.dial(
-    //   multiaddr(
-    //     '/ip4/127.0.0.1/udp/4001/quic-v1/webtransport/certhash/uEiDHumbyZRFV1Av7qH9-2l5HGgU2a2UqM6eloqO0vYz5pQ/certhash/uEiDD_TuVgih5_ua31Z4MVbNq7WSw095UAQmZqdUFMDTVRA/p2p/12D3KooWEYGfgK4dEY3spfuDKVq6Jpiyj4KxP1r6HS5RFp5WHebz'
-    //   )
-    // );
-    // console.log('----webrtcConn', webrtcConn);
+    console.log('IPFS - Helia started, peers:', bootstrapList.length);
 
     this._isStarted = true;
   }
