@@ -25,15 +25,13 @@ const links: Array<MenuItem[]> = [
       icon: '🟥',
     },
   ],
-  process.env.IS_TAURI || !window.keplr
-    ? [
-        {
-          text: 'Signer',
-          link: './signer',
-          icon: '🖋️',
-        },
-      ]
-    : undefined,
+  [
+    {
+      text: 'Signer',
+      link: './signer',
+      icon: '🖋️',
+    },
+  ],
   [
     {
       text: 'Tokens',
