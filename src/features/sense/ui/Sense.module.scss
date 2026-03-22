@@ -6,6 +6,7 @@
   height: 100%;
   min-height: 60vh;
   max-height: calc(100vh - $reservedTopHeight - $actionBarHeight);
+  overflow: hidden;
 
   &.NotOwner {
     max-height: calc(
@@ -17,65 +18,29 @@
   > div > div {
     height: 100%;
   }
-
-  > :first-child {
-    > div {
-      // don't understand this scroll
-      overflow-x: hidden;
-    }
-  }
-
-  // divider handle
-  > :nth-child(2) {
-    // keep default for non-divider case
-  }
-
-  // viewer panel (after divider)
-  > :nth-child(3) {
-    flex: 1;
-    position: relative;
-    min-width: 0;
-  }
-
-  // fallback: when no divider (not owner)
-  > :nth-child(2):last-child {
-    flex: 1;
-    position: relative;
-  }
 }
 
-.divider {
-  width: 4px;
-  cursor: col-resize;
-  background: linear-gradient(180deg,
-    rgba(54, 214, 174, 0) 0%,
-    rgba(54, 214, 174, 0.3) 30%,
-    rgba(54, 214, 174, 0.3) 70%,
-    rgba(54, 214, 174, 0) 100%);
-  position: relative;
-  z-index: 2;
+.slider {
+  display: flex;
+  width: 200%;
+  height: 100%;
+  will-change: transform;
+}
+
+.slidePanel {
+  width: 50%; // each panel = 50% of slider = 100% of wrapper
+  height: 100%;
   flex-shrink: 0;
-  touch-action: none;
-
-  &:hover,
-  &:active {
-    background: linear-gradient(180deg,
-      rgba(54, 214, 174, 0) 0%,
-      rgba(54, 214, 174, 0.6) 30%,
-      rgba(54, 214, 174, 0.6) 70%,
-      rgba(54, 214, 174, 0) 100%);
-    width: 6px;
-  }
-}
-
-.collapsed {
   overflow: hidden;
 
-  // hide text, show only avatars
-  :global(.title),
-  :global(.content),
-  :global(.date),
-  :global(.unread) {
-    display: none !important;
+  // Display inner height
+  > div > div {
+    height: 100%;
+  }
+
+  > div {
+    > div {
+      overflow-x: hidden;
+    }
   }
 }

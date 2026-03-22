@@ -141,90 +141,84 @@ function Sense({ urlSenseId }: { urlSenseId?: string }) {
 
   const isLLMFilter = currentFilter === Filters.LLM;
 
-  const MIN_WIDTH = 60;
-  const MAX_WIDTH = 400;
-  const DEFAULT_WIDTH = 300;
+  const [slideOffset, setSlideOffset] = useState(0); // 0 = list visible, -100 = chat visible
+  const touchStart = useRef<number | null>(null);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
 
-  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH);
-  const dragging = useRef(false);
-
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    dragging.current = true;
-
-    const onMouseMove = (ev: MouseEvent) => {
-      if (!dragging.current) return;
-      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, ev.clientX));
-      setSidebarWidth(newWidth);
-    };
-
-    const onMouseUp = () => {
-      dragging.current = false;
-      document.removeEventListener('mousemove', onMouseMove);
-      document.removeEventListener('mouseup', onMouseUp);
-    };
-
-    document.addEventListener('mousemove', onMouseMove);
-    document.addEventListener('mouseup', onMouseUp);
+  const handleTouchStart = useCallback((e: React.TouchEvent) => {
+    touchStart.current = e.touches[0].clientX;
+    setIsDragging(true);
   }, []);
 
-  const onTouchStart = useCallback((e: React.TouchEvent) => {
-    dragging.current = true;
+  const handleTouchMove = useCallback((e: React.TouchEvent) => {
+    if (touchStart.current === null) return;
+    const diff = e.touches[0].clientX - touchStart.current;
+    const width = wrapperRef.current?.offsetWidth || window.innerWidth;
+    const pct = (diff / width) * 100;
+    // clamp: from -100 (chat) to 0 (list)
+    const base = slideOffset < -50 ? -100 : 0;
+    setSlideOffset(Math.max(-100, Math.min(0, base + pct)));
+  }, [slideOffset]);
 
-    const onTouchMove = (ev: TouchEvent) => {
-      if (!dragging.current) return;
-      const touch = ev.touches[0];
-      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, touch.clientX));
-      setSidebarWidth(newWidth);
-    };
-
-    const onTouchEnd = () => {
-      dragging.current = false;
-      document.removeEventListener('touchmove', onTouchMove);
-      document.removeEventListener('touchend', onTouchEnd);
-    };
-
-    document.addEventListener('touchmove', onTouchMove);
-    document.addEventListener('touchend', onTouchEnd);
+  const handleTouchEnd = useCallback(() => {
+    touchStart.current = null;
+    setIsDragging(false);
+    // snap: if past halfway, go to chat; otherwise back to list
+    setSlideOffset((prev) => (prev < -50 ? -100 : 0));
   }, []);
 
-  const isCollapsed = sidebarWidth < 100;
+  const showChat = slideOffset <= -50;
+
+  // when selecting a chat, slide to chat view
+  const selectAndSlide = useCallback((id: string) => {
+    setSelected(id);
+    setSlideOffset(-100);
+    if (id !== 'llm') {
+      if (!paramSenseId) {
+        navigate(`./${id}`);
+      } else {
+        navigate(`../${id}`, { relative: 'path' });
+      }
+    }
+  }, [navigate, paramSenseId]);
 
   return (
     <>
-      <div className={cx(styles.wrapper, { [styles.NotOwner]: !isOwner })}>
-        {isOwner && (
-          <div style={{ width: sidebarWidth, flexShrink: 0 }} className={cx({ [styles.collapsed]: isCollapsed })}>
-            <SenseList
-              select={(id: string) => {
-                setSelected(id);
-                if (id !== 'llm') {
-                  if (!paramSenseId) {
-                    navigate(`./${id}`);
-                  } else {
-                    navigate(`../${id}`, {
-                      relative: 'path',
-                    });
-                  }
-                }
-              }}
-              selected={selected}
-              adviser={adviserProps}
-              currentFilter={{
-                value: currentFilter,
-                set: setCurrentFilter,
-              }}
-            />
-          </div>
-        )}
+      <div
+        ref={wrapperRef}
+        className={cx(styles.wrapper, { [styles.NotOwner]: !isOwner })}
+        onTouchStart={isOwner ? handleTouchStart : undefined}
+        onTouchMove={isOwner ? handleTouchMove : undefined}
+        onTouchEnd={isOwner ? handleTouchEnd : undefined}
+      >
         {isOwner && (
           <div
-            className={styles.divider}
-            onMouseDown={onMouseDown}
-            onTouchStart={onTouchStart}
-          />
+            className={styles.slider}
+            style={{
+              transform: `translateX(${slideOffset}%)`,
+              transition: isDragging ? 'none' : 'transform 0.3s ease',
+            }}
+          >
+            <div className={styles.slidePanel}>
+              <SenseList
+                select={selectAndSlide}
+                selected={selected}
+                adviser={adviserProps}
+                currentFilter={{
+                  value: currentFilter,
+                  set: setCurrentFilter,
+                }}
+              />
+            </div>
+            <div className={styles.slidePanel}>
+              <SenseViewer selected={selected} isLLMFilter={isLLMFilter} adviser={adviserProps} />
+            </div>
+          </div>
         )}
-        <SenseViewer selected={selected} isLLMFilter={isLLMFilter} adviser={adviserProps} />
+        {!isOwner && (
+          <SenseViewer selected={selected} isLLMFilter={isLLMFilter} adviser={adviserProps} />
+        )}
       </div>
 
       {isLLMFilter && currentThreadId ? (
