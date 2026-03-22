@@ -10,6 +10,7 @@
     display: flex;
     gap: 15px;
     line-height: 32px;
+    white-space: nowrap;
 
     .text {
       color: var(--grayscale-primary);
@@ -20,7 +21,34 @@
       .text {
         color: var(--primary-color);
       }
+    }
+  }
 
+  @media (max-width: 540px) {
+    width: 48px;
+    position: sticky;
+    left: 0;
+    z-index: 10;
+    transition: width 0.2s ease;
+
+    a {
+      .text {
+        display: none;
+      }
+    }
+
+    .links {
+      gap: 15px;
+    }
+
+    // expand on touch/hover
+    &:hover,
+    &:focus-within {
+      width: 200px;
+
+      a .text {
+        display: inline;
+      }
     }
   }
 }

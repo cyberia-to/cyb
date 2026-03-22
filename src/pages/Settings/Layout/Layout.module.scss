@@ -1,6 +1,7 @@
 @use '../../../layouts/variables.module.scss' as *;
 
 $size-columns: 200px;
+$size-columns-collapsed: 48px;
 
 .wrapper {
   display: grid;
@@ -18,7 +19,6 @@ $size-columns: 200px;
 
   > :first-child {
     >div {
-      // don't understand this scroll
       overflow-x: hidden;
     }
   }
@@ -27,7 +27,16 @@ $size-columns: 200px;
     left: -2px;
     margin-right: -2px;
     position: relative;
-    overflow-x: auto;
+    overflow-x: hidden;
   }
 
+  @media (max-width: 540px) {
+    grid-template-columns: $size-columns-collapsed 1fr;
+
+    > :nth-child(2) {
+      left: 0;
+      margin-right: 0;
+      overflow-x: hidden;
+    }
+  }
 }
