@@ -12,16 +12,12 @@ $size-columns-collapsed: 48px;
   height: 70vh;
   max-height: calc(100vh - $reservedTopHeight - $actionBarHeight);
 
-  // Display
-  >div>div {
-    height: 100%;
-  }
-
   // sidebar: remove right border so divider = single 2px (content left border)
   > :first-child {
     > div {
       overflow-x: hidden;
       border-right: none !important;
+      height: 100%;
 
       &::after {
         display: none !important;
@@ -29,10 +25,16 @@ $size-columns-collapsed: 48px;
     }
   }
 
+  // content panel (Display.wrapper = flex column)
   > :nth-child(2) {
     position: relative;
-    overflow-x: hidden;
-    overflow-y: auto;
+    overflow: hidden;
+
+    // Display.inner: fill remaining space after header, scroll internally
+    > :last-child {
+      flex: 1;
+      min-height: 0;
+    }
   }
 
   @media (max-width: 540px) {
