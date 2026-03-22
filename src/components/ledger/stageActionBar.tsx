@@ -18,6 +18,7 @@ import { LinkWindow } from '../link/link';
 import { Dots } from '../ui/Dots';
 import { ContainetLedger } from './container';
 
+import useMediaQuery from 'src/hooks/useMediaQuery';
 import { isWebUSBSupported } from 'src/utils/ledgerSigner';
 
 const imgWallet = require('../../image/wallet-outline.svg');
@@ -264,6 +265,9 @@ export function ConnectAddress({
   connectAddress,
   onClickBack,
 }) {
+  const isDesktop = useMediaQuery('(min-width: 768px)');
+  const showLedger = isDesktop && isWebUSBSupported();
+
   return (
     <ActionBar
       button={{
@@ -281,7 +285,7 @@ export function ConnectAddress({
           text="wallet"
         />
 
-        {isWebUSBSupported() && (
+        {showLedger && (
           <ButtonIcon
             onClick={() => selectMethodFunc(KEY_TYPE.ledger)}
             active={selectMethod === KEY_TYPE.ledger}
