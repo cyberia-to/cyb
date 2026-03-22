@@ -59,8 +59,9 @@ $robot-max-height: calc(100vh - $reservedTopHeight - $actionBarHeight);
 
   @media (max-width: 540px) {
     grid-template-columns: 48px 1fr;
-    height: calc(100vh - $reservedTopHeight - $actionBarHeight - 20px);
-    max-height: calc(100vh - $reservedTopHeight - $actionBarHeight - 20px);
+    margin-top: 15px;
+    height: calc(100vh - $reservedTopHeight - $actionBarHeight - 35px);
+    max-height: calc(100vh - $reservedTopHeight - $actionBarHeight - 35px);
 
     > :first-child {
       z-index: 10;
