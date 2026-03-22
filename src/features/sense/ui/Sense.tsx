@@ -141,39 +141,39 @@ function Sense({ urlSenseId }: { urlSenseId?: string }) {
 
   const isLLMFilter = currentFilter === Filters.LLM;
 
-  const [slideOffset, setSlideOffset] = useState(0); // 0 = list visible, -100 = chat visible
+  // slideOffset: 0 = list visible, -50 = chat visible (% of slider which is 200% wide)
+  const [slideOffset, setSlideOffset] = useState(0);
   const touchStart = useRef<number | null>(null);
+  const baseOffset = useRef(0);
   const wrapperRef = useRef<HTMLDivElement>(null);
   const [isDragging, setIsDragging] = useState(false);
 
   const handleTouchStart = useCallback((e: React.TouchEvent) => {
     touchStart.current = e.touches[0].clientX;
+    baseOffset.current = slideOffset;
     setIsDragging(true);
-  }, []);
+  }, [slideOffset]);
 
   const handleTouchMove = useCallback((e: React.TouchEvent) => {
     if (touchStart.current === null) return;
     const diff = e.touches[0].clientX - touchStart.current;
     const width = wrapperRef.current?.offsetWidth || window.innerWidth;
-    const pct = (diff / width) * 100;
-    // clamp: from -100 (chat) to 0 (list)
-    const base = slideOffset < -50 ? -100 : 0;
-    setSlideOffset(Math.max(-100, Math.min(0, base + pct)));
-  }, [slideOffset]);
+    // convert px drag to % of slider (slider = 2x wrapper, so 50% slider = 100% wrapper)
+    const pct = (diff / width) * 50;
+    setSlideOffset(Math.max(-50, Math.min(0, baseOffset.current + pct)));
+  }, []);
 
   const handleTouchEnd = useCallback(() => {
     touchStart.current = null;
     setIsDragging(false);
-    // snap: if past halfway, go to chat; otherwise back to list
-    setSlideOffset((prev) => (prev < -50 ? -100 : 0));
+    // snap: if past 25% (halfway of one panel), switch
+    setSlideOffset((prev) => (prev < -25 ? -50 : 0));
   }, []);
-
-  const showChat = slideOffset <= -50;
 
   // when selecting a chat, slide to chat view
   const selectAndSlide = useCallback((id: string) => {
     setSelected(id);
-    setSlideOffset(-100);
+    setSlideOffset(-50);
     if (id !== 'llm') {
       if (!paramSenseId) {
         navigate(`./${id}`);
