@@ -1,7 +1,7 @@
-import { Pane } from '@cybercongress/gravity';
 import { useNavigate } from 'react-router-dom';
 import { formatNumber } from '../../../utils/utils';
 import Card from '../ui/card';
+import styles from './statistics.module.scss';
 
 type Props = {
   myEnergy: number;
@@ -24,49 +24,33 @@ function Statistics({ myEnergy = 0, income = 0, outcome = 0, active }: Props) {
   };
 
   return (
-    <Pane
-      marginTop={10}
-      marginBottom={10}
-      display="flex"
-      alignItems="center"
-      justifyContent="center"
-      flex-irection="row"
-    >
+    <div className={styles.row}>
       <Card
         active={!active}
         title="Enegy"
         value={`${formatNumber(myEnergy)} W`}
         onClick={() => onClickNavigate()}
       />
-      <Pane marginX={5} fontSize="20px">
-        +
-      </Pane>
+      <span className={styles.operator}>+</span>
       <Card
         active={active === 'income'}
         title="Income"
         value={`${formatNumber(income)} W`}
         onClick={() => onClickNavigate('income')}
       />
-      <Pane marginX={5} fontSize="20px">
-        -
-      </Pane>
+      <span className={styles.operator}>-</span>
       <Card
         active={active === 'outcome'}
         title="Outcome"
         value={`${formatNumber(outcome)} W`}
         onClick={() => onClickNavigate('outcome')}
       />
-      <Pane marginX={5} fontSize="20px">
-        =
-      </Pane>
+      <span className={styles.operator}>=</span>
       <Card
         title="Free Energy"
         value={`${formatNumber(freeEnergy > 0 ? freeEnergy : 0)} W`}
-
-        // tooltipValue="Your rating in relation to the rating of the network is less than 1000%"
-        // positionTooltip="bottom"
       />
-    </Pane>
+    </div>
   );
 }
 

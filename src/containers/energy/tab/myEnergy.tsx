@@ -4,6 +4,7 @@ import { routes } from 'src/routes';
 import { DenomArr, Dots } from '../../../components';
 import { formatNumber } from '../../../utils/utils';
 import { Card, TableSlots } from '../ui';
+import styles from './myEnergy.module.scss';
 
 // TODO: finish
 type Props = {
@@ -31,29 +32,19 @@ function MyEnergy({ slotsData, balancesResource, loadingAuthAccounts }: Props) {
         <Pane marginBottom={20} fontSize="20px">
           Balance:
         </Pane>
-        <Pane
-          marginBottom={60}
-          display="flex"
-          alignItems="center"
-          justifyContent="center"
-          flex-irection="row"
-        >
+        <div className={styles.balanceRow}>
           <Card
             title={<DenomArr denomValue="milliampere" />}
             value={balancesResource.milliampere ? formatNumber(balancesResource.milliampere) : 0}
             stylesContainer={{ maxWidth: '200px' }}
           />
-          <Pane marginX={10} fontSize="18px">
-            x
-          </Pane>
+          <span className={styles.operator}>x</span>
           <Card
             title={<DenomArr denomValue="millivolt" />}
             value={balancesResource.millivolt ? formatNumber(balancesResource.millivolt) : 0}
             stylesContainer={{ maxWidth: '200px' }}
           />
-          <Pane marginX={10} fontSize="18px">
-            =
-          </Pane>
+          <span className={styles.operator}>=</span>
           <Card
             title="W"
             value={
@@ -63,7 +54,7 @@ function MyEnergy({ slotsData, balancesResource, loadingAuthAccounts }: Props) {
             }
             stylesContainer={{ maxWidth: '200px' }}
           />
-        </Pane>
+        </div>
       </div>
 
       {loadingAuthAccounts ? <Dots big /> : <TableSlots data={slotsData} />}
