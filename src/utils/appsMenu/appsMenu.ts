@@ -198,7 +198,7 @@ const getMenuItems = () => {
     { name: 'About', icon: congress, to: routes.social.path, subItems: [] },
     {
       name: 'Studio',
-      icon: require('./images/studio.png'),
+      icon: require('./images/studio.svg'),
       to: routes.studio.path,
       subItems: [],
     },

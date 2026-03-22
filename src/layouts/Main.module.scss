@@ -4,7 +4,7 @@
     position: fixed;
     z-index: 2;
     width: 100%;
-    bottom: 0px;
+    bottom: 15px;
     padding-bottom: env(safe-area-inset-bottom, 0px);
     background-color: #000;
 
@@ -23,7 +23,7 @@
     position: fixed;
     right: 1vw;
     height: 40px;
-    bottom: 0px;
+    bottom: 15px;
 
     @media (max-width: 540px) {
       right: 2vw;
