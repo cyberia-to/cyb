@@ -18,6 +18,11 @@ export const useActiveMenuItem = (menuItems: MenuItem[]) => {
       return true;
     }
 
+    // Match sub-paths (e.g. /teleport/send matches /teleport)
+    if (item.to !== '/' && location.pathname.startsWith(item.to + '/')) {
+      return true;
+    }
+
     return item.subItems?.some((subItem) => location.pathname === subItem.to);
   };
 
