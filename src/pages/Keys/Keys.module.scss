@@ -12,4 +12,9 @@
     text-align: center;
     line-height: 26px;
   }
+
+  @media (max-width: 540px) {
+    min-height: auto;
+    gap: 15px;
+  }
 }

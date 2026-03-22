@@ -10,6 +10,11 @@
   overflow: hidden;
   text-overflow: ellipsis;
 
+  @media (max-width: 540px) {
+    white-space: normal;
+    word-break: break-all;
+  }
+
   &.--withImage {
     padding-left: 0;
     padding-top: 0;

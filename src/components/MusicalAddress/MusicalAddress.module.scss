@@ -54,8 +54,13 @@
 
   @media (max-width: 540px) {
     gap: 1px;
-    flex-wrap: wrap;
     max-width: 100%;
+  }
+}
+
+.music {
+  @media (max-width: 540px) {
+    display: none !important;
   }
 }
 

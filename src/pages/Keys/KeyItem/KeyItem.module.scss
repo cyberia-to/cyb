@@ -50,10 +50,18 @@
     gap: 10px;
     min-height: auto;
     overflow-x: hidden;
+    overflow: hidden;
 
     .imageWrapper {
       width: 80px;
       height: 80px;
+      flex-shrink: 0;
+
+      img {
+        width: 80px;
+        height: 80px;
+        object-fit: contain;
+      }
     }
 
     .content {
@@ -61,6 +69,8 @@
       line-height: 22px;
       text-align: center;
       width: 100%;
+      max-width: 100%;
+      overflow: hidden;
     }
   }
 
