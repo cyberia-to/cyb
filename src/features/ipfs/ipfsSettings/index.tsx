@@ -98,7 +98,7 @@ function IpfsSettings() {
     <Display title={<DisplayTitle title="drive" />}>
       <div style={{ display: 'grid', gap: '20px' }}>
         <Drive />
-        <div style={{ display: 'flex', justifyContent: 'space-between' }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px' }}>
           <div>
             <ContainerKeyValue>
               <div>api</div>
@@ -106,9 +106,10 @@ function IpfsSettings() {
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '280px 50px',
-                  gap: '20px',
+                  gridTemplateColumns: 'minmax(0, 1fr) auto',
+                  gap: '10px',
                   position: 'relative',
+                  alignItems: 'center',
                 }}
               >
                 <Input
@@ -116,7 +117,6 @@ function IpfsSettings() {
                   onChange={(e) => setValueInput(e.target.value)}
                 />
                 <BtnPassport
-                  style={{ maxWidth: '100px' }}
                   typeBtn="blue"
                   onClick={() => setNewUrl()}
                 >
@@ -130,9 +130,10 @@ function IpfsSettings() {
               <div
                 style={{
                   display: 'grid',
-                  gridTemplateColumns: '280px 50px',
-                  gap: '20px',
+                  gridTemplateColumns: 'minmax(0, 1fr) auto',
+                  gap: '10px',
                   position: 'relative',
+                  alignItems: 'center',
                 }}
               >
                 <Input
@@ -140,7 +141,6 @@ function IpfsSettings() {
                   onChange={(e) => setValueInputGateway(e.target.value)}
                 />
                 <BtnPassport
-                  style={{ maxWidth: '100px' }}
                   typeBtn="blue"
                   onClick={() => setNewUrlGateway()}
                 >

@@ -6,6 +6,9 @@
   display: inline-flex;
   gap: 7px;
   white-space: nowrap;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
 
   &.--withImage {
     padding-left: 0;

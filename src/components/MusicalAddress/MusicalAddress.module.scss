@@ -1,11 +1,13 @@
 .containerSignaturesBtnPlay {
   width: fit-content;
+  max-width: 100%;
   background: transparent;
   border: unset;
   // height: 20px;
   font-size: 14px;
   // padding: 100px;
   color: var(--primary-color);
+  overflow: hidden;
 
   &.disabled {
     color: rgba(255, 255, 255, 0.78);
@@ -15,6 +17,10 @@
     a {
       color: #00ffbf;
     }
+  }
+
+  @media (max-width: 540px) {
+    font-size: 12px;
   }
 }
 
@@ -35,10 +41,21 @@
     @media (max-width: 800px) {
       width: 5px;
     }
+
+    @media (max-width: 540px) {
+      width: 2px;
+      max-height: 10px;
+    }
   }
 
   @media (max-width: 800px) {
     gap: 2px;
+  }
+
+  @media (max-width: 540px) {
+    gap: 1px;
+    flex-wrap: wrap;
+    max-width: 100%;
   }
 }
 
