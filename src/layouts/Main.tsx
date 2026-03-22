@@ -65,7 +65,7 @@ function MainLayout({ children }: { children: JSX.Element }) {
       <footer>
         {isMobile ? <MobileMenu /> : <CircularMenu circleSize={graphSize} />}
         {!isMobile && (
-          <Link to={link} className={stylesOracle.graphWrapper} style={{ bottom: '15px' }}>
+          <Link to={link} className={stylesOracle.graphWrapper} style={{ bottom: '20px' }}>
             {isRenderGraph && !isMiningActive && (
               <CyberlinksGraphContainer
                 size={graphSize}
