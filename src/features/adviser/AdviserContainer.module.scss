@@ -12,12 +12,13 @@
     position: fixed;
     top: calc(32px + env(safe-area-inset-top, 0px));
     transform: translateY(-50%);
-    left: 5px;
+    left: 65px;
     right: 65px;
     width: auto;
     margin: 0;
     min-height: unset;
     z-index: 5;
+    overflow: hidden;
   }
 }
 
@@ -34,5 +35,15 @@
     height: 110%;
     left: 0;
     filter: blur(12px);
+  }
+
+  @media (max-width: 768px) {
+    position: relative;
+    width: 100%;
+    font-size: 12px;
+    text-align: center;
+    padding: 0 4px;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 }
