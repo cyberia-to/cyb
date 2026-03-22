@@ -1,8 +1,8 @@
 @use '../../../layouts/variables.module' as *;
 
 .wrapper {
-  display: flex;
-  align-content: stretch;
+  position: relative;
+  width: 100%;
   height: 100%;
   min-height: 60vh;
   max-height: calc(100vh - $reservedTopHeight - $actionBarHeight);
@@ -12,11 +12,6 @@
     max-height: calc(
       100vh - $reservedTopHeight - $actionBarHeight - $robotHeaderHeightNotOwner
     );
-  }
-
-  // Display
-  > div > div {
-    height: 100%;
   }
 }
 
@@ -28,18 +23,18 @@
 }
 
 .slidePanel {
-  width: 50%; // each panel = 50% of slider = 100% of wrapper
+  width: 50%;
   height: 100%;
   flex-shrink: 0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
 
-  // Display inner height
-  > div > div {
-    height: 100%;
-  }
-
+  // Display
   > div {
+    height: 100%;
+
     > div {
+      height: 100%;
       overflow-x: hidden;
     }
   }
