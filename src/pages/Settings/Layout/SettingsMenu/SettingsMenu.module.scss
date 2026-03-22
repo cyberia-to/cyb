@@ -21,6 +21,10 @@
       .text {
         color: var(--primary-color);
       }
+
+      .icon {
+        filter: drop-shadow(0 0 4px #4ed6ae) drop-shadow(0 0 8px #4ed6aea0);
+      }
     }
   }
 
