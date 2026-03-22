@@ -30,6 +30,8 @@
     z-index: 10;
 
     a {
+      justify-content: center;
+
       .text {
         display: none;
       }
@@ -53,8 +55,12 @@
       padding: 8px 0;
       transition: width 0.15s ease;
 
-      a .text {
-        display: inline;
+      a {
+        justify-content: flex-start;
+
+        .text {
+          display: inline;
+        }
       }
     }
   }
