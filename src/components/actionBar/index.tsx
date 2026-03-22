@@ -244,12 +244,9 @@ function ConnectLedgerBar() {
 
   return (
     <ActionBarContainer>
-      <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <Button onClick={handleConnect} disabled={loading}>
-          {loading ? 'Connecting...' : 'Connect Ledger'}
-        </Button>
-        {error && <span style={{ color: '#ff4d4d', fontSize: '14px' }}>{error}</span>}
-      </span>
+      <Button onClick={handleConnect} disabled={loading}>
+        {loading ? 'Connecting...' : 'Connect Ledger'}
+      </Button>
     </ActionBarContainer>
   );
 }
