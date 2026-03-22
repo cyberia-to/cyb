@@ -35,6 +35,7 @@ export default function ConnectWalletModal({
   const [name, setName] = useState('');
   const [isTouched, setIsTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hidden, setHidden] = useState(false);
 
   // Best-effort cleanup on unmount — setState during unmount is a no-op in React 18,
   // string values remain in fiber tree until GC. Same inherent JS limitation as MetaMask/Keplr.
@@ -43,6 +44,20 @@ export default function ConnectWalletModal({
       setValues({});
       setName('');
     };
+  }, []);
+
+  // Clear mnemonic inputs when app goes to background (prevents iOS app switcher screenshot)
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) {
+        setHidden(true);
+        setValues({});
+      } else {
+        setHidden(false);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
 
   const distributeWords = useCallback((words: string[], startIndex = 0) => {
