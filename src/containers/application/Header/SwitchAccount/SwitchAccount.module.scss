@@ -9,6 +9,7 @@
   top: 50%;
   transform: translate(-50%, -50%);
   left: 50%;
+  pointer-events: none;
 
   @media (max-width: 768px) {
     width: 60px;
@@ -18,13 +19,48 @@
 
 .tooltipContainerRight {
   position: absolute;
-  right: 0px !important;
+  right: 0px;
   padding-right: 5px;
   max-height: 85vh;
   overflow-y: auto;
-  top: 90px !important;
-  left: unset !important;
+  top: 90px;
+  left: unset;
   z-index: 3;
+  pointer-events: none;
+
+  @media (max-width: 768px) {
+    position: fixed;
+    top: 0;
+    right: 0;
+    left: unset;
+    width: 75vw;
+    max-width: 300px;
+    height: 100vh;
+    max-height: 100vh;
+    padding: 0;
+    z-index: 100;
+  }
+}
+
+.mobileOverlay {
+  display: none;
+
+  @media (max-width: 768px) {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 99;
+  }
+}
+
+.switchAccountRoot {
+  @media (max-width: 768px) {
+    z-index: 5;
+  }
 }
 
 .containerSwichAccount {
@@ -37,9 +73,10 @@
   height: 90px;
 
   @media (max-width: 540px) {
-    grid-template-columns: 1fr 60px;
-    gap: 10px;
+    grid-template-columns: 60px;
+    gap: 0;
     height: 60px;
+    justify-content: end;
   }
 
   .noAccount {
@@ -71,6 +108,8 @@
 .content {
   display: flex;
   justify-content: center;
+  position: relative;
+  z-index: 5;
 }
 
 .containerSwichAccountList {
@@ -83,17 +122,64 @@
   background: #0000008c;
   backdrop-filter: blur(7px);
 
+  @media (max-width: 768px) {
+    min-width: unset;
+    width: 100%;
+    height: 100%;
+    padding: 80px 0 15px;
+    background: #000000f0;
+    backdrop-filter: blur(12px);
+    transform: translateX(100%);
+    opacity: 1;
+    transition: transform 0.3s ease;
+    gap: 5px;
+
+    .containerSwichAccount {
+      grid-template-columns: 1fr 60px;
+      height: auto;
+      min-height: 60px;
+      gap: 10px;
+      padding: 5px 0;
+    }
+
+    .containerSwichAccount + .containerSwichAccount {
+      margin-top: 0;
+    }
+
+    .content {
+      padding-right: 5px;
+      align-self: start;
+      margin-top: 15px;
+    }
+  }
+
   &_entering {
     opacity: 0;
+
+    @media (max-width: 768px) {
+      opacity: 1;
+      transform: translateX(100%);
+    }
   }
 
   &_entered {
     opacity: 1;
+    pointer-events: auto;
+
+    @media (max-width: 768px) {
+      transform: translateX(0);
+    }
   }
 
   &_exiting {
     opacity: 0;
     transition: 0.1s;
+
+    @media (max-width: 768px) {
+      opacity: 1;
+      transform: translateX(100%);
+      transition: transform 0.3s ease;
+    }
   }
 
   &_exited {
@@ -101,6 +187,12 @@
     visibility: hidden;
     height: 0;
     padding: 0;
+
+    @media (max-width: 768px) {
+      opacity: 1;
+      transform: translateX(100%);
+      visibility: hidden;
+    }
   }
 }
 

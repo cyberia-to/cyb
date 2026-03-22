@@ -10,9 +10,17 @@
   // width left and right sideBar , gap and paddings 
   max-width: calc(100vw - 200px - 300px - 100px);
 
-  @media (max-width: 540px) {
-    width: 40%;
+  @media (max-width: 768px) {
+    position: fixed;
+    top: unset;
+    bottom: calc(10px + env(safe-area-inset-bottom, 0px));
+    left: 50%;
+    transform: translateX(-50%);
+    width: 90%;
     max-width: unset;
+    margin-right: 0;
+    z-index: 5;
+    border-radius: 8px;
   }
 }
 

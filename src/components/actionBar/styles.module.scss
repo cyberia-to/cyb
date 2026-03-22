@@ -32,6 +32,22 @@
       padding: 0 16px;
     }
   }
+
+  @media (max-width: 768px) {
+    bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 10px;
+  }
+}
+
+.backButton {
+  position: absolute;
+  left: 10px;
+
+  @media (max-width: 540px) {
+    position: static;
+    align-self: flex-start;
+    margin-bottom: 5px;
+  }
 }
 
 .ActionBarContentText {

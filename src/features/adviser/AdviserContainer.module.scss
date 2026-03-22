@@ -8,8 +8,9 @@
   display: flex;
   justify-content: center;
 
-  @media (width <= 540px) {
+  @media (width <= 768px) {
     margin-top: unset;
+    z-index: 2;
   }
 }
 
