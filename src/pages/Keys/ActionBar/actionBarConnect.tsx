@@ -304,6 +304,9 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
             placeholder="password"
             type="password"
             autoComplete="new-password"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
             autoFocus
           />
           <Input
@@ -313,6 +316,9 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
             placeholder="confirm password"
             type="password"
             autoComplete="new-password"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
           />
           {passwordError && (
             <span style={{ color: '#ff4d4d', fontSize: '14px' }}>{passwordError}</span>

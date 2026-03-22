@@ -135,13 +135,14 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
       {/* <Telegram /> */}
 
       {onClickBack && (
-        <ButtonIcon
-          styleContainer={{ position: 'absolute', left: '0' }}
-          style={{ padding: 0 }}
-          img={back}
-          onClick={onClickBack}
-          text="previous step"
-        />
+        <div className={styles.backButton}>
+          <ButtonIcon
+            style={{ padding: 0 }}
+            img={back}
+            onClick={onClickBack}
+            text="previous step"
+          />
+        </div>
       )}
 
       {content && <div className={styles.ActionBarContentText}>{content}</div>}
@@ -196,6 +197,10 @@ function UnlockWalletBar() {
           onChange={(e) => setPassword(e.target.value)}
           placeholder="enter password to unlock"
           type="password"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           onKeyDown={(e) => e.key === 'Enter' && handleUnlock()}
           autoFocus
         />
