@@ -39,9 +39,8 @@
       gap: 15px;
     }
 
-    // expand on touch/hover — glass panel over content
-    &:hover,
-    &:focus-within {
+    // expand on tap — glass panel over content, collapses on nav click
+    &.expanded {
       position: absolute;
       top: 0;
       left: 0;

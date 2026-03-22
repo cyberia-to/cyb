@@ -1,4 +1,5 @@
 import cx from 'classnames';
+import { useCallback, useState } from 'react';
 import { NavLink } from 'react-router-dom';
 import { Display } from 'src/components';
 import styles from './SettingsMenu.module.scss';
@@ -62,8 +63,17 @@ const links: Array<MenuItem[]> = [
 ].filter(Boolean);
 
 function SettingsMenu() {
+  const [expanded, setExpanded] = useState(false);
+
+  const handleNav = useCallback(() => {
+    setExpanded(false);
+  }, []);
+
   return (
-    <div className={styles.wrapper}>
+    <div
+      className={cx(styles.wrapper, { [styles.expanded]: expanded })}
+      onClick={() => setExpanded((prev) => !prev)}
+    >
       <Display>
         <div className={styles.links}>
           {links.map((link, indexUl) => (
@@ -78,6 +88,7 @@ function SettingsMenu() {
                     }
                     to={item.link}
                     end
+                    onClick={handleNav}
                   >
                     <span className={styles.icon}>{item.icon}</span>
                     <span className={styles.text}>{item.text}</span>
