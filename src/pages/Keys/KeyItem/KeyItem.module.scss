@@ -28,6 +28,8 @@
 
   .content {
     line-height: 30px;
+    word-break: break-word;
+    overflow-wrap: break-word;
 
     > * {
       line-height: initial;
@@ -40,6 +42,25 @@
       &:hover {
         opacity: 0.7;
       }
+    }
+  }
+
+  @media (max-width: 540px) {
+    flex-direction: column;
+    gap: 10px;
+    min-height: auto;
+    overflow-x: hidden;
+
+    .imageWrapper {
+      width: 80px;
+      height: 80px;
+    }
+
+    .content {
+      font-size: 13px;
+      line-height: 22px;
+      text-align: center;
+      width: 100%;
     }
   }
 

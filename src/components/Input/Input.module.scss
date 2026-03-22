@@ -39,6 +39,16 @@
       outline: none;
     }
   }
+
+  @media (max-width: 540px) {
+    height: 36px;
+
+    input,
+    textarea {
+      font-size: 13px;
+      text-align: start;
+    }
+  }
 }
 
 .textarea {
