@@ -439,6 +439,10 @@ export const getMnemonic = (bech32?: string): string | null => {
 };
 
 export const setMnemonic = (mnemonic: string, bech32?: string) => {
+  if (!process.env.IS_TAURI) {
+    console.warn('[setMnemonic] blocked — plaintext storage only allowed in Tauri');
+    return;
+  }
   localStorage.setItem(localStorageKeys.signer.mnemonic, mnemonic);
   if (bech32) {
     localStorage.setItem(`cyb:mnemonic:${bech32}`, mnemonic);
