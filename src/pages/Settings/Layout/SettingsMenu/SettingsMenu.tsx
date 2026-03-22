@@ -1,6 +1,6 @@
 import cx from 'classnames';
-import { useCallback, useState } from 'react';
-import { NavLink } from 'react-router-dom';
+import { useCallback, useEffect, useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { Display } from 'src/components';
 import styles from './SettingsMenu.module.scss';
 
@@ -64,6 +64,12 @@ const links: Array<MenuItem[]> = [
 
 function SettingsMenu() {
   const [expanded, setExpanded] = useState(false);
+  const location = useLocation();
+
+  // collapse on any route change
+  useEffect(() => {
+    setExpanded(false);
+  }, [location.pathname]);
 
   const handleNav = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();
