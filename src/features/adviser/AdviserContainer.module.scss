@@ -8,9 +8,15 @@
   display: flex;
   justify-content: center;
 
-  @media (width <= 768px) {
-    margin-top: unset;
-    z-index: 2;
+  @media (max-width: 768px) {
+    position: fixed;
+    top: calc(5px + env(safe-area-inset-top, 0px));
+    left: 65px;
+    right: 65px;
+    width: auto;
+    margin: 0;
+    min-height: unset;
+    z-index: 5;
   }
 }
 
