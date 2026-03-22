@@ -36,8 +36,16 @@ export default function ConnectWalletModal({
   const [isTouched, setIsTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  // Best-effort cleanup on unmount — setState during unmount is a no-op in React 18,
+  // string values remain in fiber tree until GC. Same inherent JS limitation as MetaMask/Keplr.
+  useEffect(() => {
+    return () => {
+      setValues({});
+      setName('');
+    };
+  }, []);
+
   const distributeWords = useCallback((words: string[], startIndex = 0) => {
-    // Auto-switch to 24 if pasting more than 12 words
     const targetLength: keyof typeof columns = words.length + startIndex > 12 ? '24' : '12';
     const targetCount = Number(targetLength);
 
@@ -48,11 +56,9 @@ export default function ConnectWalletModal({
 
     setValues((prev) => {
       const newValues: Record<number, string> = {};
-      // Preserve existing values up to startIndex
       for (let i = 0; i < targetCount; i++) {
         newValues[i] = i < startIndex ? (prev[i] || '') : '';
       }
-      // Fill in pasted words
       for (let i = 0; i < words.length && startIndex + i < targetCount; i++) {
         newValues[startIndex + i] = words[i].trim();
       }
@@ -64,13 +70,14 @@ export default function ConnectWalletModal({
     (event) => {
       event.preventDefault();
 
-      const paste = (event.clipboardData || (window as any).clipboardData)?.getData(
-        'text'
-      );
+      const paste = event.clipboardData?.getData('text');
       if (!paste) return;
 
       const words = paste.trim().split(/\s+/);
       distributeWords(words);
+
+      // Clear clipboard to prevent mnemonic leaking to clipboard managers
+      navigator.clipboard.writeText('').catch(() => {});
     },
     [distributeWords]
   );
@@ -104,14 +111,13 @@ export default function ConnectWalletModal({
 
     try {
       await onAdd(name, Object.values(values).join(' '));
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      setError(msg);
+    } catch {
+      setError('Invalid seed phrase. Please check your words and try again.');
     }
   }, [onAdd, name, values, mnemonicsLength]);
 
   return (
-    <Modal isOpen onPaste={onMnemonicsPaste}>
+    <Modal isOpen onPaste={onMnemonicsPaste} onClose={onCancel}>
       <div>
         <h3 style={styles.heading}>Enter your name</h3>
         <Input
@@ -127,7 +133,7 @@ export default function ConnectWalletModal({
           <Dropdown
             value={mnemonicsLength}
             options={dropdownOptions}
-            onChange={setMnemonicsLength as any}
+            onChange={(v: string) => setMnemonicsLength(v as keyof typeof columns)}
           />
         </div>
       </div>

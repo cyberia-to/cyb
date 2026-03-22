@@ -127,8 +127,9 @@ function enigine() {
     const refId = uuidv4().toString();
 
     callback && scriptCallbacks.set(refId, callback);
+    const { secrets: _secrets, ...safeContext } = context;
     const scriptParams = {
-      app: context,
+      app: safeContext,
       refId,
     };
     const compilerParams = {
@@ -296,10 +297,13 @@ function enigine() {
     popContext,
     executeFunction,
     executeCallback,
-    getDebug: () => ({
-      context,
-      entrypoints,
-    }),
+    getDebug: () => {
+      const { secrets: _secrets, ...safeContext } = context;
+      return {
+        context: safeContext,
+        entrypoints,
+      };
+    },
   };
 }
 

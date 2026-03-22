@@ -111,9 +111,8 @@ function BannerHelp({ addressActive }: { addressActive?: any }) {
       <div>
         Cyberverse is created for you and future generations! Use this power wisely. Start your
         journey by{' '}
-        <Link to="/ipfs/QmX9xMeNioHnMeeUqBXQCKPktG79UEoYjG8sanxysh1MqX">installing Keplr</Link>,
-        then <Link to="/ipfs/QmSWJNCBxj4m5Lpg1XGueh38NbEVDLAGsQrueD937xSnMC">set up</Link> your
-        wallet, <Link to="/ipfs/QmSWJNCBxj4m5Lpg1XGueh38NbEVDLAGsQrueD937xSnMC">connect</Link> to
+        <Link to="/keys">setting up a wallet</Link>,{' '}
+        <Link to="/keys">connect</Link> to
         Bostrom, and <Link to="/ipfs/QmUwwE1gYC6xJZaT6jJHA7aac8wspN9s5puA3otDcq3jQ4">get BOOT</Link>
         .
       </div>

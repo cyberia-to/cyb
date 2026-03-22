@@ -2,6 +2,7 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Transition } from 'react-transition-group';
+import { friendlyErrorMessage } from '../../utils/errorMessages';
 import { trimString } from '../../utils/utils';
 import styles from './ContainerGradient.module.scss';
 import Display from './Display/Display';
@@ -72,7 +73,7 @@ function TxsStatus({ data }: TxsProps) {
             <div>{data.status}</div>
           </div>
         )}
-        {data.rawLog && <div className={styles.containerTxsRawLog}>{data.rawLog}</div>}
+        {data.rawLog && <div className={styles.containerTxsRawLog}>{friendlyErrorMessage(data.rawLog)}</div>}
       </div>
     </ContainerLamp>
   );

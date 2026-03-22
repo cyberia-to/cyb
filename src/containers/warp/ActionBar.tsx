@@ -16,6 +16,7 @@ import { LEDGER } from '../../utils/config';
 import { convertAmountReverce, selectNetworkImg } from '../../utils/utils';
 import ActionBarStaps from './actionBarSteps';
 import { TypeTab, TypeTabEnum } from './type';
+import { friendlyErrorMessage } from 'src/utils/errorMessages';
 
 const POOL_TYPE_INDEX = 1;
 
@@ -94,7 +95,7 @@ function ActionBar({ stateActionBar }: Props) {
           if (response.code) {
             setStage(STAGE_ERROR);
             setTxHeight(response.height);
-            setErrorMessage(response.rawLog);
+            setErrorMessage(friendlyErrorMessage(response.rawLog));
             return;
           }
         }
@@ -135,11 +136,11 @@ function ActionBar({ stateActionBar }: Props) {
           setTxHash(response.transactionHash);
         } else {
           setTxHash(undefined);
-          setErrorMessage(response.rawLog.toString());
+          setErrorMessage(friendlyErrorMessage(response.rawLog));
           setStage(STAGE_ERROR);
         }
       } catch (error) {
-        setErrorMessage(error.toString());
+        setErrorMessage(friendlyErrorMessage(error?.message || error));
         setStage(STAGE_ERROR);
       }
     }
@@ -169,7 +170,7 @@ function ActionBar({ stateActionBar }: Props) {
             setTxHash(response.transactionHash);
           } else {
             setTxHash(undefined);
-            setErrorMessage(response.rawLog.toString());
+            setErrorMessage(friendlyErrorMessage(response.rawLog));
             setStage(STAGE_ERROR);
           }
         } else {
@@ -181,7 +182,7 @@ function ActionBar({ stateActionBar }: Props) {
           setStage(STAGE_ERROR);
         }
       } catch (error) {
-        setErrorMessage(error.toString());
+        setErrorMessage(friendlyErrorMessage(error?.message || error));
         setStage(STAGE_ERROR);
       }
     }
@@ -232,7 +233,7 @@ function ActionBar({ stateActionBar }: Props) {
             setTxHash(response.transactionHash);
           } else {
             setTxHash(undefined);
-            setErrorMessage(response.rawLog.toString());
+            setErrorMessage(friendlyErrorMessage(response.rawLog));
             setStage(STAGE_ERROR);
           }
         } else {
@@ -244,7 +245,7 @@ function ActionBar({ stateActionBar }: Props) {
           setStage(STAGE_ERROR);
         }
       } catch (error) {
-        setErrorMessage(error.toString());
+        setErrorMessage(friendlyErrorMessage(error?.message || error));
         setStage(STAGE_ERROR);
       }
     }

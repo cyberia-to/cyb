@@ -16,13 +16,13 @@ const {
   STEP_NICKNAME_INVALID,
   STEP_RULES,
   STEP_AVATAR_UPLOAD,
-  STEP_KEPLR_INIT,
-  STEP_KEPLR_INIT_INSTALLED,
-  STEP_KEPLR_INIT_CHECK_FNC,
-  STEP_KEPLR_SETUP,
-  STEP_KEPLR_CONNECT,
+  STEP_WALLET_INIT,
+  STEP_WALLET_INSTALLED,
+  STEP_WALLET_CHECK,
+  STEP_WALLET_SETUP,
+  STEP_WALLET_CONNECT,
   STEP_CHECK_ADDRESS,
-  STEP_KEPLR_REGISTER,
+  STEP_REGISTER,
   STEP_DONE,
   STEP_CHECK_GIFT,
   STEP_CHECK_ADDRESS_CHECK_FNC,
@@ -121,31 +121,30 @@ function Info({
         content = <span>Upload a gif or picture. You will also own this as an NFT.</span>;
         break;
 
-      case STEP_KEPLR_INIT_CHECK_FNC:
-      case STEP_KEPLR_INIT:
-      case STEP_KEPLR_INIT_INSTALLED:
+      case STEP_WALLET_CHECK:
+      case STEP_WALLET_INIT:
+      case STEP_WALLET_INSTALLED:
         content = (
           <span>
-            You need Keplr to use cyb. <br />
-            It is opensource and cool! <br /> Check{' '}
-            <LinkWindow to="https://www.keplr.app/">repository</LinkWindow> if necesarry
+            You need a wallet to use cyb. <br />
+            Import your seed phrase or connect a Ledger.
           </span>
         );
         break;
 
-      case STEP_KEPLR_SETUP:
+      case STEP_WALLET_SETUP:
         content = (
           <span>
-            Create an account in keplr. <br />
+            Set up your wallet. <br />
             You will then have addresses in the Cyber ecosystem.
           </span>
         );
         break;
 
-      case STEP_KEPLR_CONNECT:
+      case STEP_WALLET_CONNECT:
         content = (
           <span>
-            Connect keplr. <br /> One click left
+            Connect your wallet. <br /> One click left
           </span>
         );
         break;
@@ -163,7 +162,7 @@ function Info({
         content = <span>Verification takes time. After that, you can register your passport.</span>;
         break;
 
-      case STEP_KEPLR_REGISTER:
+      case STEP_REGISTER:
         if (!registerDisabled) {
           content = (
             <span>
