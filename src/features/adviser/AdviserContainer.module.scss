@@ -10,16 +10,16 @@
 
   @media (max-width: 768px) {
     position: fixed;
-    top: calc(32px + env(safe-area-inset-top, 0px));
-    transform: translateY(-50%);
+    top: calc(55px + env(safe-area-inset-top, 0px));
     left: 70px;
     right: 70px;
     width: auto;
     margin: 0;
     min-height: unset;
-    z-index: 3;
-    overflow: hidden;
-    max-height: 40px;
+    z-index: 4;
+    transform: none;
+    overflow: visible;
+    max-height: none;
   }
 }
 
@@ -44,7 +44,7 @@
     font-size: 11px;
     line-height: 14px;
     text-align: center;
-    padding: 2px 4px;
+    padding: 4px 8px;
     overflow: hidden;
     display: -webkit-box;
     -webkit-line-clamp: 2;
