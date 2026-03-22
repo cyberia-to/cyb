@@ -32,6 +32,11 @@ $size-columns-collapsed: 48px;
 
   @media (max-width: 540px) {
     grid-template-columns: $size-columns-collapsed 1fr;
+    position: relative;
+
+    > :first-child {
+      z-index: 10;
+    }
 
     > :nth-child(2) {
       left: 0;

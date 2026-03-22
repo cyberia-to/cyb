@@ -26,10 +26,8 @@
 
   @media (max-width: 540px) {
     width: 48px;
-    position: sticky;
-    left: 0;
+    position: relative;
     z-index: 10;
-    transition: width 0.2s ease;
 
     a {
       .text {
@@ -41,10 +39,20 @@
       gap: 15px;
     }
 
-    // expand on touch/hover
+    // expand on touch/hover — glass panel over content
     &:hover,
     &:focus-within {
+      position: absolute;
+      top: 0;
+      left: 0;
+      bottom: 0;
       width: 200px;
+      backdrop-filter: blur(20px) saturate(1.4);
+      -webkit-backdrop-filter: blur(20px) saturate(1.4);
+      background: rgba(17, 17, 17, 0.75);
+      border-radius: 0 12px 12px 0;
+      padding: 8px 0;
+      transition: width 0.15s ease;
 
       a .text {
         display: inline;
