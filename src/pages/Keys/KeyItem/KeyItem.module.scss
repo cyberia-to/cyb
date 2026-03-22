@@ -56,11 +56,20 @@
       width: 80px;
       height: 80px;
       flex-shrink: 0;
+      position: static;
 
       img {
         width: 80px;
         height: 80px;
         object-fit: contain;
+      }
+
+      .active {
+        position: absolute;
+        left: auto;
+        right: 8px;
+        top: 8px;
+        bottom: auto;
       }
     }
 
