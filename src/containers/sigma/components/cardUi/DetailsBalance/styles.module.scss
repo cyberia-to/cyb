@@ -1,6 +1,10 @@
 .containerDetailsBalance {
   display: grid;
   gap: 30px;
+
+  @media (max-width: 768px) {
+    gap: 16px;
+  }
 }
 
 .containerRowItem {
@@ -24,5 +28,14 @@
 
   &Market {
     justify-self: flex-end;
+  }
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr auto;
+
+    &ValueBalance {
+      grid-template-columns: 80px 1fr;
+      gap: 8px;
+    }
   }
 }

@@ -70,25 +70,12 @@ function RowBalancesDetails({ balance }) {
           <DenomArr denomValue={balance.total.denom} />
         </Link>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns: '90px 1fr',
-            alignItems: 'baseline',
-            gap: '10px',
-          }}
-        >
+        <div className={styles.chartBalanceWrap}>
           <button
             type="button"
             onClick={checkDetailsToken ? onClickBtnArrow : null}
+            className={styles.chartBtn}
             style={{
-              display: 'grid',
-              gridTemplateColumns: '8px 1fr',
-              alignItems: 'center',
-              gap: '10px',
-              outline: 'none',
-              background: 'transparent',
-              border: 'none',
               cursor: checkDetailsToken ? 'pointer' : 'default',
             }}
           >

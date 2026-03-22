@@ -2,4 +2,9 @@
   padding-left: 34px;
   padding-right: 22px;
   padding-bottom: 10px;
+
+  @media (max-width: 768px) {
+    padding-left: 8px;
+    padding-right: 8px;
+  }
 }

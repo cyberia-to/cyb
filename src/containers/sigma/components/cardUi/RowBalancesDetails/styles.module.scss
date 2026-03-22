@@ -6,6 +6,44 @@
   gap: 10px;
   align-items: center;
   padding: 15px 0;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 90px 1fr;
+    gap: 8px;
+    padding: 10px 0;
+
+    > :nth-child(3),
+    > :nth-child(4) {
+      display: none;
+    }
+  }
+}
+
+.chartBalanceWrap {
+  display: grid;
+  grid-template-columns: 90px 1fr;
+  align-items: baseline;
+  gap: 10px;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 60px 1fr;
+    gap: 8px;
+  }
+}
+
+.chartBtn {
+  display: grid;
+  grid-template-columns: 8px 1fr;
+  align-items: center;
+  gap: 10px;
+  outline: none;
+  background: transparent;
+  border: none;
+
+  @media (max-width: 768px) {
+    grid-template-columns: 6px 1fr;
+    gap: 6px;
+  }
 }
 
 .containerDetailsBalance {
