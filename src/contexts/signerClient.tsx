@@ -147,20 +147,32 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (!mnemonic) {
-          // Try to restore from encrypted storage
           const deviceKey = getTauriDeviceKey();
-          // Check all localStorage keys for encrypted mnemonics
-          for (let i = 0; i < localStorage.length; i++) {
-            const key = localStorage.key(i);
-            if (key?.startsWith('cyb:mnemonic:')) {
-              const encrypted = localStorage.getItem(key);
-              if (encrypted) {
-                try {
-                  mnemonic = await decryptMnemonic(encrypted, deviceKey);
-                  console.log('[Bootstrap] Restored encrypted wallet from storage');
-                  break;
-                } catch {
-                  // Not decryptable with device key, skip
+
+          // Migrate legacy plaintext mnemonic (old Tauri key without address suffix)
+          const legacyKey = 'cyb:mnemonic';
+          const legacyMnemonic = localStorage.getItem(legacyKey);
+          if (legacyMnemonic && legacyMnemonic.split(' ').length >= 12) {
+            mnemonic = legacyMnemonic;
+            walletSource = 'migrated';
+            localStorage.removeItem(legacyKey);
+            console.log('[Bootstrap] Migrated legacy plaintext mnemonic');
+          }
+
+          // Try to restore from encrypted storage
+          if (!mnemonic) {
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i);
+              if (key?.startsWith('cyb:mnemonic:')) {
+                const encrypted = localStorage.getItem(key);
+                if (encrypted) {
+                  try {
+                    mnemonic = await decryptMnemonic(encrypted, deviceKey);
+                    console.log('[Bootstrap] Restored encrypted wallet from storage');
+                    break;
+                  } catch {
+                    // Not decryptable with device key, skip
+                  }
                 }
               }
             }
