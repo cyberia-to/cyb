@@ -10,14 +10,14 @@
 
   @media (max-width: 768px) {
     position: fixed;
-    top: calc(20px + env(safe-area-inset-top, 0px));
-    left: 71px;
-    right: 70px;
+    top: calc(35px + env(safe-area-inset-top, 0px));
+    transform: translateY(-50%);
+    left: 66px;
+    right: 66px;
     width: auto;
     margin: 0;
     min-height: unset;
     z-index: 4;
-    transform: none;
     overflow: visible;
     max-height: none;
   }

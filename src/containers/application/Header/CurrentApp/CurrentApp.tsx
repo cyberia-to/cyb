@@ -45,6 +45,12 @@ function CurrentApp() {
           id={menuButtonId}
           to={getRoute[0]?.to || routes.oracle.path}
           className={styles.networkBtn}
+          onClick={(e) => {
+            if (!mediaQuery) {
+              e.preventDefault();
+              toggleMenu(!openMenu);
+            }
+          }}
         >
           <img
             alt="cyb"
