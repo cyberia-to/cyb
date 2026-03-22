@@ -17,15 +17,19 @@ $size-columns-collapsed: 48px;
     height: 100%;
   }
 
+  // sidebar: remove right border so divider = single 2px (content left border)
   > :first-child {
-    >div {
+    > div {
       overflow-x: hidden;
+      border-right: none !important;
+
+      &::after {
+        display: none !important;
+      }
     }
   }
 
   > :nth-child(2) {
-    left: -2px;
-    margin-right: -2px;
     position: relative;
     overflow-x: hidden;
   }
@@ -39,12 +43,6 @@ $size-columns-collapsed: 48px;
 
     > :first-child {
       z-index: 10;
-    }
-
-    > :nth-child(2) {
-      left: 0;
-      margin-right: 0;
-      overflow-x: hidden;
     }
   }
 }

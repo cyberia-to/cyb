@@ -44,6 +44,11 @@
     position: relative;
     z-index: 10;
 
+    // remove Display inner padding so icons center in 48px column
+    :global(.inner) {
+      padding: 8px 0 !important;
+    }
+
     a {
       justify-content: center;
 
