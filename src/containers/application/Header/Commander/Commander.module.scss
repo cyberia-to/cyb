@@ -13,7 +13,7 @@
   @media (max-width: 768px) {
     position: fixed;
     top: unset;
-    bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
     left: 65px;
     right: 65px;
     transform: none;
