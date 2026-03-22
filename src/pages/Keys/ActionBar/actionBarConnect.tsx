@@ -253,11 +253,17 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
           updateFuncActionBar();
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       pendingMnemonicRef.current = '';
       setPassword('');
       setPasswordConfirm('');
-      setPasswordError('Failed to import wallet. Check your seed phrase and try again');
+
+      const isStorageError = err?.message?.includes('storage');
+      setPasswordError(
+        isStorageError
+          ? 'Could not save wallet. Check browser storage settings'
+          : 'Failed to import wallet. Check your seed phrase and try again'
+      );
     } finally {
       setSaving(false);
     }
