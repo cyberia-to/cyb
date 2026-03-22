@@ -3,10 +3,11 @@ import { OfflineSigner } from '@cybercongress/cyber-js/build/signingcyberclient'
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CHAIN_ID, RPC_URL } from 'src/constants/config';
 import defaultNetworks, { getHealthyRpcUrl } from 'src/constants/defaultNetworks';
-import { useAppSelector } from 'src/redux/hooks';
+import { addAddressPocket, setDefaultAccount } from 'src/redux/features/pocket';
+import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
 import { Option } from 'src/types';
 import { Networks } from 'src/types/networks';
-import { decryptMnemonic } from 'src/utils/mnemonicCrypto';
+import { decryptMnemonic, encryptMnemonic, getTauriDeviceKey } from 'src/utils/mnemonicCrypto';
 import {
   connectLedger as connectLedgerDevice,
   ReconnectingLedgerSigner,
@@ -16,7 +17,7 @@ import {
 } from 'src/utils/ledgerSigner';
 import networkListIbc from 'src/utils/networkListIbc';
 import { getOfflineSigner as getOfflineSignerFromMnemonic } from 'src/utils/offlineSigner';
-import { getEncryptedMnemonic, getMnemonic, setMnemonic } from 'src/utils/utils';
+import { getEncryptedMnemonic, setEncryptedMnemonic } from 'src/utils/utils';
 
 const MNEMONIC_AUTO_CLEAR_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -61,6 +62,7 @@ export function useSigningClient() {
 }
 
 function SigningClientProvider({ children }: { children: React.ReactNode }) {
+  const dispatch = useAppDispatch();
   const { defaultAccount } = useAppSelector((state) => state.pocket);
   const [signer, setSigner] = useState<SignerClientContextType['signer']>();
   const [signerReady, setSignerReady] = useState(false);
@@ -145,15 +147,31 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
         }
 
         if (!mnemonic) {
-          mnemonic = getMnemonic();
-          if (mnemonic) {
-            console.log('[Bootstrap] Restored existing wallet from storage');
-          } else {
-            const { generateMnemonic } = await import('src/utils/offlineSigner');
-            mnemonic = await generateMnemonic();
-            walletSource = 'generated';
-            console.log('[Bootstrap] Auto-generated new wallet');
+          // Try to restore from encrypted storage
+          const deviceKey = getTauriDeviceKey();
+          // Check all localStorage keys for encrypted mnemonics
+          for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (key?.startsWith('cyb:mnemonic:')) {
+              const encrypted = localStorage.getItem(key);
+              if (encrypted) {
+                try {
+                  mnemonic = await decryptMnemonic(encrypted, deviceKey);
+                  console.log('[Bootstrap] Restored encrypted wallet from storage');
+                  break;
+                } catch {
+                  // Not decryptable with device key, skip
+                }
+              }
+            }
           }
+        }
+
+        if (!mnemonic) {
+          const { generateMnemonic } = await import('src/utils/offlineSigner');
+          mnemonic = await generateMnemonic();
+          walletSource = 'generated';
+          console.log('[Bootstrap] Auto-generated new wallet');
         }
 
         const mnemonicSigner = await getOfflineSignerFromMnemonic(mnemonic);
@@ -163,8 +181,10 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
 
         console.log(`[Bootstrap] Wallet active: ${address} (source: ${walletSource}, name: ${accountName})`);
 
-        // Store mnemonic with per-address key
-        setMnemonic(mnemonic, address);
+        // Store mnemonic encrypted with device key
+        const deviceKey = getTauriDeviceKey();
+        const encrypted = await encryptMnemonic(mnemonic, deviceKey);
+        setEncryptedMnemonic(encrypted, address);
 
         // Register account (deduplicates if already exists)
         dispatch(
@@ -205,7 +225,22 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
       const bech32 = defaultAccount.account?.cyber?.bech32;
       if (keys !== 'wallet' || !bech32) return;
 
-      const mnemonic = getMnemonic(bech32);
+      // On web, auto-switch only works if wallet is already unlocked (mnemonicRef)
+      // On Tauri, decrypt with device key
+      let mnemonic: string | null = mnemonicRef.current;
+
+      if (!mnemonic && process.env.IS_TAURI) {
+        const encrypted = getEncryptedMnemonic(bech32);
+        if (encrypted) {
+          try {
+            mnemonic = await decryptMnemonic(encrypted, getTauriDeviceKey());
+          } catch {
+            console.warn('[Signer] Failed to decrypt mnemonic for account switch');
+            return;
+          }
+        }
+      }
+
       if (!mnemonic) return;
 
       try {

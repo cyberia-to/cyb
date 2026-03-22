@@ -3,7 +3,7 @@ import { Dispatch } from 'redux';
 import { localStorageKeys } from 'src/constants/localStorageKeys';
 import { Account, Accounts, AccountValue, DefaultAccount } from 'src/types/defaultAccount';
 import { POCKET } from '../../utils/config';
-import { removeEncryptedMnemonic } from '../../utils/utils';
+import { removeEncryptedMnemonic, removeAllMnemonics } from '../../utils/utils';
 import { RootState } from '../store';
 
 type SliceState = {
