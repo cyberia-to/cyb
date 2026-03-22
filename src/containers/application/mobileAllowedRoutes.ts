@@ -23,8 +23,7 @@ export const mobileAllowedRoutes = [
 
   routes.mining.path,
 
-  routes.settings.path,
-  routes.keys.path,
+  routes.settings.path + '/*',
 
   routes.teleport.path,
   routes.sphere.path,
