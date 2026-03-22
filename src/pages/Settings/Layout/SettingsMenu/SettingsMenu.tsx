@@ -13,16 +13,16 @@ type MenuItem = {
 const links: Array<MenuItem[]> = [
   [
     {
-      text: 'Drive',
-      link: '.',
-      icon: '🟥',
+      text: 'Keys',
+      link: './keys',
+      icon: '🗝',
     },
   ],
   [
     {
-      text: 'Keys',
-      link: './keys',
-      icon: '🗝',
+      text: 'Drive',
+      link: '.',
+      icon: '🟥',
     },
   ],
   process.env.IS_TAURI || !window.keplr
