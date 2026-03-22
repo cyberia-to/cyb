@@ -27,7 +27,8 @@
 
   @media (max-width: 540px) {
     &Content {
-      align-items: stretch;
+      flex-direction: column;
+      align-items: center;
       padding: 0 12px;
       gap: 8px;
 
@@ -36,11 +37,12 @@
         display: flex;
         width: 100%;
         gap: 8px;
+        flex-wrap: wrap;
+        justify-content: center;
 
         > a,
         > button {
           margin: 0 !important;
-          flex: 1;
         }
       }
     }
