@@ -65,7 +65,8 @@ const links: Array<MenuItem[]> = [
 function SettingsMenu() {
   const [expanded, setExpanded] = useState(false);
 
-  const handleNav = useCallback(() => {
+  const handleNav = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
     setExpanded(false);
   }, []);
 
