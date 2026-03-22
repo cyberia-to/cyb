@@ -10,9 +10,9 @@
 
   @media (max-width: 768px) {
     position: fixed;
-    top: calc(35px + env(safe-area-inset-top, 0px));
+    top: calc(32px + env(safe-area-inset-top, 0px));
     transform: translateY(-50%);
-    left: 65px;
+    left: 5px;
     right: 65px;
     width: auto;
     margin: 0;
