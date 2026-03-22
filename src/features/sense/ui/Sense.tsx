@@ -1,5 +1,5 @@
 import cx from 'classnames';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useBackend } from 'src/contexts/backend/backend';
 import { useAdviser } from 'src/features/adviser/context';
@@ -141,30 +141,87 @@ function Sense({ urlSenseId }: { urlSenseId?: string }) {
 
   const isLLMFilter = currentFilter === Filters.LLM;
 
+  const MIN_WIDTH = 60;
+  const MAX_WIDTH = 400;
+  const DEFAULT_WIDTH = 300;
+
+  const [sidebarWidth, setSidebarWidth] = useState(DEFAULT_WIDTH);
+  const dragging = useRef(false);
+
+  const onMouseDown = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragging.current = true;
+
+    const onMouseMove = (ev: MouseEvent) => {
+      if (!dragging.current) return;
+      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, ev.clientX));
+      setSidebarWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      dragging.current = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
+  }, []);
+
+  const onTouchStart = useCallback((e: React.TouchEvent) => {
+    dragging.current = true;
+
+    const onTouchMove = (ev: TouchEvent) => {
+      if (!dragging.current) return;
+      const touch = ev.touches[0];
+      const newWidth = Math.min(MAX_WIDTH, Math.max(MIN_WIDTH, touch.clientX));
+      setSidebarWidth(newWidth);
+    };
+
+    const onTouchEnd = () => {
+      dragging.current = false;
+      document.removeEventListener('touchmove', onTouchMove);
+      document.removeEventListener('touchend', onTouchEnd);
+    };
+
+    document.addEventListener('touchmove', onTouchMove);
+    document.addEventListener('touchend', onTouchEnd);
+  }, []);
+
+  const isCollapsed = sidebarWidth < 100;
+
   return (
     <>
       <div className={cx(styles.wrapper, { [styles.NotOwner]: !isOwner })}>
         {isOwner && (
-          <SenseList
-            select={(id: string) => {
-              setSelected(id);
-              // Navigate only if not LLM chat
-              if (id !== 'llm') {
-                if (!paramSenseId) {
-                  navigate(`./${id}`);
-                } else {
-                  navigate(`../${id}`, {
-                    relative: 'path',
-                  });
+          <div style={{ width: sidebarWidth, flexShrink: 0 }} className={cx({ [styles.collapsed]: isCollapsed })}>
+            <SenseList
+              select={(id: string) => {
+                setSelected(id);
+                if (id !== 'llm') {
+                  if (!paramSenseId) {
+                    navigate(`./${id}`);
+                  } else {
+                    navigate(`../${id}`, {
+                      relative: 'path',
+                    });
+                  }
                 }
-              }
-            }}
-            selected={selected}
-            adviser={adviserProps}
-            currentFilter={{
-              value: currentFilter,
-              set: setCurrentFilter,
-            }}
+              }}
+              selected={selected}
+              adviser={adviserProps}
+              currentFilter={{
+                value: currentFilter,
+                set: setCurrentFilter,
+              }}
+            />
+          </div>
+        )}
+        {isOwner && (
+          <div
+            className={styles.divider}
+            onMouseDown={onMouseDown}
+            onTouchStart={onTouchStart}
           />
         )}
         <SenseViewer selected={selected} isLLMFilter={isLLMFilter} adviser={adviserProps} />

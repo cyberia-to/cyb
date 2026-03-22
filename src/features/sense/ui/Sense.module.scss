@@ -25,9 +25,57 @@
     }
   }
 
+  // divider handle
   > :nth-child(2) {
+    // keep default for non-divider case
+  }
+
+  // viewer panel (after divider)
+  > :nth-child(3) {
     flex: 1;
     position: relative;
-    left: -2px;
+    min-width: 0;
+  }
+
+  // fallback: when no divider (not owner)
+  > :nth-child(2):last-child {
+    flex: 1;
+    position: relative;
+  }
+}
+
+.divider {
+  width: 4px;
+  cursor: col-resize;
+  background: linear-gradient(180deg,
+    rgba(54, 214, 174, 0) 0%,
+    rgba(54, 214, 174, 0.3) 30%,
+    rgba(54, 214, 174, 0.3) 70%,
+    rgba(54, 214, 174, 0) 100%);
+  position: relative;
+  z-index: 2;
+  flex-shrink: 0;
+  touch-action: none;
+
+  &:hover,
+  &:active {
+    background: linear-gradient(180deg,
+      rgba(54, 214, 174, 0) 0%,
+      rgba(54, 214, 174, 0.6) 30%,
+      rgba(54, 214, 174, 0.6) 70%,
+      rgba(54, 214, 174, 0) 100%);
+    width: 6px;
+  }
+}
+
+.collapsed {
+  overflow: hidden;
+
+  // hide text, show only avatars
+  :global(.title),
+  :global(.content),
+  :global(.date),
+  :global(.unread) {
+    display: none !important;
   }
 }
