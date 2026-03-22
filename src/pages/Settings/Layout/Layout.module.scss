@@ -30,14 +30,21 @@ $size-columns-collapsed: 48px;
     position: relative;
     overflow: hidden;
     min-width: 0;
-    word-break: break-word;
 
-    // Display.inner: fill remaining space after header, scroll internally
+    // Display.inner: override height:100% from Display.module.scss
+    // so it fills remaining space after header and scrolls internally
     > :last-child {
+      height: auto !important;
+      max-height: none !important;
       flex: 1;
       min-height: 0;
-      overflow-x: hidden;
       overflow-y: auto;
+
+      // content wraps instead of overflowing horizontally
+      > * {
+        max-width: 100%;
+        overflow-wrap: break-word;
+      }
     }
   }
 
