@@ -29,6 +29,7 @@
     &Content {
       flex-direction: column;
       align-items: center;
+      padding: 0 16px;
     }
   }
 }
@@ -55,6 +56,10 @@
   align-items: center;
   justify-content: center;
   width: 62%;
+
+  @media (max-width: 540px) {
+    width: 95%;
+  }
   position: fixed;
   bottom: calc(20px + env(safe-area-inset-bottom, 0px));
   left: 50%;

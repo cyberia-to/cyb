@@ -384,7 +384,12 @@ export function covertUint8ArrayToString(data: Uint8Array): string {
 }
 
 export const setEncryptedMnemonic = (encrypted: string, bech32: string) => {
-  localStorage.setItem(`cyb:mnemonic:${bech32}`, encrypted);
+  try {
+    localStorage.setItem(`cyb:mnemonic:${bech32}`, encrypted);
+  } catch (e) {
+    console.error('Failed to save encrypted mnemonic:', e);
+    throw new Error('Could not save wallet. Check browser storage settings.');
+  }
 };
 
 export const getEncryptedMnemonic = (bech32: string): string | null => {

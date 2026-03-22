@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { CHAIN_ID } from 'src/constants/config';
-import { useDevice } from 'src/contexts/device';
 import { useSigningClient } from 'src/contexts/signerClient';
 import { useAdviser } from 'src/features/adviser/context';
 import { AdviserColors } from 'src/features/adviser/Adviser/Adviser';
@@ -49,8 +48,6 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
 
   const address = useAppSelector(selectCurrentAddress);
   const { passport } = usePassportByAddress(address);
-  const { isMobile } = useDevice();
-
   const noAccount = !defaultAccount.account;
   const noPassport = CHAIN_ID === Networks.BOSTROM && !passport;
 
@@ -80,8 +77,7 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
     !location.pathname.includes(routes.gift.path) &&
     !location.pathname.includes('/brain') && // both full and robot
     !location.pathname.includes('/mining') &&
-    !location.pathname.includes('/network/bostrom/tx') &&
-    (!isMobile || process.env.IS_TAURI)
+    !location.pathname.includes('/network/bostrom/tx')
   ) {
     return (
       <ActionBarContainer>
