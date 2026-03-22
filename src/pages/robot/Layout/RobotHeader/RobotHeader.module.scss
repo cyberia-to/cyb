@@ -18,18 +18,20 @@
 .content {
   display: grid;
   grid-template-columns: 1fr 75px 1fr;
-  align-items: center;
+  align-items: start;
   justify-items: center;
   padding: 8px;
 
   .level,
   .addressName {
     display: grid;
-    grid-template-rows: 1fr 1fr;
+    grid-template-rows: auto auto;
     justify-items: center;
-    gap: 12px;
+    gap: 8px;
     font-size: 16px;
     font-weight: 400;
+    // top of text aligns with center of 75px avatar sphere
+    padding-top: calc(75px / 2);
   }
 
   .name {
