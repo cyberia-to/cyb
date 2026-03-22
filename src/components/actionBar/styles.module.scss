@@ -27,21 +27,20 @@
 
   @media (max-width: 540px) {
     &Content {
-      flex-direction: column;
-      align-items: center;
-      padding: 0 16px;
-      gap: 10px;
+      align-items: stretch;
+      padding: 0 12px;
+      gap: 8px;
 
       // button groups inside Pane
       > div {
         display: flex;
-        flex-wrap: wrap;
-        justify-content: center;
+        width: 100%;
         gap: 8px;
 
         > a,
         > button {
           margin: 0 !important;
+          flex: 1;
         }
       }
     }
