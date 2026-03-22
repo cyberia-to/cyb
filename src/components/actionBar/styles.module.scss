@@ -30,6 +30,20 @@
       flex-direction: column;
       align-items: center;
       padding: 0 16px;
+      gap: 10px;
+
+      // button groups inside Pane
+      > div {
+        display: flex;
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 8px;
+
+        > a,
+        > button {
+          margin: 0 !important;
+        }
+      }
     }
   }
 
@@ -59,6 +73,12 @@
   // color: #777777;
   color: #fff;
   font-size: 20px;
+
+  @media (max-width: 540px) {
+    font-size: 14px;
+    gap: 0 8px;
+    flex-wrap: wrap;
+  }
 }
 
 
