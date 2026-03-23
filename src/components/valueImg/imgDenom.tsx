@@ -11,8 +11,7 @@ import amperImg from 'images/light.png';
 import voltImg from 'images/lightning2.png';
 import osmosis from 'images/osmosis.svg';
 import pussy from 'images/space-pussy.svg';
-import { useCallback, useEffect, useState } from 'react';
-import useQueueIpfsContent from 'src/hooks/useQueueIpfsContent';
+import { useEffect, useState } from 'react';
 import { checkIsEmoji } from 'src/utils/emoji';
 import { trimString } from '../../utils/utils';
 import Tooltip from '../tooltip/tooltip';
@@ -58,6 +57,12 @@ type ImgDenomProps = {
   };
 };
 
+const PINATA_GATEWAY = 'https://bostrom.mypinata.cloud';
+const CYBER_GW = 'https://gateway.ipfs.cybernode.ai';
+
+const cidToGatewayUrl = (cid: string) => `${PINATA_GATEWAY}/ipfs/${cid}`;
+const cidToFallbackUrl = (cid: string) => `${CYBER_GW}/ipfs/${cid}`;
+
 function ImgDenom({
   coinDenom,
   marginImg,
@@ -68,25 +73,13 @@ function ImgDenom({
 }: ImgDenomProps) {
   const [imgDenom, setImgDenom] = useState<string>();
   const [tooltipText, setTooltipText] = useState<string>(coinDenom);
-  const { fetchWithDetails } = useQueueIpfsContent();
-
-  const getImgFromIpfsByCid = useCallback(
-    async (cidAvatar: string) => {
-      if (cidAvatar && fetchWithDetails) {
-        return fetchWithDetails(cidAvatar, 'image').then(
-          (details) => details?.content && setImgDenom(details?.content)
-        );
-      }
-      return null;
-    },
-    [fetchWithDetails]
-  );
 
   useEffect(() => {
     if (infoDenom && Object.hasOwn(infoDenom, 'coinImageCid')) {
       const { coinImageCid, path, native } = infoDenom;
-      if (coinImageCid && fetchWithDetails) {
-        getImgFromIpfsByCid(coinImageCid);
+      if (coinImageCid) {
+        // Use Pinata gateway directly for pinned icons
+        setImgDenom(cidToGatewayUrl(coinImageCid));
       } else if (native) {
         if (coinDenom.includes('pool')) {
           setImgDenom(pool);
@@ -100,7 +93,6 @@ function ImgDenom({
           setImgDenom(nativeImg);
         }
       } else {
-        // check nativeImageMap by denom ticker before falling back to generic ibc icon
         const denomKey = (infoDenom.denom || coinDenom).toLowerCase();
         const knownImg = nativeImageMap[denomKey];
         setImgDenom(knownImg || ibc);
@@ -112,7 +104,7 @@ function ImgDenom({
     } else {
       setImgDenom(getNativeImg(coinDenom));
     }
-  }, [coinDenom, infoDenom, fetchWithDetails, getImgFromIpfsByCid]);
+  }, [coinDenom, infoDenom]);
 
   const isEmoji = imgDenom && checkIsEmoji(imgDenom);
 
@@ -129,6 +121,19 @@ function ImgDenom({
       }}
       src={imgDenom || defaultImg}
       alt="text"
+      onError={(e) => {
+        const img = e.currentTarget;
+        const src = img.src;
+        // Fallback: Pinata → cybernode → default
+        if (src.includes(PINATA_GATEWAY)) {
+          const cid = src.split('/ipfs/')[1];
+          if (cid) {
+            img.src = cidToFallbackUrl(cid);
+            return;
+          }
+        }
+        img.src = defaultImg;
+      }}
     />
   );
 
