@@ -25,7 +25,7 @@ export const mobileAllowedRoutes = [
 
   routes.settings.path + '/*',
 
-  routes.teleport.path,
+  routes.teleport.path + '/*',
   routes.sphere.path,
   routes.portal.path,
   routes.citizenship.path,

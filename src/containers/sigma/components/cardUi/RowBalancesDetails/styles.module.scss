@@ -8,9 +8,16 @@
   padding: 15px 0;
 
   @media (max-width: 768px) {
-    grid-template-columns: 90px 1fr;
-    gap: 8px;
+    grid-template-columns: auto 1fr;
+    gap: 6px;
     padding: 10px 0;
+
+    > :first-child {
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 140px;
+    }
 
     > :nth-child(3),
     > :nth-child(4) {
@@ -26,8 +33,8 @@
   gap: 10px;
 
   @media (max-width: 768px) {
-    grid-template-columns: 60px 1fr;
-    gap: 8px;
+    grid-template-columns: 50px 1fr;
+    gap: 6px;
   }
 }
 
@@ -51,6 +58,7 @@
   min-height: 0;
   height: 0;
   padding-left: 23px;
+  overflow: hidden;
   transition: 0.5s ease-in-out;
   opacity: 0;
 

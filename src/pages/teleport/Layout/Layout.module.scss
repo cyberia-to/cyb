@@ -5,10 +5,12 @@ $mobile-breakpoint: 480px;
   width: 420px;
 
   @media (width <=$mobile-breakpoint) {
-    width: unset;
+    width: 100%;
+    padding: 0 10px;
+    box-sizing: border-box;
 
     > div {
-      width: 100vw;
+      width: 100%;
     }
   }
 }

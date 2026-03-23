@@ -49,8 +49,9 @@
   }
 
   @media (max-width: 768px) {
-    bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
     padding-bottom: 10px;
+    z-index: 6;
   }
 }
 
@@ -98,12 +99,11 @@
     width: 95%;
   }
   position: fixed;
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  bottom: calc(56px + env(safe-area-inset-bottom, 0px));
   left: 50%;
-  transform: translate(-50%, 10px);
-  // padding: 10px 0;
+  transform: translate(-50%, 0);
   background: #000;
-  z-index: 3;
+  z-index: 6;
 
   &Content {
     max-width: 1000px;

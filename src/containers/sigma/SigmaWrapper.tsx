@@ -1,14 +1,9 @@
 import Sigma from '.';
+import styles from './SigmaWrapper.module.scss';
 
 function SigmaWrapper() {
   return (
-    <div
-      style={{
-        margin: '0 auto',
-        width: '72%',
-        paddingBottom: '130px',
-      }}
-    >
+    <div className={styles.wrapper}>
       <Sigma />
     </div>
   );

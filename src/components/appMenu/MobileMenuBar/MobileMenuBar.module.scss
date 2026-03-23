@@ -1,0 +1,164 @@
+.overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(8px);
+  z-index: 4;
+}
+
+.bar {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 8px 10px;
+  padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  background: rgba(0, 0, 0, 0.95);
+  z-index: 5;
+  transition: all 0.3s ease;
+
+  &.expanded {
+    border-top: 1px solid rgba(54, 214, 174, 0.3);
+  }
+}
+
+.mainRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.icons {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.menuItem {
+  background-color: #101010;
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  box-shadow: 0px 0px 13px #ffffff54;
+  transition: 0.2s ease-in-out;
+
+  &.active {
+    border: 1px solid #4ed6ae;
+    box-shadow: 0px 0px 8px #4ed6ae inset, 0px 0px 13px #4ed6ae;
+  }
+}
+
+.icon {
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+}
+
+.portalGlow {
+  filter: drop-shadow(0 0 4px #f62bfd) drop-shadow(0 0 8px #f62bfda0);
+}
+
+.commander {
+  flex: 1;
+  min-width: 0;
+}
+
+.input {
+  text-align: center !important;
+  font-size: 14px !important;
+}
+
+// Expanded content
+.expandedContent {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 12px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  animation: slideUp 0.2s ease;
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.presets {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+}
+
+.presetBtn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 12px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 10px;
+  cursor: pointer;
+  transition: all 0.2s;
+  flex: 1;
+
+  &:hover,
+  &:active {
+    background: rgba(54, 214, 174, 0.15);
+    border-color: rgba(54, 214, 174, 0.4);
+  }
+}
+
+.presetIcon {
+  font-size: 20px;
+  line-height: 1;
+}
+
+.presetLabel {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.networks {
+  display: flex;
+  gap: 6px;
+  justify-content: center;
+}
+
+.networkBtn {
+  padding: 4px 14px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  cursor: pointer;
+  transition: all 0.2s;
+
+  &:hover {
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  &.networkActive {
+    background: rgba(54, 214, 174, 0.15);
+    border-color: #36d6ae;
+    color: #36d6ae;
+  }
+}

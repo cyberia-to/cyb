@@ -1,4 +1,5 @@
 import tocyb from 'images/boot.png';
+import cosmos from 'images/cosmos.svg';
 
 import eth from 'images/Ethereum_logo_2014.svg';
 import pool from 'images/gravitydexPool.png';
@@ -8,6 +9,8 @@ import boot from 'images/large-green.png';
 import defaultImg from 'images/large-orange-circle.png';
 import amperImg from 'images/light.png';
 import voltImg from 'images/lightning2.png';
+import osmosis from 'images/osmosis.svg';
+import pussy from 'images/space-pussy.svg';
 import { useCallback, useEffect, useState } from 'react';
 import useQueueIpfsContent from 'src/hooks/useQueueIpfsContent';
 import { checkIsEmoji } from 'src/utils/emoji';
@@ -27,9 +30,14 @@ const nativeImageMap = {
   liquidpussy: lp,
   lp,
   boot,
-  pussy: '🟣',
+  pussy,
   tocyb,
   eth,
+  osmo: osmosis,
+  uosmo: osmosis,
+  atom: cosmos,
+  uatom: cosmos,
+  cosmosvaloper: cosmos,
 };
 
 const getNativeImg = (text: string) => {
@@ -88,11 +96,14 @@ function ImgDenom({
             setTooltipText(infoDenom.denom);
           }
 
-          const nativeImg = getNativeImg(coinDenom);
+          const nativeImg = getNativeImg(coinDenom) || getNativeImg(infoDenom.denom || '');
           setImgDenom(nativeImg);
         }
       } else {
-        setImgDenom(ibc);
+        // check nativeImageMap by denom ticker before falling back to generic ibc icon
+        const denomKey = (infoDenom.denom || coinDenom).toLowerCase();
+        const knownImg = nativeImageMap[denomKey];
+        setImgDenom(knownImg || ibc);
       }
 
       if (path && path.length > 0) {
