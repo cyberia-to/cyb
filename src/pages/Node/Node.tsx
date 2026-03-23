@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Button, Display, DisplayTitle, Input } from 'src/components';
+import ActionBar from 'src/components/actionBar';
 import { useBackend } from 'src/contexts/backend/backend';
 import { getIpfsOpts } from 'src/services/ipfs/config';
 import { IPFSNodes, IpfsNodeType } from 'src/services/ipfs/types';
@@ -136,10 +137,14 @@ function Node() {
           <InfoIpfsNode />
         </div>
 
-        <div className={styles.actions}>
-          <Button onClick={onReconnect}>Reconnect</Button>
-        </div>
       </div>
+
+      <ActionBar
+        button={{
+          text: 'Reconnect',
+          onClick: onReconnect,
+        }}
+      />
     </Display>
   );
 }

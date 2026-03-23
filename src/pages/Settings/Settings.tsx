@@ -1,5 +1,6 @@
 import { Route, Routes } from 'react-router-dom';
 import IpfsSettings from 'src/features/ipfs/ipfsSettings';
+import NodePage from 'src/pages/Node/Node';
 import Hub from '../Hub/hub';
 import Keys from '../Keys/Keys';
 import Hotkeys from '../robot/Hotkeys/Hotkeys';
@@ -15,6 +16,7 @@ function Settings() {
         <Route index element={<IpfsSettings />} />
         <Route path="keys" element={<Keys />} />
         <Route path="signer" element={<Signer />} />
+        <Route path="node" element={<NodePage />} />
         <Route path="audio" element={<Audio />} />
         <Route path="llm" element={<LLM />} />
 

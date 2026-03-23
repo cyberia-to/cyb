@@ -84,7 +84,19 @@ const getMenuItems = () => {
       to: routes.studio.path,
       subItems: [],
     },
-    { name: 'Node', icon: shpere, to: '/node', subItems: [] },
+    {
+      name: 'robot',
+      icon: robot,
+      to: '/settings',
+      subItems: [
+        { name: 'Drive', to: '/settings', icon: '🟥' },
+        { name: 'Keys', to: '/settings/keys', icon: '🗝' },
+        { name: 'Signer', to: '/settings/signer', icon: '🖋️' },
+        { name: 'Node', to: '/settings/node', icon: '🟢' },
+        { name: 'Hotkeys', to: '/settings/hotkeys', icon: '⌨️' },
+        { name: 'LLM', to: '/settings/llm', icon: '👾' },
+      ],
+    },
     {
       name: 'AOS',
       icon: require('./images/aos.png'),

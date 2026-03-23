@@ -57,6 +57,7 @@ const links: Array<MenuItem[]> = [
   //     icon: '🔊',
   //   },
   // ],
+  [{ text: 'Node', link: './node', icon: '🟢' }],
   [{ text: 'Hotkeys', link: './hotkeys', icon: '⌨️' }],
   [{ text: 'LLM', link: './llm', icon: '👾' }],
 ].filter(Boolean);

@@ -5,15 +5,6 @@ mod worlds;
 use bevy::prelude::*;
 use bevy::render::renderer::{RenderDevice, RenderQueue};
 use bevy::render::RenderApp;
-use agent::AgentPlugin;
-use shell::hotkeys::HotkeysPlugin;
-use shell::tray::TrayPlugin;
-use worlds::WorldsPlugin;
-use worlds::interface::InterfaceWorldPlugin;
-use worlds::legacy::LegacyWorldPlugin;
-use worlds::portal::PortalWorldPlugin;
-use worlds::splash::SplashWorldPlugin;
-use worlds::terminal::TerminalWorldPlugin;
 
 /// Clones Bevy's GPU resources (Device, Queue) into the main world
 /// so non-render systems (like Terminal) can use them.
@@ -53,14 +44,14 @@ fn main() {
         }))
         .insert_resource(ClearColor(bevy::color::Color::BLACK))
         .add_plugins(GpuBridgePlugin)
-        .add_plugins(WorldsPlugin)
-        .add_plugins(HotkeysPlugin)
-        .add_plugins(SplashWorldPlugin)
-        .add_plugins(InterfaceWorldPlugin)
-        .add_plugins(PortalWorldPlugin)
-        .add_plugins(LegacyWorldPlugin)
-        .add_plugins(TerminalWorldPlugin)
-        .add_plugins(AgentPlugin)
-        .add_plugins(TrayPlugin)
+        .add_plugins(worlds::WorldsPlugin)
+        .add_plugins(shell::hotkeys::HotkeysPlugin)
+        .add_plugins(worlds::splash::SplashWorldPlugin)
+        .add_plugins(worlds::interface::InterfaceWorldPlugin)
+        .add_plugins(worlds::portal::PortalWorldPlugin)
+        .add_plugins(worlds::legacy::LegacyWorldPlugin)
+        .add_plugins(worlds::terminal::TerminalWorldPlugin)
+        .add_plugins(agent::AgentPlugin)
+        .add_plugins(shell::tray::TrayPlugin)
         .run();
 }
