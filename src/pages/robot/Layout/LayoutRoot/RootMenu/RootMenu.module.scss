@@ -1,5 +1,12 @@
 $activeLineWidth: 2px;
 
+.wrapper {
+  @media (max-width: 540px) {
+    background: #000;
+    height: 100%;
+  }
+}
+
 .links {
   a {
     position: relative;
