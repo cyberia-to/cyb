@@ -100,10 +100,19 @@ function ActionBarContainer() {
 
       for (let index = 0; index < arrValue.length; index++) {
         const item = arrValue[index];
-        // eslint-disable-next-line no-await-in-loop
-        const itemCid = await addIfpsMessageOrCid(item, { ipfsApi });
-
-        newItem.push({ text: item, cid: itemCid });
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const itemCid = await Promise.race([
+            addIfpsMessageOrCid(item, { ipfsApi }),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error('IPFS timeout')), 10000)
+            ),
+          ]);
+          newItem.push({ text: item, cid: itemCid });
+        } catch {
+          setError('IPFS unavailable — cannot add keyword');
+          return;
+        }
       }
     }
 
@@ -124,9 +133,21 @@ function ActionBarContainer() {
 
     const [{ address }] = await signer.getAccounts();
 
-    const currentMarkdownCid = await addIfpsMessageOrCid(currentMarkdown, {
-      ipfsApi,
-    });
+    setAdviser('uploading content to IPFS...');
+
+    let currentMarkdownCid: string;
+    try {
+      currentMarkdownCid = await Promise.race([
+        addIfpsMessageOrCid(currentMarkdown, { ipfsApi }),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('IPFS timeout')), 10000)
+        ),
+      ]);
+    } catch (e) {
+      setError('IPFS unavailable — cannot upload content');
+      setLoading(false);
+      return;
+    }
 
     const links = mapLinks(currentMarkdownCid, {
       from: keywordsFrom,
@@ -153,20 +174,23 @@ function ActionBarContainer() {
     }
 
     setLoading(true);
+    setAdviser('signing and broadcasting transaction...');
 
     await sendCyberlinkArray(address, uniqueLinks, { signingClient, senseApi })
       .then((txHash) => {
+        setAdviser('waiting for transaction confirmation...');
         setTx({
           hash: txHash,
           onSuccess: () => {
             setLoading(false);
-            navigate(routes.ipfs.getLink(currentMarkdownCid));
+            setAdviser('link created successfully!', 'green');
+            setTimeout(() => navigate(routes.ipfs.getLink(currentMarkdownCid)), 2000);
           },
         });
       })
       .catch((e) => {
         setError(friendlyErrorMessage(e?.message || e));
-        console.error(error);
+        console.error(e);
         setLoading(false);
       });
   };
