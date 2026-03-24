@@ -28,6 +28,7 @@ type Props = {
   warningAmountText?: string;
   onChangeSelect: React.Dispatch<React.SetStateAction<string>>;
   amountChangeHandler: (values: string, id: TokenSetterId) => void;
+  accountBalances?: ObjKeyValue | null;
 };
 
 function TokenSetterSwap({
