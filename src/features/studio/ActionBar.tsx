@@ -100,19 +100,9 @@ function ActionBarContainer() {
 
       for (let index = 0; index < arrValue.length; index++) {
         const item = arrValue[index];
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          const itemCid = await Promise.race([
-            addIfpsMessageOrCid(item, { ipfsApi }),
-            new Promise<never>((_, reject) =>
-              setTimeout(() => reject(new Error('IPFS timeout')), 10000)
-            ),
-          ]);
-          newItem.push({ text: item, cid: itemCid });
-        } catch {
-          setError('IPFS unavailable — cannot add keyword');
-          return;
-        }
+        // eslint-disable-next-line no-await-in-loop
+        const itemCid = await addIfpsMessageOrCid(item, { ipfsApi });
+        newItem.push({ text: item, cid: itemCid });
       }
     }
 
@@ -133,21 +123,12 @@ function ActionBarContainer() {
 
     const [{ address }] = await signer.getAccounts();
 
-    setAdviser('uploading content to IPFS...');
+    setAdviser('preparing content...');
+    setLoading(true);
 
-    let currentMarkdownCid: string;
-    try {
-      currentMarkdownCid = await Promise.race([
-        addIfpsMessageOrCid(currentMarkdown, { ipfsApi }),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('IPFS timeout')), 10000)
-        ),
-      ]);
-    } catch (e) {
-      setError('IPFS unavailable — cannot upload content');
-      setLoading(false);
-      return;
-    }
+    const currentMarkdownCid = await addIfpsMessageOrCid(currentMarkdown, {
+      ipfsApi,
+    });
 
     const links = mapLinks(currentMarkdownCid, {
       from: keywordsFrom,

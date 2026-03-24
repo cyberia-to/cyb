@@ -58,15 +58,7 @@ function ActionBar({ stateActionBar }: { stateActionBar: Props }) {
       const offerCoin = [coinFunc(amountTokenA, tokenSelect)];
 
       if (addressActive !== null && addressActive.bech32 === address) {
-        let memo = memoValue;
-        try {
-          memo = await Promise.race([
-            addIfpsMessageOrCid(memoValue, { ipfsApi }),
-            new Promise<string>((_, reject) => setTimeout(() => reject(new Error('IPFS timeout')), 8000)),
-          ]);
-        } catch {
-          // IPFS unavailable — send raw memo text
-        }
+        const memo = await addIfpsMessageOrCid(memoValue, { ipfsApi });
         await sendTokensWithMessage(address, recipient, offerCoin, memo, {
           senseApi,
           signingClient,
