@@ -83,8 +83,24 @@ registerRoute(
 function generateCacheKey(request: Request) {
   return request.url + JSON.stringify(request.body);
 }
+// Sensitive URL patterns that must never be cached
+const SENSITIVE_POST_PATTERNS = [
+  '/cosmos/tx/',       // transaction broadcast
+  '/txs',             // legacy tx endpoint
+  '/broadcast',       // tx broadcast
+  '/sign',            // signing endpoints
+  '/auth/',           // auth/account queries that may leak balances
+  '/bank/',           // bank queries
+  '/mnemonic',        // wallet operations
+  '/keys',            // key management
+];
+
+function isSensitivePost(url: string): boolean {
+  return SENSITIVE_POST_PATTERNS.some((p) => url.includes(p));
+}
+
 registerRoute(
-  ({ request }) => request.method === 'POST',
+  ({ request }) => request.method === 'POST' && !isSensitivePost(request.url),
   async ({ event }) => {
     const request = (event as any).request as Request;
     const cacheKey = generateCacheKey(request);

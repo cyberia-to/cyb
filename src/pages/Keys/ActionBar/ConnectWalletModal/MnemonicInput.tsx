@@ -6,6 +6,7 @@ interface MnemonicInputProps {
   index: number;
   values: Record<number, string>;
   isTouched: boolean;
+  showWords?: boolean;
 
   onBlurFunc: InputProps['onBlurFnc'];
   onWordsDetected: (words: string[], startIndex: number) => void;
@@ -16,6 +17,7 @@ export default function MnemonicInput({
   index,
   values,
   isTouched,
+  showWords = false,
   onBlurFunc,
   onWordsDetected,
   onSingleChange,
@@ -51,6 +53,7 @@ export default function MnemonicInput({
   return (
     <Input
       title={`${index + 1}`}
+      type={showWords ? 'text' : 'password'}
       error={undefined}
       value={values[index] || ''}
       onChange={handleChange}

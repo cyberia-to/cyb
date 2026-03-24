@@ -123,22 +123,16 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
         if (process.env.IS_TAURI) {
           try {
             const { invoke } = await import('@tauri-apps/api/core');
-            console.log('[Bootstrap] Invoking read_bootstrap...');
             const bootstrap = await invoke('read_bootstrap') as { mnemonic?: string; referrer?: string; name?: string } | null;
-            console.log('[Bootstrap] read_bootstrap result:', bootstrap ? 'found' : 'null');
             if (bootstrap?.mnemonic) {
               mnemonic = bootstrap.mnemonic;
               walletSource = 'cyb-boot';
               if (bootstrap.name) {
                 accountName = bootstrap.name;
               }
-              console.log('[Bootstrap] Mnemonic imported from cyb-boot, name:', accountName);
               if (bootstrap.referrer) {
                 const { saveReferrer } = await import('src/pages/Mining/components/ReferralSection');
                 saveReferrer(bootstrap.referrer);
-                console.log('[Bootstrap] Referrer saved:', bootstrap.referrer);
-              } else {
-                console.log('[Bootstrap] No referrer in bootstrap');
               }
             }
           } catch (err) {

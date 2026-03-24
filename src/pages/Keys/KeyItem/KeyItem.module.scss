@@ -119,3 +119,10 @@
 .pointer {
   cursor: pointer;
 }
+
+// Security: prevent long-press selection/share on sensitive values
+.sensitiveValue {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
