@@ -57,10 +57,10 @@
   }
 
   @media (max-width: 768px) {
-    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
-    padding-bottom: 10px;
-    z-index: 6;
-    background: rgba(0, 0, 0, 1);
+    bottom: 0;
+    padding-bottom: calc(60px + env(safe-area-inset-bottom, 0px));
+    z-index: 4;
+    background: #000;
   }
 }
 
