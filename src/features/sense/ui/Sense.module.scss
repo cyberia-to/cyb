@@ -38,4 +38,15 @@
       overflow-x: hidden;
     }
   }
+
+  // Hide saber right border on SenseList panel (mobile)
+  &:first-child > div {
+    @media (max-width: 768px) {
+      border-right: none !important;
+
+      &::after {
+        display: none !important;
+      }
+    }
+  }
 }

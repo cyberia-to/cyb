@@ -45,13 +45,22 @@
           margin: 0 !important;
         }
       }
+
+      // standalone buttons — don't stretch full width
+      > a,
+      > button {
+        width: auto !important;
+        max-width: 80%;
+        padding: 0 20px;
+      }
     }
   }
 
   @media (max-width: 768px) {
-    bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
     padding-bottom: 10px;
     z-index: 6;
+    background: rgba(0, 0, 0, 1);
   }
 }
 

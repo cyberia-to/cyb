@@ -1,6 +1,6 @@
 import { CYBER_GATEWAY } from 'src/constants/config';
 import { useAppData } from 'src/contexts/appData';
-import { CYBER_GATEWAY_URL } from 'src/services/ipfs/config';
+import { getPinataUrl } from 'src/services/ipfs/config';
 import { IPFSContent, IPFSContentDetails } from 'src/services/ipfs/types';
 import { Option } from 'src/types';
 import EPubView from '../EPubView/EPubView';
@@ -79,7 +79,7 @@ function ContentIpfs({ details, content, cid, search, skipCheck }: ContentTabPro
           {contentType === 'link' && <LinkHttp url={details.content!} preview={search} />}
           {contentType === 'html' && <HtmlItem cid={content?.cid} />}
           {contentType === 'epub' && (
-            <EPubView url={`${CYBER_GATEWAY_URL}/ipfs/${cid}`} search={search} />
+            <EPubView url={getPinataUrl(cid)} search={search} />
           )}
           {['other', 'cid'].some((i) => i === contentType) && (
             <OtherItem search={search} cid={cid} content={details.content} />

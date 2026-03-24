@@ -28,6 +28,11 @@
     @media (max-width: 540px) {
       right: 2vw;
     }
+
+    @media (max-width: 1279px) {
+      bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+      z-index: 6;
+    }
   }
 }
 .widgetWrapper {
