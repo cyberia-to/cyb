@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ActionBar } from 'src/components';
 import { PATTERN_IPFS_HASH } from 'src/constants/patterns';
 import { useBackend } from 'src/contexts/backend/backend';
+import { useQueryClient } from 'src/contexts/queryClient';
 import { useSigningClient } from 'src/contexts/signerClient';
 import useWaitForTransaction from 'src/hooks/useWaitForTransaction';
 import { InputMemo } from 'src/pages/teleport/components/Inputs';
@@ -46,6 +47,7 @@ import { checkLoopLinks, mapLinks, reduceLoopKeywords } from './utils/utils';
 function ActionBarContainer() {
   const { signer, signingClient } = useSigningClient();
   const { isIpfsInitialized, ipfsApi, senseApi, isDbInitialized } = useBackend();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(false);
@@ -122,6 +124,19 @@ function ActionBarContainer() {
     }
 
     const [{ address }] = await signer.getAccounts();
+
+    // Check V (millivolt) balance — required for cyberlinks
+    if (queryClient) {
+      try {
+        const balance = await queryClient.getBalance(address, 'millivolt');
+        if (!balance || BigInt(balance.amount) === 0n) {
+          setError('You need V (volts) to create cyberlinks. Go to Energy to get some.');
+          return;
+        }
+      } catch {
+        // If balance check fails, proceed anyway — tx will fail with a clear error
+      }
+    }
 
     setAdviser('preparing content...');
     setLoading(true);
