@@ -6,7 +6,7 @@ import { Input } from 'src/components';
 import { useActiveMenuItem } from 'src/hooks/useActiveMenuItem';
 import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
 import { routes } from 'src/routes';
-import getMenuItems from 'src/utils/appsMenu/appsMenu';
+import { getMobileMenuItems } from 'src/utils/appsMenu/appsMenu';
 import { replaceSlash } from 'src/utils/utils';
 import { setFocus, setValue } from 'src/containers/application/Header/Commander/commander.redux';
 import useOnClickOutside from 'src/hooks/useOnClickOutside';
@@ -24,7 +24,7 @@ const presets = [
 const networks = ['bostrom', 'osmosis', 'cosmos'];
 
 function MobileMenuBar() {
-  const menuItems = getMenuItems();
+  const menuItems = getMobileMenuItems();
   const { isActiveItem } = useActiveMenuItem(menuItems);
   const navigate = useNavigate();
   const commander = useAppSelector((store) => store.commander);
@@ -149,6 +149,7 @@ function MobileMenuBar() {
               color={Color.Pink}
               value={fixedValue + commander.value}
               focusedProps={expanded}
+              isTextarea
               onChange={onChange}
               onFocus={handleFocus}
               autoComplete="off"
