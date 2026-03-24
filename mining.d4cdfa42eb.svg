@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1a1a2e"/>
+      <stop offset="1" stop-color="#16213e"/>
+    </linearGradient>
+    <linearGradient id="pick" x1="25" y1="25" x2="75" y2="75" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#76e8a0"/>
+      <stop offset="1" stop-color="#0dee31"/>
+    </linearGradient>
+    <linearGradient id="handle" x1="50" y1="50" x2="80" y2="80" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#9c6dab"/>
+      <stop offset="1" stop-color="#5c4e66"/>
+    </linearGradient>
+  </defs>
+  <circle cx="50" cy="50" r="50" fill="url(#bg)"/>
+  <!-- Pickaxe handle -->
+  <line x1="58" y1="58" x2="80" y2="80" stroke="url(#handle)" stroke-width="5" stroke-linecap="round"/>
+  <!-- Pickaxe head -->
+  <path d="M30 32 C30 32, 38 24, 48 28 L56 56 L28 48 C24 38, 30 32, 30 32Z" fill="url(#pick)" opacity="0.95"/>
+  <!-- Hash lines on pick head -->
+  <line x1="34" y1="36" x2="48" y2="44" stroke="#1a1a2e" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+  <line x1="32" y1="42" x2="44" y2="49" stroke="#1a1a2e" stroke-width="1.5" stroke-linecap="round" opacity="0.4"/>
+  <!-- Small hash symbol -->
+  <g transform="translate(64,22)" stroke="url(#pick)" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.8">
+    <line x1="4" y1="0" x2="2" y2="14"/>
+    <line x1="10" y1="0" x2="8" y2="14"/>
+    <line x1="0" y1="4" x2="13" y2="4"/>
+    <line x1="0" y1="10" x2="13" y2="10"/>
+  </g>
+  <!-- Sparkle dots -->
+  <circle cx="24" cy="22" r="1.5" fill="#0dee31" opacity="0.6"/>
+  <circle cx="18" cy="30" r="1" fill="#76e8a0" opacity="0.5"/>
+  <circle cx="78" cy="18" r="1" fill="#0dee31" opacity="0.5"/>
+</svg>
