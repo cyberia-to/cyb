@@ -14,14 +14,10 @@ import styles from './MobileMenuBar.module.scss';
 
 const fixedValue = '~';
 
-const presets = [
-  { icon: '🔍', label: 'Oracle', prefix: '' },
-  { icon: '🔗', label: 'Cyberlink', prefix: 'cyberlink:' },
-  { icon: '📡', label: 'Send', prefix: 'send:' },
-  { icon: '🧠', label: 'Brain', prefix: 'brain:' },
-];
-
-const networks = ['bostrom', 'osmosis', 'cosmos'];
+const actions = [
+  { icon: '🔍', label: 'Search', id: 'search' },
+  { icon: '🔗', label: 'Cyberlink', id: 'cyberlink' },
+] as const;
 
 function MobileMenuBar() {
   const menuItems = getMobileMenuItems();
@@ -32,7 +28,6 @@ function MobileMenuBar() {
   const inputRef = useRef<HTMLInputElement>(null);
   const barRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
-  const [activeNetwork, setActiveNetwork] = useState(0);
   const mountedRef = useRef(false);
 
   useEffect(() => {
@@ -69,9 +64,20 @@ function MobileMenuBar() {
     inputRef.current?.blur();
   }
 
-  function handlePreset(prefix: string) {
-    dispatch(setValue(prefix));
-    inputRef.current?.focus();
+  function handleAction(id: string) {
+    if (!commander.value) return;
+    const val = replaceSlash(commander.value);
+
+    if (id === 'search') {
+      navigate(routes.search.getLink(val));
+    } else if (id === 'cyberlink') {
+      navigate(`/studio?particle=${encodeURIComponent(val)}`);
+    }
+
+    dispatch(setFocus(false));
+    dispatch(setValue(''));
+    setExpanded(false);
+    inputRef.current?.blur();
   }
 
   return (
@@ -80,28 +86,16 @@ function MobileMenuBar() {
       <div ref={barRef} className={cx(styles.bar, { [styles.expanded]: expanded })}>
         {expanded && (
           <div className={styles.expandedContent}>
-            <div className={styles.presets}>
-              {presets.map((p) => (
+            <div className={styles.actions}>
+              {actions.map((a) => (
                 <button
-                  key={p.label}
+                  key={a.id}
                   type="button"
-                  className={styles.presetBtn}
-                  onClick={() => handlePreset(p.prefix)}
+                  className={styles.actionBtn}
+                  onClick={() => handleAction(a.id)}
                 >
-                  <span className={styles.presetIcon}>{p.icon}</span>
-                  <span className={styles.presetLabel}>{p.label}</span>
-                </button>
-              ))}
-            </div>
-            <div className={styles.networks}>
-              {networks.map((net, i) => (
-                <button
-                  key={net}
-                  type="button"
-                  className={cx(styles.networkBtn, { [styles.networkActive]: i === activeNetwork })}
-                  onClick={() => setActiveNetwork(i)}
-                >
-                  {net}
+                  <span className={styles.actionIcon}>{a.icon}</span>
+                  <span className={styles.actionLabel}>{a.label}</span>
                 </button>
               ))}
             </div>

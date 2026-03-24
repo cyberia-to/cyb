@@ -79,8 +79,12 @@
 }
 
 .input {
-  text-align: center !important;
+  text-align: left !important;
   font-size: 14px !important;
+  resize: none !important;
+  max-height: 120px !important;
+  overflow-y: auto !important;
+  word-break: break-word !important;
 }
 
 // Expanded content
@@ -105,24 +109,24 @@
   }
 }
 
-.presets {
+.actions {
   display: flex;
   gap: 8px;
   justify-content: center;
 }
 
-.presetBtn {
+.actionBtn {
   display: flex;
-  flex-direction: column;
   align-items: center;
-  gap: 4px;
-  padding: 8px 12px;
+  gap: 8px;
+  padding: 10px 20px;
   background: rgba(255, 255, 255, 0.06);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 10px;
   cursor: pointer;
   transition: all 0.2s;
   flex: 1;
+  justify-content: center;
 
   &:hover,
   &:active {
@@ -131,41 +135,14 @@
   }
 }
 
-.presetIcon {
-  font-size: 20px;
+.actionIcon {
+  font-size: 18px;
   line-height: 1;
 }
 
-.presetLabel {
-  font-size: 10px;
-  color: rgba(255, 255, 255, 0.6);
+.actionLabel {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.8);
   text-transform: uppercase;
   letter-spacing: 0.5px;
-}
-
-.networks {
-  display: flex;
-  gap: 6px;
-  justify-content: center;
-}
-
-.networkBtn {
-  padding: 4px 14px;
-  background: rgba(255, 255, 255, 0.04);
-  border: 1px solid rgba(255, 255, 255, 0.1);
-  border-radius: 20px;
-  color: rgba(255, 255, 255, 0.5);
-  font-size: 11px;
-  cursor: pointer;
-  transition: all 0.2s;
-
-  &:hover {
-    color: rgba(255, 255, 255, 0.8);
-  }
-
-  &.networkActive {
-    background: rgba(54, 214, 174, 0.15);
-    border-color: #36d6ae;
-    color: #36d6ae;
-  }
 }

@@ -1,41 +1,63 @@
 @use '../../../layouts/variables.module' as *;
 
 .wrapper {
-  position: relative;
-  width: 100%;
+  display: flex;
+  align-content: stretch;
   height: 100%;
   min-height: 60vh;
   max-height: calc(100vh - $reservedTopHeight - $actionBarHeight);
-  overflow: hidden;
 
   &.NotOwner {
     max-height: calc(
       100vh - $reservedTopHeight - $actionBarHeight - $robotHeaderHeightNotOwner
     );
   }
-}
-
-.slider {
-  display: flex;
-  width: 200%;
-  height: 100%;
-  will-change: transform;
-}
-
-.slidePanel {
-  width: 50%;
-  height: 100%;
-  flex-shrink: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
 
   // Display
-  > div {
+  > div > div {
     height: 100%;
+  }
+
+  > :first-child {
+    width: 35%;
+    max-width: 380px;
+    flex-shrink: 0;
 
     > div {
-      height: 100%;
       overflow-x: hidden;
+    }
+  }
+
+  > :nth-child(2) {
+    flex: 1;
+    position: relative;
+    left: -2px;
+    min-width: 0;
+  }
+
+  // Mobile: show list or viewer, not both
+  @media (max-width: 768px) {
+    > :first-child {
+      width: 100%;
+    }
+
+    > :nth-child(2) {
+      display: none;
+    }
+
+    // When chat is selected, hide list and show viewer
+    &.chatOpen {
+      > :first-child {
+        display: none;
+      }
+
+      > :nth-child(2) {
+        display: block;
+        flex: 1;
+        width: 100%;
+        overflow-x: hidden;
+        word-break: break-all;
+      }
     }
   }
 }

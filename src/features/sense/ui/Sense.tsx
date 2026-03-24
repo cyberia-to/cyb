@@ -32,8 +32,6 @@ function Sense({ urlSenseId }: { urlSenseId?: string }) {
 
   const [selected, setSelected] = useState<string | undefined>(urlSenseId);
 
-  // **Removed null from the type**
-  // update state asap
   if (urlSenseId !== selected) {
     setSelected(urlSenseId);
   }
@@ -41,7 +39,6 @@ function Sense({ urlSenseId }: { urlSenseId?: string }) {
   const dispatch = useAppDispatch();
   const { senseApi } = useBackend();
 
-  // maybe move to another component
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [adviserText, setAdviserText] = useState('');
@@ -50,13 +47,8 @@ function Sense({ urlSenseId }: { urlSenseId?: string }) {
 
   const currentThreadId = useAppSelector((state) => {
     const { llm } = state.sense;
-    // console.log(llm);
     return llm.currentThreadId;
   });
-
-  // if (isLLMFilter && !currentThreadId && selected) {
-  //   setSelected(null);
-  // }
 
   useEffect(() => {
     if (!selected || !senseApi) {
@@ -104,7 +96,6 @@ function Sense({ urlSenseId }: { urlSenseId?: string }) {
     setAdviser(adviserText || text, error ? 'red' : color);
   }, [setAdviser, loading, error, adviserText, syncState]);
 
-  //  seems use context
   const adviserProps = {
     setLoading: (isLoading: boolean) => setLoading(isLoading),
     setError: (error: string) => setError(error),
@@ -119,61 +110,12 @@ function Sense({ urlSenseId }: { urlSenseId?: string }) {
     dispatch(getSenseList(senseApi));
   }, [dispatch, senseApi]);
 
-  function update() {
-    // dispatch(getSenseList(senseApi));
-    // dispatch(
-    //   getSenseChat({
-    //     id: selected,
-    //     senseApi,
-    //   })
-    // );
-  }
-
-  // useEffect(() => {
-  //   if (isLLMFilter && !currentThreadId) {
-  //     // Create a new thread when LLM filter is selected and no thread is active
-  //     const newThreadId = uuidv4();
-  //     dispatch(createLLMThread({ id: newThreadId }));
-  //     dispatch(selectLLMThread({ id: newThreadId }));
-  //     setSelected(newThreadId);
-  //   }
-  // }, [isLLMFilter, currentThreadId, dispatch]);
+  function update() {}
 
   const isLLMFilter = currentFilter === Filters.LLM;
 
-  // slideOffset: 0 = list visible, -50 = chat visible (% of slider which is 200% wide)
-  const [slideOffset, setSlideOffset] = useState(0);
-  const touchStart = useRef<number | null>(null);
-  const baseOffset = useRef(0);
-  const wrapperRef = useRef<HTMLDivElement>(null);
-  const [isDragging, setIsDragging] = useState(false);
-
-  const handleTouchStart = useCallback((e: React.TouchEvent) => {
-    touchStart.current = e.touches[0].clientX;
-    baseOffset.current = slideOffset;
-    setIsDragging(true);
-  }, [slideOffset]);
-
-  const handleTouchMove = useCallback((e: React.TouchEvent) => {
-    if (touchStart.current === null) return;
-    const diff = e.touches[0].clientX - touchStart.current;
-    const width = wrapperRef.current?.offsetWidth || window.innerWidth;
-    // convert px drag to % of slider (slider = 2x wrapper, so 50% slider = 100% wrapper)
-    const pct = (diff / width) * 50;
-    setSlideOffset(Math.max(-50, Math.min(0, baseOffset.current + pct)));
-  }, []);
-
-  const handleTouchEnd = useCallback(() => {
-    touchStart.current = null;
-    setIsDragging(false);
-    // snap: if past 25% (halfway of one panel), switch
-    setSlideOffset((prev) => (prev < -25 ? -50 : 0));
-  }, []);
-
-  // when selecting a chat, slide to chat view
-  const selectAndSlide = useCallback((id: string) => {
+  const selectChat = useCallback((id: string) => {
     setSelected(id);
-    setSlideOffset(-50);
     if (id !== 'llm') {
       if (!paramSenseId) {
         navigate(`./${id}`);
@@ -185,40 +127,19 @@ function Sense({ urlSenseId }: { urlSenseId?: string }) {
 
   return (
     <>
-      <div
-        ref={wrapperRef}
-        className={cx(styles.wrapper, { [styles.NotOwner]: !isOwner })}
-        onTouchStart={isOwner ? handleTouchStart : undefined}
-        onTouchMove={isOwner ? handleTouchMove : undefined}
-        onTouchEnd={isOwner ? handleTouchEnd : undefined}
-      >
+      <div className={cx(styles.wrapper, { [styles.NotOwner]: !isOwner, [styles.chatOpen]: !!selected })}>
         {isOwner && (
-          <div
-            className={styles.slider}
-            style={{
-              transform: `translateX(${slideOffset}%)`,
-              transition: isDragging ? 'none' : 'transform 0.3s ease',
+          <SenseList
+            select={selectChat}
+            selected={selected}
+            adviser={adviserProps}
+            currentFilter={{
+              value: currentFilter,
+              set: setCurrentFilter,
             }}
-          >
-            <div className={styles.slidePanel}>
-              <SenseList
-                select={selectAndSlide}
-                selected={selected}
-                adviser={adviserProps}
-                currentFilter={{
-                  value: currentFilter,
-                  set: setCurrentFilter,
-                }}
-              />
-            </div>
-            <div className={styles.slidePanel}>
-              <SenseViewer selected={selected} isLLMFilter={isLLMFilter} adviser={adviserProps} />
-            </div>
-          </div>
+          />
         )}
-        {!isOwner && (
-          <SenseViewer selected={selected} isLLMFilter={isLLMFilter} adviser={adviserProps} />
-        )}
+        <SenseViewer selected={selected} isLLMFilter={isLLMFilter} adviser={adviserProps} />
       </div>
 
       {isLLMFilter && currentThreadId ? (
