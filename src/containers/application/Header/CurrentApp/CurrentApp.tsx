@@ -47,8 +47,12 @@ function CurrentApp() {
           className={styles.networkBtn}
           onClick={(e) => {
             if (!mediaQuery) {
-              e.preventDefault();
-              toggleMenu(!openMenu);
+              const hasSubItems = getRoute[0]?.subItems?.length > 0;
+              if (hasSubItems) {
+                e.preventDefault();
+                toggleMenu(!openMenu);
+              }
+              // no subItems — follow the link normally
             }
           }}
         >
