@@ -205,11 +205,11 @@ function AppRouter() {
             <Route path="/warp" element={<WarpDashboardPools />} />
             <Route path="/warp/:tab" element={<Warp />} />
             <Route path="/genesis" element={<Movie />} />
-            <Route path="/citizenship" element={<PortalCitizenship />} />
-            <Route path="/gift" element={<PortalGift />} />
-            <Route path="/release" element={<Release />} />
-            <Route path="/portal" element={<MainPartal />} />
-            <Route path="/portal/map" element={<Map />} />
+            <Route path="/citizenship" element={<Navigate to="/" />} />
+            <Route path="/gift" element={<Navigate to="/" />} />
+            <Route path="/release" element={<Navigate to="/" />} />
+            <Route path="/portal" element={<Navigate to="/" />} />
+            <Route path="/portal/map" element={<Navigate to="/" />} />
 
             {/* wasm */}
             <Route path="/libs" element={<Codes />} />

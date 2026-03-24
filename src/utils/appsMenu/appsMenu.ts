@@ -96,6 +96,7 @@ const getMenuItems = () => {
       icon: portalGlow,
       largeIcon: portal,
       to: '/portal',
+      disabled: true,
       subItems: [
         {
           name: 'Citizenship',

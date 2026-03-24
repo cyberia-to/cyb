@@ -1,5 +1,5 @@
 import cx from 'classnames';
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { NavLink, useNavigate } from 'react-router-dom';
 import { Color } from 'src/components/LinearGradientContainer/LinearGradientContainer';
 import { Input } from 'src/components';
@@ -33,6 +33,14 @@ function MobileMenuBar() {
   const barRef = useRef<HTMLDivElement>(null);
   const [expanded, setExpanded] = useState(false);
   const [activeNetwork, setActiveNetwork] = useState(0);
+  const mountedRef = useRef(false);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      mountedRef.current = true;
+    }, 500);
+    return () => clearTimeout(timer);
+  }, []);
 
   useOnClickOutside(barRef, () => {
     if (expanded) {
@@ -47,6 +55,7 @@ function MobileMenuBar() {
   }
 
   function handleFocus() {
+    if (!mountedRef.current) return;
     setExpanded(true);
     dispatch(setFocus(true));
   }
@@ -102,6 +111,21 @@ function MobileMenuBar() {
           <div className={styles.icons}>
             {menuItems.map((item, index) => {
               const active = isActiveItem(item);
+              const isDisabled = 'disabled' in item && item.disabled;
+              if (isDisabled) {
+                return (
+                  <span
+                    key={index}
+                    className={cx(styles.menuItem, styles.disabled)}
+                  >
+                    <img
+                      src={item.icon}
+                      className={styles.icon}
+                      alt={item.name}
+                    />
+                  </span>
+                );
+              }
               return (
                 <NavLink
                   key={index}
@@ -124,7 +148,7 @@ function MobileMenuBar() {
               ref={inputRef}
               color={Color.Pink}
               value={fixedValue + commander.value}
-              focusedProps={commander.isFocused}
+              focusedProps={expanded}
               onChange={onChange}
               onFocus={handleFocus}
               autoComplete="off"

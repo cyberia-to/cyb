@@ -56,6 +56,13 @@
   }
 }
 
+.disabled {
+  opacity: 0.3;
+  pointer-events: none;
+  filter: grayscale(100%);
+  box-shadow: none;
+}
+
 .icon {
   width: 28px;
   height: 28px;
