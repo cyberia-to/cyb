@@ -15,6 +15,7 @@
 
   @media (max-width: 540px) {
     width: 100% !important;
+    padding-bottom: calc(#{$actionBarHeight} + 100px);
   }
 
   >main {

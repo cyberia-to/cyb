@@ -72,7 +72,7 @@ function Learn() {
     if (noPassport) {
       content = (
         <div>
-          moon <Link to={routes.portal.path}>citizenship</Link> unlocks all features and takes 3
+          moon citizenship unlocks all features and takes 3
           minutes
         </div>
       );

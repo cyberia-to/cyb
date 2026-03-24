@@ -294,13 +294,6 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(mnemonicTimerRef.current);
     }
     mnemonicRef.current = mnemonic;
-    if (mnemonic) {
-      mnemonicTimerRef.current = setTimeout(() => {
-        mnemonicRef.current = null;
-        setSigner(undefined);
-        window.dispatchEvent(new CustomEvent('__cyb_wallet_locked'));
-      }, MNEMONIC_AUTO_CLEAR_MS);
-    }
   }, []);
 
   // Clear mnemonic on unmount
@@ -311,20 +304,7 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Auto-lock when tab becomes hidden — skip for Ledger (device IS security)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden && mnemonicRef.current && !isLedgerAccount) {
-        mnemonicRef.current = null;
-        if (mnemonicTimerRef.current) clearTimeout(mnemonicTimerRef.current);
-        setSigner(undefined);
-        window.dispatchEvent(new CustomEvent('__cyb_wallet_locked'));
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isLedgerAccount]);
+  // Auto-lock disabled — wallet stays unlocked until device locks
 
   const activateWalletSigner = useCallback(
     (offlineSigner: OfflineSigner, mnemonic: string) => {

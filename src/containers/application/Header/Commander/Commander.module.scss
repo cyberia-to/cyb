@@ -11,17 +11,7 @@
   max-width: calc(100vw - 200px - 300px - 100px);
 
   @media (max-width: 768px) {
-    position: fixed;
-    top: unset;
-    bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-    left: 65px;
-    right: 65px;
-    transform: none;
-    width: auto;
-    max-width: unset;
-    margin-right: 0;
-    z-index: 5;
-    border-radius: 8px;
+    display: none;
   }
 }
 

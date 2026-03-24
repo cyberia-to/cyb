@@ -11,6 +11,7 @@
   @media (max-width: 768px) {
     padding: 5px;
     padding-top: calc(5px + env(safe-area-inset-top, 0px));
+    z-index: 101;
   }
 
 

@@ -60,7 +60,8 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
     location.pathname === '/oracle/learn';
   // TODO: not show while loading passport
 
-  if (commander.isFocused) {
+  // on mobile, commander is in MobileMenuBar — don't override actionBar
+  if (commander.isFocused && window.innerWidth > 768) {
     return (
       <ActionBarContainer>
         <Button link={routes.search.getLink(commander.value)} disabled={!commander.value.length}>
@@ -71,7 +72,7 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
   }
 
   if (
-    (noAccount || noPassport) &&
+    noAccount &&
     // maybe change to props
     exception &&
     !location.pathname.includes(routes.gift.path) &&
@@ -81,11 +82,7 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
   ) {
     return (
       <ActionBarContainer>
-        {noAccount && <Button link={routes.keys.path}>Connect</Button>}
-
-        {noPassport && location.pathname !== routes.citizenship.path && (
-          <Button link={routes.portal.path}>Get citizenship</Button>
-        )}
+        <Button link={routes.keys.path}>Connect</Button>
       </ActionBarContainer>
     );
   }

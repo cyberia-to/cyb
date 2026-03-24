@@ -41,6 +41,7 @@ function useGetSendTxsByAddressByType(
       offset: 0,
       types: `{${types}}`,
     },
+    fetchPolicy: 'cache-and-network',
   });
 
   const fetchMoreData = () => {

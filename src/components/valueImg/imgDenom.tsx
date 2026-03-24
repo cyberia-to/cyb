@@ -1,4 +1,5 @@
 import tocyb from 'images/boot.png';
+import cosmos from 'images/cosmos.svg';
 
 import eth from 'images/Ethereum_logo_2014.svg';
 import pool from 'images/gravitydexPool.png';
@@ -8,8 +9,9 @@ import boot from 'images/large-green.png';
 import defaultImg from 'images/large-orange-circle.png';
 import amperImg from 'images/light.png';
 import voltImg from 'images/lightning2.png';
-import { useCallback, useEffect, useState } from 'react';
-import useQueueIpfsContent from 'src/hooks/useQueueIpfsContent';
+import osmosis from 'images/osmosis.svg';
+import pussy from 'images/space-pussy.svg';
+import { useEffect, useState } from 'react';
 import { checkIsEmoji } from 'src/utils/emoji';
 import { trimString } from '../../utils/utils';
 import Tooltip from '../tooltip/tooltip';
@@ -27,9 +29,14 @@ const nativeImageMap = {
   liquidpussy: lp,
   lp,
   boot,
-  pussy: '🟣',
+  pussy,
   tocyb,
   eth,
+  osmo: osmosis,
+  uosmo: osmosis,
+  atom: cosmos,
+  uatom: cosmos,
+  cosmosvaloper: cosmos,
 };
 
 const getNativeImg = (text: string) => {
@@ -50,6 +57,12 @@ type ImgDenomProps = {
   };
 };
 
+const PINATA_GATEWAY = 'https://bostrom.mypinata.cloud';
+const CYBER_GW = 'https://gateway.ipfs.cybernode.ai';
+
+const cidToGatewayUrl = (cid: string) => `${PINATA_GATEWAY}/ipfs/${cid}`;
+const cidToFallbackUrl = (cid: string) => `${CYBER_GW}/ipfs/${cid}`;
+
 function ImgDenom({
   coinDenom,
   marginImg,
@@ -60,25 +73,13 @@ function ImgDenom({
 }: ImgDenomProps) {
   const [imgDenom, setImgDenom] = useState<string>();
   const [tooltipText, setTooltipText] = useState<string>(coinDenom);
-  const { fetchWithDetails } = useQueueIpfsContent();
-
-  const getImgFromIpfsByCid = useCallback(
-    async (cidAvatar: string) => {
-      if (cidAvatar && fetchWithDetails) {
-        return fetchWithDetails(cidAvatar, 'image').then(
-          (details) => details?.content && setImgDenom(details?.content)
-        );
-      }
-      return null;
-    },
-    [fetchWithDetails]
-  );
 
   useEffect(() => {
     if (infoDenom && Object.hasOwn(infoDenom, 'coinImageCid')) {
       const { coinImageCid, path, native } = infoDenom;
-      if (coinImageCid && fetchWithDetails) {
-        getImgFromIpfsByCid(coinImageCid);
+      if (coinImageCid) {
+        // Use Pinata gateway directly for pinned icons
+        setImgDenom(cidToGatewayUrl(coinImageCid));
       } else if (native) {
         if (coinDenom.includes('pool')) {
           setImgDenom(pool);
@@ -88,11 +89,13 @@ function ImgDenom({
             setTooltipText(infoDenom.denom);
           }
 
-          const nativeImg = getNativeImg(coinDenom);
+          const nativeImg = getNativeImg(coinDenom) || getNativeImg(infoDenom.denom || '');
           setImgDenom(nativeImg);
         }
       } else {
-        setImgDenom(ibc);
+        const denomKey = (infoDenom.denom || coinDenom).toLowerCase();
+        const knownImg = nativeImageMap[denomKey];
+        setImgDenom(knownImg || ibc);
       }
 
       if (path && path.length > 0) {
@@ -101,7 +104,7 @@ function ImgDenom({
     } else {
       setImgDenom(getNativeImg(coinDenom));
     }
-  }, [coinDenom, infoDenom, fetchWithDetails, getImgFromIpfsByCid]);
+  }, [coinDenom, infoDenom]);
 
   const isEmoji = imgDenom && checkIsEmoji(imgDenom);
 
@@ -118,6 +121,19 @@ function ImgDenom({
       }}
       src={imgDenom || defaultImg}
       alt="text"
+      onError={(e) => {
+        const img = e.currentTarget;
+        const src = img.src;
+        // Fallback: Pinata → cybernode → default
+        if (src.includes(PINATA_GATEWAY)) {
+          const cid = src.split('/ipfs/')[1];
+          if (cid) {
+            img.src = cidToFallbackUrl(cid);
+            return;
+          }
+        }
+        img.src = defaultImg;
+      }}
     />
   );
 

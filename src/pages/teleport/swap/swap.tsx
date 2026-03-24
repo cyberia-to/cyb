@@ -395,6 +395,7 @@ function Swap() {
           <TokenSetterSwap
             id={TokenSetterId.tokenAAmount}
             listTokens={totalSupply}
+            accountBalances={accountBalances}
             amountToken={getDisplayAmount(tokenABalance, tokenACoinDecimals)}
             tokenAmountValue={tokenAAmount}
             valueSelect={tokenA}
@@ -427,6 +428,7 @@ function Swap() {
           <TokenSetterSwap
             id={TokenSetterId.tokenBAmount}
             listTokens={totalSupply}
+            accountBalances={accountBalances}
             amountToken={getDisplayAmount(tokenBBalance, tokenBCoinDecimals)}
             tokenAmountValue={tokenBAmount}
             valueSelect={tokenB}

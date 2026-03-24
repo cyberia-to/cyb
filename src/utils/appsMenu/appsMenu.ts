@@ -128,26 +128,10 @@ const getMenuItems = () => {
       name: 'Sphere',
       icon: shpere,
       to: routes.sphere.path,
-      subItems: [
-        // {
-        //   name: 'space-pussy',
-        //   to: `${routes.sphere.path}/${Networks.SPACE_PUSSY}`,
-        //   icon: require('./images/astronaut.png'),
-        // },
-      ],
+      subItems: [],
     },
     { name: 'HFR', icon: hfr, to: '/hfr', subItems: [] },
     { name: 'Mining', icon: mining, to: '/mining', subItems: [] },
-    // { name: 'Lifeforms', to: '/contracts', subItems: [] },
-    // {
-    //   name: 'Hub',
-    //   to: '/search/hub',
-    //   icon: hub,
-    //   subItems: [
-    //     { name: 'Networks', to: '/networks' },
-    //     { name: 'Add network', to: '/networks/add' },
-    //   ],
-    // },
     { name: 'Senate', icon: senate, to: '/senate', subItems: [] },
 
     !isPussyChain
@@ -165,7 +149,6 @@ const getMenuItems = () => {
             {
               name: '👑  board',
               to: '/cyberver/faculties/board',
-              // not good, fix
               matchPathname: cybernetRoutes.subnet.path.replace(':nameOrUid', 'board'),
             },
             {
@@ -202,50 +185,6 @@ const getMenuItems = () => {
       to: routes.studio.path,
       subItems: [],
     },
-    // {
-    //   name: 'Help',
-    //   icon: zhdun,
-    //   to: '/help',
-    //   subItems: [
-    //     {
-    //       name: 'Guide',
-    //       to: '/ipfs/QmRumrGFrqxayDpySEkhjZS1WEtMyJcfXiqeVsngqig3ak',
-    //     },
-    //     { name: 'story', to: '/genesis' },
-    //     {
-    //       name: 'vision',
-    //       to: '/ipfs/QmXzGkfxZV2fzpFmq7CjAYsYL1M581ZD4yuF9jztPVTpCn',
-    //     },
-    //     {
-    //       name: 'great web',
-    //       to: '/ipfs/QmUamt7diQP54eRnmzqMZNEtXNTzbgkQvZuBsgM6qvbd57',
-    //     },
-    //     {
-    //       name: 'vs govs',
-    //       to: '/ipfs/QmPmJ4JwzCi82HZp7adtv5GVBFTsKF5Yoy43wshHH7x3ty',
-    //     },
-    //     {
-    //       name: 'vs corps',
-    //       to: '/ipfs/QmQvKF9Jb6QKmsqHJzEZJUfcbB9aBBKwa5dh3pMxYEj7oi',
-    //     },
-    //     {
-    //       name: 'roadmap',
-    //       to: '/ipfs/QmSBYCCYFNfHNQD7MWm4zBaNuztMaT2KghA2SbeZZm9vLH',
-    //     },
-    //     {
-    //       name: 'distribution',
-    //       to: '/ipfs/QmVPgNeay23Ae5itAamMcr4iEAUKuhw5qD9U1zNqN4gpew',
-    //     },
-    //     {
-    //       name: 'gift',
-    //       to: '/ipfs/QmPAi1h1rwWnHkNnxnHZg28eGivpUK8wy8eciqoPSR4PHv',
-    //     },
-    //     {
-    //       name: 'congress',
-    //       to: '/network/bostrom/contract/bostrom1xszmhkfjs3s00z2nvtn7evqxw3dtus6yr8e4pw',
-    //     },
-    //   ],
-    // },
   ];
 
   if (CHAIN_ID === Networks.BOSTROM) {
@@ -254,6 +193,7 @@ const getMenuItems = () => {
       icon: portalGlow,
       largeIcon: portal,
       to: '/portal',
+      disabled: true,
       subItems: [
         {
           name: 'Citizenship',
@@ -275,11 +215,15 @@ const getMenuItems = () => {
           to: '/genesis',
           icon: require('./images/aos.png'),
         },
-        // { name: 'Release', to: '/release' },
       ],
     });
   }
   return listItemMenu.filter((item) => item);
 };
+
+const MOBILE_APPS = new Set(['robot', 'Oracle', 'Teleport', 'Portal']);
+
+export const getMobileMenuItems = () =>
+  getMenuItems().filter((item) => MOBILE_APPS.has(item.name));
 
 export default getMenuItems;

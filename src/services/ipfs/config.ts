@@ -10,6 +10,12 @@ export const IPFS_CLUSTER_URL = 'https://io.cybernode.ai';
 
 export const CYBER_GATEWAY_URL = 'https://gateway.ipfs.cybernode.ai';
 
+export const PINATA_GATEWAY_URL = 'https://bostrom.mypinata.cloud';
+export const PINATA_GATEWAY_TOKEN = '3f5c80cbc4a7ab470f67';
+
+export const getPinataUrl = (cid: string) =>
+  `${PINATA_GATEWAY_URL}/ipfs/${cid}?pinataGatewayToken=${PINATA_GATEWAY_TOKEN}`;
+
 export const FILE_SIZE_DOWNLOAD = 20 * 10 ** 6;
 
 // Desktop Tauri runs a local Kubo daemon; mobile Tauri and browser use cybernode

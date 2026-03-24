@@ -2,7 +2,7 @@
 
 import { Option } from 'src/types';
 import { concat as uint8ArrayConcat } from 'uint8arrays/concat';
-import { CYBER_GATEWAY_URL, FILE_SIZE_DOWNLOAD } from '../config';
+import { CYBER_GATEWAY_URL, FILE_SIZE_DOWNLOAD, PINATA_GATEWAY_URL, PINATA_GATEWAY_TOKEN } from '../config';
 import {
   CallBackFuncStatus,
   IPFSContent,
@@ -166,12 +166,28 @@ const fetchIPFSContentFromGateway = async (
     ? await fetchIPFSContentStat(cid, node, controller?.signal)
     : emptyStats;
 
-  const contentUrl = `${CYBER_GATEWAY_URL}/ipfs/${cid}`;
-  const response = await fetch(contentUrl, {
-    method: 'GET',
-    signal: controller?.signal,
-    headers,
-  });
+  // Try Pinata gateway first, then fallback to cybernode
+  const pinataUrl = `${PINATA_GATEWAY_URL}/ipfs/${cid}?pinataGatewayToken=${PINATA_GATEWAY_TOKEN}`;
+  const cybernodeUrl = `${CYBER_GATEWAY_URL}/ipfs/${cid}`;
+
+  let contentUrl: string;
+  let response: Response;
+  try {
+    contentUrl = pinataUrl;
+    response = await fetch(pinataUrl, {
+      method: 'GET',
+      signal: controller?.signal,
+      headers,
+    });
+    if (!response.ok) throw new Error(`Pinata ${response.status}`);
+  } catch {
+    contentUrl = cybernodeUrl;
+    response = await fetch(cybernodeUrl, {
+      method: 'GET',
+      signal: controller?.signal,
+      headers,
+    });
+  }
   if (response?.body) {
     // fetch doesn't provide any headers in our case :(
 

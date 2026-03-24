@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { ActionBar } from 'src/components';
 import { PATTERN_IPFS_HASH } from 'src/constants/patterns';
 import { useBackend } from 'src/contexts/backend/backend';
+import { useQueryClient } from 'src/contexts/queryClient';
 import { useSigningClient } from 'src/contexts/signerClient';
 import useWaitForTransaction from 'src/hooks/useWaitForTransaction';
 import { InputMemo } from 'src/pages/teleport/components/Inputs';
@@ -46,6 +47,7 @@ import { checkLoopLinks, mapLinks, reduceLoopKeywords } from './utils/utils';
 function ActionBarContainer() {
   const { signer, signingClient } = useSigningClient();
   const { isIpfsInitialized, ipfsApi, senseApi, isDbInitialized } = useBackend();
+  const queryClient = useQueryClient();
   const navigate = useNavigate();
 
   const [loading, setLoading] = useState(false);
@@ -102,7 +104,6 @@ function ActionBarContainer() {
         const item = arrValue[index];
         // eslint-disable-next-line no-await-in-loop
         const itemCid = await addIfpsMessageOrCid(item, { ipfsApi });
-
         newItem.push({ text: item, cid: itemCid });
       }
     }
@@ -123,6 +124,22 @@ function ActionBarContainer() {
     }
 
     const [{ address }] = await signer.getAccounts();
+
+    // Check V (millivolt) balance — required for cyberlinks
+    if (queryClient) {
+      try {
+        const balance = await queryClient.getBalance(address, 'millivolt');
+        if (!balance || BigInt(balance.amount) === 0n) {
+          setError('You need V (volts) to create cyberlinks. Go to Energy to get some.');
+          return;
+        }
+      } catch {
+        // If balance check fails, proceed anyway — tx will fail with a clear error
+      }
+    }
+
+    setAdviser('preparing content...');
+    setLoading(true);
 
     const currentMarkdownCid = await addIfpsMessageOrCid(currentMarkdown, {
       ipfsApi,
@@ -153,20 +170,23 @@ function ActionBarContainer() {
     }
 
     setLoading(true);
+    setAdviser('signing and broadcasting transaction...');
 
     await sendCyberlinkArray(address, uniqueLinks, { signingClient, senseApi })
       .then((txHash) => {
+        setAdviser('waiting for transaction confirmation...');
         setTx({
           hash: txHash,
           onSuccess: () => {
             setLoading(false);
-            navigate(routes.ipfs.getLink(currentMarkdownCid));
+            setAdviser('link created successfully!', 'green');
+            setTimeout(() => navigate(routes.ipfs.getLink(currentMarkdownCid)), 2000);
           },
         });
       })
       .catch((e) => {
         setError(friendlyErrorMessage(e?.message || e));
-        console.error(error);
+        console.error(e);
         setLoading(false);
       });
   };

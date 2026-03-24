@@ -8,14 +8,10 @@
     padding-bottom: env(safe-area-inset-bottom, 0px);
     background-color: #000;
 
-    // a {
-    //   position: fixed;
-    //   z-index: 2;
-    //   right: 5vw;
-    //   bottom: 35px;
-    //   display: flex;
-    //   align-items: center;
-    // }
+    @media (max-width: 768px) {
+      z-index: 5;
+      bottom: 0;
+    }
   }
 
   .Time {
@@ -27,6 +23,11 @@
 
     @media (max-width: 540px) {
       right: 2vw;
+    }
+
+    @media (max-width: 1279px) {
+      bottom: calc(56px + env(safe-area-inset-bottom, 0px));
+      z-index: 6;
     }
   }
 }

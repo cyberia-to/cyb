@@ -31,11 +31,22 @@
   }
 
   @media (max-width: 768px) {
-    grid-template-columns: 1fr auto;
+    grid-template-columns: 1fr;
+    gap: 4px;
 
     &ValueBalance {
-      grid-template-columns: 80px 1fr;
+      grid-template-columns: 1fr auto;
       gap: 8px;
+
+      &Text {
+        padding-left: 0;
+      }
+    }
+
+    &Market {
+      justify-self: flex-end;
+      font-size: 12px;
+      opacity: 0.7;
     }
   }
 }
