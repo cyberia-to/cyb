@@ -72,7 +72,7 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
   }
 
   if (
-    (noAccount || noPassport) &&
+    noAccount &&
     // maybe change to props
     exception &&
     !location.pathname.includes(routes.gift.path) &&
@@ -82,11 +82,7 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
   ) {
     return (
       <ActionBarContainer>
-        {noAccount && <Button link={routes.keys.path}>Connect</Button>}
-
-        {noPassport && location.pathname !== routes.citizenship.path && (
-          <Button link={routes.portal.path}>Get citizenship</Button>
-        )}
+        <Button link={routes.keys.path}>Connect</Button>
       </ActionBarContainer>
     );
   }
