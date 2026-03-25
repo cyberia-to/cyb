@@ -140,7 +140,7 @@ function AppRouter() {
             <Route path="/search" element={<Navigate to={routes.oracle.path} />} />
             <Route path="/search/:query" element={<ToOracleAsk />} />
 
-            <Route path={routes.mining.path} element={<Mining />} />
+            {/* <Route path={routes.mining.path} element={<Mining />} /> */}
 
             <Route
               path="/senate/*"

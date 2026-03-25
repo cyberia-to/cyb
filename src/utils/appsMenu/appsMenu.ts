@@ -131,7 +131,6 @@ const getMenuItems = () => {
       subItems: [],
     },
     { name: 'HFR', icon: hfr, to: '/hfr', subItems: [] },
-    { name: 'Mining', icon: mining, to: '/mining', subItems: [] },
     { name: 'Senate', icon: senate, to: '/senate', subItems: [] },
 
     !isPussyChain
