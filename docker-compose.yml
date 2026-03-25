@@ -18,4 +18,4 @@ services:
       - DENOM_LIQUID=hydrogen
       - BECH32_PREFIX=bostrom
 
-    command: npx serve -s build
+    command: npx serve -s react/build

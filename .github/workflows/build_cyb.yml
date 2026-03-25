@@ -32,10 +32,10 @@ jobs:
           echo "BRANCH=${{ github.ref_name }}" >> $GITHUB_ENV
 
       - name: Install dependencies
-        run: deno install
+        run: cd react && deno install
 
       - name: Build cyb
-        run: deno task build
+        run: cd react && deno task build
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
           CHAIN_ID: 'bostrom'
@@ -45,5 +45,5 @@ jobs:
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: build
-          folder: build
+          folder: react/build
           clean: true

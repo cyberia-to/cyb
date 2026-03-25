@@ -1,55 +1,37 @@
+# Rust build artifacts
+target/
+leptos/target/
+leptos/dist/
+
+# React/Node (inside react/)
+react/node_modules/
+react/build/
+react/deno.lock
+react/.env.*.local
+react/public/wasm
+
 # Logs
 logs
 *.log
 npm-debug.log*
 coverage
 
-# Dependency directories
-node_modules
-build
-
-# Optional npm cache directory
-.npm
-
-# Prod Bundle
-*.xml
-*.iml
-
+# IDE
 .idea
 .vscode/*
 !.vscode/settings.json
 
-.circleci
+# OS
 **/.DS_Store
 
-.yarn
-.yarnrc
-yarn-debug.log*
-yarn-error.log*
-
-storybook-static
-.env.*.local
-
-# Local Netlify folder
+# Netlify
 .netlify
-
-# WASM build artifacts (installed via uhash-web npm package)
-public/wasm
-
-# Tauri build artifacts
-src-tauri/bin/
-src-tauri/gen/
-src-tauri/target/
-
-# Deno
-deno.lock
-
-# Rust build artifacts
-cyb/target/
-cyb/cyb-portal/target/
-cyb/cyb-portal/dist/
-cyb-boot/target/
 
 # Claude Code
 .claude/*
 !.claude/plans/
+
+# Misc
+*.xml
+*.iml
+storybook-static

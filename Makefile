@@ -1,9 +1,13 @@
-.PHONY: dev build run clean check test dmg android android-rust android-assets android-apk
+.PHONY: dev build run clean check test dmg android android-rust android-assets android-apk web portal
 
-# Development: run cyb-shell
-# Portal mode (Cmd+2): cd cyb-portal && trunk serve  (Leptos :8090)
-# Legacy mode (Cmd+3): cd .. && deno task start       (cyb-ts :3001)
+# Development: run bevy shell with live reload
+# React mode: cd react && deno task start  (HTTPS :3001)
+# Leptos mode: cd leptos && trunk serve    (Leptos :8090)
 dev:
+	@echo "Starting dev server + Bevy shell (live reload)..."
+	@echo "Web HMR on https://localhost:3001 → WebView auto-updates"
+	@cd react && ~/.deno/bin/deno task start &
+	@sleep 3
 	cargo run -p cyb-shell
 
 # Build all workspace members (debug)
@@ -32,15 +36,15 @@ test:
 clean:
 	cargo clean
 
-# Build cyb-portal (Leptos WASM)
+# Build leptos portal (Leptos WASM)
 portal:
-	cd cyb-portal && trunk build --release
+	cd leptos && trunk build --release
 
 # Build web app (React/TypeScript via Rspack)
 # Rspack exits 1 on size warnings — ignore, check build/ exists instead
 web:
-	-cd .. && ~/.deno/bin/deno task build
-	@test -f ../build/index.html || (echo "ERROR: web build failed" && exit 1)
+	-cd react && ~/.deno/bin/deno task build
+	@test -f react/build/index.html || (echo "ERROR: web build failed" && exit 1)
 
 # Build macOS .dmg
 dmg: release portal web
@@ -48,12 +52,12 @@ dmg: release portal web
 	mkdir -p target/release/cyb.app/Contents/MacOS
 	mkdir -p target/release/cyb.app/Contents/Resources
 	cp target/release/cyb-shell target/release/cyb.app/Contents/MacOS/cyb-shell
-	cp cyb-shell/assets/icon.icns target/release/cyb.app/Contents/Resources/icon.icns
-	@if [ -d "cyb-portal/dist" ]; then \
-		cp -r cyb-portal/dist target/release/cyb.app/Contents/MacOS/cyb-portal; \
+	cp bevy/assets/icon.icns target/release/cyb.app/Contents/Resources/icon.icns
+	@if [ -d "leptos/dist" ]; then \
+		cp -r leptos/dist target/release/cyb.app/Contents/MacOS/cyb-portal; \
 	fi
-	@if [ -d "../build" ]; then \
-		cp -r ../build target/release/cyb.app/Contents/MacOS/cyb-web; \
+	@if [ -d "react/build" ]; then \
+		cp -r react/build target/release/cyb.app/Contents/MacOS/cyb-web; \
 	fi
 	/usr/libexec/PlistBuddy -c "Add :CFBundleName string cyb" target/release/cyb.app/Contents/Info.plist
 	/usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string cyb" target/release/cyb.app/Contents/Info.plist
@@ -77,11 +81,11 @@ ANDROID_API  ?= 24
 NDK_HOST     ?= $(shell ls $(NDK_HOME)/toolchains/llvm/prebuilt/ 2>/dev/null | head -1)
 NDK_BIN      ?= $(NDK_HOME)/toolchains/llvm/prebuilt/$(NDK_HOST)/bin
 
-KOTLIN_OUT   = cyb-shell/gen/android/app/src/main/kotlin/ai/cyb/app
+KOTLIN_OUT   = bevy/gen/android/app/src/main/kotlin/ai/cyb/app
 
 # Full Android build: compile Rust → copy assets → assemble APK
 android: android-rust android-assets android-apk
-	@echo "APK: cyb-shell/gen/android/app/build/outputs/apk/release/app-release-unsigned.apk"
+	@echo "APK: bevy/gen/android/app/build/outputs/apk/release/app-release-unsigned.apk"
 
 # Cross-compile Rust → libcyb_shell.so
 android-rust: web
@@ -96,35 +100,30 @@ android-rust: web
 
 # Copy web build into Android assets (strip sourcemaps, strip CSP for local loading)
 android-assets:
-	@rm -rf cyb-shell/gen/android/app/src/main/assets/cyb-web
-	@if [ -d "../build" ]; then \
-		mkdir -p cyb-shell/gen/android/app/src/main/assets/cyb-web; \
-		cp -r ../build/* cyb-shell/gen/android/app/src/main/assets/cyb-web/; \
-		find cyb-shell/gen/android/app/src/main/assets/cyb-web -name "*.map" -delete; \
+	@rm -rf bevy/gen/android/app/src/main/assets/cyb-web
+	@if [ -d "react/build" ]; then \
+		mkdir -p bevy/gen/android/app/src/main/assets/cyb-web; \
+		cp -r react/build/* bevy/gen/android/app/src/main/assets/cyb-web/; \
+		cp -r react/build/* bevy/gen/android/app/src/main/assets/; \
+		find bevy/gen/android/app/src/main/assets/cyb-web -name "*.map" -delete; \
+		find bevy/gen/android/app/src/main/assets -maxdepth 1 -name "*.map" -delete; \
 		sed -i '' 's|<meta http-equiv="Content-Security-Policy" content="[^"]*">||g' \
-			cyb-shell/gen/android/app/src/main/assets/cyb-web/index.html; \
-		echo "Assets copied ($$(du -sh cyb-shell/gen/android/app/src/main/assets/cyb-web | cut -f1))"; \
+			bevy/gen/android/app/src/main/assets/cyb-web/index.html; \
+		sed -i '' 's|<meta http-equiv="Content-Security-Policy" content="[^"]*">||g' \
+			bevy/gen/android/app/src/main/assets/index.html; \
+		echo "Assets copied ($$(du -sh bevy/gen/android/app/src/main/assets/cyb-web | cut -f1))"; \
 	else \
-		echo "WARNING: ../build not found, run 'make web' first"; \
+		echo "WARNING: react/build not found, run 'make web' first"; \
 	fi
 
 # Copy .so and assemble APK via Gradle
 android-apk:
-	@mkdir -p cyb-shell/gen/android/app/src/main/jniLibs/arm64-v8a
+	@mkdir -p bevy/gen/android/app/src/main/jniLibs/arm64-v8a
 	cp target/$(ANDROID_TARGET)/release/libcyb_shell.so \
-		cyb-shell/gen/android/app/src/main/jniLibs/arm64-v8a/
-	cd cyb-shell/gen/android && ./gradlew assembleRelease
-
-# Dev with live reload: starts dev server + Bevy shell
-# Web changes hot-reload instantly via HMR, no rebuilds needed
-dev:
-	@echo "Starting dev server + Bevy shell (live reload)..."
-	@echo "Web HMR on https://localhost:3001 → WebView auto-updates"
-	@cd .. && ~/.deno/bin/deno task start &
-	@sleep 3
-	cargo run -p cyb-shell
+		bevy/gen/android/app/src/main/jniLibs/arm64-v8a/
+	cd bevy/gen/android && ./gradlew assembleRelease
 
 # Full dev workflow (manual)
-# Terminal 1: cd .. && deno task start     (cyb-ts HTTPS :3001 → Legacy mode)
-# Terminal 2: cd cyb-portal && trunk serve (Leptos :8090 → Portal mode)
+# Terminal 1: cd react && deno task start  (React HTTPS :3001 → Legacy mode)
+# Terminal 2: cd leptos && trunk serve     (Leptos :8090 → Portal mode)
 # Terminal 3: cargo run -p cyb-shell       (Bevy shell)

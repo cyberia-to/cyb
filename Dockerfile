@@ -8,8 +8,8 @@ RUN apt-get update && apt-get install -y curl && \
     rm -rf /var/lib/apt/lists/*
 
 WORKDIR /usr/src/app
-COPY package.json deno.json ./
-RUN deno install
+COPY react/package.json react/deno.json react/
+RUN cd react && deno install
 
 COPY . .
-RUN deno task build
+RUN cd react && deno task build
