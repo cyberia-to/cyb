@@ -3,7 +3,6 @@
   justify-content: space-between;
   align-content: center;
   margin: 0px 0 -5px;
-  // padding: 17px 12px 20px;
   color: #fff;
   width: 100%;
   position: relative;
@@ -12,6 +11,20 @@
     position: absolute;
     left: 50%;
     transform: translate(-50%, 0px);
+  }
+
+  @media (max-width: 768px) {
+    flex-wrap: wrap;
+    gap: 8px;
+    font-size: 12px;
+
+    .linkContainer {
+      position: static;
+      transform: none;
+      width: 100%;
+      display: flex;
+      justify-content: center;
+    }
   }
 
   .metaContainer {

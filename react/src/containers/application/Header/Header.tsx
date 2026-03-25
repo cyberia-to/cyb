@@ -1,5 +1,6 @@
 import cx from 'classnames';
 import { useEffect, useState } from 'react';
+import AdviserContainer from 'src/features/adviser/AdviserContainer';
 import Electricity from '../../home/electricity';
 import Commander from './Commander/Commander';
 import CurrentApp from './CurrentApp/CurrentApp';
@@ -38,7 +39,7 @@ function Header() {
 
       <Commander />
 
-      {/* <AdviserContainer /> */}
+      <AdviserContainer />
 
       <Electricity />
       <SwitchAccount />

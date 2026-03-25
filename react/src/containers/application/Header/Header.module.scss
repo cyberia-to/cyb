@@ -8,6 +8,13 @@
   padding-bottom: 0;
   z-index: 4;
 
+  @media (max-width: 768px) {
+    padding: 5px;
+    padding-top: calc(5px + env(safe-area-inset-top, 0px));
+    z-index: 101;
+  }
+
+
   &::before {
     content: '';
     height: 100%;

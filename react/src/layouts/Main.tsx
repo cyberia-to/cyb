@@ -17,7 +17,6 @@ import SenseButton from '../features/sense/ui/SenseButton/SenseButton';
 import graphDataPrepared from '../pages/oracle/landing/graphDataPrepared.json';
 import stylesOracle from '../pages/oracle/landing/OracleLanding.module.scss';
 import styles from './Main.module.scss';
-import SideHydrogenBtn from './ui/SideHydrogenBtn/SideHydrogenBtn';
 
 // TODO: seems merge with App.tsx, not reusing
 function MainLayout({ children }: { children: JSX.Element }) {
@@ -57,7 +56,6 @@ function MainLayout({ children }: { children: JSX.Element }) {
       {currentAddress && !isMobile && (
         <div className={styles.widgetWrapper}>
           {CHAIN_ID === Networks.BOSTROM && <SenseButton />}
-          <SideHydrogenBtn />
         </div>
       )}
 
@@ -65,7 +63,7 @@ function MainLayout({ children }: { children: JSX.Element }) {
       <footer>
         {isMobile ? <MobileMenu /> : <CircularMenu circleSize={graphSize} />}
         {!isMobile && (
-          <Link to={link} className={stylesOracle.graphWrapper} style={{ bottom: '0px' }}>
+          <Link to={link} className={stylesOracle.graphWrapper} style={{ bottom: '20px' }}>
             {isRenderGraph && !isMiningActive && (
               <CyberlinksGraphContainer
                 size={graphSize}

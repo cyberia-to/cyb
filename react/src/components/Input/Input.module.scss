@@ -23,6 +23,11 @@
     filter: drop-shadow(0 0 15px rgba(0, 0, 0, 0.5));
     text-transform: initial;
 
+    // Security: CSS fallback for password masking on browsers that ignore type="password"
+    &[type='password'] {
+      -webkit-text-security: disc;
+    }
+
     &::placeholder {
       color: #272343;
       opacity: 0.5;
@@ -37,6 +42,16 @@
 
     &:focus {
       outline: none;
+    }
+  }
+
+  @media (max-width: 540px) {
+    height: 36px;
+
+    input,
+    textarea {
+      font-size: 13px;
+      text-align: start;
     }
   }
 }

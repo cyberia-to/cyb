@@ -50,26 +50,35 @@ function AppSideBar({ children, menuProps }: Props) {
   });
 
   return (
-    <aside
-      ref={ref}
-      className={cx(styles.sideBar, {
-        [styles.sideBarHide]: !isOpen,
-      })}
-    >
-      {!mediaQuery && (
-        <button
-          className={styles.toggleBtn}
-          onClick={() => {
-            toggleMenu();
-            setIsOpen(false);
-          }}
-          type="button"
-        >
-          <BurgerIcon openMenu={isOpen} />
-        </button>
+    <>
+      {!mediaQuery && isOpen && (
+        <div
+          className={styles.overlay}
+          onClick={closeMenu}
+          role="presentation"
+        />
       )}
-      {children}
-    </aside>
+      <aside
+        ref={ref}
+        className={cx(styles.sideBar, {
+          [styles.sideBarHide]: !isOpen,
+        })}
+      >
+        {mediaQuery && (
+          <button
+            className={styles.toggleBtn}
+            onClick={() => {
+              toggleMenu();
+              setIsOpen(false);
+            }}
+            type="button"
+          >
+            <BurgerIcon openMenu={isOpen} />
+          </button>
+        )}
+        {children}
+      </aside>
+    </>
   );
 }
 

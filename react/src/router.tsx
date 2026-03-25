@@ -43,7 +43,6 @@ import StudioWrapper from './features/studio/StudioWrapper';
 import Keys from './pages/Keys/Keys';
 import OracleLanding from './pages/oracle/landing/OracleLanding';
 import Learn from './pages/oracle/Learn/Learn';
-import OracleLanding from './pages/oracle/landing/OracleLanding';
 import Map from './pages/Portal/Map/Map';
 import ToOracleAsk from './pages/redirects/ToOracleAsk';
 import Robot from './pages/robot/Robot';
@@ -141,7 +140,7 @@ function AppRouter() {
             <Route path="/search" element={<Navigate to={routes.oracle.path} />} />
             <Route path="/search/:query" element={<ToOracleAsk />} />
 
-            <Route path={routes.mining.path} element={<Mining />} />
+            {/* <Route path={routes.mining.path} element={<Mining />} /> */}
 
             <Route
               path="/senate/*"

@@ -13,6 +13,9 @@ export const mnemonics: CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fill, minmax(100px, 1fr))',
   gap: '10px',
+  WebkitTouchCallout: 'none',
+  WebkitUserSelect: 'none',
+  userSelect: 'none',
 };
 
 export const buttons: CSSProperties = {

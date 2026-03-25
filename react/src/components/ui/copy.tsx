@@ -10,6 +10,10 @@ export function Copy({ text, ...props }) {
       {...props}
       onClick={() => {
         navigator.clipboard.writeText(text);
+        // Auto-clear clipboard after 30 seconds to prevent leaking addresses
+        setTimeout(() => {
+          navigator.clipboard.writeText('').catch(() => {});
+        }, 30000);
       }}
     />
   );

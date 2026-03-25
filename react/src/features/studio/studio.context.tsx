@@ -83,9 +83,20 @@ function StudioContextProvider({ children }: { children: React.ReactNode }) {
     const param = Object.fromEntries(searchParams.entries());
 
     if (Object.keys(param).length > 0) {
-      const { cid } = param;
-      setCidSearchParams(cid);
-      setLastCid(cid);
+      const { cid, particle } = param;
+
+      if (cid) {
+        setCidSearchParams(cid);
+        setLastCid(cid);
+      } else if (particle && ipfsApi) {
+        // particle is text — save to IPFS and load into editor
+        addIfpsMessageOrCid(particle, { ipfsApi }).then((particleCid) => {
+          setCidSearchParams(particleCid);
+          setLastCid(particleCid);
+          setCurrentMarkdown(particle);
+          updateSearchParams(createSearchParams({ cid: particleCid }), { replace: true });
+        });
+      }
     }
   }, [searchParams]);
 

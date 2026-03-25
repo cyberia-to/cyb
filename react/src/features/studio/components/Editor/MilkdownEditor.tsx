@@ -3,7 +3,7 @@ import '@milkdown/theme-nord/style.css';
 import './Editor.css';
 import { editorViewCtx, parserCtx } from '@milkdown/kit/core';
 import { Slice } from '@milkdown/kit/prose/model';
-import { RefObject, useImperativeHandle } from 'react';
+import { RefObject, useEffect, useImperativeHandle } from 'react';
 import useMilkdownEditor from './hooks/useMilkdownEditor';
 
 export interface MilkdownRef {
@@ -18,6 +18,15 @@ export interface MilkdownProps {
 
 function MilkdownEditor({ content, onChange, milkdownRef }: MilkdownProps) {
   const { loading, get } = useMilkdownEditor(content, onChange);
+
+  useEffect(() => {
+    if (loading) return;
+    const editor = get();
+    editor?.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      view.focus();
+    });
+  }, [loading, get]);
 
   useImperativeHandle(milkdownRef, () => ({
     update: (markdown: string) => {

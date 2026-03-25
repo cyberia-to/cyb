@@ -23,14 +23,31 @@ $controlPanelHeight: 60px;
 .containerEditor {
   display: grid;
   height: 100%;
-  // padding: 20px;
   gap: 20px;
   grid-template-columns: 150px 1fr 150px;
 
   > :nth-child(2) {
     > div {
-      // don't understand this scroll
       overflow: hidden;
+    }
+  }
+
+  @media (max-width: 768px) {
+    grid-template-columns: 1fr;
+    grid-template-rows: auto 1fr auto;
+    gap: 10px;
+
+    > :first-child {
+      order: 1;
+    }
+
+    > :nth-child(2) {
+      order: 0;
+      min-height: 150px;
+    }
+
+    > :nth-child(3) {
+      order: 2;
     }
   }
 }

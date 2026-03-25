@@ -1,4 +1,5 @@
 import { useContext, useEffect, useMemo } from 'react';
+import { BASE_DENOM } from 'src/constants/config';
 import { Citizenship } from 'src/types/citizenship';
 import { Dots } from '../../../../components';
 import { useGetBalanceBostrom } from '../../hooks';
@@ -26,14 +27,23 @@ function CardPassport({ address, selectAddress, passport, selectedAddress }: Pro
   }, [address, totalAmountInLiquid, updateDataCap]);
 
   const reduceDataBalanceTokenRow = useMemo(() => {
-    let dataObj = {};
-    if (Object.keys(balances).length > 0) {
-      const sortable = Object.fromEntries(
-        Object.entries(balances).sort(([, a], [, b]) => b.cap.amount - a.cap.amount)
-      );
-      dataObj = sortable;
+    if (Object.keys(balances).length === 0) {
+      return {};
     }
-    return dataObj;
+
+    return Object.fromEntries(
+      Object.entries(balances).sort(([, a], [, b]) => {
+        const aDenom = a.total?.denom;
+        const bDenom = b.total?.denom;
+
+        // pin native token first
+        if (aDenom === BASE_DENOM) return -1;
+        if (bDenom === BASE_DENOM) return 1;
+
+        // then by balance descending
+        return (b.total?.amount || 0) - (a.total?.amount || 0);
+      })
+    );
   }, [balances]);
 
   const renderBalanceTokenRow = useMemo(() => {

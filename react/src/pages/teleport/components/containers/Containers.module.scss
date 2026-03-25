@@ -18,7 +18,9 @@
   gap: 20px;
   font-size: 16px;
 
-  @media (width <=580px) {
+  @media (max-width: 580px) {
     width: 100%;
+    padding: 0 16px;
+    box-sizing: border-box;
   }
 }

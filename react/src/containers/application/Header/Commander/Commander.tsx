@@ -16,7 +16,6 @@ function Commander() {
   const navigate = useNavigate();
   const { query: q, cid } = useParams();
   const query = q || cid;
-
   const commander = useAppSelector((store) => store.commander);
   const dispatch = useAppDispatch();
 

@@ -27,13 +27,64 @@ const keyValuesToObject = (data: KeyValueString[]) => {
   );
 };
 
+function getObfuscationKey(): string {
+  const KEY = 'cyb:device-key';
+  let key = localStorage.getItem(KEY);
+  if (!key) {
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    key = btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''));
+    localStorage.setItem(KEY, key);
+  }
+  return key;
+}
+
+function obfuscate(json: string): string {
+  const key = atob(getObfuscationKey());
+  const result = new Uint8Array(json.length);
+  for (let i = 0; i < json.length; i++) {
+    result[i] = json.charCodeAt(i) ^ key.charCodeAt(i % key.length);
+  }
+  return btoa(String.fromCharCode(...result));
+}
+
+function deobfuscate(encoded: string): string {
+  const key = atob(getObfuscationKey());
+  const bytes = atob(encoded);
+  const result: string[] = [];
+  for (let i = 0; i < bytes.length; i++) {
+    result.push(String.fromCharCode(bytes.charCodeAt(i) ^ key.charCodeAt(i % key.length)));
+  }
+  return result.join('');
+}
+
 const saveJsonToLocalStorage = (storageKey: JsonTypeKeys, data: JsonRecord) => {
-  localStorage.setItem(jsonKeyMap[storageKey], JSON.stringify(data));
+  const json = JSON.stringify(data);
+  if (storageKey === 'secrets') {
+    localStorage.setItem(jsonKeyMap[storageKey], obfuscate(json));
+  } else {
+    localStorage.setItem(jsonKeyMap[storageKey], json);
+  }
 };
 
 const loadJsonFromLocalStorage = (storageKey: JsonTypeKeys, defaultData: JsonRecord = {}) => {
   const raw = localStorage.getItem(jsonKeyMap[storageKey]);
-  return raw ? JSON.parse(raw) : defaultData;
+  if (!raw) return defaultData;
+
+  if (storageKey === 'secrets') {
+    try {
+      // Try deobfuscating first (new format)
+      return JSON.parse(deobfuscate(raw));
+    } catch {
+      // Fallback: legacy plaintext JSON — migrate on next save
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return defaultData;
+      }
+    }
+  }
+
+  return JSON.parse(raw);
 };
 
 const loadStringFromLocalStorage = (name: StringTypeKeys, defaultValue?: string) => {

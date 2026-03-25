@@ -30,13 +30,28 @@ export const addIfpsMessageOrCid = async (
   message: string | ParticleCid | File,
   { ipfsApi }: { ipfsApi: Remote<IpfsApi> | null }
 ) => {
-  if (!ipfsApi) {
-    throw Error('IpfsApi is not initialized');
+  if (isString(message) && message.match(PATTERN_IPFS_HASH)) {
+    return message as ParticleCid;
   }
 
-  return (
-    isString(message) && message.match(PATTERN_IPFS_HASH)
-      ? message
-      : ((await ipfsApi!.addContent(message)) as string)
-  ) as ParticleCid;
+  // Try IPFS upload with 5s timeout, fallback to local CID computation
+  if (ipfsApi) {
+    try {
+      const cid = await Promise.race([
+        ipfsApi.addContent(message) as Promise<string>,
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('IPFS timeout')), 5000)
+        ),
+      ]);
+      return cid as ParticleCid;
+    } catch {
+      // IPFS unavailable — compute CID locally for strings
+    }
+  }
+
+  if (isString(message)) {
+    return getIpfsHash(message);
+  }
+
+  throw Error('IPFS unavailable and cannot compute CID for non-string content');
 };

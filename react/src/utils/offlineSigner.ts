@@ -88,6 +88,11 @@ export function hasSignArbitrary(
   return signer != null && typeof (signer as CybOfflineSigner).signArbitrary === 'function';
 }
 
+export async function generateMnemonic(): Promise<string> {
+  const wallet = await DirectSecp256k1HdWallet.generate(24);
+  return wallet.mnemonic;
+}
+
 export const getOfflineSigner = (mnemonic: string, network?: string) => {
   const prefix =
     network && networkList[network]?.prefix

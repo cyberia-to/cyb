@@ -18,6 +18,13 @@
   padding-left: $display-padding-x;
   padding-right: $display-padding-x;
 
+  @media (max-width: 540px) {
+    font-size: 14px;
+    padding: 6px 0;
+    padding-left: $display-padding-x-mobile;
+    padding-right: $display-padding-x-mobile;
+  }
+
   @each $color in $valid-colors {
     &.#{$color} {
       @include saber($color, left);
@@ -69,6 +76,20 @@
     img {
       height: 112px;
       width: 112px;
+    }
+  }
+
+  @media (max-width: 540px) {
+    img {
+      height: 40px;
+      width: 40px;
+    }
+
+    &.large {
+      img {
+        height: 60px;
+        width: 60px;
+      }
     }
   }
 }

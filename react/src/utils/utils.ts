@@ -384,7 +384,12 @@ export function covertUint8ArrayToString(data: Uint8Array): string {
 }
 
 export const setEncryptedMnemonic = (encrypted: string, bech32: string) => {
-  localStorage.setItem(`cyb:mnemonic:${bech32}`, encrypted);
+  try {
+    localStorage.setItem(`cyb:mnemonic:${bech32}`, encrypted);
+  } catch (e) {
+    console.error('Failed to save encrypted mnemonic:', e);
+    throw new Error('Could not save wallet. Check browser storage settings.');
+  }
 };
 
 export const getEncryptedMnemonic = (bech32: string): string | null => {
@@ -425,17 +430,15 @@ export {
   getNowUtcTime,
 };
 
-export const getMnemonic = (bech32?: string): string | null => {
-  if (bech32) {
-    const perAddr = localStorage.getItem(`cyb:mnemonic:${bech32}`);
-    if (perAddr) return perAddr;
+export const removeAllMnemonics = () => {
+  const keysToRemove: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key?.startsWith('cyb:mnemonic')) {
+      keysToRemove.push(key);
+    }
   }
-  return localStorage.getItem(localStorageKeys.signer.mnemonic);
-};
-
-export const setMnemonic = (mnemonic: string, bech32?: string) => {
-  localStorage.setItem(localStorageKeys.signer.mnemonic, mnemonic);
-  if (bech32) {
-    localStorage.setItem(`cyb:mnemonic:${bech32}`, mnemonic);
-  }
+  keysToRemove.forEach((key) => localStorage.removeItem(key));
+  // Also remove legacy device key
+  localStorage.removeItem('cyb:device-key');
 };

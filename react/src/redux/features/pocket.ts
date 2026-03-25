@@ -3,7 +3,7 @@ import { Dispatch } from 'redux';
 import { localStorageKeys } from 'src/constants/localStorageKeys';
 import { Account, Accounts, AccountValue, DefaultAccount } from 'src/types/defaultAccount';
 import { POCKET } from '../../utils/config';
-import { removeEncryptedMnemonic } from '../../utils/utils';
+import { removeEncryptedMnemonic, removeAllMnemonics } from '../../utils/utils';
 import { RootState } from '../store';
 
 type SliceState = {
@@ -81,9 +81,11 @@ const slice = createSlice({
         Object.keys(state.accounts).forEach((accountKey) => {
           Object.keys(state.accounts[accountKey]).forEach((networkKey) => {
             if (state.accounts[accountKey][networkKey].bech32 === payload) {
-              // Clean up encrypted mnemonic from localStorage if this was a wallet account
+              // Clean up mnemonic from localStorage if this was a wallet account
               if (state.accounts[accountKey][networkKey].keys === 'wallet') {
                 removeEncryptedMnemonic(payload);
+                // Fire lock event so signerClient drops the active signer
+                window.dispatchEvent(new CustomEvent('__cyb_wallet_locked'));
               }
               delete state.accounts[accountKey][networkKey];
 

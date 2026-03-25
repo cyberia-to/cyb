@@ -26,6 +26,18 @@
   .cardValue {
     align-items: center;
   }
+
+  @media (max-width: 768px) {
+    padding: 0.75rem 0.5rem;
+    font-size: 13px;
+    margin: 0 2px;
+    min-width: 0;
+
+    .cardTitle {
+      margin-bottom: 0.5rem;
+      font-size: 0.875rem;
+    }
+  }
 }
 
 .containerCardActive {

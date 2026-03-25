@@ -117,6 +117,10 @@ $animation-time: 2.3s;
   position: relative;
   transition: all 1s;
 
+  @media (max-width: 768px) {
+    display: none;
+  }
+
   @keyframes pulse {
     0% {
       box-shadow: 0 0 0 0 rgb(0 0 0 / 0%);
@@ -183,6 +187,14 @@ $animation-time: 2.3s;
     min-height: 62px;
     height: auto;
     opacity: 1;
+  }
+
+  @media (max-width: 768px) {
+    height: auto;
+    min-height: unset;
+    opacity: 1;
+    padding: 0;
+    line-height: 14px;
   }
 }
 

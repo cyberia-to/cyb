@@ -36,4 +36,13 @@
   &:disabled {
     opacity: 0.6;
   }
+
+  @media (max-width: 540px) {
+    margin: 0 5px;
+
+    img {
+      width: 24px;
+      height: 22px;
+    }
+  }
 }

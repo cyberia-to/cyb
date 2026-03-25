@@ -3,10 +3,11 @@ import { OfflineSigner } from '@cybercongress/cyber-js/build/signingcyberclient'
 import React, { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { CHAIN_ID, RPC_URL } from 'src/constants/config';
 import defaultNetworks, { getHealthyRpcUrl } from 'src/constants/defaultNetworks';
-import { useAppSelector } from 'src/redux/hooks';
+import { addAddressPocket, setDefaultAccount } from 'src/redux/features/pocket';
+import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
 import { Option } from 'src/types';
 import { Networks } from 'src/types/networks';
-import { decryptMnemonic } from 'src/utils/mnemonicCrypto';
+import { decryptMnemonic, encryptMnemonic, getTauriDeviceKey } from 'src/utils/mnemonicCrypto';
 import {
   connectLedger as connectLedgerDevice,
   ReconnectingLedgerSigner,
@@ -16,7 +17,7 @@ import {
 } from 'src/utils/ledgerSigner';
 import networkListIbc from 'src/utils/networkListIbc';
 import { getOfflineSigner as getOfflineSignerFromMnemonic } from 'src/utils/offlineSigner';
-import { getEncryptedMnemonic } from 'src/utils/utils';
+import { getEncryptedMnemonic, setEncryptedMnemonic } from 'src/utils/utils';
 
 const MNEMONIC_AUTO_CLEAR_MS = 15 * 60 * 1000; // 15 minutes
 
@@ -61,6 +62,7 @@ export function useSigningClient() {
 }
 
 function SigningClientProvider({ children }: { children: React.ReactNode }) {
+  const dispatch = useAppDispatch();
   const { defaultAccount } = useAppSelector((state) => state.pocket);
   const [signer, setSigner] = useState<SignerClientContextType['signer']>();
   const [signerReady, setSignerReady] = useState(false);
@@ -104,6 +106,166 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
     }
   }, [isLedgerAccount, signer]);
 
+  // Tauri: auto-generate mnemonic on first launch,
+  // restore saved mnemonic on subsequent launches.
+  // addAddressPocket deduplicates — won't re-register or override default account.
+  useEffect(() => {
+    (async () => {
+      if (!process.env.IS_TAURI) return;
+
+      try {
+        let mnemonic: string | null = null;
+        let walletSource = 'existing';
+        let accountName = 'Account 1';
+
+        // Check bootstrap.json FIRST — it's an explicit user action (download from web)
+        // and should override any existing wallet
+        if (process.env.IS_TAURI) {
+          try {
+            const { invoke } = await import('@tauri-apps/api/core');
+            const bootstrap = await invoke('read_bootstrap') as { mnemonic?: string; referrer?: string; name?: string } | null;
+            if (bootstrap?.mnemonic) {
+              mnemonic = bootstrap.mnemonic;
+              walletSource = 'cyb-boot';
+              if (bootstrap.name) {
+                accountName = bootstrap.name;
+              }
+              if (bootstrap.referrer) {
+                const { saveReferrer } = await import('src/pages/Mining/components/ReferralSection');
+                saveReferrer(bootstrap.referrer);
+              }
+            }
+          } catch (err) {
+            console.log('[Bootstrap] No bootstrap.json found (normal first launch):', err);
+          }
+        }
+
+        if (!mnemonic) {
+          const deviceKey = getTauriDeviceKey();
+
+          // Migrate legacy plaintext mnemonic (old Tauri key without address suffix)
+          const legacyKey = 'cyb:mnemonic';
+          const legacyMnemonic = localStorage.getItem(legacyKey);
+          if (legacyMnemonic && legacyMnemonic.split(' ').length >= 12) {
+            mnemonic = legacyMnemonic;
+            walletSource = 'migrated';
+            localStorage.removeItem(legacyKey);
+            console.log('[Bootstrap] Migrated legacy plaintext mnemonic');
+          }
+
+          // Try to restore from encrypted storage
+          if (!mnemonic) {
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i);
+              if (key?.startsWith('cyb:mnemonic:')) {
+                const encrypted = localStorage.getItem(key);
+                if (encrypted) {
+                  try {
+                    mnemonic = await decryptMnemonic(encrypted, deviceKey);
+                    console.log('[Bootstrap] Restored encrypted wallet from storage');
+                    break;
+                  } catch {
+                    // Not decryptable with device key, skip
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        if (!mnemonic) {
+          const { generateMnemonic } = await import('src/utils/offlineSigner');
+          mnemonic = await generateMnemonic();
+          walletSource = 'generated';
+          console.log('[Bootstrap] Auto-generated new wallet');
+        }
+
+        const mnemonicSigner = await getOfflineSignerFromMnemonic(mnemonic);
+        const mnemonicAccounts = await mnemonicSigner.getAccounts();
+        const { address } = mnemonicAccounts[0];
+        const pk = Buffer.from(mnemonicAccounts[0].pubkey).toString('hex');
+
+        console.log(`[Bootstrap] Wallet active: ${address} (source: ${walletSource}, name: ${accountName})`);
+
+        // Store mnemonic encrypted with device key
+        const deviceKey = getTauriDeviceKey();
+        const encrypted = await encryptMnemonic(mnemonic, deviceKey);
+        setEncryptedMnemonic(encrypted, address);
+
+        // Register account (deduplicates if already exists)
+        dispatch(
+          addAddressPocket({
+            bech32: address,
+            keys: 'wallet',
+            pk,
+            name: accountName,
+          })
+        );
+
+        // Force set as active — addAddressPocket skips this if initPocket already ran
+        if (walletSource === 'cyb-boot' || walletSource === 'generated') {
+          console.log(`[Bootstrap] Setting ${address} as default account (${accountName})`);
+          dispatch(
+            setDefaultAccount({
+              name: accountName,
+              account: { cyber: { bech32: address, keys: 'wallet', pk, name: accountName } },
+            })
+          );
+        }
+
+        const clientJs = await createClient(mnemonicSigner);
+        setSigner(mnemonicSigner);
+        setSigningClient(clientJs);
+        setSignerReady(true);
+        console.log(`[Bootstrap] Signing client ready (${walletSource})`);
+      } catch (e) {
+        console.error('[Bootstrap] Failed to init signer client:', e);
+      }
+    })();
+  }, []);
+
+  // Auto-switch signer when defaultAccount changes to a local wallet
+  useEffect(() => {
+    (async () => {
+      const keys = defaultAccount.account?.cyber?.keys;
+      const bech32 = defaultAccount.account?.cyber?.bech32;
+      if (keys !== 'wallet' || !bech32) return;
+
+      // On web, auto-switch only works if wallet is already unlocked (mnemonicRef)
+      // On Tauri, decrypt with device key
+      let mnemonic: string | null = mnemonicRef.current;
+
+      if (!mnemonic && process.env.IS_TAURI) {
+        const encrypted = getEncryptedMnemonic(bech32);
+        if (encrypted) {
+          try {
+            mnemonic = await decryptMnemonic(encrypted, getTauriDeviceKey());
+          } catch {
+            console.warn('[Signer] Failed to decrypt mnemonic for account switch');
+            return;
+          }
+        }
+      }
+
+      if (!mnemonic) return;
+
+      try {
+        const localSigner = await getOfflineSignerFromMnemonic(mnemonic);
+        const [account] = await localSigner.getAccounts();
+        if (account.address !== bech32) {
+          console.warn('[Signer] Mnemonic derives different address, skipping');
+          return;
+        }
+        const clientJs = await createClient(localSigner);
+        setSigner(localSigner);
+        setSigningClient(clientJs);
+        console.log('[Signer] Switched to local account:', bech32);
+      } catch (e) {
+        console.error('[Signer] Failed to switch to local account:', e);
+      }
+    })();
+  }, [defaultAccount]);
+
   const getSignClientByChainId = useCallback(
     async (chainId: Networks.BOSTROM | Networks.SPACE_PUSSY) => {
       let offlineSigner: Option<OfflineSigner>;
@@ -132,13 +294,6 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
       clearTimeout(mnemonicTimerRef.current);
     }
     mnemonicRef.current = mnemonic;
-    if (mnemonic) {
-      mnemonicTimerRef.current = setTimeout(() => {
-        mnemonicRef.current = null;
-        setSigner(undefined);
-        window.dispatchEvent(new CustomEvent('__cyb_wallet_locked'));
-      }, MNEMONIC_AUTO_CLEAR_MS);
-    }
   }, []);
 
   // Clear mnemonic on unmount
@@ -149,20 +304,7 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
     };
   }, []);
 
-  // Auto-lock when tab becomes hidden — skip for Ledger (device IS security)
-  useEffect(() => {
-    const handleVisibilityChange = () => {
-      if (document.hidden && mnemonicRef.current && !isLedgerAccount) {
-        mnemonicRef.current = null;
-        if (mnemonicTimerRef.current) clearTimeout(mnemonicTimerRef.current);
-        setSigner(undefined);
-        window.dispatchEvent(new CustomEvent('__cyb_wallet_locked'));
-      }
-    };
-
-    document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
-  }, [isLedgerAccount]);
+  // Auto-lock disabled — wallet stays unlocked until device locks
 
   const activateWalletSigner = useCallback(
     (offlineSigner: OfflineSigner, mnemonic: string) => {

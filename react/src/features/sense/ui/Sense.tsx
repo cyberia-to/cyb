@@ -1,5 +1,5 @@
 import cx from 'classnames';
-import { useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { useBackend } from 'src/contexts/backend/backend';
 import { useAdviser } from 'src/features/adviser/context';
@@ -32,8 +32,6 @@ function Sense({ urlSenseId }: { urlSenseId?: string }) {
 
   const [selected, setSelected] = useState<string | undefined>(urlSenseId);
 
-  // **Removed null from the type**
-  // update state asap
   if (urlSenseId !== selected) {
     setSelected(urlSenseId);
   }
@@ -41,7 +39,6 @@ function Sense({ urlSenseId }: { urlSenseId?: string }) {
   const dispatch = useAppDispatch();
   const { senseApi } = useBackend();
 
-  // maybe move to another component
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string>();
   const [adviserText, setAdviserText] = useState('');
@@ -50,13 +47,8 @@ function Sense({ urlSenseId }: { urlSenseId?: string }) {
 
   const currentThreadId = useAppSelector((state) => {
     const { llm } = state.sense;
-    // console.log(llm);
     return llm.currentThreadId;
   });
-
-  // if (isLLMFilter && !currentThreadId && selected) {
-  //   setSelected(null);
-  // }
 
   useEffect(() => {
     if (!selected || !senseApi) {
@@ -104,7 +96,6 @@ function Sense({ urlSenseId }: { urlSenseId?: string }) {
     setAdviser(adviserText || text, error ? 'red' : color);
   }, [setAdviser, loading, error, adviserText, syncState]);
 
-  //  seems use context
   const adviserProps = {
     setLoading: (isLoading: boolean) => setLoading(isLoading),
     setError: (error: string) => setError(error),
@@ -119,46 +110,27 @@ function Sense({ urlSenseId }: { urlSenseId?: string }) {
     dispatch(getSenseList(senseApi));
   }, [dispatch, senseApi]);
 
-  function update() {
-    // dispatch(getSenseList(senseApi));
-    // dispatch(
-    //   getSenseChat({
-    //     id: selected,
-    //     senseApi,
-    //   })
-    // );
-  }
-
-  // useEffect(() => {
-  //   if (isLLMFilter && !currentThreadId) {
-  //     // Create a new thread when LLM filter is selected and no thread is active
-  //     const newThreadId = uuidv4();
-  //     dispatch(createLLMThread({ id: newThreadId }));
-  //     dispatch(selectLLMThread({ id: newThreadId }));
-  //     setSelected(newThreadId);
-  //   }
-  // }, [isLLMFilter, currentThreadId, dispatch]);
+  function update() {}
 
   const isLLMFilter = currentFilter === Filters.LLM;
 
+  const selectChat = useCallback((id: string) => {
+    setSelected(id);
+    if (id !== 'llm') {
+      if (!paramSenseId) {
+        navigate(`./${id}`);
+      } else {
+        navigate(`../${id}`, { relative: 'path' });
+      }
+    }
+  }, [navigate, paramSenseId]);
+
   return (
     <>
-      <div className={cx(styles.wrapper, { [styles.NotOwner]: !isOwner })}>
+      <div className={cx(styles.wrapper, { [styles.NotOwner]: !isOwner, [styles.chatOpen]: !!selected })}>
         {isOwner && (
           <SenseList
-            select={(id: string) => {
-              setSelected(id);
-              // Navigate only if not LLM chat
-              if (id !== 'llm') {
-                if (!paramSenseId) {
-                  navigate(`./${id}`);
-                } else {
-                  navigate(`../${id}`, {
-                    relative: 'path',
-                  });
-                }
-              }
-            }}
+            select={selectChat}
             selected={selected}
             adviser={adviserProps}
             currentFilter={{

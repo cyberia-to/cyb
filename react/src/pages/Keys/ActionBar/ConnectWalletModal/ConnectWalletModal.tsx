@@ -35,6 +35,8 @@ export default function ConnectWalletModal({
   const [name, setName] = useState('');
   const [isTouched, setIsTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [hidden, setHidden] = useState(false);
+  const [showWords, setShowWords] = useState(false);
 
   // Best-effort cleanup on unmount — setState during unmount is a no-op in React 18,
   // string values remain in fiber tree until GC. Same inherent JS limitation as MetaMask/Keplr.
@@ -43,6 +45,20 @@ export default function ConnectWalletModal({
       setValues({});
       setName('');
     };
+  }, []);
+
+  // Clear mnemonic inputs when app goes to background (prevents iOS app switcher screenshot)
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.hidden) {
+        setHidden(true);
+        setValues({});
+      } else {
+        setHidden(false);
+      }
+    };
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => document.removeEventListener('visibilitychange', onVisibility);
   }, []);
 
   const distributeWords = useCallback((words: string[], startIndex = 0) => {
@@ -129,6 +145,14 @@ export default function ConnectWalletModal({
       </div>
       <div style={styles.wrapper}>
         <h3 style={styles.heading}>Enter or paste your seed phrase</h3>
+        <button
+          type="button"
+          onClick={() => setShowWords((v) => !v)}
+          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#36d6ae', fontSize: '18px', padding: '15px 5px' }}
+          title={showWords ? 'Hide seed words' : 'Show seed words'}
+        >
+          {showWords ? '🙈' : '👁'}
+        </button>
         <div style={styles.dropdown}>
           <Dropdown
             value={mnemonicsLength}
@@ -144,6 +168,7 @@ export default function ConnectWalletModal({
             index={index}
             values={values}
             isTouched={isTouched}
+            showWords={showWords}
             onBlurFunc={onInputBlurFunc}
             onWordsDetected={distributeWords}
             onSingleChange={onSingleChange}

@@ -23,8 +23,12 @@ export const mobileAllowedRoutes = [
 
   routes.mining.path,
 
-  routes.settings.path,
-  routes.keys.path,
+  routes.settings.path + '/*',
+
+  routes.teleport.path + '/*',
+  routes.sphere.path,
+  routes.portal.path,
+  routes.citizenship.path,
 
   'network/bostrom/tx/*',
 ];

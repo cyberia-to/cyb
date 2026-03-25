@@ -79,6 +79,24 @@ async function tryDecrypt(
   return new TextDecoder().decode(plaintext);
 }
 
+/**
+ * Tauri device key: a random 32-byte key stored in localStorage.
+ * Used as the encryption password for Tauri's password-less flow.
+ * Not perfect security (key is in localStorage alongside the blob),
+ * but ensures mnemonics are never stored as readable plaintext.
+ */
+const DEVICE_KEY_STORAGE = 'cyb:device-key';
+
+export function getTauriDeviceKey(): string {
+  let key = localStorage.getItem(DEVICE_KEY_STORAGE);
+  if (!key) {
+    const bytes = crypto.getRandomValues(new Uint8Array(32));
+    key = btoa(Array.from(bytes, (b) => String.fromCharCode(b)).join(''));
+    localStorage.setItem(DEVICE_KEY_STORAGE, key);
+  }
+  return key;
+}
+
 export async function decryptMnemonic(encrypted: string, password: string): Promise<string> {
   let packed: Uint8Array;
   try {

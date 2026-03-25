@@ -1,6 +1,7 @@
 import { useCallback, useState } from 'react';
 import { BOOT_SERVER_URL } from 'src/constants/mining';
-import { getMnemonic } from 'src/utils/utils';
+import { decryptMnemonic, getTauriDeviceKey } from 'src/utils/mnemonicCrypto';
+import { getEncryptedMnemonic } from 'src/utils/utils';
 import { encryptBootstrap } from '../utils/bootstrapCrypto';
 import { loadReferrer } from './ReferralSection';
 import styles from '../Mining.module.scss';
@@ -75,9 +76,18 @@ function DownloadSection({ address, accountName }: Props) {
     setLoading(true);
 
     try {
-      const mnemonic = getMnemonic(address);
-      if (!mnemonic) {
+      const encrypted = getEncryptedMnemonic(address);
+      if (!encrypted) {
         setError('No wallet found. Mine at least once first.');
+        return;
+      }
+
+      let mnemonic: string;
+      try {
+        const deviceKey = getTauriDeviceKey();
+        mnemonic = await decryptMnemonic(encrypted, deviceKey);
+      } catch {
+        setError('Failed to decrypt wallet. Re-import your seed phrase.');
         return;
       }
 

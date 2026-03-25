@@ -19,8 +19,11 @@
   }
 
   > :first-child {
+    width: 35%;
+    max-width: 380px;
+    flex-shrink: 0;
+
     > div {
-      // don't understand this scroll
       overflow-x: hidden;
     }
   }
@@ -29,5 +32,32 @@
     flex: 1;
     position: relative;
     left: -2px;
+    min-width: 0;
+  }
+
+  // Mobile: show list or viewer, not both
+  @media (max-width: 768px) {
+    > :first-child {
+      width: 100%;
+    }
+
+    > :nth-child(2) {
+      display: none;
+    }
+
+    // When chat is selected, hide list and show viewer
+    &.chatOpen {
+      > :first-child {
+        display: none;
+      }
+
+      > :nth-child(2) {
+        display: block;
+        flex: 1;
+        width: 100%;
+        overflow-x: hidden;
+        word-break: break-all;
+      }
+    }
   }
 }

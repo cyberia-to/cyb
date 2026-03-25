@@ -2,6 +2,13 @@
   display: grid;
   align-content: flex-start;
   gap: 32px;
+
+  @media (max-width: 768px) {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
 }
 
 .tagContainer {

@@ -53,7 +53,7 @@ a component at 0K has semver frozen too. 0K v1.0.0 forever.
 - no manual testing, no guarantees
 - version: git commit hash
 
-### canary (weekly, manual trigger)
+### canary (weekly)
 
 - automated CI build + smoke tests
 - published to GitHub Releases as pre-release
@@ -61,7 +61,7 @@ a component at 0K has semver frozen too. 0K v1.0.0 forever.
 - version: `K{kelvin} v{semver}-canary.{date}`
 - testing: dev team runs through critical paths on each platform
 
-### stable (when ready, manual trigger)
+### stable (when ready, manual trigger, new moon target initially)
 
 - full test suite passes
 - manual QA on all platforms
@@ -72,7 +72,7 @@ a component at 0K has semver frozen too. 0K v1.0.0 forever.
 ## what triggers a release
 
 - nightly: automatic on every master push
-- canary: manual, typically weekly or after significant feature merge
+- canary: weekly
 - stable: manual, after canary has been tested for N days with no blockers
 
 ## testing

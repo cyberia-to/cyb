@@ -12,7 +12,6 @@ import { LEDGER } from 'src/utils/config';
 import { toHex } from 'src/utils/encoding';
 import { encryptMnemonic } from 'src/utils/mnemonicCrypto';
 import { getOfflineSigner } from 'src/utils/offlineSigner';
-import { isWebUSBSupported } from 'src/utils/ledgerSigner';
 import { setEncryptedMnemonic } from 'src/utils/utils';
 import { useAdviser } from 'src/features/adviser/context';
 import { AdviserColors } from 'src/features/adviser/Adviser/Adviser';
@@ -88,15 +87,6 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
     }
   }, [stage, setAdviser]);
 
-  // Notify about Ledger availability when on connect screen
-  useEffect(() => {
-    if (stage === STAGE_INIT && !isWebUSBSupported()) {
-      setAdviser(
-        'Ledger requires Chrome, Edge, or the cyb.ai desktop app',
-        AdviserColors.yellow
-      );
-    }
-  }, [stage, setAdviser]);
 
   useEffect(() => {
     if (valueInputAddres.match(PATTERN_CYBER)) {
@@ -253,11 +243,17 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
           updateFuncActionBar();
         }
       }
-    } catch (err) {
+    } catch (err: any) {
       pendingMnemonicRef.current = '';
       setPassword('');
       setPasswordConfirm('');
-      setPasswordError('Failed to import wallet. Check your seed phrase and try again');
+
+      const isStorageError = err?.message?.includes('storage');
+      setPasswordError(
+        isStorageError
+          ? 'Could not save wallet. Check browser storage settings'
+          : 'Failed to import wallet. Check your seed phrase and try again'
+      );
     } finally {
       setSaving(false);
     }
@@ -298,6 +294,9 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
             placeholder="password"
             type="password"
             autoComplete="new-password"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
             autoFocus
           />
           <Input
@@ -307,6 +306,9 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
             placeholder="confirm password"
             type="password"
             autoComplete="new-password"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
           />
           {passwordError && (
             <span style={{ color: '#ff4d4d', fontSize: '14px' }}>{passwordError}</span>

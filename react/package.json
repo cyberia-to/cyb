@@ -16,6 +16,7 @@
     "@rspack/cli": "^1.7.6",
     "@rspack/core": "^1.7.6",
     "@rspack/plugin-react-refresh": "^1.6.1",
+    "worker-rspack-loader": "^3.1.2",
     "@types/dateformat": "^5.0.0",
     "@types/dompurify": "^3.2.0",
     "@types/file-saver": "^2.0.5",
@@ -55,7 +56,8 @@
     "unist-util-visit": "^5.0.0",
     "uuid": "^8.3.2",
     "webpack-merge": "^5.7.3",
-    "worker-rspack-loader": "^3.1.2"
+    "worker-rspack-loader": "^3.1.2",
+    "@cosmwasm/ts-codegen": "^1.11.0"
   },
   "dependencies": {
     "@ai-sdk/openai": "^0.0.63",

@@ -9,6 +9,7 @@ import { Colors } from 'src/components/containerGradient/types';
 import Table from 'src/components/Table/Table';
 
 import { useBackend } from 'src/contexts/backend/backend';
+import { useDevice } from 'src/contexts/device';
 import { useScripting } from 'src/contexts/scripting/scripting';
 import { toListOfObjects } from 'src/services/CozoDb/utils';
 import BackendStatus from './BackendStatus';
@@ -43,6 +44,8 @@ function Drive() {
   const [queryResults, setQueryResults] = useState<{ rows: []; cols: [] }>();
   const { cozoDbRemote, isReady, ipfsApi } = useBackend();
   const { embeddingApi } = useScripting();
+  const { viewportWidth } = useDevice();
+  const isMobile = viewportWidth <= 768;
   // const embeddingApi = useEmbeddingApi();
 
   // console.log('-----syncStatus', syncState, dbPendingWrites);
@@ -216,6 +219,8 @@ function Drive() {
   //   setQuestionText(value);
   // }
 
+  const desktopOnly = isMobile ? styles.mobileDisabled : undefined;
+
   return (
     <>
       <div className={styles.main}>
@@ -243,35 +248,10 @@ function Drive() {
             link your feedback <Link to="/search/brain%20feedback">brain feedback</Link>
           </p>
         </Display>
-        <BackendStatus />
-        <Pane width="100%">
-          {/* <div className={styles.centerPanel}>
-            <Button small onClick={createParticleEmbeddingsClick}>
-              🤖 create particle embeddings
-            </Button>
-            <div>{embeddingsProcessStatus}</div>
-          </div>
-
-          <div className={styles.buttonPanel}>
-            <Input
-              value={summarizeCid}
-              onChange={(e) => onSummarizeCidChange(e)}
-              placeholder="enter cid:<tokens>"
-            />
-            <Button small onClick={summarizeClick}>
-              🔖 Summarize CID content
-            </Button>
-          </div>
-          <div className={styles.buttonPanel}>
-            <Input
-              value={questionText}
-              onChange={(e) => onQuestionChange(e)}
-              placeholder="enter question..."
-            />
-            <Button small onClick={questionClick}>
-              🔮 Ask question about CID content
-            </Button>
-          </div> */}
+        <div className={desktopOnly}>
+          <BackendStatus />
+        </div>
+        <Pane width="100%" className={desktopOnly}>
           <div>{outputText}</div>
           <div className={styles.buttonPanel}>
             <Input
@@ -284,12 +264,11 @@ function Drive() {
             </Button>
           </div>
         </Pane>
-        <Pane width="100%">
+        <Pane width="100%" className={desktopOnly}>
           <textarea
             placeholder="Enter your query here..."
             onChange={(e) => setQueryText(e.target.value)}
             value={queryText}
-            className="resize-none"
             className={styles.queryInput}
             rows={10}
           />
@@ -306,10 +285,8 @@ function Drive() {
                 width="250px"
                 valueSelect=""
                 small
-                // textSelectValue="select preset..."
                 onChangeSelect={runExampleScript}
                 options={presetsAsSelectOptions}
-                // disabled={pending}
               />
             </div>
             <div className={styles.subPanel}>

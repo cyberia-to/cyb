@@ -12,7 +12,9 @@ function MobileMenu() {
 
   const toggleMenu = () => setIsOpen(!isOpen);
 
-  const { isActiveItem, activeItem } = useActiveMenuItem(getMenuItems());
+  const menuItems = getMenuItems();
+  const { isActiveItem, activeItem } = useActiveMenuItem(menuItems);
+  const displayItem = activeItem || menuItems[0];
 
   useOnClickOutside(menuRef, () => setIsOpen(false));
 
@@ -25,9 +27,9 @@ function MobileMenu() {
           onClick={toggleMenu}
         >
           <img
-            src={activeItem?.icon}
-            className={cx(styles.icon, { [styles.portalGlow]: activeItem?.name === 'Portal' })}
-            alt={`${activeItem?.name} menu active icon`}
+            src={displayItem.icon}
+            className={cx(styles.icon, { [styles.portalGlow]: displayItem.name === 'Portal' })}
+            alt={`${displayItem.name} menu active icon`}
           />
         </button>
         {getMenuItems().map((item, index) => {

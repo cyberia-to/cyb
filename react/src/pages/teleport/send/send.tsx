@@ -137,16 +137,18 @@ function Send() {
   }, [recipientBalances, tokenSelect]);
 
   const reduceOptions = useMemo(
-    () =>
-      totalSupplyProofList
-        ? Object.keys(totalSupplyProofList).map((key) => ({
-            value: key,
-            text: <DenomArr denomValue={key} onlyText tooltipStatusText={false} />,
-            img: <DenomArr denomValue={key} onlyImg tooltipStatusImg={false} />,
-          }))
-        : [],
-
-    [totalSupplyProofList]
+    () => {
+      if (!totalSupplyProofList) return [];
+      return Object.keys(totalSupplyProofList)
+        .filter((key) => accountBalances && accountBalances[key] > 0)
+        .sort((a, b) => ((accountBalances?.[b] || 0) - (accountBalances?.[a] || 0)))
+        .map((key) => ({
+          value: key,
+          text: <DenomArr denomValue={key} onlyText tooltipStatusText={false} />,
+          img: <DenomArr denomValue={key} onlyImg tooltipStatusImg={false} />,
+        }));
+    },
+    [totalSupplyProofList, accountBalances]
   );
 
   const setPercentageBalanceHook = useCallback(

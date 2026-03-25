@@ -192,6 +192,11 @@
     height: unset !important;
     grid-template-columns: unset !important;
   }
+
+  @media (max-width: 768px) {
+    position: relative;
+    z-index: 4;
+  }
 }
 
 .containerSubItems {

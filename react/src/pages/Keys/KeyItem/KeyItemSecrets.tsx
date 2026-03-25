@@ -28,7 +28,7 @@ function KeyItemSecrets({ name, value, selected, selectKey }: Props) {
         secret <Pill color="white" text={name || 'noname'} /> <br />
         contains value{' '}
         <button
-          className={cx(styles.pointer, styles.button)}
+          className={cx(styles.pointer, styles.button, styles.sensitiveValue)}
           onClick={() => setShowValue(!showValue)}
         >
           <Pill text={!showValue ? '***********' : value} />

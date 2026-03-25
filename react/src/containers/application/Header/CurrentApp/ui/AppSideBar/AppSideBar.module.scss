@@ -10,10 +10,46 @@
   z-index: 4;
   opacity: 0.9;
   box-shadow: 1px 0 20px 2px #000;
+
+  @media (max-width: 768px) {
+    top: 0;
+    width: 75vw;
+    max-width: 300px;
+    height: 100vh;
+    height: 100dvh;
+    padding: 80px 0 15px;
+    background: #000;
+    backdrop-filter: none;
+    z-index: 100;
+    opacity: 1;
+    box-shadow: none;
+    transform: translateX(0);
+    transition: transform 0.3s ease;
+  }
 }
 
 .sideBarHide {
   left: -170px;
+
+  @media (max-width: 768px) {
+    left: 0;
+    transform: translateX(-100%);
+  }
+}
+
+.overlay {
+  display: none;
+
+  @media (max-width: 768px) {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0, 0, 0, 0.6);
+    z-index: 99;
+  }
 }
 
 .toggleBtn {
@@ -31,5 +67,9 @@
 
   &>div>div {
     background-color: var(--blue-light);
+  }
+
+  @media (max-width: 768px) {
+    display: none;
   }
 }

@@ -8,8 +8,18 @@
   display: flex;
   justify-content: center;
 
-  @media (width <= 540px) {
-    margin-top: unset;
+  @media (max-width: 768px) {
+    position: fixed;
+    top: calc(35px + env(safe-area-inset-top, 0px));
+    transform: translateY(-50%);
+    left: 66px;
+    right: 66px;
+    width: auto;
+    margin: 0;
+    min-height: unset;
+    z-index: 3;
+    overflow: visible;
+    max-height: none;
   }
 }
 
@@ -26,5 +36,23 @@
     height: 110%;
     left: 0;
     filter: blur(12px);
+  }
+
+  @media (max-width: 768px) {
+    position: relative;
+    width: 100%;
+    font-size: 11px;
+    line-height: 14px;
+    text-align: center;
+    padding: 4px 8px;
+    overflow: hidden;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+
+    * {
+      font-size: 11px !important;
+      line-height: 14px !important;
+    }
   }
 }

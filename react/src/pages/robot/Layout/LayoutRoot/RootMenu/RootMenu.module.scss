@@ -1,5 +1,12 @@
 $activeLineWidth: 2px;
 
+.wrapper {
+  @media (max-width: 540px) {
+    background: #000;
+    height: 100%;
+  }
+}
+
 .links {
   a {
     position: relative;
@@ -63,6 +70,43 @@ $activeLineWidth: 2px;
           rgb(255 255 255 / 8%) 100%
         );
         width: 50%;
+      }
+
+      .icon {
+        background: var(--primary-color);
+        border-radius: 50%;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 18px;
+      }
+    }
+  }
+
+  @media (max-width: 540px) {
+    a {
+      padding: 0;
+      justify-content: center;
+      min-height: 40px;
+
+      > div:first-child {
+        gap: 0;
+      }
+
+      .text,
+      .count,
+      .description {
+        display: none;
+      }
+
+      .icon {
+        font-size: 22px;
+      }
+
+      &::after {
+        display: none;
       }
     }
   }

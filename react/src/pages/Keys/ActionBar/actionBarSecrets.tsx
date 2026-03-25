@@ -29,6 +29,9 @@ function ActionBarSecrets({ onClickBack }: { onClickBack: () => void }) {
           value={key}
           onChange={(e) => setKey(e.target.value)}
           placeholder="key/name"
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
           autoFocus
         />
         <Pane width="10px" />
@@ -37,7 +40,10 @@ function ActionBarSecrets({ onClickBack }: { onClickBack: () => void }) {
           value={value}
           onChange={(e) => setValue(e.target.value)}
           placeholder="secret value"
-          autoFocus
+          type="password"
+          spellCheck={false}
+          autoCorrect="off"
+          autoCapitalize="off"
         />
       </Pane>
     </ActionBar>

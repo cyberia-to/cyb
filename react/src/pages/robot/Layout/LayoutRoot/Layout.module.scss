@@ -40,6 +40,36 @@ $robot-max-height: calc(100vh - $reservedTopHeight - $actionBarHeight);
   > :nth-child(2) {
     left: -2px;
     position: relative;
-    overflow-x: auto;
+    overflow: hidden;
+    min-width: 0;
+
+    > :last-child {
+      height: auto !important;
+      max-height: none !important;
+      flex: 1;
+      min-height: 0;
+      overflow-y: auto;
+
+      > * {
+        max-width: 100%;
+        overflow-wrap: break-word;
+      }
+    }
+  }
+
+  @media (max-width: 540px) {
+    grid-template-columns: 48px 1fr;
+    margin-top: 15px;
+    margin-right: 0;
+    height: calc(100vh - $reservedTopHeight - $actionBarHeight - 35px);
+    max-height: calc(100vh - $reservedTopHeight - $actionBarHeight - 35px);
+
+    > :first-child {
+      z-index: 10;
+    }
+
+    > :nth-child(2) {
+      left: 0;
+    }
   }
 }

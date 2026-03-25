@@ -209,7 +209,6 @@ function ActionBarWrapper({ id, adviser }: Props) {
     return (
       <ActionBar>
         <Input
-          width={480}
           classNameTextbox={styles.messageInput}
           isTextarea
           autoFocus

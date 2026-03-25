@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useLocation } from 'react-router-dom';
 import { CHAIN_ID } from 'src/constants/config';
-import { useDevice } from 'src/contexts/device';
 import { useSigningClient } from 'src/contexts/signerClient';
 import { useAdviser } from 'src/features/adviser/context';
 import { AdviserColors } from 'src/features/adviser/Adviser/Adviser';
@@ -49,8 +48,6 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
 
   const address = useAppSelector(selectCurrentAddress);
   const { passport } = usePassportByAddress(address);
-  const { isMobile } = useDevice();
-
   const noAccount = !defaultAccount.account;
   const noPassport = CHAIN_ID === Networks.BOSTROM && !passport;
 
@@ -63,7 +60,8 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
     location.pathname === '/oracle/learn';
   // TODO: not show while loading passport
 
-  if (commander.isFocused) {
+  // on mobile, commander is in MobileMenuBar — don't override actionBar
+  if (commander.isFocused && window.innerWidth > 768) {
     return (
       <ActionBarContainer>
         <Button link={routes.search.getLink(commander.value)} disabled={!commander.value.length}>
@@ -74,22 +72,17 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
   }
 
   if (
-    (noAccount || noPassport) &&
+    noAccount &&
     // maybe change to props
     exception &&
     !location.pathname.includes(routes.gift.path) &&
     !location.pathname.includes('/brain') && // both full and robot
     !location.pathname.includes('/mining') &&
-    !location.pathname.includes('/network/bostrom/tx') &&
-    !isMobile
+    !location.pathname.includes('/network/bostrom/tx')
   ) {
     return (
       <ActionBarContainer>
-        {noAccount && <Button link={routes.keys.path}>Connect</Button>}
-
-        {noPassport && location.pathname !== routes.citizenship.path && (
-          <Button link={routes.portal.path}>Get citizenship</Button>
-        )}
+        <Button link={routes.keys.path}>Connect</Button>
       </ActionBarContainer>
     );
   }
@@ -131,13 +124,14 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
       {/* <Telegram /> */}
 
       {onClickBack && (
-        <ButtonIcon
-          styleContainer={{ position: 'absolute', left: '0' }}
-          style={{ padding: 0 }}
-          img={back}
-          onClick={onClickBack}
-          text="previous step"
-        />
+        <div className={styles.backButton}>
+          <ButtonIcon
+            style={{ padding: 0 }}
+            img={back}
+            onClick={onClickBack}
+            text="previous step"
+          />
+        </div>
       )}
 
       {content && <div className={styles.ActionBarContentText}>{content}</div>}
@@ -192,6 +186,10 @@ function UnlockWalletBar() {
           onChange={(e) => setPassword(e.target.value)}
           placeholder="enter password to unlock"
           type="password"
+          autoComplete="off"
+          autoCorrect="off"
+          autoCapitalize="off"
+          spellCheck={false}
           onKeyDown={(e) => e.key === 'Enter' && handleUnlock()}
           autoFocus
         />
@@ -235,12 +233,9 @@ function ConnectLedgerBar() {
 
   return (
     <ActionBarContainer>
-      <span style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-        <Button onClick={handleConnect} disabled={loading}>
-          {loading ? 'Connecting...' : 'Connect Ledger'}
-        </Button>
-        {error && <span style={{ color: '#ff4d4d', fontSize: '14px' }}>{error}</span>}
-      </span>
+      <Button onClick={handleConnect} disabled={loading}>
+        {loading ? 'Connecting...' : 'Connect Ledger'}
+      </Button>
     </ActionBarContainer>
   );
 }

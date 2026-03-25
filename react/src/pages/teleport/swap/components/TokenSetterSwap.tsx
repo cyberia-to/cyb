@@ -28,6 +28,7 @@ type Props = {
   warningAmountText?: string;
   onChangeSelect: React.Dispatch<React.SetStateAction<string>>;
   amountChangeHandler: (values: string, id: TokenSetterId) => void;
+  accountBalances?: ObjKeyValue | null;
 };
 
 function TokenSetterSwap({
@@ -45,24 +46,32 @@ function TokenSetterSwap({
   validAmountMessageText,
   warningAmount,
   warningAmountText,
+  accountBalances,
 }: Props) {
+  const isFromToken = id === TokenSetterId.tokenAAmount;
+
   const reduceOptions = useMemo(() => {
-    const tempList: SelectOption[] = [];
+    if (!listTokens) return [];
 
-    if (listTokens) {
-      Object.keys(listTokens).forEach((key) => {
-        if (selected !== key) {
-          tempList.push({
-            value: key,
-            text: <DenomArr denomValue={key} onlyText tooltipStatusText={false} />,
-            img: <DenomArr denomValue={key} onlyImg tooltipStatusImg={false} />,
-          });
+    return Object.keys(listTokens)
+      .filter((key) => {
+        if (selected === key) return false;
+        // "from" tokens — only show tokens with balance > 0
+        if (isFromToken && accountBalances) {
+          return accountBalances[key] > 0;
         }
-      });
-    }
-
-    return tempList;
-  }, [listTokens, selected]);
+        return true;
+      })
+      .sort((a, b) => {
+        if (!accountBalances) return 0;
+        return (accountBalances[b] || 0) - (accountBalances[a] || 0);
+      })
+      .map((key) => ({
+        value: key,
+        text: <DenomArr denomValue={key} onlyText tooltipStatusText={false} />,
+        img: <DenomArr denomValue={key} onlyImg tooltipStatusImg={false} />,
+      }));
+  }, [listTokens, selected, isFromToken, accountBalances]);
 
   const textAction = useMemo(() => {
     if (id === TokenSetterId.tokenBAmount) {

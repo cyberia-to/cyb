@@ -1,5 +1,6 @@
 import cx from 'classnames';
-import { NavLink } from 'react-router-dom';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { NavLink, useLocation } from 'react-router-dom';
 import { Display } from 'src/components';
 import styles from './SettingsMenu.module.scss';
 
@@ -12,6 +13,13 @@ type MenuItem = {
 const links: Array<MenuItem[]> = [
   [
     {
+      text: 'Keys',
+      link: './keys',
+      icon: '🗝',
+    },
+  ],
+  [
+    {
       text: 'Drive',
       link: '.',
       icon: '🟥',
@@ -19,20 +27,11 @@ const links: Array<MenuItem[]> = [
   ],
   [
     {
-      text: 'Keys',
-      link: './keys',
-      icon: '🗝',
+      text: 'Signer',
+      link: './signer',
+      icon: '🖋️',
     },
   ],
-  !window.keplr
-    ? [
-        {
-          text: 'Signer',
-          link: './signer',
-          icon: '🖋️',
-        },
-      ]
-    : undefined,
   [
     {
       text: 'Tokens',
@@ -63,14 +62,50 @@ const links: Array<MenuItem[]> = [
 ].filter(Boolean);
 
 function SettingsMenu() {
+  const [expanded, setExpanded] = useState(false);
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const location = useLocation();
+
+  // collapse on route change (covers browser back/forward)
+  useEffect(() => {
+    setExpanded(false);
+  }, [location.pathname]);
+
+  // collapse on any click outside the menu
+  useEffect(() => {
+    if (!expanded) return;
+
+    const handleOutside = (e: MouseEvent) => {
+      if (wrapperRef.current && !wrapperRef.current.contains(e.target as Node)) {
+        setExpanded(false);
+      }
+    };
+
+    document.addEventListener('click', handleOutside);
+    return () => document.removeEventListener('click', handleOutside);
+  }, [expanded]);
+
+  const handleToggle = useCallback(() => {
+    setExpanded((prev) => !prev);
+  }, []);
+
+  const handleItemClick = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    setExpanded(false);
+  }, []);
+
   return (
-    <div className={styles.wrapper}>
+    <div
+      ref={wrapperRef}
+      className={cx(styles.wrapper, { [styles.expanded]: expanded })}
+      onClick={handleToggle}
+    >
       <Display>
         <div className={styles.links}>
           {links.map((link, indexUl) => (
             <ul key={indexUl}>
               {link.map((item, index) => (
-                <li key={index}>
+                <li key={index} onClick={handleItemClick}>
                   <NavLink
                     className={({ isActive }) =>
                       cx({

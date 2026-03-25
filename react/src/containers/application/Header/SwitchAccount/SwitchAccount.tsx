@@ -1,11 +1,9 @@
 import cx from 'classnames';
 import React, { useMemo, useRef } from 'react';
-import { usePopperTooltip } from 'react-popper-tooltip';
 import { Link, useLocation } from 'react-router-dom';
 import { Transition } from 'react-transition-group';
 import Pill from 'src/components/Pill/Pill';
 import { useBackend } from 'src/contexts/backend/backend';
-import { useDevice } from 'src/contexts/device';
 import { useSigningClient } from 'src/contexts/signerClient';
 import usePassportByAddress from 'src/features/passport/hooks/usePassportByAddress';
 import useIsOnline from 'src/hooks/useIsOnline';
@@ -87,7 +85,6 @@ function SwitchAccount() {
   const { isIpfsInitialized } = useBackend();
   const isOnline = useIsOnline();
   const mediaQuery = useMediaQuery('(min-width: 768px)');
-  const { isMobile } = useDevice();
 
   const [controlledVisible, setControlledVisible] = React.useState(false);
 
@@ -96,14 +93,6 @@ function SwitchAccount() {
   const useGetAddress = defaultAccount?.account?.cyber?.bech32 || null;
 
   const { passport } = usePassportByAddress(useGetAddress);
-
-  const { getTooltipProps, setTooltipRef, visible } = usePopperTooltip({
-    trigger: 'click',
-    closeOnTriggerHidden: true,
-    visible: controlledVisible,
-    onVisibleChange: setControlledVisible,
-    placement: 'bottom',
-  });
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -146,22 +135,14 @@ function SwitchAccount() {
   // const multipleAccounts = renderItem && Object.keys(renderItem).length > 0;
 
   return (
-    <div style={{ position: 'relative', fontSize: '20px' }} ref={containerRef}>
+    <div className={styles.switchAccountRoot} style={{ position: 'relative', fontSize: '20px' }} ref={containerRef}>
       <div className={styles.containerSwichAccount}>
-        {(!useGetAddress || !mediaQuery) && (
-          // eslint-disable-next-line react/jsx-no-useless-fragment
-          <>
-            {/* FIXME: because of styles */}
-            {isMobile ? (
-              <div />
-            ) : (
-              <Link className={networkStyles.btnContainerText} to={routes.settings.path}>
-                {mediaQuery ? 'Settings' : '⚙️'}
-              </Link>
-            )}
-          </>
+        {(!useGetAddress || !mediaQuery) && mediaQuery && (
+          <Link className={networkStyles.btnContainerText} to={routes.settings.path}>
+            Settings
+          </Link>
         )}
-        {mediaQuery && useGetAddress && (
+        {useGetAddress && mediaQuery && (
           <div
             className={cx(
               networkStyles.containerInfoSwitch,
@@ -176,7 +157,6 @@ function SwitchAccount() {
                 style={{ fontSize: '20px' }}
               >
                 {useGetName}
-                {/* {multipleAccounts && '>'} */}
               </button>
             )}
             {isReadOnly && <Pill color="yellow" text="read only" />}
@@ -185,39 +165,58 @@ function SwitchAccount() {
             <MiningBadge />
           </div>
         )}
-        <Link
-          to={
-            passport ? routes.robotPassport.getLink(passport.extension.nickname) : routes.robot.path
-          }
-          className={styles.content}
-          // onClick={() => setControlledVisible(!controlledVisible)}
-        >
-          <div
-            className={cx(styles.containerAvatarConnect, {
-              [styles.containerAvatarConnectFalse]: !isIpfsInitialized || !isOnline,
-              [styles.containerAvatarConnectTrueGreen]: isIpfsInitialized && isOnline,
-            })}
-          >
-            <AvataImgIpfs
-              style={{
-                position: 'relative',
-                objectFit: !useGetCidAvatar && 'contain',
-              }}
-              cidAvatar={useGetCidAvatar}
-              addressCyber={useGetAddress}
-              img={robot}
-            />
-          </div>
-        </Link>
+        {(() => {
+          const avatarContent = (
+            <div
+              className={cx(styles.containerAvatarConnect, {
+                [styles.containerAvatarConnectFalse]: !isIpfsInitialized || !isOnline,
+                [styles.containerAvatarConnectTrueGreen]: isIpfsInitialized && isOnline,
+              })}
+            >
+              <AvataImgIpfs
+                style={{
+                  position: 'relative',
+                  objectFit: !useGetCidAvatar && 'contain',
+                }}
+                cidAvatar={useGetCidAvatar}
+                addressCyber={useGetAddress}
+                img={robot}
+              />
+            </div>
+          );
+
+          return mediaQuery ? (
+            <Link
+              to={
+                passport ? routes.robotPassport.getLink(passport.extension.nickname) : routes.robot.path
+              }
+              className={styles.content}
+            >
+              {avatarContent}
+            </Link>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setControlledVisible((item) => !item)}
+              className={styles.content}
+              style={{ background: 'none', border: 'none', padding: 0, cursor: 'pointer' }}
+            >
+              {avatarContent}
+            </button>
+          );
+        })()}
       </div>
-      <Transition in={visible} timeout={300}>
+      {!mediaQuery && controlledVisible && (
+        <div
+          className={styles.mobileOverlay}
+          onClick={() => setControlledVisible(false)}
+        />
+      )}
+      <Transition in={controlledVisible} timeout={300}>
         {(state) => {
           return (
             <div
-              ref={setTooltipRef}
-              {...getTooltipProps({
-                className: styles.tooltipContainerRight,
-              })}
+              className={styles.tooltipContainerRight}
             >
               <div
                 className={cx(styles.containerSwichAccountList, [

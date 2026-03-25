@@ -42,7 +42,7 @@ function useGetLog(address: string | null) {
       getNextPageParam: (lastPage) => {
         const { page } = lastPage;
 
-        const total = lastPage.data.pagination?.total || 0;
+        const total = lastPage.data?.pagination?.total || 0;
 
         if (!total || (page + 1) * LIMIT > total) {
           return undefined;
@@ -56,7 +56,7 @@ function useGetLog(address: string | null) {
   const memoData = useMemo(() => {
     return (
       data?.pages?.reduce((acc, page) => {
-        return acc.concat(page.data.txResponses);
+        return acc.concat(page.data?.txResponses || []);
       }, []) || []
     );
   }, [data]);

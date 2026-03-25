@@ -10,7 +10,6 @@ export const localStorageKeys = {
     adviserVoice: 'adviserVoice',
   },
   signer: {
-    mnemonic: 'cyb:mnemonic',
     confirmation: 'cyb:confirmation',
   },
 };
