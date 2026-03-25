@@ -9,6 +9,7 @@ import shpere from 'src/image/new_icons/sphere.svg';
 import hfr from 'src/image/new_icons/hfr.svg';
 import senate from 'src/image/new_icons/senate.svg';
 import congress from 'src/image/new_icons/congress.svg';
+import mining from 'src/image/new_icons/mining.svg';
 
 import styles from './AOS.module.scss';
 
@@ -19,6 +20,7 @@ const apps = [
   { name: 'Sphere', icon: shpere, to: routes.sphere.path },
   { name: 'HFR', icon: hfr, to: '/hfr' },
   { name: 'Senate', icon: senate, to: '/senate' },
+  { name: 'Miner', icon: mining, to: '/mining' },
   { name: 'About', icon: congress, to: routes.social.path },
   {
     name: 'Docs',

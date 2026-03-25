@@ -18,11 +18,11 @@ const tabsPages = {
     description: 'cyberlinks',
     name: 'cyberlinks',
   },
-  robot: {
-    text: 'robot',
+  avatar: {
+    text: 'avatar',
     link: './',
     icon: '',
-    description: 'robot',
+    description: 'avatar',
     name: 'log',
   },
   time: {
@@ -52,7 +52,7 @@ function TabsNotOwner({ menuCounts }: { menuCounts: typeof tabsPages }) {
 
   return (
     <Tabs
-      selected={active || 'robot'}
+      selected={active || 'avatar'}
       options={Object.entries(tabsPages).map(([key, item]) => ({
         to: item.link,
         key,

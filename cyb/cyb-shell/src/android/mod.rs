@@ -28,8 +28,8 @@ fn _start_app() {
         .expect("Failed to create window");
 
     let _webview = WebViewBuilder::new()
-        .with_asset_loader("cyb.assets".into())
-        .with_url("https://cyb.assets/cyb-web/index.html")
+        .with_asset_loader("cyb".into())
+        .with_url("https://cyb.assets/index.html")
         .with_devtools(true)
         .build(&window)
         .expect("Failed to create WebView");

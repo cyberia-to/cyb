@@ -164,13 +164,7 @@ function App() {
 
         <AdviserContainer />
 
-        {isMobile && !mobileAllowed ? (
-          <MainContainer>
-            <UseDesktopVersionBlock />
-          </MainContainer>
-        ) : (
-          <Outlet />
-        )}
+        <Outlet />
       </MainLayout>
       <SignerModal ref={signerModalRef} />
     </PreviousPageProvider>

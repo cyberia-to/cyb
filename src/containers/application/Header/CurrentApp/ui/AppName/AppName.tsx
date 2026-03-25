@@ -12,11 +12,18 @@ function AppName() {
   const isRobot = pathname.includes('@') || pathname.includes('neuron/');
   const isOracle = pathname.includes('oracle');
 
-  if (isRobot) {
+  // Extract username for avatar pages like /@mastercyb
+  const avatarMatch = pathname.match(/^\/@([^/]+)/);
+
+  if (isRobot && !avatarMatch) {
     const pathnameArr = pathname.replace(/^\/|\/$/g, '').split('/');
     const findItem = pathnameArr[pathnameArr.length - 1];
     pathname =
-      findItem.includes('@') || findItem.match(PATTERN_CYBER) ? routes.robot.path : findItem;
+      findItem.includes('@') || findItem.match(PATTERN_CYBER) ? '/settings' : findItem;
+  }
+
+  if (isRobot && avatarMatch) {
+    pathname = '/settings';
   }
 
   if (isOracle) {
@@ -25,14 +32,15 @@ function AppName() {
 
   const value = findApp(getMenuItems(), pathname);
 
-  const content = value[0]?.name || CHAIN_ID;
+  const isAvatar = !!avatarMatch;
+  const content = isAvatar ? `@${avatarMatch[1]}.moon` : value[0]?.name || CHAIN_ID;
 
   return (
     <>
       <Helmet>
         <title>{content ? `${content.toLowerCase()} | cyb` : ''}</title>
       </Helmet>
-      <span className={styles.wrapper}>{content}</span>
+      <span className={isAvatar ? styles.wrapperFull : styles.wrapper}>{content}</span>
     </>
   );
 }

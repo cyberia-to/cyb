@@ -38,6 +38,8 @@ function CurrentApp() {
 
   const toggleMenuFc = useMemo(() => () => toggleMenu(!openMenu), [openMenu, toggleMenu]);
 
+  const isAvatar = /^\/@/.test(location.pathname);
+
   return (
     <>
       <div className={styles.buttonWrapper}>
@@ -49,7 +51,10 @@ function CurrentApp() {
           <img
             alt="cyb"
             src={getRoute[0]?.largeIcon || getRoute[0]?.icon || selectNetworkImg(CHAIN_ID)}
-            className={cx(styles.networkBtnImg, { [styles.portalGlow]: getRoute[0]?.name === 'Portal' })}
+            className={cx(
+              isAvatar ? styles.avatarImg : styles.networkBtnImg,
+              { [styles.portalGlow]: getRoute[0]?.name === 'Portal' }
+            )}
           />
         </Link>
         {mediaQuery && <ChainInfo />}

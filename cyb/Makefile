@@ -94,13 +94,15 @@ android-rust: web
 	CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$(NDK_BIN)/aarch64-linux-android$(ANDROID_API)-clang \
 	cargo build --release --target $(ANDROID_TARGET) --lib -p cyb-shell --no-default-features --features android
 
-# Copy web build into Android assets (strip sourcemaps)
+# Copy web build into Android assets (strip sourcemaps, strip CSP for local loading)
 android-assets:
 	@rm -rf cyb-shell/gen/android/app/src/main/assets/cyb-web
 	@if [ -d "../build" ]; then \
 		mkdir -p cyb-shell/gen/android/app/src/main/assets/cyb-web; \
 		cp -r ../build/* cyb-shell/gen/android/app/src/main/assets/cyb-web/; \
 		find cyb-shell/gen/android/app/src/main/assets/cyb-web -name "*.map" -delete; \
+		sed -i '' 's|<meta http-equiv="Content-Security-Policy" content="[^"]*">||g' \
+			cyb-shell/gen/android/app/src/main/assets/cyb-web/index.html; \
 		echo "Assets copied ($$(du -sh cyb-shell/gen/android/app/src/main/assets/cyb-web | cut -f1))"; \
 	else \
 		echo "WARNING: ../build not found, run 'make web' first"; \

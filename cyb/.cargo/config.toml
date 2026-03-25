@@ -25,7 +25,7 @@ rustflags = ["-C", "target-cpu=native", "-C", "target-feature=+aes,+avx2"]
 # === Mobile (cross-compilation — ARMv8 crypto extensions) ===
 
 [target.aarch64-linux-android]
-rustflags = ["-C", "target-feature=+aes,+sha2"]
+rustflags = ["-C", "target-feature=+aes,+sha2", "-C", "link-arg=-z", "-C", "link-arg=max-page-size=16384"]
 
 [target.aarch64-apple-ios]
 rustflags = ["-C", "target-feature=+aes,+sha2"]

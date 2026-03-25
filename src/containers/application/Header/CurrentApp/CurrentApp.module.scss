@@ -165,6 +165,16 @@
   filter: drop-shadow(0 0 6px #f62bfd) drop-shadow(0 0 12px #f62bfda0);
 }
 
+.avatarImg {
+  width: 90px;
+  height: 90px;
+  position: relative;
+  transition: 0.2s;
+  object-fit: cover;
+  border-radius: 50%;
+  z-index: 1;
+}
+
 .buttonWrapper {
   display: grid;
   gap: 25px;

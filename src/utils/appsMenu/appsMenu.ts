@@ -3,7 +3,6 @@ import portalGlow from 'src/image/space-pussy-glow.svg';
 import { CHAIN_ID } from 'src/constants/config';
 import congress from 'src/image/new_icons/congress.svg';
 import hfr from 'src/image/new_icons/hfr.svg';
-import mining from 'src/image/new_icons/mining.svg';
 import nebulaIcon from 'src/image/new_icons/nebula.svg';
 import oracle from 'src/image/new_icons/oracle.svg';
 import robot from 'src/image/new_icons/robot.svg';
@@ -55,7 +54,6 @@ const getMenuItems = () => {
         { name: 'Libs', to: '/libs', icon: require('./images/database.png') },
       ],
     },
-    { name: 'Mining', icon: mining, to: '/mining', subItems: [] },
     {
       name: 'Teleport',
       to: '/teleport',
