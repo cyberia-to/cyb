@@ -34,8 +34,7 @@ app/src/main/kotlin/ai/cyb/app/RustWebViewClient.kt
 app/src/main/kotlin/ai/cyb/app/WryActivity.kt
 app/src/main/kotlin/ai/cyb/app/proguard-wry.pro
 
-# Gradle wrapper jar (downloaded automatically)
-gradle/wrapper/gradle-wrapper.jar
+# Gradle wrapper jar — committed for CI (no local Gradle install needed)
 
 # APK outputs
 *.apk
