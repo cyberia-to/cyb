@@ -1,28 +1,27 @@
 [net]
 git-fetch-with-cli = true
 
-# Performance flags for uhash-core hardware crypto intrinsics
-# Desktop: target-cpu=native enables all host CPU features (AES-NI, SHA, AVX2)
-# Mobile: explicit target-feature since target-cpu=native is wrong for cross-compilation
+# Performance flags for hardware crypto intrinsics
+# CI-safe: explicit features instead of target-cpu=native
 
-# === Desktop (native builds) ===
+# === Desktop ===
 
 [target.aarch64-apple-darwin]
-rustflags = ["-C", "target-cpu=native"]
+rustflags = ["-C", "target-feature=+aes,+sha2"]
 
 [target.x86_64-apple-darwin]
-rustflags = ["-C", "target-cpu=native", "-C", "target-feature=+aes,+avx2"]
+rustflags = ["-C", "target-feature=+aes,+avx2"]
 
 [target.x86_64-unknown-linux-gnu]
-rustflags = ["-C", "target-cpu=native", "-C", "target-feature=+aes,+avx2"]
+rustflags = ["-C", "target-feature=+aes,+avx2"]
 
 [target.aarch64-unknown-linux-gnu]
-rustflags = ["-C", "target-cpu=native"]
+rustflags = ["-C", "target-feature=+aes,+sha2"]
 
 [target.x86_64-pc-windows-msvc]
-rustflags = ["-C", "target-cpu=native", "-C", "target-feature=+aes,+avx2"]
+rustflags = ["-C", "target-feature=+aes,+avx2"]
 
-# === Mobile (cross-compilation — ARMv8 crypto extensions) ===
+# === Mobile ===
 
 [target.aarch64-linux-android]
 rustflags = ["-C", "target-feature=+aes,+sha2", "-C", "link-arg=-z", "-C", "link-arg=max-page-size=16384"]
