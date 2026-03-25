@@ -49,6 +49,7 @@ fn _start_app() {
     });
 }
 
+#[allow(dead_code)]
 fn mime_from_path(path: &str) -> &'static str {
     if path.ends_with(".html") {
         "text/html"
