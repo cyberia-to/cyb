@@ -162,8 +162,6 @@ function App() {
           location.pathname.includes('/oracle2') ||
           location.pathname.includes('/graph')) && <div id={PORTAL_ID} className={styles.portal} />}
 
-        <AdviserContainer />
-
         <Outlet />
       </MainLayout>
       <SignerModal ref={signerModalRef} />
