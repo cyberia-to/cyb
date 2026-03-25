@@ -111,6 +111,7 @@ jobs:
         with:
           toolchain: stable
           target: wasm32-unknown-unknown
+          rustflags: ""
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -170,6 +171,7 @@ jobs:
         with:
           toolchain: stable
           target: ${{ matrix.target }}
+          rustflags: ""
 
       - name: Cache cargo
         uses: actions/cache@v4
@@ -302,6 +304,7 @@ jobs:
         with:
           toolchain: stable
           target: aarch64-linux-android
+          rustflags: ""
 
       - uses: actions/setup-java@v4
         with:
