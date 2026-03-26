@@ -10,152 +10,169 @@ focus: 0.0005839736539399998
 gravity: 5
 density: 5.36
 ---
-# Stack
+# stack
 
-seven [[Rust]] crates that implement [[cyb]]. five form the [[cyb/core]] proof pipeline; two extend it with agent crypto and P2P transport. together they are the complete software foundation — everything else ([[cyb/os]], [[cyb/features]], [[cyb/apps]]) is built from these.
-
-```
-                    ┌→ mudra (crypto for agents)
-nebu → hemera ──────┤               ┌→ tru (intelligence)
-                    ├→ nox → zheng → bbg ─┤
-                    │                └→ plumb (tokens)
-                    └→ radio (transport for data)
-```
-
-## the nine crates
-
-| # | crate | repo | role | depends on |
-|---|-------|------|------|-----------|
-| 1 | [[nebu]] | ~/git/nebu | [[Goldilocks field]] arithmetic + [[NTT]] | — |
-| 2 | [[hemera]] | ~/git/hemera | Poseidon2 hash, Merkle trees, CIDs | nebu |
-| 3 | [[nox]] | ~/git/nox | VM: 16 patterns + hint + 5 jets + memoization | hemera |
-| 4 | [[zheng]] | ~/git/zheng | [[stark]] proofs: WHIR + SuperSpartan | nox |
-| 5 | [[bbg]] | ~/git/bbg | authenticated state: indexes + commitments | zheng |
-| 6 | [[tru]] | ~/git/tru | [[tri-kernel]] + [[consensus]]: computes [[focus]], [[cyberank]], [[karma]] | bbg |
-| 7 | [[plumb]] | ~/git/plumb | [[token]] accounting: [[basic token operations]], conservation, [[UTXO]] | bbg |
-| 8 | [[mudra]] | ~/git/mudra | post-quantum crypto: KEM, CSIDH, TFHE, threshold | hemera |
-| 9 | [[radio]] | ~/git/radio | P2P transport: QUIC, BAO streaming, gossip | hemera |
-
-## proof pipeline (crates 1-7)
-
-seven crates in a chain that transform field arithmetic into collective [[intelligence]] with a [[token]] economy. remove any one and the system has no foundation
+six repos form the spine. five algebras form the foundation. three layers sit on top. together: the complete software architecture of [[cyber]].
 
 ```
-nebu (field) → hemera (hash) → nox (VM) → zheng (proofs) → bbg (state) → tru (intelligence)
-                                                                        → plumb (tokens)
+        nebu ──┐
+        kuro ──┤
+        trop ──┤ = lens (five PCS backends)
+      genies ──┤
+        jali ──┘
+           ↓
+hemera → lens → trident → nox → zheng → bbg
+ (hash) (commit) (compile) (run) (prove) (store)
+           ↓        ↓        ↓      ↓       ↓
+        (identity) rs     15 lang  (proofs)  tru
+                   rune              foculus
+                                     plumb
+                                     mudra
+                                      ↓
+                              cyb, cybernode, optica
 ```
 
-### nebu — field arithmetic
+## the spine
 
-the [[Goldilocks field]] $\mathbb{F}_p$ where $p = 2^{64} - 2^{32} + 1$. six operations: add, sub, mul, inv, eq, lt. plus [[NTT]] over $2^{32}$ roots of unity. every number in [[cyb]] is a nebu field element. every computation reduces to nebu operations. the field is the atom.
+six repos in a chain. remove any one → nothing above works. each does one thing.
 
-nebu is shared across 12 of 14 [[cyb/languages]] — only [[Bt]] (characteristic 2) needs its own field. see [[nebu]]
+| # | repo | verb | what |
+|---|------|------|------|
+| 1 | [[hemera]] | hash | [[Poseidon2]] sponge over [[Goldilocks field]]. gives [[particles]] identity |
+| 2 | [[lens]] | commit | five polynomial commitment backends — one per algebra |
+| 3 | [[Trident]] | compile | .td source → [[nox]] noun. the only way to write programs |
+| 4 | [[nox]] | run | 16 patterns + [[hint]] + jets. execution trace = constraint system |
+| 5 | [[zheng]] | prove | [[SuperSpartan]] + [[WHIR]] + [[sumcheck]]. [[zheng]] proof, not STARK |
+| 6 | [[bbg]] | store | 13 sub-roots. polynomial commitment indexes. completeness proofs |
 
-### hemera — hashing and trees
+### hemera — hash
 
-Poseidon2 sponge over [[nebu]]. takes field elements in, produces 4-element digests out. ~300 constraints in a [[stark]] proof (vs ~50,000 for Blake3). one hash function for the entire system: content addressing, Merkle trees, commitments, key derivation, verified streaming.
+[[Poseidon2]] sponge over [[Goldilocks field]]. parameters: d=7, t=16, Rf=8, Rp=64, r=8, c=8. single function, single mode, 64-byte output. ~300 constraints in a [[zheng]] proof (vs ~50,000 for Blake3).
 
-hemera gives [[particles]] their identity. every CID in the [[cybergraph]] is a hemera output. see [[hemera]]
+hemera gives [[particles]] their identity. every CID in the [[cybergraph]] is a hemera output. three implementations: rs, wgsl, cli. see [[hemera]]
 
-### nox — virtual machine
+### lens — commit
 
-sixteen deterministic reduction patterns over hemera-authenticated trees. five structural (axis, quote, compose, cons, branch), six field (add, sub, mul, inv, eq, lt), four bitwise (xor, and, not, shl), one hash. plus non-deterministic hint injection and five jets for verifier acceleration.
+five polynomial commitment schemes — one per [[four algebras|execution regime]]. the layer between identity ([[hemera]]) and execution ([[nox]]). same three operations (commit, open, verify), different algebraic backends.
 
-the execution trace IS the algebraic constraint system — no translation layer between program and proof. nox is simultaneously the structural IR that all [[cyb/languages]] compile through, the node runtime, and the composition tier for proof aggregation.
+| lens | construction | algebra | what it commits to |
+|------|-------------|---------|-------------------|
+| scalar | Brakedown | [[nebu]] (F_p) | field polynomials, execution traces |
+| binary | Binius | [[kuro]] (F₂) | binary witnesses, quantized AI |
+| ring | Ikat | [[jali]] (R_q) | encrypted computation, TFHE |
+| tropical | Assayer | [[trop]] (min,+) | optimization witnesses, dual certificates |
+| isogeny | Porphyry | [[genies]] (F_q) | curve polynomials, privacy proofs |
 
-computation IS linking. `ask(ν, subject, formula, τ, a, v, t)` has seven arguments — the seven fields of a [[cyberlink]]. ordering a computation and asserting [[knowledge]] are the same act. the [[cybergraph]] is a universal memo cache: before executing, nox checks if `axon(formula, subject)` already has a verified result. if cached → zero computation. the more the graph grows, the fewer computations actually execute. see [[nox]]
+[[nebu]] lives on two levels: raw F_p arithmetic (consumed by hemera) and scalar PCS (inside lens). see [[lens]]
 
-### zheng — proof system
+### trident — compile
 
-[[stark]] proofs over nox execution traces. WHIR polynomial commitments, SuperSpartan constraint satisfaction. every nox computation produces a proof of correct execution as a byproduct. recursive composition via field tower $\mathbb{F}_{p^3}$.
+the provable language. .td source compiles to [[nox]] nouns. every Trident construct maps to exactly one nox pattern — no intermediate representation destroys information. 57K LOC, 24 VM targets, self-hosts in Stage 2 of the [[bootstrap plan]].
 
-zheng verifies that a nox program ran correctly without re-executing it. this is what makes the [[cybergraph]] trustless — you don't trust the node, you verify the proof. see [[zheng]]
+without trident, nox is a bare CPU with no assembler. without nox, trident has nowhere to target. they are co-dependent but trident stands BEFORE nox in the user flow: write → compile → run. see [[Trident]]
 
-### bbg — authenticated state
+### nox — run
 
-the Big Badass Graph. stores the [[cybergraph]] with polynomial commitment indexes: edges by neuron, edges by particle, focus values, balances, token supply, cards. each index provides cryptographic completeness proofs — when you sync a namespace, you get mathematical proof nothing was withheld.
+sixteen deterministic reduction patterns over hemera-authenticated trees. five structural (axis, quote, compose, cons, branch), six field (add, sub, mul, inv, eq, lt), four bitwise (xor, and, not, shl), one hash. plus non-deterministic [[hint]] injection and 30 [[jets]] across five algebras.
 
-five layers: edge store (content-addressed, immutable) → neuron index → particle index → focus & balance → UTXO state (mutator set for privacy). see [[bbg]]
+the execution trace IS the algebraic constraint system — no translation layer between program and proof. computation IS linking: `ask(ν, subject, formula, τ, a, v, t)` has seven arguments — the seven fields of a [[cyberlink]]. the [[cybergraph]] is a universal memo cache: before executing, nox checks if `axon(formula, subject)` already has a verified result. see [[nox]]
 
-### tru — intelligence
+### zheng — prove
 
-the [[relevance machine]]. reads the [[cybergraph]] from [[bbg]] and computes what matters: [[focus]] per [[particle]], [[cyberank]] per [[particle]], [[karma]] per [[neuron]], [[syntropy]] of the whole. the [[tri-kernel]] ([[diffusion]], [[springs]], [[heat]]) runs in [[consensus]] — deterministic, verifiable, on-chain
+[[SuperSpartan]] IOP + [[WHIR]] PCS + [[sumcheck]]. not a STARK — a fundamentally new proof type that covers all five execution regimes through one verification backbone. zero trusted setup, post-quantum, sub-millisecond verification.
 
-tru closes the loop: [[neurons]] create [[cyberlinks]] → bbg stores them → tru computes [[focus]] → [[focus]] informs nox memoization, [[cyber/hierarchy]] folding, [[cyber/truth]] markets, and [[cyber/self/linking|self-linking]]. the intelligence feeds back into every layer of the stack. see [[tru]]
+every nox computation produces a [[zheng]] proof of correct execution. recursive composition via field tower F_{p³}. see [[zheng]]
 
-### plumb — token accounting
+### bbg — store
 
-the [[token]] layer. five [[basic token operations]] (pay, lock, uber, mint, burn) over [[bbg]] state. enforces conservation laws: every transfer preserves total supply, every mint is backed by proven Δπ, every burn is irreversible. [[UTXO]] management, [[will]] lock mechanics, conviction accounting on [[cyberlinks]]
+the Big Badass Graph. 13 sub-roots under one state commitment: 9 public [[NMT]] indexes (particles, axons_out, axons_in, neurons, locations, coins, cards, files, time) + 3 private indexes (cyberlinks, spent, balance via mutator set) + 1 finalization index (signals). [[LogUp]] cross-index consistency.
 
-plumb and tru branch off bbg in parallel: tru computes what matters ([[focus]]). plumb moves what matters ([[tokens]]). together they close the economic loop — [[focus]] determines [[value]], [[tokens]] fund [[attention]], [[attention]] shapes [[focus]]. see [[plumb]]
+three laws: bounded locality, constant-cost verification, structural security. see [[bbg]]
 
-### the chain
+## five algebras (inside lens)
 
-each crate consumes only the one before it:
+the arithmetic foundation. five execution regimes, each irreducible by its own criterion.
 
-| crate | consumes | provides | enables |
-|-------|----------|----------|---------|
-| nebu | — | field arithmetic | every number |
-| hemera | nebu | hashing, trees | every identity |
-| nox | hemera + [[cybergraph]] | computation, memoization, proofs | every program (and its cached result) |
-| zheng | nox | verification | every trust claim |
-| bbg | zheng | authenticated state | every graph query |
-| tru | bbg | [[focus]], [[cyberank]], [[karma]], [[syntropy]] | every meaning |
+| algebra | repo | field/structure | what it computes |
+|---------|------|----------------|-----------------|
+| [[nebu]] | ~/git/nebu | F_p (Goldilocks) | truth — proofs, hashing, commitments |
+| [[kuro]] | ~/git/kuro | F₂ tower → F₂¹²⁸ | efficiency — quantized AI, binary proving |
+| [[trop]] | ~/git/trop | (min, +) semiring | optimality — shortest paths, scheduling, DP |
+| [[genies]] | ~/git/genies | F_q (CSIDH prime) | privacy — stealth, VRF, blind signatures |
+| [[jali]] | ~/git/jali | R_q = F_p[x]/(x⁶⁴+1) | encrypted computation — TFHE, lattice KEM |
 
-the pipeline is not linear — it loops. nox reads from bbg (memo lookup) and writes to bbg (store results). tru reads from bbg (graph state) and writes [[focus]] back — which feeds [[cyber/hierarchy]] folding, [[cyber/truth]] markets, and nox memoization keys. the [[cybergraph]] is simultaneously the knowledge base, the memo cache, and the state store. every computation enriches the graph. every enrichment accelerates future computation. this compounding is the source of the system's growth.
+see [[four algebras]] for why five (not three, not seven) and the convergence from four branches of mathematics.
 
-## agent crypto (crate 6)
+## protocol layer (nox programs on the spine)
 
-[[mudra]] branches off hemera. it handles what proofs cannot: confidentiality, key exchange, private computation.
+not kernel. not apps. the rules of [[cyber]], deployed as [[Trident]] programs on the spine. consensus-critical, updatable.
 
-| module | primitive | what neurons do |
-|--------|----------|-----------------|
-| kem | ML-KEM (lattice) | interactive encrypted channels |
-| ctidh | dCTIDH (isogeny) | non-interactive key exchange via graph |
-| aead | Poseidon2 PRF + MAC | encrypt channel traffic |
-| tfhe | LWE | compute on encrypted data |
-| threshold | Shamir SSS, DKG | distributed key management |
+| program | repo | what it computes |
+|---------|------|-----------------|
+| [[tru]] | ~/git/tru | [[relevance]]: [[tri-kernel]] ([[diffusion]] + [[springs]] + [[heat]]) → [[focus]], [[cyberank]], [[karma]], [[syntropy]] |
+| [[foculus]] | ~/git/foculus | [[consensus]]: [[collective focus theorem]] → finality from topology, no voting |
+| [[plumb]] | ~/git/plumb | [[tokens]]: conservation laws, [[UTXO]], [[will]] locks, conviction accounting |
+
+tru closes the feedback loop: [[neurons]] create [[cyberlinks]] → bbg stores them → tru computes [[focus]] → focus informs memoization, ranking, markets. the intelligence feeds back into every layer.
+
+## infrastructure (agent-facing services)
+
+| service | repo | what it provides |
+|---------|------|-----------------|
+| [[mudra]] | ~/git/mudra | post-quantum crypto: KEM, dCTIDH, AEAD, TFHE, threshold |
+| [[radio]] | ~/git/radio | P2P transport: QUIC, BAO streaming, gossip (hemera instead of Blake3) |
 
 proofs ([[zheng]]) verify and charge. mudra hides and shares. orthogonal concerns.
 
-## transport (crate 7)
+## languages (compile to nox)
 
-[[radio]] branches off hemera. a fork of [[iroh]] where every hash runs through hemera instead of Blake3. 20× cheaper in [[stark]] proofs, one hash function end to end.
+[[Rs]] syntax → [[Trident]] AST → [[nox]] noun. 15 [[cyb/languages]] provide domain-specific abstractions over the same execution target:
 
-| stratum | what | crate |
-|---------|------|-------|
-| protocols | [[radio/blob]], [[radio/docs]], [[radio/gossip]], [[radio/willow]] | iroh-* |
-| verified streaming | [[radio/bao]] (hemera Merkle trees) | cyber-bao |
-| content identity | Poseidon2 sponge, compression, KDF | cyber-poseidon2 |
-| networking | [[radio/endpoint]], [[radio/relay]], [[radio/hole-punching]] | iroh |
+| language | domain |
+|----------|--------|
+| [[Trident]] | constraints, field arithmetic |
+| [[Rs]] | systems code (restricted Rust) |
+| [[rune]] | nervous system (Rs + hints + host jets) |
+| [[Arc]] | graphs, topology |
+| [[Ten]] | tensors, linear algebra |
+| [[Bt]] | binary logic (F₂) |
+| [[Tok]] | resources, conservation |
+| [[Seq]] | events, causality |
+| [[Wav]] | signals, FHE |
+| [[Bel]] | beliefs, probability |
+| [[Dif]] | differential geometry |
+| [[Sym]] | symplectic geometry |
+| [[Ren]] | Clifford geometric algebra |
+| [[Qu]] | quantum circuits |
+| [[markup]] | addressing (the 15th, non-computational) |
 
-## what each crate enables
+## interface (user-facing)
 
-| crate | what becomes possible |
-|-------|----------------------|
-| nebu | all arithmetic. the [[Goldilocks field processor]] accelerates it in hardware |
-| hemera | content addressing. [[particles]] get identity. trees get authentication |
-| nox | all [[cyb/languages]]. programs compile to nox pattern trees. the [[cybergraph]] memoizes results |
-| zheng | trustless verification. the [[cybergraph]] does not require trusting nodes |
-| bbg | completeness proofs. syncing a namespace proves nothing was withheld |
-| tru | [[intelligence]]. the [[tri-kernel]] computes what matters. [[focus]], [[cyberank]], [[karma]], [[syntropy]] |
-| plumb | [[token]] economy. conservation-proven transfers, minting, burning, [[will]] locks, conviction |
-| mudra | agent privacy. [[neurons]] communicate confidentially and compute on encrypted data |
-| radio | P2P connectivity. data moves between devices without centralized infrastructure |
+| interface | what |
+|-----------|------|
+| [[cyb]] | the browser — renders the [[cybergraph]] |
+| [[cybernode]] | the node — runs the spine |
+| [[optica]] | the publisher — renders knowledge graphs |
 
-## build order
+## the three boundaries
 
-the dependency chain determines the build order. nebu first, always. hemera next. then three independent branches (nox pipeline, mudra, radio) can proceed in parallel.
+| boundary | below | above | criterion |
+|----------|-------|-------|-----------|
+| trust | spine (hemera → bbg) | protocol + apps | below = proven ([[zheng]] proofs) |
+| semantic | spine + algebras | protocol + apps | below = protocol-agnostic |
+| freeze | spine (checkpoints 0-4) | protocol + apps | below = immutable after mainnet |
+
+the spine is proven, general-purpose, and frozen. the protocol layer runs ON the spine as nox programs. apps run on the protocol. like a microkernel OS: consensus and tokens are user-space services, not kernel features.
+
+## bootstrap order
+
+three stages. see [[bootstrap plan]] for full detail.
 
 ```
-Phase 1:  nebu → hemera                    (foundation)
-Phase 2:  nox ──────→ zheng → bbg → tru      (proof pipeline → intelligence)
-                                   → plumb   (token accounting)
-          mudra                              (agent crypto)
-          radio                              (transport)
-Phase 3:  cyb/os                            (kernel + runtime)
-Phase 4:  cyb/features                      (render, contracts)
-Phase 5:  cyb/apps                          (portal, oracle, sigma...)
+Stage 1 (Rust bootstrap):      hemera → lens → trident → nox (Rs)
+Stage 2 (classical self-host):  trident.td → arithmetic.td → nox.td
+Stage 3 (proven bootstrap):     zheng → proven re-self-host → jets → bbg
+Application:                    tru.td ∥ foculus.td ∥ plumb.td ∥ mudra.td
 ```
 
 see [[cyb/core]] for the applications built on this stack. see [[cyb/os]] for the kernel. see [[cyb/architecture]] for the design
