@@ -45,7 +45,7 @@ seven repos. seven verbs. remove any one → nothing above works.
 
 ### hemera — hash
 
-[[Poseidon2]] sponge over [[Goldilocks field]]. parameters: d=7, t=16, Rf=8, Rp=64, r=8, c=8. single function, single mode, 64-byte output. ~300 constraints in a [[zheng]] proof (vs ~50,000 for Blake3).
+[[Poseidon2]] sponge over [[Goldilocks field]]. t=16, Rf=8 (x⁷), Rp=16 (x⁻¹), r=8, c=8. 24 rounds. 32-byte output. ~736 constraints in a [[zheng]] proof (vs ~50,000 for Blake3).
 
 hemera gives [[particles]] their identity. every CID in the [[cybergraph]] is a hemera output. see [[hemera]]
 
