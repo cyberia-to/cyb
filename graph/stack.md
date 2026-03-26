@@ -53,15 +53,15 @@ seven repos. seven verbs. remove any one → nothing above works.
 | 4 | [[cybergraph]] | link | connects everything to everything. jets, memos, types, knowledge |
 | 5 | [[nox]] | run | 16 patterns + [[hint]] + jets. trace = constraint system |
 | 6 | [[zheng]] | prove | [[SuperSpartan]] + [[WHIR]] + [[sumcheck]]. [[zheng]] proof |
-| 7 | [[bbg]] | store | 13 sub-roots. polynomial commitment indexes. completeness proofs |
+| 7 | [[bbg]] | store | one polynomial, 10 dimensions. ~200 byte proofs, 10-50 μs |
 
-### hemera — hash
+## hemera — hash
 
 [[Poseidon2]] sponge over [[Goldilocks field]]. t=16, Rf=8 (x⁷), Rp=16 (x⁻¹), r=8, c=8. 24 rounds. 32-byte output. ~736 constraints in a [[zheng]] proof (vs ~50,000 for Blake3).
 
 hemera gives [[particles]] their identity. every CID in the [[cybergraph]] is a hemera output. see [[hemera]]
 
-### lens — commit
+## lens — commit
 
 five polynomial commitment schemes — one per execution regime. same three operations (commit, open, verify), different algebraic backends.
 
@@ -75,13 +75,13 @@ five polynomial commitment schemes — one per execution regime. same three oper
 
 [[nebu]] lives on two levels: raw F_p arithmetic (consumed by hemera) and scalar PCS (inside lens). see [[lens]]
 
-### trident — compile
+## trident — compile
 
 the provable language. .tri source compiles to [[nox]] nouns. every Trident construct maps to exactly one nox pattern. 57K LOC, 24 VM targets, self-hosts in Stage 2 of the [[bootstrap plan]].
 
 without trident, nox is a bare CPU with no assembler. without nox, trident has nowhere to target. see [[Trident]]
 
-### cybergraph — link
+## cybergraph — link
 
 the vertebra. the universal linker. everything in [[cyber]] is [[particles]] connected by [[cyberlinks]] — and the [[cybergraph]] is the totality of these connections.
 
@@ -99,7 +99,7 @@ jets and memos are the SAME pattern: formula → answer. a jet maps formula to f
 
 see [[cybergraph]]
 
-### nox — run
+## nox — run
 
 sixteen deterministic reduction patterns over hemera-authenticated trees. five structural (axis, quote, compose, cons, branch), six field (add, sub, mul, inv, eq, lt), four bitwise (xor, and, not, shl), one hash. plus non-deterministic [[hint]] injection.
 
@@ -107,13 +107,13 @@ nox core is frozen (16 patterns, [[checkpoint]] 0). jets are external — looked
 
 computation IS linking: `ask(ν, subject, formula, τ, a, v, t)` — seven arguments = seven fields of a [[cyberlink]]. the [[cybergraph]] is a universal memo cache. see [[nox]]
 
-### zheng — prove
+## zheng — prove
 
 [[SuperSpartan]] IOP + [[WHIR]] PCS + [[sumcheck]]. a fundamentally new proof type covering all five execution regimes through one verification backbone. zero trusted setup, post-quantum, sub-millisecond verification.
 
 every nox computation produces a [[zheng]] proof. recursive composition via field tower F_{p³}. see [[zheng]]
 
-### bbg — store
+## bbg — store
 
 the Big Badass Graph. one polynomial, all state. BBG_poly(index, key, t) = value. 10 dimensions (particles, axons_out, axons_in, neurons, locations, coins, cards, files, time, signals). cross-index consistency is structural — same polynomial, different dimensions. no NMT, no [[LogUp]]. ~200 bytes per proof, 10-50 μs verification.
 
