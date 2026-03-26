@@ -39,7 +39,6 @@ seven repos form the spine. [[cybergraph]] is the vertebra — everything attach
                    nox  →  zheng  →  bbg
                    run     prove     store
 ```
-```
 
 ## the spine
 
