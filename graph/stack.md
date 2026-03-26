@@ -15,25 +15,27 @@ density: 5.36
 seven repos form the spine. [[cybergraph]] is the vertebra — everything attaches to it. five algebras form the arithmetic foundation. the boundary is sharp: below it, Rust bootstrap required. above it, everything is pure [[Trident]].
 
 ```
-                        [[nebu]] ──┐
-                        [[kuro]] ──┤
-                        [[trop]] ──┤── [[lens]]
-                      [[genies]] ──┤
-                        [[jali]] ──┘
-                           │
-     ┌─────────────────────┼─────────────────────────────────────────┐
-     │                     │                                         │
-     │    [[hemera]]   [[lens]]   [[Trident]]    ·    [[nox]]   [[zheng]]   [[bbg]]    │
-     │       hash  →  commit  →  compile  →  ·  →  run  →  prove  →  store   │
-     │                                       ·                               │
-     │                              ╔═══════════════════╗                     │
-     │                              ║   [[cybergraph]]  ║                     │
-     │                              ║    the vertebra   ║                     │
-     │                              ╚═══════════════════╝                     │
-     │                                       ·                               │
-     │    jets · memos · types · deps · knowledge · semcons · programs       │
-     │                                                                       │
-     └───────────────────────────────────────────────────────────────────────┘
+                         [[nebu]] ──┐
+                         [[kuro]] ──┤
+                         [[trop]] ──┤── [[lens]]
+                       [[genies]] ──┤
+                         [[jali]] ──┘
+                            │
+  ┌─────────────────────────┴─────────────────────────────────────┐
+  │                                                               │
+  │  [[hemera]] → [[lens]] → [[Trident]] ─┐   ┌─ [[nox]] → [[zheng]] → [[bbg]]  │
+  │     hash      commit     compile  │   │    run      prove     store  │
+  │                                   │   │                              │
+  │                          ╔════════╧═══╧════════╗                     │
+  │                          ║                     ║                     │
+  │                          ║   [[cybergraph]]    ║                     │
+  │                          ║    the vertebra     ║                     │
+  │                          ║                     ║                     │
+  │                          ╚═════════════════════╝                     │
+  │                                    │                                │
+  │          jets · memos · types · deps · knowledge · semcons          │
+  │                                                                     │
+  └─────────────────────────────────────────────────────────────────────┘
 ```
 
 ## the spine
