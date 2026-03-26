@@ -15,19 +15,19 @@ density: 5.36
 seven repos form the spine. [[cybergraph]] is the vertebra — everything attaches to it. five algebras form the arithmetic foundation. the boundary is sharp: below it, Rust bootstrap required. above it, everything is pure [[Trident]].
 
 ```
-                       [[nebu]] ──┐
-                       [[kuro]] ──┤
-                       [[trop]] ──┤── [[lens]]
-                     [[genies]] ──┤
-                       [[jali]] ──┘
-                          │
-                          ▼
-  [[hemera]] → [[lens]] → [[Trident]]
-     hash      commit     compile
+                          nebu ──┐
+                          kuro ──┤
+                          trop ──┤── lens
+                        genies ──┤
+                          jali ──┘
+                            │
+                            ▼
+     hemera  →  lens  →  Trident
+       hash     commit    compile
                              │
                ╔═════════════╧═════════════╗
                ║                           ║
-               ║      [[cybergraph]]       ║
+               ║        cybergraph         ║
                ║       the vertebra        ║
                ║                           ║
                ║  jets · memos · types     ║
@@ -36,8 +36,8 @@ seven repos form the spine. [[cybergraph]] is the vertebra — everything attach
                ║                           ║
                ╚═════════════╤═════════════╝
                              │
-                 [[nox]] → [[zheng]] → [[bbg]]
-                  run       prove      store
+                   nox  →  zheng  →  bbg
+                   run     prove     store
 ```
 ```
 
