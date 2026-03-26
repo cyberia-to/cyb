@@ -110,7 +110,7 @@ every nox computation produces a [[zheng]] proof. recursive composition via fiel
 
 ### bbg — store
 
-the Big Badass Graph. 13 sub-roots under one state commitment: 9 public [[NMT]] indexes + 3 private indexes (mutator set) + 1 finalization index. [[LogUp]] cross-index consistency.
+the Big Badass Graph. one polynomial, all state. BBG_poly(index, key, t) = value. 10 dimensions (particles, axons_out, axons_in, neurons, locations, coins, cards, files, time, signals). cross-index consistency is structural — same polynomial, different dimensions. no NMT, no [[LogUp]]. ~200 bytes per proof, 10-50 μs verification.
 
 bbg is to [[cybergraph]] what a database engine is to a schema. cybergraph defines WHAT. bbg implements HOW. see [[bbg]]
 
