@@ -343,7 +343,7 @@ for compatibility, cyb bridges to external models (OpenAI-compatible APIs, Llama
 CybOS is designed from five axioms (§2.3): no unix legacy, zero unsafe [[Rust]], bounded liveness everywhere, neural drivers, single address space. the following are the key design decisions:
 
 - cells replace processes — independently compiled [[Rust]] crates, hot-swappable via governance, bounded liveness via wait-free data structures. the system never crashes, it degrades and recovers
-- [[radio]] replaces TCP/IP — a fork of [[iroh]] where every hash runs through [[Hemera]] (Poseidon2 over [[Goldilocks field]]) instead of Blake3. ~300 stark constraints per hash instead of 50,000–100,000. three network protocols only (gossip, consensus, query), ~15K lines instead of ~100K+
+- [[radio]] replaces TCP/IP — a fork of [[iroh]] where every hash runs through [[Hemera]] (Poseidon2 over [[Goldilocks field]]) instead of Blake3. ~736 stark constraints per hash instead of 50,000–100,000. three network protocols only (gossip, consensus, query), ~15K lines instead of ~100K+
 - content-addressed storage replaces the file system — no paths, no inodes. all data addressed by [[Hemera]] hash
 - cryptographic agents replace users — identity = public key, access control = bandwidth allocation
 - neural drivers — ~3K lines of trait contracts, models generate ~500K-1M lines of platform-specific driver code, compiler rejects unsafe, tests validate

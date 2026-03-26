@@ -61,7 +61,7 @@ storage
 
 Each boundary is a place where meaning is lost, where errors accumulate, where provability ends. The [[proof]] system cannot see the tensor computation. The [[graph]] database cannot verify the reasoning engine's conclusions. The cryptographic layer has no idea what the computation above it means.
 
-This architecture eliminates all those boundaries with one mechanism: every language compiles through [[Nox]] to produce an execution trace, and [[Hemera]] commits that trace to 8 [[Goldilocks field processor]] elements — the exact type the [[proof]] system already operates on. There is no translation. The [[proof]] can see everything because [[Nox]] gives every language one structural grammar and [[Hemera]] gives every computation one commitment type.
+This architecture eliminates all those boundaries with one mechanism: every language compiles through [[Nox]] to produce an execution trace, and [[Hemera]] commits that trace to 4 [[Goldilocks field processor]] elements — the exact type the [[proof]] system already operates on. There is no translation. The [[proof]] can see everything because [[Nox]] gives every language one structural grammar and [[Hemera]] gives every computation one commitment type.
 
 The consequence: for the first time, it becomes possible to make statements like:
 
@@ -151,13 +151,13 @@ The [[cyb/languages]] organize into three tiers by their relationship to [[proof
 
 All computation happens here. Each language works in its native [[algebra]]. None re-implements what another already does. Twelve execution [[cyb/languages]]: Bt (Bitwise), Rs (Rustic), Arc, Ren (Render), Dif (Differential), Sym (Symplectic), Bel (Belief), Seq (Sequence), Inf (Infer), Wav (Wave), Ten (Tensor), Tok (Token).
 
-Every execution step emits a [[Hemera]] commitment — 8 [[Goldilocks field processor]] elements — that becomes both the [[proof]] input and the [[particle]] identity in the [[cybergraph]].
+Every execution step emits a [[Hemera]] commitment — 4 [[Goldilocks field processor]] elements — that becomes both the [[proof]] input and the [[particle]] identity in the [[cybergraph]].
 
 ### Proving Tier — one language + one [[hash]]
 
 Tri ([[Trident]]) — [[field]] tower F_{pⁿ} over [[Goldilocks field processor]] (p = 2⁶⁴ − 2³² + 1). Each extension is F_p[x]/(f(x)) where f is irreducible of degree n, chosen by the compiler for the algebraic structure required: n=1 for core STARK arithmetic, n=2 (f = x²+1) for complex amplitudes and [[quantum]] gates, n=3 (f = x³−x+1) for recursive [[proof]] soundness in FRI, higher n as needed. The tower is multiplicative — F_{p⁶} contains both F_{p²} and F_{p³} as subfields, so [[quantum]] and recursive [[proof]]s coexist in a common extension. The single proving language for the entire system. All execution languages compile to Tri for settlement. See [[zheng]] for the STARK implementation architecture.
 
-[[Hemera]] — Poseidon2 sponge over [[Goldilocks field processor]]. The universal commitment scheme. Every computation at every layer, in every [[algebra]], commits via [[Hemera]]. Output: 8 Goldilocks [[field]] elements — natively usable in Tri circuits, zero translation cost.
+[[Hemera]] — Poseidon2 sponge over [[Goldilocks field processor]]. The universal commitment scheme. Every computation at every layer, in every [[algebra]], commits via [[Hemera]]. Output: 4 Goldilocks [[field]] elements — natively usable in Tri circuits, zero translation cost.
 
 ### Composition Tier — one meta-language
 
@@ -172,7 +172,7 @@ Tri ([[Trident]]) — [[field]] tower F_{pⁿ} over [[Goldilocks field processor
 ```
 System A (binary prover / Bt):
   computes inference step
-  emits:  Hemera(input ∥ output) = C_A   ← 8 F_p elements
+  emits:  Hemera(input ∥ output) = C_A   ← 4 F_p elements
 
 System B (Tri / F_p STARK):
   statement:  "C_A commits a valid binary execution"
@@ -191,7 +191,7 @@ A [[Hemera]] jet in Bt or Rs works like a syscall:
 
 ```
 Binary step:    assert Hemera(X) = Y     [~10 constraints, claim deferred]
-Tri settle: verify all Hemera(Xᵢ) = Yᵢ  [~1,200 per hash, batched]
+Tri settle: verify all Hemera(Xᵢ) = Yᵢ  [~736 per hash, batched]
 ```
 
 The binary prover emits claims. Tri verifies them in batch at epoch boundaries. Each claim is a [[Hemera]] commitment — a native F_p value requiring no translation.
@@ -199,8 +199,8 @@ The binary prover emits claims. Tri verifies them in batch at epoch boundaries. 
 Compare:
 ```
 Blake3 in Tri:  ~15,000 constraints per hash
-Hemera in Tri:  ~1,200 constraints per hash   (12.5x cheaper)
-Hemera jet:         ~10 constraints deferred + 1,200 at settlement
+Hemera in Tri:  ~736 constraints per hash   (12.5x cheaper)
+Hemera jet:         ~10 constraints deferred + 736 at settlement
 ```
 
 Using [[Hemera]] everywhere eliminates the two-level commitment problem that would arise with any other [[hash]] function.
@@ -223,7 +223,7 @@ Using [[Hemera]] everywhere eliminates the two-level commitment problem that wou
 │  Seq (order)     Inf (unify)    Tok (conserv.)           │
 │  Dif* Sym* Bel*  (* = research horizon)                  │
 │                                                          │
-│  Each step → Hemera(I/O) → 8 F_p elements               │
+│  Each step → Hemera(I/O) → 4 F_p elements               │
 └──────────────────────────┬───────────────────────────────┘
                            │  zero translation
 ┌──────────────────────────▼───────────────────────────────┐
@@ -259,7 +259,7 @@ Using [[Hemera]] everywhere eliminates the two-level commitment problem that wou
 
 ## The [[Hemera]] Invariant
 
-Every layer emits the same type of commitment: 8 [[Goldilocks field processor]] [[field]] elements.
+Every layer emits the same type of commitment: 4 [[Goldilocks field processor]] [[field]] elements.
 
 ```
 Bt inference step     →  Hemera  →  particle in cybergraph
