@@ -44,7 +44,7 @@ seven repos. seven verbs. remove any one → nothing above works.
 |---|------|------|-------------|
 | 1 | [[hemera]] | hash | [[Poseidon2]] sponge. gives [[particles]] identity |
 | 2 | [[lens]] | commit | five polynomial commitment backends — one per algebra |
-| 3 | [[Trident]] | compile | .td source → [[nox]] noun. the only way to write programs |
+| 3 | [[Trident]] | compile | .tri source → [[nox]] noun. the only way to write programs |
 | 4 | [[cybergraph]] | link | connects everything to everything. jets, memos, types, knowledge |
 | 5 | [[nox]] | run | 16 patterns + [[hint]] + jets. trace = constraint system |
 | 6 | [[zheng]] | prove | [[SuperSpartan]] + [[WHIR]] + [[sumcheck]]. [[zheng]] proof |
@@ -72,7 +72,7 @@ five polynomial commitment schemes — one per execution regime. same three oper
 
 ### trident — compile
 
-the provable language. .td source compiles to [[nox]] nouns. every Trident construct maps to exactly one nox pattern. 57K LOC, 24 VM targets, self-hosts in Stage 2 of the [[bootstrap plan]].
+the provable language. .tri source compiles to [[nox]] nouns. every Trident construct maps to exactly one nox pattern. 57K LOC, 24 VM targets, self-hosts in Stage 2 of the [[bootstrap plan]].
 
 without trident, nox is a bare CPU with no assembler. without nox, trident has nowhere to target. see [[Trident]]
 
@@ -128,7 +128,7 @@ five execution regimes, each irreducible by its own criterion. see [[four algebr
 
 ## the boundary
 
-the stack is the MINIMAL set of components that cannot implement themselves. once the spine exists, EVERYTHING above it is pure .td — written, compiled, run, proven, and stored using only spine tools.
+the stack is the MINIMAL set of components that cannot implement themselves. once the spine exists, EVERYTHING above it is pure .tri — written, compiled, run, proven, and stored using only spine tools.
 
 | component | needs Rust? | nature |
 |-----------|-------------|--------|
@@ -142,17 +142,17 @@ the spine has dual existence: Rust (bootstrap + jet implementation) and Trident 
 
 ## genesis crystal
 
-the [[cybergraph]] starts empty. core semcons cannot deploy without tokens. tokens cannot exist without the plumb semcon. the [[bootstrap plan]] resolves this with a genesis crystal — a .td program that runs once with unlimited focus:
+the [[cybergraph]] starts empty. core semcons cannot deploy without tokens. tokens cannot exist without the plumb semcon. the [[bootstrap plan]] resolves this with a genesis crystal — a .tri program that runs once with unlimited focus:
 
 ```
-genesis.td:
+genesis.tri:
   create_token(CYB, HYDROGEN, VOLT, AMPERE)
   register_semcon(plumb, identity, social, geo)
   distribute(initial_balances)
   // genesis focus expires. normal rules apply.
 ```
 
-the crystal is the seed structure that determines the growth pattern. without it — empty graph, no rules. with it — economics, types, constraints. even genesis is a proven .td program.
+the crystal is the seed structure that determines the growth pattern. without it — empty graph, no rules. with it — economics, types, constraints. even genesis is a proven .tri program.
 
 ## core semcons (protocol layer)
 
@@ -197,11 +197,11 @@ see [[bootstrap plan]] for full detail.
 
 ```
 Stage 1 (Rust):       hemera → lens → trident → nox (Rs)
-Stage 2 (self-host):  trident.td → arithmetic.td → nox.td
+Stage 2 (self-host):  trident.tri → arithmetic.tri → nox.tri
 Stage 3 (proven):     zheng → proven re-self-host → jets → bbg
-Genesis:              genesis.td (crystal, unlimited focus, one-time)
-Protocol:             plumb.td ∥ identity.td ∥ social.td ∥ geo.td
-Computed:             tru.td ∥ foculus.td
+Genesis:              genesis.tri (crystal, unlimited focus, one-time)
+Protocol:             plumb.tri ∥ identity.tri ∥ social.tri ∥ geo.tri
+Computed:             tru.tri ∥ foculus.tri
 ```
 
 discover all [[concepts]]
