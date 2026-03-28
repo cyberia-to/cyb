@@ -1,5 +1,4 @@
 use clap::{Parser, Subcommand};
-use std::collections::HashMap;
 
 #[derive(Parser)]
 #[command(name = "cyb-inference")]
@@ -13,7 +12,7 @@ struct Cli {
 enum Commands {
     /// Run inference on an ONNX model from HuggingFace
     Run {
-        /// Model ID (e.g. onnx-community/Llama-3.2-1B-Instruct-ONNX)
+        /// Model ID (e.g. optimum/gpt2)
         model: String,
 
         /// Prompt for text generation
@@ -24,7 +23,7 @@ enum Commands {
         #[arg(short = 'n', long, default_value_t = 128)]
         max_tokens: usize,
 
-        /// Temperature for sampling
+        /// Temperature for sampling (0 = greedy)
         #[arg(short, long, default_value_t = 0.7)]
         temperature: f32,
     },
@@ -57,78 +56,47 @@ fn main() {
             temperature,
         } => {
             println!("Loading model: {model}");
-            println!("Prompt: {prompt}");
-            println!("Max tokens: {max_tokens}, temperature: {temperature}");
 
-            // Download model
+            // Download model and tokenizer
             let model_path = match cyb_inference::hub::download_model(&model) {
-                Ok(p) => {
-                    println!("Model path: {}", p.display());
-                    p
-                }
-                Err(e) => {
-                    eprintln!("Download failed: {e}");
-                    return;
-                }
+                Ok(p) => p,
+                Err(e) => { eprintln!("Model download failed: {e}"); return; }
             };
 
-            // Init GPU
+            let tokenizer_path = match cyb_inference::hub::download_tokenizer(&model) {
+                Ok(p) => p,
+                Err(e) => { eprintln!("Tokenizer download failed: {e}"); return; }
+            };
+
             let engine = cyb_inference::InferenceEngine::new();
-            println!("GPU device: {:?}", engine.device);
 
-            // Parse ONNX
-            println!("Parsing ONNX graph...");
-            let mut executor = match cyb_inference::graph::OnnxExecutor::from_file(&model_path) {
-                Ok(e) => e,
-                Err(e) => {
-                    eprintln!("Parse failed: {e}");
-                    return;
-                }
+            let mut generator = match cyb_inference::generate::TextGenerator::new(
+                &model_path,
+                &tokenizer_path,
+                engine.device,
+            ) {
+                Ok(g) => g,
+                Err(e) => { eprintln!("Model load failed: {e}"); return; }
             };
 
-            // Load weights
-            println!("Loading weights...");
-            executor.load_from_file(&model_path, &engine.device)
-                .unwrap_or_else(|e| eprintln!("Warning loading weights: {e}"));
+            // Generate
+            println!("---");
+            print!("{prompt}");
+            use std::io::Write;
+            std::io::stdout().flush().ok();
 
-            // Tokenize input
-            println!("Preparing input...");
-            let mut inputs = HashMap::new();
-            // Simple token IDs for "Hello" — GPT-2 tokenizer: [15496]
-            // TODO: use proper tokenizer
-            let token_ids: Vec<f32> = vec![15496.0]; // "Hello"
-            let seq_len = token_ids.len();
-            let input_ids_data = burn::tensor::TensorData::new(token_ids, vec![1, seq_len]);
-            inputs.insert(
-                "input_ids".to_string(),
-                cyb_inference::graph::value::Value::Float2(
-                    burn::prelude::Tensor::from_data(input_ids_data, &engine.device),
-                ),
-            );
-            // Attention mask — all 1s (attend to everything)
-            let mask: Vec<f32> = vec![1.0; seq_len];
-            let mask_data = burn::tensor::TensorData::new(mask, vec![1, seq_len]);
-            inputs.insert(
-                "attention_mask".to_string(),
-                cyb_inference::graph::value::Value::Float2(
-                    burn::prelude::Tensor::from_data(mask_data, &engine.device),
-                ),
-            );
-            match executor.run(inputs, &engine.device) {
-                Ok(outputs) => {
-                    println!("Outputs: {} tensors", outputs.len());
-                    for (name, val) in &outputs {
-                        println!("  {name}: shape={:?}", val.shape());
-                    }
+            match generator.generate(&prompt, max_tokens, temperature) {
+                Ok(_text) => {
+                    println!("---");
                 }
                 Err(e) => {
-                    eprintln!("Inference failed: {e}");
+                    eprintln!("\nGeneration failed: {e}");
                 }
             }
         }
 
         Commands::List => {
-            println!("Cached models in ~/.cache/huggingface/hub/");
+            println!("Cached models:");
             let cache_dir = std::env::var("HOME")
                 .map(|h| std::path::PathBuf::from(h).join(".cache/huggingface/hub"))
                 .unwrap_or_default();
@@ -146,7 +114,7 @@ fn main() {
                     }
                 }
             } else {
-                println!("  (no cache directory found)");
+                println!("  (none)");
             }
         }
 
