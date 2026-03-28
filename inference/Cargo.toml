@@ -1,0 +1,41 @@
+[package]
+name = "cyb-inference"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "cyb-inference"
+path = "src/main.rs"
+
+[dependencies]
+# ONNX parsing
+prost = "0.13"
+
+# Tensor computation on GPU
+burn = { version = "0.20", default-features = false, features = ["wgpu", "std"] }
+
+# Tokenization
+tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
+
+# HuggingFace model download
+hf-hub = { version = "0.5", features = ["default-tls"] }
+
+# Workspace deps
+serde = { workspace = true }
+serde_json = { workspace = true }
+tokio = { workspace = true }
+
+# Utilities
+log = "0.4"
+env_logger = "0.11"
+clap = { version = "4", features = ["derive"] }
+half = { version = "2", features = ["num-traits"] }
+bytemuck = "1"
+memmap2 = "0.9"
+indicatif = "0.17"
+
+[build-dependencies]
+prost-build = "0.13"
+
+[dev-dependencies]
+approx = "0.5"
