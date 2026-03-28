@@ -21,21 +21,44 @@ pub fn binary_op_proto(
         .clone();
 
     let result = match (a, b) {
+        (Value::Float1(a), Value::Float1(b)) => Value::Float1(apply_binary_1d(a, b, op)?),
         (Value::Float2(a), Value::Float2(b)) => Value::Float2(apply_binary_2d(a, b, op)?),
         (Value::Float3(a), Value::Float3(b)) => Value::Float3(apply_binary_3d(a, b, op)?),
         (Value::Float4(a), Value::Float4(b)) => Value::Float4(apply_binary_4d(a, b, op)?),
-        // Broadcasting: 1D into 2D/3D
+        // Broadcasting: 1D → higher dims
         (Value::Float2(a), Value::Float1(b)) => {
             let n = b.dims()[0];
-            let b = b.reshape([1, n]);
-            Value::Float2(apply_binary_2d(a, b, op)?)
+            Value::Float2(apply_binary_2d(a, b.reshape([1, n]), op)?)
+        }
+        (Value::Float1(a), Value::Float2(b)) => {
+            let n = a.dims()[0];
+            Value::Float2(apply_binary_2d(a.reshape([1, n]), b, op)?)
         }
         (Value::Float3(a), Value::Float1(b)) => {
             let n = b.dims()[0];
-            let b = b.reshape([1, 1, n]);
-            Value::Float3(apply_binary_3d(a, b, op)?)
+            Value::Float3(apply_binary_3d(a, b.reshape([1, 1, n]), op)?)
         }
-        (Value::Float1(a), Value::Float1(b)) => Value::Float1(apply_binary_1d(a, b, op)?),
+        (Value::Float1(a), Value::Float3(b)) => {
+            let n = a.dims()[0];
+            Value::Float3(apply_binary_3d(a.reshape([1, 1, n]), b, op)?)
+        }
+        (Value::Float4(a), Value::Float1(b)) => {
+            let n = b.dims()[0];
+            Value::Float4(apply_binary_4d(a, b.reshape([1, 1, 1, n]), op)?)
+        }
+        (Value::Float1(a), Value::Float4(b)) => {
+            let n = a.dims()[0];
+            Value::Float4(apply_binary_4d(a.reshape([1, 1, 1, n]), b, op)?)
+        }
+        // 2D → 3D broadcasting
+        (Value::Float3(a), Value::Float2(b)) => {
+            let [m, n] = b.dims();
+            Value::Float3(apply_binary_3d(a, b.reshape([1, m, n]), op)?)
+        }
+        (Value::Float2(a), Value::Float3(b)) => {
+            let [m, n] = a.dims();
+            Value::Float3(apply_binary_3d(a.reshape([1, m, n]), b, op)?)
+        }
         _ => return Err(format!("{op}: unsupported tensor dimension combination")),
     };
 

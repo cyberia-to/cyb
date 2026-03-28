@@ -225,24 +225,35 @@ impl OnnxExecutor {
         let mut ok_count = 0;
         let mut fail_count = 0;
         for (i, node) in self.nodes.iter().enumerate() {
-            match crate::ops::dispatch_proto(node, &mut self.values, device) {
-                Ok(()) => {
+            // Catch panics from burn tensor operations
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+                crate::ops::dispatch_proto(node, &mut self.values, device)
+            }));
+
+            match result {
+                Ok(Ok(())) => {
                     ok_count += 1;
-                    if i < 240 {
-                        // Debug first nodes
-                        let produced: Vec<_> = node.output.iter()
-                            .filter(|o| !o.is_empty() && self.values.contains_key(*o))
-                            .map(|o| format!("{}={:?}", o, self.values[o].shape()))
-                            .collect();
-                        if !produced.is_empty() {
-                            log::debug!("[{i}] {} {} → {}", node.op_type, node.name, produced.join(", "));
+                    // Log first 300 nodes that produce output
+                    if i < 300 {
+                        for out in &node.output {
+                            if !out.is_empty() {
+                                if let Some(v) = self.values.get(out) {
+                                    log::debug!("[{i}] {} {} → {} {:?}", node.op_type, node.name, out, v.shape());
+                                }
+                            }
                         }
                     }
                 }
-                Err(e) => {
+                Ok(Err(e)) => {
                     fail_count += 1;
-                    if fail_count <= 5 {
-                        log::warn!("[{i}] Node {} ({}): {e}", node.name, node.op_type);
+                    if fail_count <= 10 {
+                        log::warn!("[{i}] {} ({}): {e}", node.name, node.op_type);
+                    }
+                }
+                Err(_) => {
+                    fail_count += 1;
+                    if fail_count <= 10 {
+                        log::warn!("[{i}] {} ({}) PANICKED", node.name, node.op_type);
                     }
                 }
             }

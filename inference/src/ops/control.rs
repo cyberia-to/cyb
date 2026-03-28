@@ -146,32 +146,62 @@ pub fn split_proto(
     // Number of outputs determines split count
     let num_outputs = node.output.len();
 
+    // Get split sizes from attribute or second input
+    let split_sizes: Vec<usize> = if node.input.len() > 1 && !node.input[1].is_empty() {
+        if let Some(Value::Float1(t)) = values.get(&node.input[1]) {
+            let d = t.to_data();
+            d.as_slice::<f32>().map(|s| s.iter().map(|&v| v as usize).collect()).unwrap_or_default()
+        } else { vec![] }
+    } else {
+        node.attribute.iter()
+            .find(|a| a.name == "split")
+            .map(|a| a.ints.iter().map(|&v| v as usize).collect())
+            .unwrap_or_default()
+    };
+
     match input {
         Value::Float3(t) => {
             let dim_size = t.dims()[axis];
-            let chunk_size = dim_size / num_outputs;
+            let chunk_size = if split_sizes.is_empty() {
+                if num_outputs == 0 { return Err("split: zero outputs".into()); }
+                dim_size / num_outputs
+            } else { 0 }; // use split_sizes instead
 
+            let mut offset = 0;
             for (i, out_name) in node.output.iter().enumerate() {
                 if out_name.is_empty() { continue; }
-                let start = i * chunk_size;
-                let end = if i == num_outputs - 1 { dim_size } else { (i + 1) * chunk_size };
-
-                // Use narrow/slice
-                let chunk = t.clone().narrow(axis, start, end - start);
-                values.insert(out_name.clone(), Value::Float3(chunk));
+                let size = if !split_sizes.is_empty() && i < split_sizes.len() {
+                    split_sizes[i]
+                } else {
+                    if i == num_outputs - 1 { dim_size - offset } else { chunk_size }
+                };
+                if offset + size <= dim_size {
+                    let chunk = t.clone().narrow(axis, offset, size);
+                    values.insert(out_name.clone(), Value::Float3(chunk));
+                }
+                offset += size;
             }
         }
         Value::Float2(t) => {
             let dim_size = t.dims()[axis];
-            let chunk_size = dim_size / num_outputs;
+            let chunk_size = if split_sizes.is_empty() {
+                if num_outputs == 0 { return Err("split: zero outputs".into()); }
+                dim_size / num_outputs
+            } else { 0 };
 
+            let mut offset = 0;
             for (i, out_name) in node.output.iter().enumerate() {
                 if out_name.is_empty() { continue; }
-                let start = i * chunk_size;
-                let end = if i == num_outputs - 1 { dim_size } else { (i + 1) * chunk_size };
-
-                let chunk = t.clone().narrow(axis, start, end - start);
-                values.insert(out_name.clone(), Value::Float2(chunk));
+                let size = if !split_sizes.is_empty() && i < split_sizes.len() {
+                    split_sizes[i]
+                } else {
+                    if i == num_outputs - 1 { dim_size - offset } else { chunk_size }
+                };
+                if offset + size <= dim_size {
+                    let chunk = t.clone().narrow(axis, offset, size);
+                    values.insert(out_name.clone(), Value::Float2(chunk));
+                }
+                offset += size;
             }
         }
         _ => return Err("split: unsupported dimensions".into()),

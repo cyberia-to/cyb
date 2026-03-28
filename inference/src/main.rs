@@ -105,6 +105,15 @@ fn main() {
                     burn::prelude::Tensor::from_data(input_ids_data, &engine.device),
                 ),
             );
+            // Attention mask — all 1s (attend to everything)
+            let mask: Vec<f32> = vec![1.0; seq_len];
+            let mask_data = burn::tensor::TensorData::new(mask, vec![1, seq_len]);
+            inputs.insert(
+                "attention_mask".to_string(),
+                cyb_inference::graph::value::Value::Float2(
+                    burn::prelude::Tensor::from_data(mask_data, &engine.device),
+                ),
+            );
             match executor.run(inputs, &engine.device) {
                 Ok(outputs) => {
                     println!("Outputs: {} tensors", outputs.len());
