@@ -73,23 +73,43 @@ fn execute_subgraph(
     }
 
     // Execute subgraph nodes
+    let mut ok = 0;
+    let mut fail = 0;
     for sub_node in &graph.node {
         // Load constant inputs for this node
         for attr in &sub_node.attribute {
-            if let Some(ref t) = attr.t {
-                if let Some(val) = crate::graph::tensor_proto_to_value(t, device) {
-                    // Constants embedded in attributes
-                    if !sub_node.output.is_empty() {
-                        values.insert(sub_node.output[0].clone(), val);
+            if attr.name == "value" {
+                if let Some(ref t) = attr.t {
+                    if let Some(val) = crate::graph::tensor_proto_to_value(t, device) {
+                        if !sub_node.output.is_empty() {
+                            values.insert(sub_node.output[0].clone(), val);
+                        }
                     }
                 }
             }
         }
 
-        if let Err(e) = crate::ops::dispatch_proto(sub_node, values, device) {
-            log::debug!("Subgraph node {} ({}): {e}", sub_node.name, sub_node.op_type);
+        let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            crate::ops::dispatch_proto(sub_node, values, device)
+        }));
+
+        match result {
+            Ok(Ok(())) => { ok += 1; }
+            Ok(Err(e)) => {
+                fail += 1;
+                if fail <= 5 {
+                    log::debug!("Subgraph {} ({}): {e}", sub_node.name, sub_node.op_type);
+                }
+            }
+            Err(_) => {
+                fail += 1;
+                if fail <= 5 {
+                    log::debug!("Subgraph {} ({}) PANICKED", sub_node.name, sub_node.op_type);
+                }
+            }
         }
     }
+    log::info!("Subgraph: {ok} ok, {fail} failed out of {} nodes", graph.node.len());
 
     // Map subgraph outputs to parent outputs
     for (i, sub_out) in graph.output.iter().enumerate() {

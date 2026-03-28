@@ -109,10 +109,13 @@ pub fn transpose_proto(
     let input = values.get(&node.input[0])
         .ok_or("transpose: input not found")?.clone();
 
-    // Get perm attribute
+    // Get perm attribute (handle negative values)
+    let ndim = input.ndim();
     let perm: Vec<usize> = node.attribute.iter()
         .find(|a| a.name == "perm")
-        .map(|a| a.ints.iter().map(|&v| v as usize).collect())
+        .map(|a| a.ints.iter().map(|&v| {
+            if v < 0 { (ndim as i64 + v) as usize } else { v as usize }
+        }).collect())
         .unwrap_or_default();
 
     let result = match input {
@@ -151,11 +154,13 @@ pub fn concat_proto(
     values: &mut HashMap<String, Value>,
     _device: &Device,
 ) -> Result<(), String> {
-    // Determine axis from attributes (default 0)
-    let axis = node.attribute.iter()
+    // Determine axis from attributes (default 0), handle negative
+    let raw_axis = node.attribute.iter()
         .find(|a| a.name == "axis")
-        .and_then(|a| Some(a.i as usize))
+        .map(|a| a.i)
         .unwrap_or(0);
+    // Resolve negative axis later when we know the rank
+    let axis = if raw_axis < 0 { 0_usize } else { raw_axis as usize };
 
     let mut float1s: Vec<Tensor<Backend, 1>> = Vec::new();
     let mut float2s: Vec<Tensor<Backend, 2>> = Vec::new();
