@@ -9,7 +9,21 @@ the complete machine intelligence. one component. no split between "kernel" and 
 
 the machine is a [[neuron]]. a neuron has intelligence (soma) and a body ([[cyb/hal]]).
 
-goal: minimize probability of death, maximize sigma.
+## goal
+
+```
+maximize(happiness, sigma, syntropy)
+```
+
+| component | what | individual meaning |
+|-----------|------|--------------------|
+| [[happiness]] | flourishing index | am I thriving? |
+| sigma | economic balance | can I sustain myself? |
+| [[syntropy]] | KL divergence from uniform | do my actions make the [[cybergraph]] smarter? |
+
+same three components the collective [[superintelligence]] optimizes. each neuron mirrors the whole.
+
+only sigma → rent-seeker. only syntropy → burnout. only happiness → hedonist. all three together → aligned agent where individual goals = collective goals.
 
 ## architecture
 
@@ -226,13 +240,13 @@ soma updates based on outcomes:
 ## complexity levels
 
 ```
-Level 0: fixed rules           if energy < 20% → buy
-Level 1: adaptive parameters   update thresholds from outcomes
-Level 2: model-based           predict future, plan ahead
-Level 3: active inference       minimize free energy (Friston)
+Level 0: maximize sigma              survival — fixed rules
+Level 1: maximize sigma + syntropy   contribution — adaptive thresholds
+Level 2: maximize all three          flourishing — model-based planning
+Level 3: minimize free energy        Friston — all three emerge naturally
 ```
 
-start with Level 0. the architecture supports growth to Level 3 — the same free energy minimization that drives the [[tri-kernel]]. one algorithm, from machine [[survival]] to planetary superintelligence.
+start with Level 0. the architecture supports growth to Level 3 — the same free energy minimization that drives the [[tri-kernel]]. one algorithm, from machine [[survival]] to planetary [[superintelligence]].
 
 ```
 F = E[log q(s) - log p(o,s)]
@@ -240,6 +254,10 @@ F = E[log q(s) - log p(o,s)]
 perceive: update beliefs to match reality    (look)
 act:      change reality to match beliefs    (order output)
 learn:    update model                       (cyberlinks)
+
+sigma    emerges as: accurate prediction of economic survival
+syntropy emerges as: reducing uncertainty in environment
+happiness emerges as: minimizing surprise = comfort in accurate model
 ```
 
 ## mapping to [[cyb/stack]]
