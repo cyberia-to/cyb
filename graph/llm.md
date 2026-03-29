@@ -692,25 +692,126 @@ each family = one entry in registry. adding a new model family = adding one stru
 
 ## API surface
 
-the runtime is three things:
+three access modes: library (embedded in Rust code), daemon (always-on process), CLI (one-shot commands).
 
-### library (embedded)
+### library API (Rust)
+
 ```rust
-let rt = Runtime::new(Backend::auto())?;
-let model = rt.load("qwen3.5-9b.safetensors", config)?;
-let tokens = model.generate("hello", params)?;  // streaming iterator
+// ── runtime lifecycle ──
+let rt = Runtime::new(Config::auto())?;     // detect hardware, init backends
+rt.backends()                                // → [Metal, ANE, CPU]
+rt.memory_stats()                            // → { total, used, available, per_model }
+rt.autotune()                                // benchmark jets on all backends, cache dispatch table
+rt.shutdown()                                // unload all models, free GPU memory
+
+// ── model management ──
+let model = rt.load("qwen3.5-9b.gguf")?;   // load model, build graph, allocate buffers
+rt.unload(model.id())?;                      // free model memory
+rt.list_models()                             // → [{ id, name, params, memory, tier }]
+rt.hot_swap(old_id, "new_model.gguf")?;      // atomic replace without downtime
+
+// ── text generation (streaming) ──
+let stream = model.generate(prompt, params)?;
+for token in stream {                        // yields tokens as generated
+    print!("{}", token.text);
+    if token.is_tool_call() {                // tool call detected mid-stream
+        let result = execute_tool(token.tool_call())?;
+        stream.inject_tool_result(result)?;  // continue generation with result
+    }
+}
+
+// ── batch generation ──
+let results = model.generate_batch(prompts, params)?;  // concurrent inference
+
+// ── embedding ──
+let vector = model.embed("search query")?;   // → Vec<f32>, 768-dim
+
+// ── classification ──
+let scores = model.classify(text, &["urgent", "normal", "spam"])?;
+                                              // → [("urgent", 0.92), ("normal", 0.07), ...]
+
+// ── multimodal ──
+let response = model.generate_with_image(prompt, image_bytes, params)?;
+let response = model.generate_with_audio(prompt, audio_bytes, params)?;
+let transcript = model.transcribe(audio_bytes)?;        // whisper
+let detections = model.detect(image_bytes)?;             // YOLO → [{ class, bbox, confidence }]
+let image = model.generate_image(prompt, image_params)?; // flux/wan2.2
+
+// ── LoRA adapters ──
+model.load_lora("coding_style.safetensors", alpha: 0.7)?;
+model.unload_lora("coding_style")?;
+model.list_loras()                           // → [{ name, alpha, params }]
+
+// ── context (see context management section) ──
+let ctx = model.context();
+ctx.set_system("...");
+ctx.inject_rag(chunks);
+
+// ── observability ──
+model.metrics()                              // → { tok_per_sec, prefill_ms, peak_memory, ... }
+rt.profile(model.id(), input)?               // → per-op timing breakdown
 ```
 
-### daemon (always-on)
-```
-soma-runtime serve --models tier0.toml
-```
-loads tier 0 models on startup, accepts requests via unix socket, manages model lifecycle. this is what [[soma]] main loop talks to.
+### daemon API
 
-### CLI (one-shot)
+unix socket + JSON protocol. OpenAI-compatible where possible for ecosystem tooling.
+
 ```
+POST /v1/completions          — text generation (streaming SSE)
+POST /v1/embeddings           — vector embedding
+POST /v1/classifications      — zero-shot classification
+POST /v1/images/generations   — image generation
+POST /v1/audio/transcriptions — speech-to-text
+POST /v1/detections           — object detection
+
+GET  /v1/models               — list loaded models
+POST /v1/models/load          — load model from path
+DELETE /v1/models/{id}        — unload model
+
+GET  /v1/health               — { status, memory, models_loaded, backends }
+GET  /v1/metrics              — per-model inference metrics
+POST /v1/autotune             — trigger benchmark
+
+POST /v1/context/show         — render current context
+POST /v1/context/compress     — trigger compression
+POST /v1/context/save         — persist session
+POST /v1/context/load         — restore session
+```
+
+```
+soma-runtime serve --config soma.toml --socket /tmp/soma.sock
+```
+
+the daemon loads tier 0 models on startup, manages model lifecycle, handles concurrent requests. this is what [[soma]] main loop talks to.
+
+### CLI
+
+```
+# inference
 soma-runtime run --model qwen3.5-9b.gguf --prompt "hello"
-soma-runtime bench --model qwen3.5-9b.gguf  // tok/s benchmark
+soma-runtime embed --model jina-v5-nano --text "search query"
+soma-runtime detect --model yolov11.onnx --image photo.jpg
+soma-runtime transcribe --model whisper-small.gguf --audio recording.wav
+soma-runtime generate-image --model flux-schnell --prompt "sunset"
+
+# model management
+soma-runtime models list
+soma-runtime models load path/to/model.gguf
+soma-runtime models unload model_id
+soma-runtime models info model_id              # params, memory, context, backend
+
+# system
+soma-runtime bench --model qwen3.5-9b.gguf    # tok/s, prefill, decode
+soma-runtime autotune                           # benchmark all jets on hardware
+soma-runtime memory                             # RAM/GPU usage breakdown
+soma-runtime backends                           # available: Metal, ANE, CPU
+
+# context
+soma-runtime context show --model model_id
+soma-runtime context tokens --model model_id
+soma-runtime context compress --model model_id
+soma-runtime context save session.json
+soma-runtime context load session.json
 ```
 
 ## determinism and provability
