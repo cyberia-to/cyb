@@ -254,11 +254,134 @@ pub fn fuse_swiglu(graph: &mut Graph) -> usize {
     fused
 }
 
+/// Constant folding — identify nodes where ALL inputs are resident weights
+/// (constants), execute them on CPU using the atom interpreter, and replace
+/// with a constant tensor. Removes unnecessary compute from the graph.
+///
+/// Returns number of nodes folded.
+pub fn constant_fold(graph: &mut Graph) -> usize {
+    use super::atoms;
+    use super::dtype::DType;
+
+    let mut folded = 0;
+    let mut folded_tensors: std::collections::HashMap<String, Vec<u8>> = std::collections::HashMap::new();
+
+    for node in &graph.nodes {
+        // Skip stateful and layout-only ops
+        if node.op.is_stateful() || node.op.is_layout_only() {
+            continue;
+        }
+
+        // Check if ALL inputs are either graph weights or previously folded constants
+        let all_inputs_constant = node.inputs.iter().all(|inp| {
+            graph.weights.contains_key(inp) || folded_tensors.contains_key(inp)
+        });
+
+        if !all_inputs_constant || node.inputs.is_empty() {
+            continue;
+        }
+
+        // Decompose the op into atoms
+        let atom_seq = atoms::decompose(&node.op);
+        if atom_seq.is_empty() {
+            continue;
+        }
+
+        // Collect input data as f32 slices
+        let input_data: Vec<Vec<f32>> = node.inputs.iter().map(|inp| {
+            if let Some(w) = graph.weights.get(inp) {
+                match w.dtype {
+                    DType::F32 => {
+                        w.data.chunks_exact(4)
+                            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                            .collect()
+                    }
+                    _ => vec![] // Only fold f32 constants for now
+                }
+            } else if let Some(data) = folded_tensors.get(inp) {
+                data.chunks_exact(4)
+                    .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect()
+            } else {
+                vec![]
+            }
+        }).collect();
+
+        // Skip if any input couldn't be read as f32
+        if input_data.iter().any(|d| d.is_empty()) {
+            continue;
+        }
+
+        // Determine output size from the first output's metadata
+        let output_size = if let Some(out_name) = node.outputs.first() {
+            if let Some(meta) = graph.tensors.get(out_name) {
+                if let Some(shape) = meta.fixed_shape() {
+                    shape.iter().product::<usize>()
+                } else {
+                    continue; // dynamic shape, can't fold
+                }
+            } else {
+                // No metadata, use first input size as estimate
+                input_data[0].len()
+            }
+        } else {
+            continue;
+        };
+
+        if output_size == 0 {
+            continue;
+        }
+
+        // Execute on CPU using atom interpreter
+        let input_refs: Vec<&[f32]> = input_data.iter().map(|d| d.as_slice()).collect();
+        let mut output = vec![0.0f32; output_size];
+        atoms::AtomInterpreter::execute(&atom_seq, &input_refs, &mut output);
+
+        // Store folded result
+        let output_bytes: Vec<u8> = output.iter().flat_map(|v| v.to_le_bytes()).collect();
+        for out_name in &node.outputs {
+            folded_tensors.insert(out_name.clone(), output_bytes.clone());
+        }
+        folded += 1;
+    }
+
+    // Replace folded nodes: add as weights and remove from graph
+    if folded > 0 {
+        let folded_node_outputs: std::collections::HashSet<String> = folded_tensors.keys().cloned().collect();
+
+        for (name, data) in folded_tensors {
+            let size = data.len() / 4;
+            graph.weights.insert(name.clone(), super::graph::WeightData {
+                data,
+                shape: vec![size],
+                dtype: DType::F32,
+            });
+        }
+
+        // Remove nodes whose outputs were all folded
+        let before = graph.nodes.len();
+        graph.nodes.retain(|n| {
+            !n.outputs.iter().all(|o| folded_node_outputs.contains(o))
+        });
+        let removed = before - graph.nodes.len();
+
+        // Re-index
+        for (new_id, node) in graph.nodes.iter_mut().enumerate() {
+            node.id = new_id;
+        }
+
+        log::info!("constant_fold: folded {folded} nodes, removed {removed} from graph");
+    }
+
+    folded
+}
+
 /// Run all optimization passes in order:
 /// 1. Topological sort
 /// 2. Dead node elimination
-/// 3. Fusion passes (norm+matmul, skip+norm, swiglu)
-/// 4. Re-sort after fusion
+/// 3. Constant folding
+/// 4. Fusion passes (norm+matmul, skip+norm, swiglu)
+/// 5. Re-sort after fusion
 ///
 /// Returns total number of optimizations applied.
 pub fn optimize(graph: &mut Graph) -> usize {
@@ -267,6 +390,7 @@ pub fn optimize(graph: &mut Graph) -> usize {
     graph.topological_sort();
 
     total += graph.eliminate_dead_nodes();
+    total += constant_fold(graph);
     total += fuse_norm_matmul(graph);
     total += fuse_skip_norm(graph);
     total += fuse_swiglu(graph);

@@ -178,6 +178,41 @@ fn sigmoid_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
     sigmoid_out[idx] = 1.0 / (1.0 + exp(-sigmoid_in[idx]));
 }
 
+// === NanToNum ===
+// Replace NaN with 0, +inf with large number, -inf with large negative number
+struct NanToNumParams {
+    nan_val: f32,
+    posinf_val: f32,
+    neginf_val: f32,
+    n: u32,
+}
+
+@group(0) @binding(0) var<storage, read> ntn_in: array<f32>;
+@group(0) @binding(1) var<storage, read_write> ntn_out: array<f32>;
+@group(0) @binding(2) var<uniform> ntn_params: NanToNumParams;
+
+@compute @workgroup_size(256)
+fn nan_to_num_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let idx = gid.x;
+    if (idx >= ntn_params.n) { return; }
+
+    let x = ntn_in[idx];
+    // WGSL: isnan() and isinf() are not available, so check manually
+    // NaN: x != x
+    // +inf: x > large_val
+    // -inf: x < -large_val
+    let large = 3.402823e+38; // near f32 max
+    if (x != x) {
+        ntn_out[idx] = ntn_params.nan_val;
+    } else if (x > large) {
+        ntn_out[idx] = ntn_params.posinf_val;
+    } else if (x < -large) {
+        ntn_out[idx] = ntn_params.neginf_val;
+    } else {
+        ntn_out[idx] = x;
+    }
+}
+
 // === Embedding lookup ===
 struct EmbedParams {
     hidden: u32,

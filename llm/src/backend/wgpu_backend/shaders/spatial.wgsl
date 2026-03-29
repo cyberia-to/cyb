@@ -46,6 +46,65 @@ fn interpolate_nearest_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
     interp_nearest_output[out_idx] = interp_nearest_input[in_idx];
 }
 
+// === Area Interpolation (Downsampling) ===
+// Each output pixel is the average of a rectangular region of input pixels
+// Used for resolution matching and downsampling
+// input: [batch, channels, in_h, in_w]
+// output: [batch, channels, out_h, out_w]
+struct InterpolateAreaParams {
+    channels: u32,
+    in_h: u32,
+    in_w: u32,
+    out_h: u32,
+    out_w: u32,
+    batch_size: u32,
+    total_output: u32,
+    _pad: u32,
+}
+
+@group(0) @binding(0) var<storage, read> interp_area_input: array<f32>;
+@group(0) @binding(1) var<storage, read_write> interp_area_output: array<f32>;
+@group(0) @binding(2) var<uniform> interp_area_params: InterpolateAreaParams;
+
+@compute @workgroup_size(256)
+fn interpolate_area_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let out_idx = gid.x;
+    if (out_idx >= interp_area_params.total_output) { return; }
+
+    let out_spatial = interp_area_params.out_h * interp_area_params.out_w;
+    let out_per_batch = interp_area_params.channels * out_spatial;
+    let in_spatial = interp_area_params.in_h * interp_area_params.in_w;
+
+    let batch = out_idx / out_per_batch;
+    let rem = out_idx % out_per_batch;
+    let ch = rem / out_spatial;
+    let spatial = rem % out_spatial;
+    let oh = spatial / interp_area_params.out_w;
+    let ow = spatial % interp_area_params.out_w;
+
+    // Compute the input region that maps to this output pixel
+    let scale_h = f32(interp_area_params.in_h) / f32(interp_area_params.out_h);
+    let scale_w = f32(interp_area_params.in_w) / f32(interp_area_params.out_w);
+
+    let ih_start = u32(floor(f32(oh) * scale_h));
+    let ih_end = min(u32(ceil(f32(oh + 1u) * scale_h)), interp_area_params.in_h);
+    let iw_start = u32(floor(f32(ow) * scale_w));
+    let iw_end = min(u32(ceil(f32(ow + 1u) * scale_w)), interp_area_params.in_w);
+
+    let base = batch * interp_area_params.channels * in_spatial + ch * in_spatial;
+
+    var sum: f32 = 0.0;
+    var count: f32 = 0.0;
+    for (var ih = ih_start; ih < ih_end; ih++) {
+        for (var iw = iw_start; iw < iw_end; iw++) {
+            sum += interp_area_input[base + ih * interp_area_params.in_w + iw];
+            count += 1.0;
+        }
+    }
+
+    interp_area_output[out_idx] = sum / max(count, 1.0);
+}
+
 // === Bilinear Interpolation ===
 // input: [batch, channels, in_h, in_w]
 // output: [batch, channels, out_h, out_w]
@@ -272,4 +331,60 @@ fn patch_embed_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 
     pe_output[out_idx] = sum;
+}
+
+// === Unpatchify ===
+// Reconstruct spatial tensor from patch sequence
+// Inverse of patch embedding: [batch, num_patches, channels * patch_size^2]
+// -> [batch, channels, H, W]
+// Each patch covers a patch_size x patch_size region
+struct UnpatchifyParams {
+    channels: u32,
+    patch_size: u32,
+    num_patches_h: u32,
+    num_patches_w: u32,
+    out_h: u32,
+    out_w: u32,
+    batch_size: u32,
+    total_output: u32,
+}
+
+@group(0) @binding(0) var<storage, read> unpatch_input: array<f32>;
+@group(0) @binding(1) var<storage, read_write> unpatch_output: array<f32>;
+@group(0) @binding(2) var<uniform> unpatch_params: UnpatchifyParams;
+
+@compute @workgroup_size(256)
+fn unpatchify_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let out_idx = gid.x;
+    if (out_idx >= unpatch_params.total_output) { return; }
+
+    let out_spatial = unpatch_params.out_h * unpatch_params.out_w;
+    let out_per_batch = unpatch_params.channels * out_spatial;
+
+    let batch = out_idx / out_per_batch;
+    let rem = out_idx % out_per_batch;
+    let ch = rem / out_spatial;
+    let spatial = rem % out_spatial;
+    let oh = spatial / unpatch_params.out_w;
+    let ow = spatial % unpatch_params.out_w;
+
+    let p = unpatch_params.patch_size;
+
+    // Which patch does this pixel belong to?
+    let ph = oh / p;
+    let pw = ow / p;
+    let local_h = oh % p;
+    let local_w = ow % p;
+
+    let patch_idx = ph * unpatch_params.num_patches_w + pw;
+    let num_patches = unpatch_params.num_patches_h * unpatch_params.num_patches_w;
+    let patch_elements = unpatch_params.channels * p * p;
+
+    // Input layout: [batch, num_patches, channels * p * p]
+    // Within each patch: [channels, p, p] flattened
+    let in_idx = batch * num_patches * patch_elements
+               + patch_idx * patch_elements
+               + ch * p * p + local_h * p + local_w;
+
+    unpatch_output[out_idx] = unpatch_input[in_idx];
 }

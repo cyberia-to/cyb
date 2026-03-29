@@ -73,6 +73,131 @@ fn noise_schedule_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
     }
 }
 
+// === Flow Step ===
+// Simple normalizing flow step (VITS/TTS)
+// Forward pass: y = (x - mean) * exp(log_scale) + bias
+// Each thread processes one element
+struct FlowStepParams {
+    n: u32,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
+}
+
+@group(0) @binding(0) var<storage, read> flow_input: array<f32>;
+@group(0) @binding(1) var<storage, read> flow_mean: array<f32>;
+@group(0) @binding(2) var<storage, read> flow_log_scale: array<f32>;
+@group(0) @binding(3) var<storage, read> flow_bias: array<f32>;
+@group(0) @binding(4) var<storage, read_write> flow_output: array<f32>;
+@group(0) @binding(5) var<uniform> flow_params: FlowStepParams;
+
+@compute @workgroup_size(256)
+fn flow_step_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let idx = gid.x;
+    if (idx >= flow_params.n) { return; }
+    flow_output[idx] = (flow_input[idx] - flow_mean[idx]) * exp(flow_log_scale[idx]) + flow_bias[idx];
+}
+
+// === Learned Positional Embedding Lookup ===
+// output[pos, dim] = pos_table[pos, dim]
+// pos_table: [max_seq_len, embed_dim]
+// output: [seq_len, embed_dim]
+struct PosEmbedParams {
+    embed_dim: u32,
+    seq_len: u32,
+    offset: u32,  // starting position (for incremental decoding)
+    _pad: u32,
+}
+
+@group(0) @binding(0) var<storage, read> pos_table: array<f32>;
+@group(0) @binding(1) var<storage, read_write> pos_output: array<f32>;
+@group(0) @binding(2) var<uniform> pos_embed_params: PosEmbedParams;
+
+@compute @workgroup_size(256)
+fn pos_embed_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let idx = gid.x;
+    if (idx >= pos_embed_params.seq_len * pos_embed_params.embed_dim) { return; }
+
+    let pos = idx / pos_embed_params.embed_dim;
+    let dim = idx % pos_embed_params.embed_dim;
+    let table_pos = pos + pos_embed_params.offset;
+
+    pos_output[idx] = pos_table[table_pos * pos_embed_params.embed_dim + dim];
+}
+
+// === Quantize (f32 -> Q4/Q8 on GPU) ===
+// Block quantization: each block of block_size elements gets one scale
+// For Q8: round(x / scale) clamped to [-128, 127], packed as i8
+// For Q4: round(x / scale) clamped to [-8, 7], packed as nibbles into u32
+// This kernel computes scales and quantized values
+struct QuantizeParams {
+    n: u32,
+    block_size: u32,
+    num_blocks: u32,
+    bits: u32,  // 4 or 8
+}
+
+@group(0) @binding(0) var<storage, read> quant_input: array<f32>;
+@group(0) @binding(1) var<storage, read_write> quant_packed: array<u32>;
+@group(0) @binding(2) var<storage, read_write> quant_scales: array<f32>;
+@group(0) @binding(3) var<uniform> quant_params: QuantizeParams;
+
+@compute @workgroup_size(256)
+fn quantize_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let block_idx = gid.x;
+    if (block_idx >= quant_params.num_blocks) { return; }
+
+    let start = block_idx * quant_params.block_size;
+    let end = min(start + quant_params.block_size, quant_params.n);
+
+    // Find max absolute value in block for scale
+    var max_abs: f32 = 0.0;
+    for (var i = start; i < end; i++) {
+        max_abs = max(max_abs, abs(quant_input[i]));
+    }
+
+    if (quant_params.bits == 8u) {
+        let scale = max_abs / 127.0;
+        quant_scales[block_idx] = scale;
+        let inv_scale = select(0.0, 1.0 / scale, scale > 0.0);
+
+        // Pack 4 int8 values per u32
+        let u32s_per_block = quant_params.block_size / 4u;
+        for (var j = 0u; j < u32s_per_block; j++) {
+            let base = start + j * 4u;
+            var packed: u32 = 0u;
+            for (var k = 0u; k < 4u; k++) {
+                let idx = base + k;
+                if (idx < end) {
+                    let q = clamp(i32(round(quant_input[idx] * inv_scale)), -128, 127);
+                    packed = packed | (u32(q & 0xFF) << (k * 8u));
+                }
+            }
+            quant_packed[block_idx * u32s_per_block + j] = packed;
+        }
+    } else {
+        // Q4: 4-bit quantization
+        let scale = max_abs / 7.0;
+        quant_scales[block_idx] = scale;
+        let inv_scale = select(0.0, 1.0 / scale, scale > 0.0);
+
+        // Pack 8 int4 values per u32
+        let u32s_per_block = quant_params.block_size / 8u;
+        for (var j = 0u; j < u32s_per_block; j++) {
+            let base = start + j * 8u;
+            var packed: u32 = 0u;
+            for (var k = 0u; k < 8u; k++) {
+                let idx = base + k;
+                if (idx < end) {
+                    let q = clamp(i32(round(quant_input[idx] * inv_scale)), -8, 7);
+                    packed = packed | (u32(q & 0xF) << (k * 4u));
+                }
+            }
+            quant_packed[block_idx * u32s_per_block + j] = packed;
+        }
+    }
+}
+
 // === Cross-Attention ===
 // Like self-attention but Q from one tensor, K/V from another
 // Q: [num_heads * head_dim]
