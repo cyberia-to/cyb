@@ -114,7 +114,7 @@ strategy: native backend per platform, wgpu as universal fallback. zero C++ anyw
 | platform | backend | Rust crate | maturity | why |
 |----------|---------|-----------|----------|-----|
 | macOS/iOS | Metal | `objc2-metal` | production | simdgroup matrix, residency sets, zero translation. 2-5x faster than wgpu for matmul |
-| macOS/iOS | ANE | `rustane` | experimental (30B validated) | matmul+conv offload to neural engine, 3-5W. dims must be ×128 |
+| macOS/iOS | ANE | custom (pure Rust, no objc) | in-house | direct ANE access bypassing obj-c/CoreML. 3-5W power. dims must be ×128 |
 | NVIDIA | CUDA | `cudarc` | production (3.1M downloads) | tensor cores, cuBLAS |
 | AMD | ROCm | `cubecl-hip-sys` | early (Burn team) | WMMA, native HIP. low priority — wgpu Vulkan covers AMD |
 | any GPU | wgpu | `wgpu` | production (18.7M downloads) | Vulkan/DX12/Metal/WebGPU. universal fallback |
@@ -131,7 +131,7 @@ approach: Metal shaders (.metal) for the hot path (~5 ops: matmul, attention, ro
 
 ### ANE — the free accelerator
 
-Apple Neural Engine at 3-5W, leaving GPU free. `rustane` uses private APIs (fragile). production path: compile subgraphs to Core ML format (.mlmodelc) via stable public API while keeping Metal as primary. use ANE for always-on tier 0 models (low power), Metal GPU for generative (throughput).
+Apple Neural Engine at 3-5W, leaving GPU free. custom pure Rust implementation — direct ANE access without obj-c bridge or CoreML dependency. no `rustane`, no `objc2`, no fragile private API wrappers. use ANE for always-on tier 0 models (low power), Metal GPU for generative (throughput).
 
 ### why not MLX?
 
@@ -228,7 +228,7 @@ none of them solve the full problem. this runtime does.
 | 7 | groupnorm, noise_schedule | diffusion (image gen) | medium |
 | 8 | conv1d, flow layers | TTS (voice output) | medium |
 | 9 | CUDA backend | NVIDIA server deployment | cudarc integration |
-| 10 | ANE offload | power-efficient always-on inference | rustane integration |
+| 10 | ANE offload | power-efficient always-on inference | custom pure Rust ANE driver |
 | 11 | NNAPI/QNN FFI | Android NPU inference | dlopen + ~30 extern "C" functions, zero C++ |
 
 after phase 6: one binary runs 90% of [[soma]] models.
