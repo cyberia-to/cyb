@@ -209,6 +209,8 @@ pub struct OnnxExecutor {
     nodes: Vec<crate::onnx_proto::onnx::NodeProto>,
     graph_outputs: Vec<String>,
     values: HashMap<String, Value>,
+    /// Names of initializer tensors (weights) — preserved between runs
+    initializer_names: std::collections::HashSet<String>,
 }
 
 impl OnnxExecutor {
@@ -224,27 +226,8 @@ impl OnnxExecutor {
             nodes: graph.node,
             graph_outputs,
             values: HashMap::new(),
+            initializer_names: std::collections::HashSet::new(),
         })
-    }
-
-    pub fn from_model_proto(model: ModelProto) -> Result<Self, String> {
-        let graph = model.graph.ok_or("No graph in model")?;
-        let graph_outputs: Vec<String> = graph.output.iter()
-            .map(|o| o.name.clone())
-            .collect();
-
-        let mut executor = Self {
-            nodes: graph.node,
-            graph_outputs,
-            values: HashMap::new(),
-        };
-
-        // Pre-load initializers
-        log::info!("Loading {} initializers", graph.initializer.len());
-        // Note: graph was moved, we need to handle this differently
-        // For now, use from_file which loads everything
-        let _ = &executor;
-        Ok(executor)
     }
 
     /// Load all model weights from the ONNX file
@@ -258,6 +241,7 @@ impl OnnxExecutor {
         for init in &graph.initializer {
             if let Some(val) = tensor_proto_to_value_ext(init, device, model_dir) {
                 log::debug!("Loaded initializer: {} shape={:?}", init.name, val.shape());
+                self.initializer_names.insert(init.name.clone());
                 self.values.insert(init.name.clone(), val);
                 count += 1;
             }
@@ -267,6 +251,13 @@ impl OnnxExecutor {
         self.nodes = graph.node;
         self.graph_outputs = graph.output.iter().map(|o| o.name.clone()).collect();
         Ok(())
+    }
+
+    /// Clear intermediate values, keeping only initializers and cached weights
+    pub fn clear_intermediates(&mut self) {
+        self.values.retain(|name, _| {
+            self.initializer_names.contains(name) || name.ends_with("__dequant_t")
+        });
     }
 
     /// Execute the graph with given inputs
@@ -290,12 +281,12 @@ impl OnnxExecutor {
             match result {
                 Ok(Ok(())) => {
                     ok_count += 1;
-                    // Log first 300 nodes that produce output
-                    if i < 300 {
+                    // Only log on trace level for performance
+                    if log::log_enabled!(log::Level::Trace) && i < 300 {
                         for out in &node.output {
                             if !out.is_empty() {
                                 if let Some(v) = self.values.get(out) {
-                                    log::debug!("[{i}] {} {} → {} {:?}", node.op_type, node.name, out, v.shape());
+                                    log::trace!("[{i}] {} {} → {} {:?}", node.op_type, node.name, out, v.shape());
                                 }
                             }
                         }

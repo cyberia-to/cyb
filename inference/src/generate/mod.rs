@@ -54,6 +54,9 @@ impl TextGenerator {
         let mut generated_text = String::new();
 
         for step in 0..max_tokens {
+            // Clear intermediates from previous step (keep weights + dequant cache)
+            self.executor.clear_intermediates();
+
             // Prepare inputs
             let seq_len = token_ids.len();
             let input_floats: Vec<f32> = token_ids.iter().map(|&id| id as f32).collect();
@@ -92,9 +95,15 @@ impl TextGenerator {
             // Sample next token
             let next_token = sampler::sample_top_p(&last_logits, temperature, 0.9);
 
-            // Check for EOS
-            if next_token == 50256 {
-                // GPT-2 EOS token
+            // Check for EOS (common EOS token IDs)
+            let eos_tokens = [
+                50256,   // GPT-2
+                128001,  // Llama 3
+                128009,  // Llama 3 end of turn
+                2,       // Llama 2
+                1,       // some models
+            ];
+            if eos_tokens.contains(&(next_token as u32)) {
                 break;
             }
 
