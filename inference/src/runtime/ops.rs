@@ -571,6 +571,31 @@ pub fn kv_expand_prepare(
     (output, bg, ((total_elements + 255) / 256, 1, 1))
 }
 
+/// Prepare KV append into permanent buffer (for direct cache storage)
+pub fn kv_append_prepare_permanent(
+    p: &Pipelines,
+    past_kv: &wgpu::Buffer, new_kv: &wgpu::Buffer,
+    num_heads: u32, head_dim: u32, past_seq: u32, new_seq: u32,
+) -> (wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32)) {
+    let total_seq = past_seq + new_seq;
+    let total_elements = num_heads * total_seq * head_dim;
+    let output = p.alloc_permanent((total_elements as u64) * 4); // PERMANENT — becomes KV cache
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params { num_heads: u32, head_dim: u32, past_seq: u32, new_seq: u32, total_seq: u32, kv_heads: u32, _p0: u32, _p1: u32 }
+
+    let params = Params { num_heads, head_dim, past_seq, new_seq, total_seq, kv_heads: num_heads, _p0: 0, _p1: 0 };
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&params));
+
+    let bg = p.create_bind_group(&p.kv_append, &[
+        past_kv.as_entire_binding(), new_kv.as_entire_binding(),
+        output.as_entire_binding(), params_buf.as_entire_binding(),
+    ]);
+
+    (output, bg, ((total_elements + 255) / 256, 1, 1))
+}
+
 /// Prepare KV append
 pub fn kv_append_prepare(
     p: &Pipelines,
