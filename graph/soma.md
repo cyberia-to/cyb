@@ -217,7 +217,7 @@ bitnet-2B at <1GB can stay always-loaded alongside tier 0 (~2.5GB total substrat
 | [qwen2.5-coder-14b-abliterated](https://huggingface.co/huihui-ai/Qwen2.5-Coder-14B-Instruct-abliterated) | 14B | ~8.5GB | ONNX | code generation, SQL, infrastructure ops. fine-tuned code specialist, abliterated |
 | [mimo-7b-rl-abliterated](https://huggingface.co/huihui-ai/MiMo-7B-RL-0530-abliterated) | 7B | ~5GB | ONNX | deep reasoning, mathematics. AIME 2025 = 55.4 (beats o1-mini). MIT license, Xiaomi |
 | [deepseek-r1-qwen3-8b-abliterated](https://huggingface.co/huihui-ai/DeepSeek-R1-0528-Qwen3-8B-abliterated) | 8B | ~5GB | ONNX | deep reasoning, strategic analysis. chain-of-thought, abliterated. benchmark against mimo |
-| [llava-v1.6-mistral-7b](https://huggingface.co/liuhaotian/llava-v1.6-mistral-7b) | 7B | ~4.7GB | ONNX | vision analysis, image understanding. multimodal — abliterate text tower if needed |
+| [qwen2.5-vl-7b-abliterated](https://huggingface.co/huihui-ai/Qwen2.5-VL-7B-Instruct-abliterated) | 7B | ~7GB | GGUF/MLX | vision + video understanding, OCR, charts. abliterated — no refusals on any image. crushes llava 1.6 on all benchmarks |
 
 mimo vs deepseek-r1: two competing reasoning models for A/B testing. mimo = MIT license, Xiaomi hardware focus. deepseek-r1 = chain-of-thought specialist, stronger on complex multi-step. keep both, route by task complexity, measure which wins.
 
@@ -230,16 +230,60 @@ mimo vs deepseek-r1: two competing reasoning models for A/B testing. mimo = MIT 
 
 requires explicit routing decision with logged justification. <5% of queries.
 
+## media stack
+
+perception (input) and expression (output) models. all uncensored by design — classifiers/encoders have no refusal mechanism, generative models either uncensored by default or with safety checker removed.
+
+### always-on perception (~1.6GB, runs alongside tier 0)
+
+| model | params | RAM | runtime | task |
+|-------|--------|-----|---------|------|
+| [whisper.cpp small](https://github.com/ggerganov/whisper.cpp) | 244M | ~1GB | GGML/CoreML | speech-to-text EN+RU, ~6-8x real-time on M1. transcribes everything, no content filter |
+| [piper](https://github.com/rhasspy/piper) | ~30M | ~100MB | ONNX | text-to-speech EN+RU, 50x real-time. VITS-based, speaks any text without refusal |
+| [YOLOv11 nano](https://github.com/ultralytics/ultralytics) | 3.2M | ~100MB | ONNX/CoreML | object detection: 4-8 camera streams at 10-15 FPS each. person, vehicle, animal. built-in tracking (ByteTrack) |
+| [BEATs](https://huggingface.co/microsoft/BEATs-iter3) | 90M | ~400MB | ONNX | audio event detection: glass break, scream, siren, dog bark. 527 AudioSet classes |
+
+### on-demand media (loaded when needed)
+
+| model | params | RAM | runtime | task |
+|-------|--------|-----|---------|------|
+| [XTTS v2](https://huggingface.co/coqui/XTTS-v2) | 467M | ~2.5GB | PyTorch | voice cloning EN+RU with 6s reference audio. when piper voice quality insufficient |
+| [flux-schnell Q4](https://huggingface.co/black-forest-labs/FLUX.1-schnell) | 12B | ~8GB | MLX (mflux) | image generation for posts. Apache 2.0, no NSFW filter. ~45-90s per 1024x1024 on M1 |
+| [AnimateDiff](https://github.com/guoyww/AnimateDiff) + SD 1.5 uncensored | ~1.5B | ~6GB | PyTorch/MLX | short video generation. 3-10 min per clip. use uncensored SD checkpoint |
+| [moondream2](https://huggingface.co/vikhyatk/moondream2) | 1.86B | ~2GB | GGUF | lightweight vision Q&A when qwen2.5-vl too heavy to load. uncensored by default, MIT |
+
+### camera pipeline
+
+```
+camera stream (RTSP/USB)
+    │
+    ▼
+YOLOv11 nano (always-on, ONNX, ~100MB)
+    │
+    ├── detections: person, vehicle, animal, fire
+    │
+    ├── tracking: ByteTrack assigns consistent IDs
+    │
+    ├── zone logic: polygon intrusion detection
+    │
+    └── event → alert composer (tier 1) → notification
+         │
+         └── if complex scene → qwen2.5-vl (tier 2) for understanding
+```
+
+BEATs runs in parallel on audio from cameras — glass break, scream, gunshot detection. combined video+audio events for reliable alerting.
+
 ## resource budget
 
 RAM budget (M1 Pro 16GB reference):
 ```
 tier 0 (always loaded):  ~1.5GB
-tier 2 model (worst):    ~8.5GB (qwen2.5-coder-14b Q4)
-KV cache + context:      ~2.5GB
+media always-on:         ~1.6GB  (whisper + piper + YOLO + BEATs)
+tier 2 model (worst):    ~8.5GB  (qwen2.5-coder-14b Q4)
+KV cache + context:      ~1.5GB
 OS + processes:           ~3.0GB
 ────────────────────────────────
-total peak:              ~15.5GB  ✅ fits M1 Pro 16GB (tight with coder-14b)
+total peak:              ~16.1GB  ⚠️ tight on M1 Pro 16GB — shed media or use whisper tiny (~200MB) under pressure
 ```
 
 disk budget:
