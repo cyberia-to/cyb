@@ -42,9 +42,9 @@ fn unpack_f16_low(packed: u32) -> f32 {
     } else if (exponent == 31u) {
         // Inf or NaN
         if (mantissa == 0u) {
-            if (sign == 1u) { return -1.0 / 0.0; } else { return 1.0 / 0.0; }
+            if (sign == 1u) { return -3.402823e+38f; } else { return 3.402823e+38f; }
         }
-        return 0.0 / 0.0; // NaN
+        return 0.0f; // NaN → 0 (WGSL doesn't support NaN literals)
     }
 
     let val = (1.0 + f32(mantissa) / 1024.0) * exp2(f32(exponent) - 15.0);

@@ -2136,3 +2136,422 @@ pub fn kv_append_prepare_permanent(
 
     (output, bg, ((total_elements + 255) / 256, 1, 1))
 }
+
+// ========================================================================
+// F16 matmul dispatch
+// ========================================================================
+
+/// F16 matmul: [1, K] f32 x [N, K] f16_packed -> [1, N] f32
+/// Weights stored as packed f16 pairs in u32 array.
+pub fn f16_matmul(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    activation: &wgpu::Buffer,
+    weight_packed: &wgpu::Buffer,
+    n: u32,
+    k: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        n: u32,
+        k: u32,
+        k_half: u32,
+        _pad: u32,
+    }
+
+    let params = Params {
+        n,
+        k,
+        k_half: k / 2,
+        _pad: 0,
+    };
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&params));
+
+    let x = n.min(65535);
+    let y = (n + x - 1) / x;
+    p.encode(
+        enc,
+        &p.f16_matmul,
+        &[
+            activation.as_entire_binding(),
+            weight_packed.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        (x, y, 1),
+    );
+
+    output
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct F16MatmulParams {
+    n: u32,
+    k: u32,
+    k_half: u32,
+    _pad: u32,
+}
+
+#[allow(dead_code)]
+fn precompute_f16_matmul(p: &Pipelines, n: u32, k: u32) -> (wgpu::Buffer, (u32, u32, u32)) {
+    let params = F16MatmulParams {
+        n,
+        k,
+        k_half: k / 2,
+        _pad: 0,
+    };
+    let buf = p.upload_uniform_permanent(bytemuck::bytes_of(&params));
+    let x = n.min(65535);
+    let y = (n + x - 1) / x;
+    (buf, (x, y, 1))
+}
+
+/// F16 matmul with pre-computed params buffer
+pub fn f16_matmul_prepare_precomputed(
+    p: &Pipelines,
+    activation: &wgpu::Buffer,
+    weight_packed: &wgpu::Buffer,
+    params_buf: &wgpu::Buffer,
+    n: u32,
+    wg: (u32, u32, u32),
+) -> (wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32)) {
+    let output = p.alloc((n as u64) * 4);
+    let bg = p.create_bind_group(
+        &p.f16_matmul,
+        &[
+            activation.as_entire_binding(),
+            weight_packed.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+    );
+    (output, bg, wg)
+}
+
+// ========================================================================
+// Ternary (BitNet) matmul dispatch
+// ========================================================================
+
+/// Ternary matmul: [1, K] f32 x [N, K] ternary_packed + [N] scale -> [1, N] f32
+/// Weights packed as 2-bit ternary values in u32 (16 values per u32).
+pub fn ternary_matmul(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    activation: &wgpu::Buffer,
+    weight_packed: &wgpu::Buffer,
+    scale: &wgpu::Buffer,
+    n: u32,
+    k: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+    let u32s_per_row = (k + 15) / 16;
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        n: u32,
+        k: u32,
+        u32s_per_row: u32,
+        _pad: u32,
+    }
+
+    let params = Params {
+        n,
+        k,
+        u32s_per_row,
+        _pad: 0,
+    };
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&params));
+
+    let x = n.min(65535);
+    let y = (n + x - 1) / x;
+    p.encode(
+        enc,
+        &p.ternary_matmul,
+        &[
+            activation.as_entire_binding(),
+            weight_packed.as_entire_binding(),
+            scale.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        (x, y, 1),
+    );
+
+    output
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct TernaryMatmulParams {
+    n: u32,
+    k: u32,
+    u32s_per_row: u32,
+    _pad: u32,
+}
+
+#[allow(dead_code)]
+fn precompute_ternary_matmul(p: &Pipelines, n: u32, k: u32) -> (wgpu::Buffer, (u32, u32, u32)) {
+    let params = TernaryMatmulParams {
+        n,
+        k,
+        u32s_per_row: (k + 15) / 16,
+        _pad: 0,
+    };
+    let buf = p.upload_uniform_permanent(bytemuck::bytes_of(&params));
+    let x = n.min(65535);
+    let y = (n + x - 1) / x;
+    (buf, (x, y, 1))
+}
+
+/// Ternary matmul with pre-computed params buffer
+pub fn ternary_matmul_prepare_precomputed(
+    p: &Pipelines,
+    activation: &wgpu::Buffer,
+    weight_packed: &wgpu::Buffer,
+    scale: &wgpu::Buffer,
+    params_buf: &wgpu::Buffer,
+    n: u32,
+    wg: (u32, u32, u32),
+) -> (wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32)) {
+    let output = p.alloc((n as u64) * 4);
+    let bg = p.create_bind_group(
+        &p.ternary_matmul,
+        &[
+            activation.as_entire_binding(),
+            weight_packed.as_entire_binding(),
+            scale.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+    );
+    (output, bg, wg)
+}
+
+// ========================================================================
+// Runtime quantize/dequantize dispatch
+// ========================================================================
+
+/// Quantize f32 tensor to Q4 packed format on GPU.
+/// Returns (packed_u32_buffer, scales_buffer).
+pub fn quantize_f32_to_q4(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    n: u32,
+    block_size: u32,
+) -> (wgpu::Buffer, wgpu::Buffer) {
+    let num_blocks = (n + block_size - 1) / block_size;
+    let u32s_per_block = block_size / 8; // 8 nibbles per u32
+    let packed_size = (num_blocks * u32s_per_block) as u64 * 4;
+    let scales_size = (num_blocks as u64) * 4;
+
+    let packed = p.alloc(packed_size);
+    let scales = p.alloc(scales_size);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct QParams {
+        n: u32,
+        block_size: u32,
+        num_blocks: u32,
+        bits: u32,
+    }
+
+    let params = QParams {
+        n,
+        block_size,
+        num_blocks,
+        bits: 4,
+    };
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&params));
+
+    p.encode(
+        enc,
+        &p.quantize,
+        &[
+            input.as_entire_binding(),
+            packed.as_entire_binding(),
+            scales.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        ((num_blocks + 255) / 256, 1, 1),
+    );
+
+    (packed, scales)
+}
+
+/// Quantize f32 tensor to Q8 packed format on GPU.
+/// Returns (packed_u32_buffer, scales_buffer).
+pub fn quantize_f32_to_q8(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    n: u32,
+    block_size: u32,
+) -> (wgpu::Buffer, wgpu::Buffer) {
+    let num_blocks = (n + block_size - 1) / block_size;
+    let u32s_per_block = block_size / 4; // 4 int8 per u32
+    let packed_size = (num_blocks * u32s_per_block) as u64 * 4;
+    let scales_size = (num_blocks as u64) * 4;
+
+    let packed = p.alloc(packed_size);
+    let scales = p.alloc(scales_size);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct QParams {
+        n: u32,
+        block_size: u32,
+        num_blocks: u32,
+        bits: u32,
+    }
+
+    let params = QParams {
+        n,
+        block_size,
+        num_blocks,
+        bits: 8,
+    };
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&params));
+
+    p.encode(
+        enc,
+        &p.quantize,
+        &[
+            input.as_entire_binding(),
+            packed.as_entire_binding(),
+            scales.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        ((num_blocks + 255) / 256, 1, 1),
+    );
+
+    (packed, scales)
+}
+
+/// Dequantize Q4 packed + scales to f32 on CPU.
+/// GPU dequant not needed (matmul shaders consume Q4 directly).
+/// Provided for testing and format conversion.
+pub fn dequantize_q4_to_f32(
+    packed: &[u32],
+    scales: &[f32],
+    block_size: usize,
+) -> Vec<f32> {
+    let num_blocks = scales.len();
+    let mut output = Vec::with_capacity(num_blocks * block_size);
+
+    for b in 0..num_blocks {
+        let scale = scales[b];
+        let u32s_per_block = block_size / 8;
+        let base = b * u32s_per_block;
+
+        for j in 0..u32s_per_block {
+            if base + j >= packed.len() {
+                break;
+            }
+            let word = packed[base + j];
+            for k in 0..8usize {
+                let nibble = ((word >> (k as u32 * 4)) & 0xF) as i32;
+                // Signed: subtract 8 for zero-point
+                let val = (nibble as f32 - 8.0) * scale;
+                output.push(val);
+            }
+        }
+    }
+
+    output
+}
+
+/// Dequantize Q8 packed + scales to f32 on CPU.
+/// GPU dequant not needed (matmul shaders consume Q8 directly).
+/// Provided for testing and format conversion.
+pub fn dequantize_q8_to_f32(
+    packed: &[u32],
+    scales: &[f32],
+    block_size: usize,
+) -> Vec<f32> {
+    let num_blocks = scales.len();
+    let mut output = Vec::with_capacity(num_blocks * block_size);
+
+    for b in 0..num_blocks {
+        let scale = scales[b];
+        let u32s_per_block = block_size / 4;
+        let base = b * u32s_per_block;
+
+        for j in 0..u32s_per_block {
+            if base + j >= packed.len() {
+                break;
+            }
+            let word = packed[base + j];
+            for k in 0..4usize {
+                let byte = ((word >> (k as u32 * 8)) & 0xFF) as u8;
+                let val = (byte as i8 as f32) * scale;
+                output.push(val);
+            }
+        }
+    }
+
+    output
+}
+
+// ========================================================================
+// Unified matmul dispatch helper for per-tensor quantization
+// ========================================================================
+
+/// QuantFormat for per-tensor dispatch selection
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+pub enum QuantFormat {
+    F32,
+    F16,
+    Q8,
+    Q4,
+    Ternary,
+}
+
+/// Prepare matmul dispatch for a given quant format (decode path).
+/// Returns (output_buffer, bind_group, workgroups, shader_ref).
+///
+/// For Q4/Q8: uses packed weights + scales buffers.
+/// For F32/F16: uses weight buffer (scales ignored).
+/// For Ternary: uses packed weights + per-row scale buffer.
+pub fn prepare_matmul_for_quant<'a>(
+    p: &'a Pipelines,
+    activation: &wgpu::Buffer,
+    weight: &wgpu::Buffer,
+    scales: &wgpu::Buffer,
+    params_buf: &wgpu::Buffer,
+    n: u32,
+    wg: (u32, u32, u32),
+    quant: QuantFormat,
+) -> (wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32), &'a super::pipelines::ComputeShader) {
+    match quant {
+        QuantFormat::Q4 => {
+            let (buf, bg, wg) = q4_matmul_prepare_precomputed(p, activation, weight, scales, params_buf, n, wg);
+            (buf, bg, wg, &p.q4_matmul)
+        }
+        QuantFormat::Q8 => {
+            let (buf, bg, wg) = q8_matmul_prepare_precomputed(p, activation, weight, scales, params_buf, n, wg);
+            (buf, bg, wg, &p.q8_matmul)
+        }
+        QuantFormat::F32 => {
+            let (buf, bg, wg) = f32_matmul_prepare_precomputed(p, activation, weight, params_buf, n, wg);
+            (buf, bg, wg, &p.f32_matmul)
+        }
+        QuantFormat::F16 => {
+            let (buf, bg, wg) = f16_matmul_prepare_precomputed(p, activation, weight, params_buf, n, wg);
+            (buf, bg, wg, &p.f16_matmul)
+        }
+        QuantFormat::Ternary => {
+            let (buf, bg, wg) = ternary_matmul_prepare_precomputed(p, activation, weight, scales, params_buf, n, wg);
+            (buf, bg, wg, &p.ternary_matmul)
+        }
+    }
+}
+
+// Note: precompute_matmul_for_quant is defined in model.rs where the
+// per-format precompute functions (precompute_q4_matmul etc.) are in scope.

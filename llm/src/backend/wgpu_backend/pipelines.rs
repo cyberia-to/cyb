@@ -78,6 +78,13 @@ pub struct Pipelines {
     pub cross_attention: ComputeShader,
     pub flash_attention: ComputeShader,
 
+    // --- Batch 8: Additional matmul variants ---
+    pub f16_matmul: ComputeShader,
+    pub ternary_matmul: ComputeShader,
+
+    // --- Batch 9: Runtime quantization ---
+    pub quantize: ComputeShader,
+
     /// Frame allocator for zero-allocation decode after warmup
     pub frame_alloc: RefCell<FrameAllocator>,
 }
@@ -412,6 +419,28 @@ impl Pipelines {
             &[storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform()],
         );
 
+        // --- Batch 8: Additional matmul variants ---
+        let f16_matmul = create_pipeline(
+            &device,
+            include_str!("shaders/f16_matmul.wgsl"),
+            "main",
+            &[storage_ro(), storage_ro(), storage_rw(), uniform()],
+        );
+        let ternary_matmul = create_pipeline(
+            &device,
+            include_str!("shaders/ternary_matmul.wgsl"),
+            "main",
+            &[storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform()],
+        );
+
+        // --- Batch 9: Runtime quantization ---
+        let quantize = create_pipeline(
+            &device,
+            include_str!("shaders/special.wgsl"),
+            "quantize_kernel",
+            &[storage_ro(), storage_rw(), storage_rw(), uniform()],
+        );
+
         let frame_alloc = RefCell::new(FrameAllocator::new(device.clone()));
 
         Self {
@@ -473,6 +502,11 @@ impl Pipelines {
             // Batch 7
             cross_attention,
             flash_attention,
+            // Batch 8
+            f16_matmul,
+            ternary_matmul,
+            // Batch 9
+            quantize,
             frame_alloc,
         }
     }
