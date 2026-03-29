@@ -1,13 +1,15 @@
-// Fused Attention for decode step (seq_len = 1)
-// Computes: softmax(Q × K^T / sqrt(d)) × V in single kernel
+// Fused Attention Decode — one workgroup per head
+// Computes: softmax(Q·K^T / scale) · V
 //
-// Q: [batch * heads * head_dim] (flattened, one position)
-// K: [batch * heads * total_seq * head_dim] (full KV cache)
-// V: [batch * heads * total_seq * head_dim]
-// Output: [batch * heads * head_dim]
+// Q: [num_heads * head_dim]
+// K, V: [num_heads * total_seq * head_dim]
+// Output: [num_heads * head_dim]
 //
-// Each workgroup handles one (batch, head, dim) output element
-// Threads cooperate on the attention score reduction
+// Each workgroup handles one attention head.
+// Threads cooperate on dot products and reductions.
+// Uses online softmax (single pass for max + exp_sum).
+
+const WG_SIZE: u32 = 256u;
 
 struct Params {
     head_dim: u32,
@@ -22,48 +24,90 @@ struct Params {
 @group(0) @binding(3) var<storage, read_write> output: array<f32>;
 @group(0) @binding(4) var<uniform> params: Params;
 
-@compute @workgroup_size(1)
-fn main(@builtin(global_invocation_id) gid: vec3<u32>) {
-    // Each invocation handles one output element: (head, dim)
-    let head_idx = gid.x / params.head_dim;
-    let d = gid.x % params.head_dim;
+// Shared memory for scores, max, exp_sum
+var<workgroup> scores: array<f32, 2048>;  // max total_seq we support
+var<workgroup> shared_max: array<f32, 256>;
+var<workgroup> shared_sum: array<f32, 256>;
 
-    if (head_idx >= params.num_heads) { return; }
+@compute @workgroup_size(256)
+fn main(
+    @builtin(workgroup_id) wg_id: vec3<u32>,
+    @builtin(local_invocation_id) local_id: vec3<u32>,
+) {
+    let head = wg_id.x;
+    let tid = local_id.x;
 
-    let q_base = head_idx * params.head_dim;
-    let kv_base = head_idx * params.total_seq * params.head_dim;
+    if (head >= params.num_heads) { return; }
 
-    // Step 1: compute attention scores and find max (numerically stable softmax)
-    var max_score: f32 = -1e30;
-    for (var t = 0u; t < params.total_seq; t++) {
+    let q_base = head * params.head_dim;
+    let kv_base = head * params.total_seq * params.head_dim;
+
+    // Step 1: Compute attention scores (parallel over total_seq)
+    // Each thread computes scores for positions: tid, tid+WG_SIZE, ...
+    var local_max: f32 = -1000000.0;
+    var t = tid;
+    while (t < params.total_seq) {
         var dot: f32 = 0.0;
-        for (var dd = 0u; dd < params.head_dim; dd++) {
-            dot += q[q_base + dd] * k[kv_base + t * params.head_dim + dd];
+        for (var d = 0u; d < params.head_dim; d++) {
+            dot += q[q_base + d] * k[kv_base + t * params.head_dim + d];
         }
         dot *= params.scale;
-        max_score = max(max_score, dot);
+        scores[t] = dot;
+        local_max = max(local_max, dot);
+        t += WG_SIZE;
     }
 
-    // Step 2: compute exp sum
-    var exp_sum: f32 = 0.0;
-    for (var t = 0u; t < params.total_seq; t++) {
-        var dot: f32 = 0.0;
-        for (var dd = 0u; dd < params.head_dim; dd++) {
-            dot += q[q_base + dd] * k[kv_base + t * params.head_dim + dd];
+    // Step 2: Parallel max reduction
+    shared_max[tid] = local_max;
+    workgroupBarrier();
+
+    for (var stride = WG_SIZE / 2u; stride > 0u; stride >>= 1u) {
+        if (tid < stride) {
+            shared_max[tid] = max(shared_max[tid], shared_max[tid + stride]);
         }
-        exp_sum += exp(dot * params.scale - max_score);
+        workgroupBarrier();
+    }
+    let global_max = shared_max[0];
+
+    // Step 3: Compute exp(score - max) and sum (parallel)
+    var local_sum: f32 = 0.0;
+    t = tid;
+    while (t < params.total_seq) {
+        let e = exp(scores[t] - global_max);
+        scores[t] = e;  // reuse scores array for exp values
+        local_sum += e;
+        t += WG_SIZE;
     }
 
-    // Step 3: weighted sum of V for this dimension
-    var result: f32 = 0.0;
-    for (var t = 0u; t < params.total_seq; t++) {
-        var dot: f32 = 0.0;
-        for (var dd = 0u; dd < params.head_dim; dd++) {
-            dot += q[q_base + dd] * k[kv_base + t * params.head_dim + dd];
+    shared_sum[tid] = local_sum;
+    workgroupBarrier();
+
+    for (var stride = WG_SIZE / 2u; stride > 0u; stride >>= 1u) {
+        if (tid < stride) {
+            shared_sum[tid] += shared_sum[tid + stride];
         }
-        let attn_weight = exp(dot * params.scale - max_score) / exp_sum;
-        result += attn_weight * v[kv_base + t * params.head_dim + d];
+        workgroupBarrier();
     }
+    let exp_total = shared_sum[0];
 
-    output[gid.x] = result;
+    // Normalize scores to softmax weights
+    workgroupBarrier();
+    t = tid;
+    while (t < params.total_seq) {
+        scores[t] = scores[t] / exp_total;
+        t += WG_SIZE;
+    }
+    workgroupBarrier();
+
+    // Step 4: Weighted sum of V (parallel over head_dim)
+    // Each thread handles dimensions: tid, tid+WG_SIZE, ...
+    var d = tid;
+    while (d < params.head_dim) {
+        var weighted_sum: f32 = 0.0;
+        for (var tt = 0u; tt < params.total_seq; tt++) {
+            weighted_sum += scores[tt] * v[kv_base + tt * params.head_dim + d];
+        }
+        output[q_base + d] = weighted_sum;
+        d += WG_SIZE;
+    }
 }

@@ -122,10 +122,11 @@ pub fn attention_decode(
 
     let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params { head_dim, total_seq, num_heads, scale }));
 
+    // One workgroup per head (threads cooperate within head)
     p.encode(enc, &p.attention, &[
         q.as_entire_binding(), k.as_entire_binding(), v.as_entire_binding(),
         output.as_entire_binding(), params_buf.as_entire_binding(),
-    ], (output_size, 1, 1));
+    ], (num_heads, 1, 1));
 
     output
 }
