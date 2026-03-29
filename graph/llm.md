@@ -802,9 +802,9 @@ model.unload_lora("coding_style")?;
 model.list_loras()                           // → [{ name, alpha, params }]
 
 // ── context (see context management section) ──
-let ctx = model.context();
-ctx.set_system("...");
-ctx.inject_graph(query);
+let context = model.context();
+context.set_system("...");
+context.inject_graph(query);
 
 // ── observability ──
 model.metrics()                              // → { tok_per_sec, prefill_ms, peak_memory, ... }
@@ -986,36 +986,36 @@ three access levels: automatic (runtime handles it), programmatic (Rust API), CL
 
 library (Rust):
 ```rust
-let ctx = model.context();
+let context = model.context();
 
 // inspect
-ctx.tokens()                          // total token count
-ctx.blocks()                          // list blocks with sizes
-ctx.show()                            // render full context as text
+context.tokens()                          // total token count
+context.blocks()                          // list blocks with sizes
+context.show()                            // render full context as text
 
 // structure
-ctx.set_system("you are a router...") // set/replace system prompt
-ctx.inject_graph(query)               // traverse cybergraph, inject relevant pages
-ctx.add_message(role, content)        // append to conversation history
-ctx.inject_tool_result(name, result)  // add tool output
+context.set_system("you are a router...") // set/replace system prompt
+context.inject_graph(query)               // traverse cybergraph, inject relevant pages
+context.add_message(role, content)        // append to conversation history
+context.inject_tool_result(name, result)  // add tool output
 
 // manage
-ctx.compress()                        // summarize old history via tier 1 model
-ctx.trim(max_tokens)                  // drop lowest-priority blocks to fit budget
-ctx.clear_history()                   // keep system prompt, clear conversation
-ctx.reset()                           // clear everything
+context.compress()                        // summarize old history via tier 1 model
+context.trim(max_tokens)                  // drop lowest-priority blocks to fit budget
+context.clear_history()                   // keep system prompt, clear conversation
+context.reset()                           // clear everything
 
 // budget
-ctx.set_budget(Block::System, 500)    // limit system prompt to 500 tokens
-ctx.set_budget(Block::Graph, 2000)    // limit graph context to 2000 tokens
-ctx.set_budget(Block::History, 4000)  // limit conversation history
+context.set_budget(Block::System, 500)    // limit system prompt to 500 tokens
+context.set_budget(Block::Graph, 2000)    // limit graph context to 2000 tokens
+context.set_budget(Block::History, 4000)  // limit conversation history
 
 // persist
-ctx.save("session.json")             // persist conversation state to disk
-ctx.load("session.json")             // restore from disk
+context.save("session.json")             // persist conversation state to disk
+context.load("session.json")             // restore from disk
 
 // escalation — pass context between tiers
-let tier2_ctx = ctx.escalate(tier2_model) // carry relevant context to higher tier
+let tier2_context = context.escalate(tier2_model) // carry relevant context to higher tier
                                           // compresses to fit tier 2 budget
 ```
 
