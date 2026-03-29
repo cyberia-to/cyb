@@ -71,6 +71,16 @@ pub fn dispatch_proto(
         "Range" => control::range_proto(node, values, device),
         "Split" => control::split_proto(node, values, device),
 
+        // Quantized ops
+        "MatMulNBits" => matmul::matmul_nbits_proto(node, values, device),
+        "DequantizeLinear" => matmul::dequantize_linear_proto(node, values, device),
+
+        // Specialized fusion ops (Llama ONNX)
+        "GroupQueryAttention" => norm::group_query_attention_proto(node, values, device),
+        "SkipSimplifiedLayerNormalization" | "SimplifiedLayerNormalization" =>
+            norm::simplified_layer_norm_proto(node, values, device),
+        "ReduceSum" => norm::reduce_sum_proto(node, values, device),
+
         // Skip known harmless ops
         "Dropout" => tensor_manip::pass_through(node, values),
 

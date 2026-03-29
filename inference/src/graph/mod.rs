@@ -59,6 +59,61 @@ pub fn load_onnx_info(path: &str) -> Result<String, String> {
     Ok(info)
 }
 
+/// Convert an ONNX TensorProto to a burn Value, with external data support
+pub fn tensor_proto_to_value_ext(
+    tp: &crate::onnx_proto::onnx::TensorProto,
+    device: &Device,
+    model_dir: &Path,
+) -> Option<Value> {
+    // Check if data is external
+    if tp.data_location == 1 {
+        // External data
+        let mut location = String::new();
+        let mut offset: u64 = 0;
+        let mut length: u64 = 0;
+
+        for entry in &tp.external_data {
+            match entry.key.as_str() {
+                "location" => location = entry.value.clone(),
+                "offset" => offset = entry.value.parse().unwrap_or(0),
+                "length" => length = entry.value.parse().unwrap_or(0),
+                _ => {}
+            }
+        }
+
+        if location.is_empty() || length == 0 {
+            log::warn!("External tensor {} has no location/length", tp.name);
+            return None;
+        }
+
+        let data_path = model_dir.join(&location);
+        if !data_path.exists() {
+            log::warn!("External data file not found: {}", data_path.display());
+            return None;
+        }
+
+        // Memory-map the external file and read the slice
+        let file = std::fs::File::open(&data_path).ok()?;
+        let mmap = unsafe { memmap2::Mmap::map(&file).ok()? };
+        let end = (offset + length) as usize;
+        if end > mmap.len() {
+            log::warn!("External data {} out of bounds: offset={offset} length={length} file_size={}", tp.name, mmap.len());
+            return None;
+        }
+
+        let raw_data = &mmap[offset as usize..end];
+
+        // Create a modified TensorProto with the raw data inlined
+        let mut tp_copy = tp.clone();
+        tp_copy.raw_data = raw_data.to_vec();
+        tp_copy.data_location = 0;
+
+        return tensor_proto_to_value(&tp_copy, device);
+    }
+
+    tensor_proto_to_value(tp, device)
+}
+
 /// Convert an ONNX TensorProto to a burn Value
 pub fn tensor_proto_to_value(
     tp: &crate::onnx_proto::onnx::TensorProto,
@@ -197,9 +252,11 @@ impl OnnxExecutor {
         let model = load_model_proto(path)?;
         let graph = model.graph.ok_or("No graph in model")?;
 
+        let model_dir = path.parent().unwrap_or(Path::new("."));
+
         let mut count = 0;
         for init in &graph.initializer {
-            if let Some(val) = tensor_proto_to_value(init, device) {
+            if let Some(val) = tensor_proto_to_value_ext(init, device, model_dir) {
                 log::debug!("Loaded initializer: {} shape={:?}", init.name, val.shape());
                 self.values.insert(init.name.clone(), val);
                 count += 1;
