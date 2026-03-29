@@ -273,6 +273,27 @@ YOLOv11 nano (always-on, ONNX, ~100MB)
 
 BEATs runs in parallel on audio from cameras — glass break, scream, gunshot detection. combined video+audio events for reliable alerting.
 
+### rendering pipeline (diagrams, presentations, charts)
+
+no separate model — existing LLMs (qwen2.5-coder, qwen3.5) generate structured text, [Typst](https://github.com/typst/typst) compiles to output. one Rust binary, zero external dependencies.
+
+```
+LLM → Typst code → typst compile → SVG / PDF
+         ↑ error? → feed compiler error back to LLM → retry
+```
+
+| task | Typst package | output |
+|------|--------------|--------|
+| flowcharts, architecture | Fletcher | SVG/PDF |
+| arbitrary diagrams | CeTZ | SVG/PDF |
+| sequence diagrams | chronos | SVG/PDF |
+| charts (bar, line, scatter) | CeTZ.plot | SVG/PDF |
+| presentations | Polylux | PDF slides |
+| documents, whitepapers | core Typst | PDF |
+| math equations | core Typst | PDF |
+
+Typst replaces: Mermaid (needs Node.js), D2 (needs Go), LaTeX (bloated), PowerPoint. LLM uses Typst as a single output format for all visual content. raster→vector tracing via [vtracer](https://github.com/nicbutler/vtracer) (Rust) when needed.
+
 ## resource budget
 
 RAM budget (M1 Pro 16GB reference):
