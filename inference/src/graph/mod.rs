@@ -253,6 +253,10 @@ impl OnnxExecutor {
         Ok(())
     }
 
+    pub fn graph_output_names(&self) -> &[String] {
+        &self.graph_outputs
+    }
+
     /// Clear intermediate values, keeping only initializers and cached weights
     pub fn clear_intermediates(&mut self) {
         self.values.retain(|name, _| {

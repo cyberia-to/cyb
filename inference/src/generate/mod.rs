@@ -16,6 +16,8 @@ pub struct TextGenerator {
     executor: OnnxExecutor,
     tokenizer: Tokenizer,
     device: Device,
+    /// Number of KV-cache layers (auto-detected from model outputs)
+    num_kv_layers: usize,
 }
 
 impl TextGenerator {
@@ -30,10 +32,19 @@ impl TextGenerator {
         let tokenizer = Tokenizer::from_file(tokenizer_path)
             .map_err(|e| format!("Failed to load tokenizer: {e}"))?;
 
+        // Auto-detect number of KV-cache layers from model outputs
+        let num_kv_layers = executor.graph_output_names()
+            .iter()
+            .filter(|n| n.starts_with("present.") && n.ends_with(".key"))
+            .count();
+
+        log::info!("Detected {num_kv_layers} KV-cache layers");
+
         Ok(Self {
             executor,
             tokenizer,
             device,
+            num_kv_layers,
         })
     }
 
@@ -44,7 +55,6 @@ impl TextGenerator {
         max_tokens: usize,
         temperature: f32,
     ) -> Result<String, String> {
-        // Encode prompt
         let encoding = self.tokenizer.encode(prompt, false)
             .map_err(|e| format!("Tokenization failed: {e}"))?;
         let mut token_ids: Vec<u32> = encoding.get_ids().to_vec();
@@ -52,26 +62,47 @@ impl TextGenerator {
         log::info!("Prompt tokens: {:?}", token_ids);
 
         let mut generated_text = String::new();
+        let mut kv_cache: HashMap<String, Value> = HashMap::new();
+        let use_kv_cache = self.num_kv_layers > 0;
 
         for step in 0..max_tokens {
-            // Clear intermediates from previous step (keep weights + dequant cache)
             self.executor.clear_intermediates();
 
-            // Prepare inputs
-            let seq_len = token_ids.len();
-            let input_floats: Vec<f32> = token_ids.iter().map(|&id| id as f32).collect();
+            // On step 0 (prefill): send all tokens
+            // On step 1+: send only the last token (KV-cache has the rest)
+            let input_tokens = if step == 0 || !use_kv_cache {
+                &token_ids[..]
+            } else {
+                &token_ids[token_ids.len() - 1..]
+            };
+
+            let seq_len = input_tokens.len();
+            let total_seq = token_ids.len(); // includes past tokens
+            let input_floats: Vec<f32> = input_tokens.iter().map(|&id| id as f32).collect();
 
             let input_data = burn::tensor::TensorData::new(input_floats, vec![1, seq_len]);
-            let mask_data = burn::tensor::TensorData::new(vec![1.0f32; seq_len], vec![1, seq_len]);
+            // Attention mask covers total sequence (past + current)
+            let mask_data = burn::tensor::TensorData::new(vec![1.0f32; total_seq], vec![1, total_seq]);
 
             let mut inputs = HashMap::new();
-            inputs.insert(
-                "input_ids".to_string(),
-                Value::Float2(Tensor::from_data(input_data, &self.device)),
-            );
-            inputs.insert(
-                "attention_mask".to_string(),
-                Value::Float2(Tensor::from_data(mask_data, &self.device)),
+            inputs.insert("input_ids".to_string(),
+                Value::Float2(Tensor::from_data(input_data, &self.device)));
+            inputs.insert("attention_mask".to_string(),
+                Value::Float2(Tensor::from_data(mask_data, &self.device)));
+
+            // Feed KV-cache from previous step
+            if use_kv_cache && step > 0 {
+                for (name, val) in &kv_cache {
+                    inputs.insert(name.clone(), val.clone());
+                }
+            }
+
+            // Provide seqlens_k and total_sequence_length for GQA
+            // total_sequence_length input (input 6 of GQA — provided as model input)
+            // This varies by model, so we set it as a value
+            let total_seq_tensor = Tensor::<Backend, 1>::from_data(
+                burn::tensor::TensorData::new(vec![total_seq as f32], vec![1]),
+                &self.device,
             );
 
             // Forward pass
@@ -81,35 +112,43 @@ impl TextGenerator {
             let logits = outputs.get("logits")
                 .ok_or("No logits in output")?;
 
-            // Extract last token logits
             let last_logits = match logits {
                 Value::Float3(t) => {
-                    let [_batch, seq, vocab] = t.dims();
-                    // Get logits for last position
-                    let last = t.clone().narrow(1, seq - 1, 1);
-                    last.reshape([vocab])
+                    let [_batch, s, vocab] = t.dims();
+                    t.clone().narrow(1, s - 1, 1).reshape([vocab])
                 }
                 _ => return Err(format!("Unexpected logits shape: {:?}", logits.shape())),
             };
 
-            // Sample next token
             let next_token = sampler::sample_top_p(&last_logits, temperature, 0.9);
 
-            // Check for EOS (common EOS token IDs)
-            let eos_tokens = [
-                50256,   // GPT-2
-                128001,  // Llama 3
-                128009,  // Llama 3 end of turn
-                2,       // Llama 2
-                1,       // some models
-            ];
+            // Check for EOS
+            let eos_tokens = [50256, 128001, 128009, 2, 1];
             if eos_tokens.contains(&(next_token as u32)) {
                 break;
             }
 
             token_ids.push(next_token as u32);
 
-            // Decode the new token
+            // Save KV-cache: present.N.key → past_key_values.N.key
+            if use_kv_cache {
+                kv_cache.clear();
+                for i in 0..self.num_kv_layers {
+                    let present_key = format!("present.{i}.key");
+                    let present_val = format!("present.{i}.value");
+                    let past_key = format!("past_key_values.{i}.key");
+                    let past_val = format!("past_key_values.{i}.value");
+
+                    if let Some(k) = outputs.get(&present_key) {
+                        kv_cache.insert(past_key, k.clone());
+                    }
+                    if let Some(v) = outputs.get(&present_val) {
+                        kv_cache.insert(past_val, v.clone());
+                    }
+                }
+                log::debug!("KV-cache: {} entries, step {step}", kv_cache.len());
+            }
+
             let decoded = self.tokenizer.decode(&[next_token as u32], false)
                 .map_err(|e| format!("Decode failed: {e}"))?;
 

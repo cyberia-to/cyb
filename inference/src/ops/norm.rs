@@ -107,7 +107,7 @@ pub fn simplified_layer_norm_proto(
     }
 }
 
-/// GroupQueryAttention — fused multi-head attention with KV groups + RoPE (Llama)
+/// GroupQueryAttention — fused multi-head attention with KV groups + RoPE + KV-cache (Llama)
 pub fn group_query_attention_proto(
     node: &NodeProto,
     values: &mut HashMap<String, Value>,
@@ -120,82 +120,101 @@ pub fn group_query_attention_proto(
     let num_heads = node.attribute.iter().find(|a| a.name == "num_heads").map(|a| a.i as usize).unwrap_or(32);
     let kv_num_heads = node.attribute.iter().find(|a| a.name == "kv_num_heads").map(|a| a.i as usize).unwrap_or(8);
     let do_rotary = node.attribute.iter().find(|a| a.name == "do_rotary").map(|a| a.i != 0).unwrap_or(false);
-    let scale = node.attribute.iter().find(|a| a.name == "scale").map(|a| a.f).unwrap_or(0.0);
+    let scale_attr = node.attribute.iter().find(|a| a.name == "scale").map(|a| a.f).unwrap_or(0.0);
+
+    // past_key, past_value — inputs 3, 4 (from KV-cache)
+    let past_key = if node.input.len() > 3 && !node.input[3].is_empty() {
+        values.get(&node.input[3]).cloned()
+    } else { None };
+    let past_value = if node.input.len() > 4 && !node.input[4].is_empty() {
+        values.get(&node.input[4]).cloned()
+    } else { None };
 
     // cos_cache, sin_cache — inputs 7, 8
     let cos_cache = if node.input.len() > 7 && !node.input[7].is_empty() { values.get(&node.input[7]).cloned() } else { None };
     let sin_cache = if node.input.len() > 8 && !node.input[8].is_empty() { values.get(&node.input[8]).cloned() } else { None };
 
-    // seqlens_k (input 5) — for total sequence length
-    let total_seq_len = if node.input.len() > 6 && !node.input[6].is_empty() {
-        if let Some(v) = values.get(&node.input[6]) {
-            match v {
-                Value::Float1(t) => t.to_data().as_slice::<f32>().ok().map(|s| s[0] as usize),
-                _ => None,
-            }
-        } else { None }
-    } else { None };
-
     match (query, key, value) {
         (Value::Float3(q), Value::Float3(k), Value::Float3(v)) => {
             let [batch, seq_len, q_hidden] = q.dims();
             let head_dim = q_hidden / num_heads;
-            let attn_scale = if scale > 0.0 { scale } else { 1.0 / (head_dim as f32).sqrt() };
+            let attn_scale = if scale_attr > 0.0 { scale_attr } else { 1.0 / (head_dim as f32).sqrt() };
 
-            // Reshape to [batch, seq, heads, dim] → [batch, heads, seq, dim]
+            // Determine past sequence length for RoPE position offset
+            let past_seq_len = match &past_key {
+                Some(Value::Float4(pk)) => pk.dims()[2],
+                _ => 0,
+            };
+
+            // Reshape: [batch, seq, heads, dim] → [batch, heads, seq, dim]
             let mut q = q.reshape([batch, seq_len, num_heads, head_dim]).swap_dims(1, 2);
-            let mut k = k.reshape([batch, seq_len, kv_num_heads, head_dim]).swap_dims(1, 2);
-            let v = v.reshape([batch, seq_len, kv_num_heads, head_dim]).swap_dims(1, 2);
+            let mut k_new = k.reshape([batch, seq_len, kv_num_heads, head_dim]).swap_dims(1, 2);
+            let v_new = v.reshape([batch, seq_len, kv_num_heads, head_dim]).swap_dims(1, 2);
 
-            // Apply Rotary Position Embeddings
+            // Apply RoPE with position offset (past_seq_len)
             if do_rotary {
                 if let (Some(Value::Float2(cos_c)), Some(Value::Float2(sin_c))) = (&cos_cache, &sin_cache) {
-                    // cos_cache, sin_cache: [max_seq, head_dim/2]
-                    // We need positions 0..seq_len
                     let half_dim = head_dim / 2;
-                    let cos_slice = cos_c.clone().narrow(0, 0, seq_len); // [seq, half_dim]
-                    let sin_slice = sin_c.clone().narrow(0, 0, seq_len);
-
-                    // Reshape for broadcasting: [1, 1, seq, half_dim]
+                    // Positions: past_seq_len .. past_seq_len + seq_len
+                    let cos_slice = cos_c.clone().narrow(0, past_seq_len, seq_len);
+                    let sin_slice = sin_c.clone().narrow(0, past_seq_len, seq_len);
                     let cos_4d: Tensor<Backend, 4> = cos_slice.reshape([1, 1, seq_len, half_dim]);
                     let sin_4d: Tensor<Backend, 4> = sin_slice.reshape([1, 1, seq_len, half_dim]);
 
-                    // Apply to Q
                     q = apply_rope(q, &cos_4d, &sin_4d, head_dim);
-                    // Apply to K (same for all kv_heads)
-                    k = apply_rope(k, &cos_4d, &sin_4d, head_dim);
+                    k_new = apply_rope(k_new, &cos_4d, &sin_4d, head_dim);
                 }
             }
 
+            // Concatenate with past KV cache
+            let k_full = if let Some(Value::Float4(past_k)) = &past_key {
+                if past_k.dims()[2] > 0 {
+                    Tensor::cat(vec![past_k.clone(), k_new], 2) // concat on seq dim
+                } else { k_new }
+            } else { k_new };
+
+            let v_full = if let Some(Value::Float4(past_v)) = &past_value {
+                if past_v.dims()[2] > 0 {
+                    Tensor::cat(vec![past_v.clone(), v_new], 2)
+                } else { v_new }
+            } else { v_new };
+
+            let total_seq = k_full.dims()[2]; // past_seq + new_seq
+
             // Repeat KV heads to match Q heads
             let repeats = num_heads / kv_num_heads;
-            let k = if repeats > 1 {
+            let k_expanded = if repeats > 1 {
                 let mut e = Vec::new();
-                for h in 0..kv_num_heads { let hd = k.clone().narrow(1, h, 1); for _ in 0..repeats { e.push(hd.clone()); } }
+                for h in 0..kv_num_heads { let hd = k_full.clone().narrow(1, h, 1); for _ in 0..repeats { e.push(hd.clone()); } }
                 Tensor::cat(e, 1)
-            } else { k };
-            let v = if repeats > 1 {
+            } else { k_full.clone() };
+            let v_expanded = if repeats > 1 {
                 let mut e = Vec::new();
-                for h in 0..kv_num_heads { let hd = v.clone().narrow(1, h, 1); for _ in 0..repeats { e.push(hd.clone()); } }
+                for h in 0..kv_num_heads { let hd = v_full.clone().narrow(1, h, 1); for _ in 0..repeats { e.push(hd.clone()); } }
                 Tensor::cat(e, 1)
-            } else { v };
+            } else { v_full.clone() };
 
-            // Attention: Q × K^T × scale
-            let scores = q.matmul(k.clone().swap_dims(2, 3)) * attn_scale;
+            // Attention: Q[batch, heads, new_seq, dim] × K^T[batch, heads, dim, total_seq]
+            let scores = q.matmul(k_expanded.swap_dims(2, 3)) * attn_scale;
 
-            // Causal mask — mask future positions
-            let scores = if seq_len > 1 {
-                apply_causal_mask(scores, seq_len)
+            // Causal mask: [new_seq, total_seq] — each new position can attend to past + itself
+            let scores = if seq_len > 1 || total_seq > 1 {
+                apply_causal_mask_kv(scores, seq_len, total_seq)
             } else {
                 scores
             };
 
             let attn = burn::tensor::activation::softmax(scores, 3);
-            let output = attn.matmul(v.clone()).swap_dims(1, 2).reshape([batch, seq_len, q_hidden]);
+            let output = attn.matmul(v_expanded).swap_dims(1, 2).reshape([batch, seq_len, q_hidden]);
 
             values.insert(node.output[0].clone(), Value::Float3(output));
-            if node.output.len() > 1 && !node.output[1].is_empty() { values.insert(node.output[1].clone(), Value::Float4(k)); }
-            if node.output.len() > 2 && !node.output[2].is_empty() { values.insert(node.output[2].clone(), Value::Float4(v)); }
+            // present_key, present_value = full KV (for next step's past_kv)
+            if node.output.len() > 1 && !node.output[1].is_empty() {
+                values.insert(node.output[1].clone(), Value::Float4(k_full));
+            }
+            if node.output.len() > 2 && !node.output[2].is_empty() {
+                values.insert(node.output[2].clone(), Value::Float4(v_full));
+            }
             Ok(())
         }
         _ => Err("gqa: unsupported input dimensions".into()),
@@ -224,26 +243,27 @@ fn apply_rope(
     Tensor::cat(vec![out1, out2], 3)
 }
 
-/// Apply causal (triangular) mask to attention scores
-fn apply_causal_mask(
+/// Apply causal mask for KV-cache: [new_seq, total_seq]
+/// Each new position i can attend to positions 0..past_seq+i+1
+fn apply_causal_mask_kv(
     scores: Tensor<Backend, 4>,
-    seq_len: usize,
+    new_seq: usize,
+    total_seq: usize,
 ) -> Tensor<Backend, 4> {
-    let [batch, heads, _, _] = scores.dims();
-
-    // Create lower triangular mask
-    let mut mask_data = vec![0.0f32; seq_len * seq_len];
-    for i in 0..seq_len {
-        for j in (i + 1)..seq_len {
-            mask_data[i * seq_len + j] = f32::NEG_INFINITY;
+    let past_seq = total_seq - new_seq;
+    let mut mask_data = vec![0.0f32; new_seq * total_seq];
+    for i in 0..new_seq {
+        // Position i in new sequence = past_seq + i in total
+        // Can attend to 0..past_seq+i+1, mask past_seq+i+1..total_seq
+        for j in (past_seq + i + 1)..total_seq {
+            mask_data[i * total_seq + j] = f32::NEG_INFINITY;
         }
     }
     let device = scores.device();
     let mask: Tensor<Backend, 4> = Tensor::from_data(
-        burn::tensor::TensorData::new(mask_data, vec![1, 1, seq_len, seq_len]),
+        burn::tensor::TensorData::new(mask_data, vec![1, 1, new_seq, total_seq]),
         &device,
     );
-
     scores + mask
 }
 
