@@ -648,12 +648,46 @@ impl NativeModel {
         let final_norm_name = format!("model.layers.{num_layers}.final_norm_layernorm.weight");
         let final_norm_weight = load_f32_weight(&final_norm_name)?;
 
-        // LM head — Qwen3 ties embed_tokens weight (transposed) as lm_head
-        // We reuse embed_table transposed for lm_head
-        // Since it's f32 [vocab, hidden], we need to do regular matmul, not Q4
-        // Store a flag that lm_head is tied
-        let lm_head_packed = pipelines.upload_u32(&[0]); // dummy — tied weights use embed_table
-        let lm_head_scales = pipelines.upload_f32(&[0.0]); // dummy
+        // LM head — quantize tied embed_table to Q4 for 4x less memory bandwidth
+        // embed_f32: [vocab, hidden] → Q4 packed + scales
+        let lm_block_size = 32usize;
+        let lm_num_blocks = hidden_size / lm_block_size;
+        let lm_half_bs = lm_block_size / 2;
+        let mut lm_packed_bytes: Vec<u8> = Vec::with_capacity(vocab_size * lm_num_blocks * lm_half_bs);
+        let mut lm_scales_f32: Vec<f32> = Vec::with_capacity(vocab_size * lm_num_blocks);
+
+        for row in 0..vocab_size {
+            for block in 0..lm_num_blocks {
+                let start = row * hidden_size + block * lm_block_size;
+                // Find max abs for scale
+                let mut max_abs: f32 = 0.0;
+                for j in 0..lm_block_size {
+                    let v = embed_f32[start + j].abs();
+                    if v > max_abs { max_abs = v; }
+                }
+                let scale = if max_abs > 0.0 { max_abs / 7.0 } else { 1.0 }; // symmetric Q4: range [-8,7] → [-7*s, 7*s]
+                lm_scales_f32.push(scale);
+
+                // Quantize to 4-bit: value → round((value / scale) + 8) → clamp to [0, 15]
+                for j in (0..lm_block_size).step_by(2) {
+                    let v0 = embed_f32[start + j];
+                    let v1 = embed_f32[start + j + 1];
+                    let q0 = ((v0 / scale + 8.0).round() as i32).clamp(0, 15) as u8;
+                    let q1 = ((v1 / scale + 8.0).round() as i32).clamp(0, 15) as u8;
+                    lm_packed_bytes.push(q0 | (q1 << 4));
+                }
+            }
+        }
+
+        // Pack bytes to u32 and upload
+        let lm_packed_u32: Vec<u32> = lm_packed_bytes.chunks(4).map(|c| {
+            let mut v = 0u32;
+            for (i, &b) in c.iter().enumerate() { v |= (b as u32) << (i * 8); }
+            v
+        }).collect();
+        let lm_head_packed = pipelines.upload_u32(&lm_packed_u32);
+        let lm_head_scales = pipelines.upload_f32(&lm_scales_f32);
+        log::info!("LM head quantized to Q4: {}MB → {}MB", embed_f32.len() * 4 / 1024 / 1024, lm_packed_bytes.len() / 1024 / 1024);
 
         // RoPE caches
         let cos_tp = tensors.get("cos_cache").ok_or("Missing cos_cache")?;
@@ -674,7 +708,21 @@ impl NativeModel {
 
         // Pre-compute model-level param buffers (final norm, f32 matmul, argmax)
         let (final_norm_params, final_norm_wg) = precompute_rms_norm(&pipelines, 1, hidden_size as u32, 1e-6);
-        let (f32_matmul_params, f32_matmul_wg) = precompute_f32_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
+        // Pre-compute Q4 matmul params for lm_head (quantized embedding)
+        let (f32_matmul_params, f32_matmul_wg) = {
+            let n = vocab_size as u32;
+            let k = hidden_size as u32;
+            let num_blocks = k / lm_block_size as u32;
+            #[repr(C)]
+            #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+            struct Q4Params { n: u32, k: u32, num_blocks: u32, u32s_per_row: u32 }
+            let params = Q4Params { n, k, num_blocks, u32s_per_row: num_blocks * (lm_block_size as u32 / 2) / 4 };
+            let buf = pipelines.upload_uniform_permanent(bytemuck::bytes_of(&params));
+            let num_wg = (n + 3) / 4;
+            let x = num_wg.min(65535);
+            let y = (num_wg + x - 1) / x;
+            (buf, (x, y, 1))
+        };
         let (argmax_params, argmax_wg) = precompute_argmax(&pipelines, vocab_size as u32);
 
         log::info!("Model loaded successfully (with pre-computed param buffers)");
@@ -1006,11 +1054,13 @@ impl NativeModel {
             );
             all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: fn_bg, wg: fn_wg });
 
-            let (logits_buf, lm_bg, lm_wg) = ops::f32_matmul_prepare_precomputed(
-                &p, &final_normed, &self.embed_table,
-                &mp.f32_matmul_params, vocab, mp.f32_matmul_wg,
+            // LM head: Q4 matmul with quantized embedding table (4x less bandwidth!)
+            let (logits_buf, lm_bg, lm_wg) = ops::q4_matmul_prepare_precomputed(
+                &p, &final_normed, &self.lm_head_packed, &self.lm_head_scales,
+                &mp.f32_matmul_params, // reuse params slot for lm_head Q4 params
+                vocab, mp.f32_matmul_wg,
             );
-            all_dispatches.push(DispatchCmd { shader: &p.f32_matmul, bg: lm_bg, wg: lm_wg });
+            all_dispatches.push(DispatchCmd { shader: &p.q4_matmul, bg: lm_bg, wg: lm_wg });
 
             if self.greedy_mode {
                 let (argmax_buf, argmax_bg, argmax_wg) = ops::argmax_gpu_prepare_precomputed(
