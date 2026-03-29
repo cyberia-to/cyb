@@ -61,7 +61,8 @@ fn main() {
             let model_path_buf = std::path::PathBuf::from(&model);
             let is_local = model_path_buf.exists()
                 || model.ends_with(".safetensors")
-                || model.ends_with(".onnx");
+                || model.ends_with(".onnx")
+                || model.ends_with(".gguf");
 
             if is_local {
                 // Local file path — detect format
@@ -71,6 +72,10 @@ fn main() {
                 let is_safetensors = model_path
                     .extension()
                     .map(|e| e == "safetensors")
+                    .unwrap_or(false);
+                let is_gguf = model_path
+                    .extension()
+                    .map(|e| e == "gguf")
                     .unwrap_or(false);
 
                 println!("Loading local model: {}", model_path.display());
@@ -91,7 +96,19 @@ fn main() {
                 let pipelines = backend.pipelines;
 
                 let load_start = std::time::Instant::now();
-                let mut generator = if is_safetensors {
+                let mut generator = if is_gguf {
+                    match cyb_llm::generate::TextGenerator::new_gguf(
+                        &model_path,
+                        &tokenizer_path,
+                        pipelines,
+                    ) {
+                        Ok(g) => g,
+                        Err(e) => {
+                            eprintln!("Model load failed: {e}");
+                            return;
+                        }
+                    }
+                } else if is_safetensors {
                     match cyb_llm::generate::TextGenerator::new_safetensors(
                         &model_path,
                         &tokenizer_path,

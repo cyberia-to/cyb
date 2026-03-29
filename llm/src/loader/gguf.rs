@@ -19,7 +19,7 @@ use crate::ir::{DType, Graph, TensorMeta, WeightData};
 /// GGUF metadata value types
 #[derive(Debug)]
 #[allow(dead_code)]
-enum GgufValue {
+pub enum GgufValue {
     U8(u8),
     I8(i8),
     U16(u16),
@@ -33,6 +33,57 @@ enum GgufValue {
     Bool(bool),
     Str(String),
     Array(Vec<GgufValue>),
+}
+
+impl GgufValue {
+    /// Extract as u32 (from any integer type)
+    pub fn as_u32(&self) -> Option<u32> {
+        match self {
+            GgufValue::U8(v) => Some(*v as u32),
+            GgufValue::I8(v) => Some(*v as u32),
+            GgufValue::U16(v) => Some(*v as u32),
+            GgufValue::I16(v) => Some(*v as u32),
+            GgufValue::U32(v) => Some(*v),
+            GgufValue::I32(v) => Some(*v as u32),
+            GgufValue::U64(v) => Some(*v as u32),
+            GgufValue::I64(v) => Some(*v as u32),
+            _ => None,
+        }
+    }
+
+    /// Extract as u64 (from any integer type)
+    pub fn as_u64(&self) -> Option<u64> {
+        match self {
+            GgufValue::U8(v) => Some(*v as u64),
+            GgufValue::I8(v) => Some(*v as u64),
+            GgufValue::U16(v) => Some(*v as u64),
+            GgufValue::I16(v) => Some(*v as u64),
+            GgufValue::U32(v) => Some(*v as u64),
+            GgufValue::I32(v) => Some(*v as u64),
+            GgufValue::U64(v) => Some(*v),
+            GgufValue::I64(v) => Some(*v as u64),
+            _ => None,
+        }
+    }
+
+    /// Extract as f32 (from any float type)
+    pub fn as_f32(&self) -> Option<f32> {
+        match self {
+            GgufValue::F32(v) => Some(*v),
+            GgufValue::F64(v) => Some(*v as f32),
+            GgufValue::U32(v) => Some(*v as f32),
+            GgufValue::I32(v) => Some(*v as f32),
+            _ => None,
+        }
+    }
+
+    /// Extract as string
+    pub fn as_str(&self) -> Option<&str> {
+        match self {
+            GgufValue::Str(s) => Some(s.as_str()),
+            _ => None,
+        }
+    }
 }
 
 /// GGUF tensor type IDs
@@ -218,6 +269,145 @@ pub fn load_gguf(path: &Path) -> Result<Graph, String> {
     );
 
     Ok(graph)
+}
+
+/// Load GGUF file and return (Graph, metadata HashMap)
+/// Used by the native model loader to extract config from metadata
+pub fn load_gguf_with_metadata(path: &Path) -> Result<(Graph, HashMap<String, GgufValue>), String> {
+    let file = std::fs::File::open(path)
+        .map_err(|e| format!("Cannot open {}: {e}", path.display()))?;
+    let mmap = unsafe {
+        memmap2::Mmap::map(&file)
+            .map_err(|e| format!("Cannot mmap {}: {e}", path.display()))?
+    };
+
+    if mmap.len() < 24 {
+        return Err("File too small for GGUF".to_string());
+    }
+
+    let mut cursor = Cursor::new(&mmap[..]);
+
+    // Magic
+    let mut magic = [0u8; 4];
+    cursor.read_exact(&mut magic).map_err(|e| e.to_string())?;
+    if &magic != b"GGUF" {
+        return Err(format!("Invalid GGUF magic: {:?}", magic));
+    }
+
+    let version = read_u32(&mut cursor)?;
+    log::info!("GGUF version: {version}");
+
+    let tensor_count = if version >= 3 {
+        read_u64(&mut cursor)?
+    } else {
+        read_u32(&mut cursor)? as u64
+    };
+
+    let metadata_kv_count = if version >= 3 {
+        read_u64(&mut cursor)?
+    } else {
+        read_u32(&mut cursor)? as u64
+    };
+
+    log::info!(
+        "GGUF: {tensor_count} tensors, {metadata_kv_count} metadata entries"
+    );
+
+    let mut metadata: HashMap<String, GgufValue> = HashMap::new();
+    for _ in 0..metadata_kv_count {
+        let key = read_gguf_string(&mut cursor)?;
+        let value = read_gguf_value(&mut cursor)?;
+        log::debug!("GGUF metadata: {key}");
+        metadata.insert(key, value);
+    }
+
+    if let Some(GgufValue::Str(arch)) = metadata.get("general.architecture") {
+        log::info!("Architecture: {arch}");
+    }
+    if let Some(GgufValue::Str(name)) = metadata.get("general.name") {
+        log::info!("Model name: {name}");
+    }
+
+    struct TensorInfo {
+        name: String,
+        dims: Vec<u64>,
+        type_id: u32,
+        offset: u64,
+    }
+
+    let mut tensor_infos = Vec::with_capacity(tensor_count as usize);
+    for _ in 0..tensor_count {
+        let name = read_gguf_string(&mut cursor)?;
+        let n_dims = read_u32(&mut cursor)?;
+        let mut dims = Vec::with_capacity(n_dims as usize);
+        for _ in 0..n_dims {
+            dims.push(read_u64(&mut cursor)?);
+        }
+        let type_id = read_u32(&mut cursor)?;
+        let offset = read_u64(&mut cursor)?;
+        tensor_infos.push(TensorInfo {
+            name,
+            dims,
+            type_id,
+            offset,
+        });
+    }
+
+    let header_end = cursor.position() as usize;
+    let alignment = 32;
+    let data_start = (header_end + alignment - 1) & !(alignment - 1);
+
+    let mut graph = Graph::new();
+
+    for info in &tensor_infos {
+        let shape: Vec<usize> = info.dims.iter().map(|&d| d as usize).collect();
+        let dtype = gguf_type_to_dtype(info.type_id);
+
+        let num_elements: usize = shape.iter().product();
+        let block_size = gguf_type_block_size(info.type_id);
+        let bytes_per_block = gguf_type_bytes_per_block(info.type_id);
+        let num_blocks = (num_elements + block_size - 1) / block_size;
+        let byte_size = num_blocks * bytes_per_block;
+
+        let abs_offset = data_start + info.offset as usize;
+        let abs_end = abs_offset + byte_size;
+
+        if abs_end > mmap.len() {
+            log::warn!(
+                "Tensor {} data out of bounds: {abs_end} > {}",
+                info.name,
+                mmap.len()
+            );
+            continue;
+        }
+
+        let raw_data = mmap[abs_offset..abs_end].to_vec();
+
+        graph.add_tensor(
+            info.name.clone(),
+            TensorMeta {
+                shape: shape.clone(),
+                dtype,
+            },
+        );
+
+        graph.add_weight(
+            info.name.clone(),
+            WeightData {
+                data: raw_data,
+                shape,
+                dtype,
+            },
+        );
+    }
+
+    log::info!(
+        "GGUF loaded: {} tensors from {}",
+        graph.weights.len(),
+        path.display()
+    );
+
+    Ok((graph, metadata))
 }
 
 // ---- Binary reading helpers ----

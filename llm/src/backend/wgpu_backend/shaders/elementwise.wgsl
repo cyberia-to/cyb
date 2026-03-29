@@ -36,6 +36,20 @@ fn silu_mul_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
     swiglu_out[idx] = g * sig * up[idx];
 }
 
+// === GELU activation (approximate, tanh-based) ===
+// gelu(x) = 0.5 * x * (1 + tanh(sqrt(2/pi) * (x + 0.044715 * x^3)))
+@group(0) @binding(0) var<storage, read> gelu_in: array<f32>;
+@group(0) @binding(1) var<storage, read_write> gelu_out: array<f32>;
+
+@compute @workgroup_size(256)
+fn gelu_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let idx = gid.x;
+    let x = gelu_in[idx];
+    let c = 0.7978845608; // sqrt(2/pi)
+    let inner = c * (x + 0.044715 * x * x * x);
+    gelu_out[idx] = 0.5 * x * (1.0 + tanh(inner));
+}
+
 // === Embedding lookup ===
 struct EmbedParams {
     hidden: u32,

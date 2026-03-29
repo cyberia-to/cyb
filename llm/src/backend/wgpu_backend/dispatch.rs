@@ -57,6 +57,114 @@ pub fn q4_matmul(
     output
 }
 
+/// Q8 matmul: [1, K] x Q8[N, K] -> [1, N]
+pub fn q8_matmul(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    activation: &wgpu::Buffer,
+    packed_weights: &wgpu::Buffer,
+    scales: &wgpu::Buffer,
+    n: u32,
+    k: u32,
+    block_size: u32,
+) -> wgpu::Buffer {
+    let num_blocks = k / block_size;
+    let output = p.alloc((n as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        n: u32,
+        k: u32,
+        num_blocks: u32,
+        u32s_per_row: u32,
+    }
+
+    let params = Params {
+        n,
+        k,
+        num_blocks,
+        u32s_per_row: k / 4, // 4 int8 values per u32
+    };
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&params));
+
+    let num_wg = (n + 3) / 4;
+    let x = num_wg.min(65535);
+    let y = (num_wg + x - 1) / x;
+    p.encode(
+        enc,
+        &p.q8_matmul,
+        &[
+            activation.as_entire_binding(),
+            packed_weights.as_entire_binding(),
+            scales.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        (x, y, 1),
+    );
+
+    output
+}
+
+/// LayerNorm: (input - mean) / sqrt(var + eps) * weight + bias
+pub fn layernorm(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    weight: &wgpu::Buffer,
+    bias: &wgpu::Buffer,
+    positions: u32,
+    hidden: u32,
+    eps: f32,
+) -> wgpu::Buffer {
+    let output = p.alloc((positions as u64) * (hidden as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        hidden: u32,
+        eps: f32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params { hidden, eps }));
+
+    p.encode(
+        enc,
+        &p.layernorm,
+        &[
+            input.as_entire_binding(),
+            weight.as_entire_binding(),
+            bias.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        (positions, 1, 1),
+    );
+
+    output
+}
+
+/// GELU activation
+pub fn gelu(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    n: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+    p.encode(
+        enc,
+        &p.gelu,
+        &[
+            input.as_entire_binding(),
+            output.as_entire_binding(),
+        ],
+        ((n + 255) / 256, 1, 1),
+    );
+    output
+}
+
 /// RMS Normalization
 pub fn rms_norm(
     p: &Pipelines,
@@ -428,6 +536,30 @@ pub fn embed_prepare(
 }
 
 // ---- Pre-computed param variants ----
+
+/// Q8 matmul with pre-computed params buffer
+pub fn q8_matmul_prepare_precomputed(
+    p: &Pipelines,
+    activation: &wgpu::Buffer,
+    packed_weights: &wgpu::Buffer,
+    scales: &wgpu::Buffer,
+    params_buf: &wgpu::Buffer,
+    n: u32,
+    wg: (u32, u32, u32),
+) -> (wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32)) {
+    let output = p.alloc((n as u64) * 4);
+    let bg = p.create_bind_group(
+        &p.q8_matmul,
+        &[
+            activation.as_entire_binding(),
+            packed_weights.as_entire_binding(),
+            scales.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+    );
+    (output, bg, wg)
+}
 
 /// Q4 matmul with pre-computed params buffer
 pub fn q4_matmul_prepare_precomputed(

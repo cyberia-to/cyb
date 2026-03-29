@@ -11,6 +11,14 @@ use prost::Message;
 use super::dispatch;
 use super::pipelines::{ComputeShader, Pipelines};
 
+/// Quantization format for weight projections
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum QuantFormat {
+    F32,
+    Q4,
+    Q8,
+}
+
 /// Transformer model config detected from weight shapes
 struct ModelConfig {
     hidden_size: usize,
@@ -114,8 +122,8 @@ pub struct NativeModel {
     past_seq_len: usize,
     /// When true, argmax is computed on GPU
     pub greedy_mode: bool,
-    /// When true, projections use f32_matmul instead of q4_matmul
-    use_f32_proj: bool,
+    /// Quantization format for projections (Q4, Q8, or F32)
+    quant_format: QuantFormat,
     model_params: ModelParamBuffers,
 }
 
@@ -295,6 +303,35 @@ fn precompute_q4_matmul(
         k,
         num_blocks,
         u32s_per_row: num_blocks * (block_size / 2) / 4,
+    };
+    let buf = p.upload_uniform_permanent(bytemuck::bytes_of(&params));
+    let num_wg = (n + 3) / 4;
+    let x = num_wg.min(65535);
+    let y = (num_wg + x - 1) / x;
+    (buf, (x, y, 1))
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct Q8MatmulParams {
+    n: u32,
+    k: u32,
+    num_blocks: u32,
+    u32s_per_row: u32,
+}
+
+fn precompute_q8_matmul(
+    p: &Pipelines,
+    n: u32,
+    k: u32,
+    block_size: u32,
+) -> (wgpu::Buffer, (u32, u32, u32)) {
+    let num_blocks = k / block_size;
+    let params = Q8MatmulParams {
+        n,
+        k,
+        num_blocks,
+        u32s_per_row: k / 4, // 4 int8 per u32
     };
     let buf = p.upload_uniform_permanent(bytemuck::bytes_of(&params));
     let num_wg = (n + 3) / 4;
@@ -695,7 +732,7 @@ impl NativeModel {
             kv_cache,
             past_seq_len: 0,
             greedy_mode: false,
-            use_f32_proj: false,
+            quant_format: QuantFormat::Q4,
             model_params: ModelParamBuffers {
                 final_norm_params,
                 final_norm_wg,
@@ -959,7 +996,371 @@ impl NativeModel {
             kv_cache,
             past_seq_len: 0,
             greedy_mode: false,
-            use_f32_proj: true,
+            quant_format: QuantFormat::F32,
+            model_params: ModelParamBuffers {
+                final_norm_params,
+                final_norm_wg,
+                f32_matmul_params,
+                f32_matmul_wg,
+                argmax_params,
+                argmax_wg,
+            },
+        })
+    }
+
+    /// Load model from GGUF file (Q4_0, Q8_0, F16, F32 weights)
+    pub fn load_from_gguf(path: &Path, pipelines: Arc<Pipelines>) -> Result<Self, String> {
+        use crate::loader::gguf::load_gguf_with_metadata;
+        use crate::ir::DType;
+
+        let (graph, metadata) = load_gguf_with_metadata(path)?;
+
+        // Detect architecture prefix (usually "llama" but could be others)
+        let arch = metadata
+            .get("general.architecture")
+            .and_then(|v| v.as_str())
+            .unwrap_or("llama");
+
+        // Extract config from metadata
+        let hidden_size = metadata
+            .get(&format!("{arch}.embedding_length"))
+            .and_then(|v| v.as_u32())
+            .ok_or("Missing embedding_length in GGUF metadata")? as usize;
+        let num_heads = metadata
+            .get(&format!("{arch}.attention.head_count"))
+            .and_then(|v| v.as_u32())
+            .ok_or("Missing attention.head_count in GGUF metadata")? as usize;
+        let kv_num_heads = metadata
+            .get(&format!("{arch}.attention.head_count_kv"))
+            .and_then(|v| v.as_u32())
+            .unwrap_or(num_heads as u32) as usize;
+        let num_layers = metadata
+            .get(&format!("{arch}.block_count"))
+            .and_then(|v| v.as_u32())
+            .ok_or("Missing block_count in GGUF metadata")? as usize;
+        let rope_theta = metadata
+            .get(&format!("{arch}.rope.freq_base"))
+            .and_then(|v| v.as_f32())
+            .unwrap_or(10000.0);
+        let rms_norm_eps = metadata
+            .get(&format!("{arch}.attention.layer_norm_rms_epsilon"))
+            .and_then(|v| v.as_f32())
+            .unwrap_or(1e-5);
+
+        let head_dim = hidden_size / num_heads;
+
+        // Detect vocab size from embedding table shape
+        let embed_w = graph
+            .get_weight("token_embd.weight")
+            .ok_or("Missing token_embd.weight")?;
+        let vocab_size = embed_w.shape[0];
+
+        // Detect intermediate size from gate weight shape
+        let intermediate_size = graph
+            .get_weight("blk.0.ffn_gate.weight")
+            .map(|w| w.shape[0])
+            .unwrap_or(hidden_size * 4);
+
+        // Detect quantization format from first weight
+        let first_weight_dtype = graph
+            .get_weight("blk.0.attn_q.weight")
+            .map(|w| w.dtype)
+            .unwrap_or(DType::F32);
+        let quant_format = match first_weight_dtype {
+            DType::Q4 => QuantFormat::Q4,
+            DType::Q8 => QuantFormat::Q8,
+            _ => QuantFormat::F32,
+        };
+
+        let block_size: usize = 32;
+
+        log::info!(
+            "GGUF config: arch={}, hidden={}, heads={}, kv_heads={}, head_dim={}, layers={}, vocab={}, ffn={}, quant={:?}, rope_theta={}, eps={}",
+            arch, hidden_size, num_heads, kv_num_heads, head_dim, num_layers, vocab_size, intermediate_size, quant_format, rope_theta, rms_norm_eps,
+        );
+
+        let config = ModelConfig {
+            hidden_size,
+            num_heads,
+            kv_num_heads,
+            head_dim,
+            num_layers,
+            vocab_size,
+            block_size,
+            has_qk_norm: false,
+        };
+
+        // Convert GGUF Q4_0 block format to our format: packed u32[] + f32 scales[]
+        let convert_gguf_q4_0 = |data: &[u8], shape: &[usize]| -> (Vec<u32>, Vec<f32>) {
+            let block_bytes = 18; // 2 (f16 scale) + 16 (packed nibbles)
+            let num_elements: usize = shape.iter().product();
+            let num_blocks = num_elements / 32;
+
+            let mut packed_u32s = Vec::with_capacity(num_blocks * 4);
+            let mut scales = Vec::with_capacity(num_blocks);
+
+            for b in 0..num_blocks {
+                let offset = b * block_bytes;
+                if offset + block_bytes > data.len() {
+                    break;
+                }
+                let scale_f16 = half::f16::from_le_bytes([data[offset], data[offset + 1]]);
+                scales.push(scale_f16.to_f32());
+
+                for chunk in data[offset + 2..offset + 18].chunks(4) {
+                    let mut val = 0u32;
+                    for (i, &byte) in chunk.iter().enumerate() {
+                        val |= (byte as u32) << (i * 8);
+                    }
+                    packed_u32s.push(val);
+                }
+            }
+
+            (packed_u32s, scales)
+        };
+
+        // Convert GGUF Q8_0 block format to our format: packed u32[] (4 int8 per u32) + f32 scales[]
+        let convert_gguf_q8_0 = |data: &[u8], shape: &[usize]| -> (Vec<u32>, Vec<f32>) {
+            let block_bytes = 34; // 2 (f16 scale) + 32 (int8 values)
+            let num_elements: usize = shape.iter().product();
+            let num_blocks = num_elements / 32;
+
+            let mut packed_u32s = Vec::with_capacity(num_blocks * 8);
+            let mut scales = Vec::with_capacity(num_blocks);
+
+            for b in 0..num_blocks {
+                let offset = b * block_bytes;
+                if offset + block_bytes > data.len() {
+                    break;
+                }
+                let scale_f16 = half::f16::from_le_bytes([data[offset], data[offset + 1]]);
+                scales.push(scale_f16.to_f32());
+
+                // Pack 32 int8 values into 8 u32s
+                for chunk in data[offset + 2..offset + 34].chunks(4) {
+                    let mut val = 0u32;
+                    for (i, &byte) in chunk.iter().enumerate() {
+                        val |= (byte as u32) << (i * 8);
+                    }
+                    packed_u32s.push(val);
+                }
+            }
+
+            (packed_u32s, scales)
+        };
+
+        // Convert weight data to f32 (for F32/F16 weights and norm weights)
+        let gguf_to_f32 = |data: &[u8], dtype: DType| -> Vec<f32> {
+            match dtype {
+                DType::F32 => data
+                    .chunks_exact(4)
+                    .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                    .collect(),
+                DType::F16 => data
+                    .chunks_exact(2)
+                    .map(|c| half::f16::from_le_bytes([c[0], c[1]]).to_f32())
+                    .collect(),
+                _ => {
+                    log::warn!("Unexpected dtype {:?} for f32 conversion", dtype);
+                    data.chunks_exact(4)
+                        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                        .collect()
+                }
+            }
+        };
+
+        // Load a quantized weight: returns (packed_buf, scales_buf)
+        let load_quantized_weight = |name: &str| -> Result<(wgpu::Buffer, wgpu::Buffer), String> {
+            let w = graph.get_weight(name).ok_or_else(|| format!("Missing weight: {name}"))?;
+            match w.dtype {
+                DType::Q4 => {
+                    let (packed, scales) = convert_gguf_q4_0(&w.data, &w.shape);
+                    Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
+                }
+                DType::Q8 => {
+                    let (packed, scales) = convert_gguf_q8_0(&w.data, &w.shape);
+                    Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
+                }
+                DType::F32 | DType::F16 => {
+                    // Convert to f32 and use f32 path
+                    let f32_data = gguf_to_f32(&w.data, w.dtype);
+                    let buf = pipelines.upload_f32(&f32_data);
+                    let dummy_scales = pipelines.upload_f32(&[0.0]);
+                    Ok((buf, dummy_scales))
+                }
+                _ => Err(format!("Unsupported weight dtype {:?} for {}", w.dtype, name)),
+            }
+        };
+
+        // Load an f32 weight (for norm weights which are always f32/f16)
+        let load_f32_weight = |name: &str| -> Result<wgpu::Buffer, String> {
+            let w = graph.get_weight(name).ok_or_else(|| format!("Missing weight: {name}"))?;
+            let f32_data = gguf_to_f32(&w.data, w.dtype);
+            Ok(pipelines.upload_f32(&f32_data))
+        };
+
+        // Load embedding table (always f32)
+        let embed_f32 = gguf_to_f32(&embed_w.data, embed_w.dtype);
+        let embed_table = pipelines.upload_f32(&embed_f32);
+        log::info!("Loaded embedding table: [{vocab_size}, {hidden_size}]");
+
+        // LM head — may be tied to embed or separate
+        let lm_head = if let Some(output_w) = graph.get_weight("output.weight") {
+            let out_f32 = gguf_to_f32(&output_w.data, output_w.dtype);
+            Some(pipelines.upload_f32(&out_f32))
+        } else {
+            None // tied to embed_table
+        };
+
+        let q_dim = num_heads * head_dim;
+        let kv_dim = kv_num_heads * head_dim;
+
+        // Precompute function selector based on quant format
+        let precompute_matmul_fn = |n: u32, k: u32| -> (wgpu::Buffer, (u32, u32, u32)) {
+            match quant_format {
+                QuantFormat::Q4 => precompute_q4_matmul(&pipelines, n, k, block_size as u32),
+                QuantFormat::Q8 => precompute_q8_matmul(&pipelines, n, k, block_size as u32),
+                QuantFormat::F32 => precompute_f32_matmul(&pipelines, n, k),
+            }
+        };
+
+        // Load layers
+        let mut layers = Vec::with_capacity(num_layers);
+        for i in 0..num_layers {
+            log::info!("Loading layer {i}/{num_layers}...");
+
+            let input_norm_weight = load_f32_weight(&format!("blk.{i}.attn_norm.weight"))?;
+
+            let (q_proj_packed, q_proj_scales) = load_quantized_weight(&format!("blk.{i}.attn_q.weight"))?;
+            let (k_proj_packed, k_proj_scales) = load_quantized_weight(&format!("blk.{i}.attn_k.weight"))?;
+            let (v_proj_packed, v_proj_scales) = load_quantized_weight(&format!("blk.{i}.attn_v.weight"))?;
+            let (o_proj_packed, o_proj_scales) = load_quantized_weight(&format!("blk.{i}.attn_output.weight"))?;
+
+            let post_norm_weight = load_f32_weight(&format!("blk.{i}.ffn_norm.weight"))?;
+
+            let (gate_proj_packed, gate_proj_scales) = load_quantized_weight(&format!("blk.{i}.ffn_gate.weight"))?;
+            let (up_proj_packed, up_proj_scales) = load_quantized_weight(&format!("blk.{i}.ffn_up.weight"))?;
+            let (down_proj_packed, down_proj_scales) = load_quantized_weight(&format!("blk.{i}.ffn_down.weight"))?;
+
+            // Pre-compute param buffers
+            let hs = hidden_size as u32;
+            let hd = head_dim as u32;
+            let (input_norm_params, input_norm_wg) =
+                precompute_rms_norm(&pipelines, 1, hs, rms_norm_eps);
+            let (q_matmul_params, q_matmul_wg) = precompute_matmul_fn(q_dim as u32, hs);
+            let (k_matmul_params, k_matmul_wg) = precompute_matmul_fn(kv_dim as u32, hs);
+            let (v_matmul_params, v_matmul_wg) = precompute_matmul_fn(kv_dim as u32, hs);
+            let (q_rope_params, q_rope_wg) = precompute_rope(&pipelines, q_dim as u32, hd, 1);
+            let (k_rope_params, k_rope_wg) = precompute_rope(&pipelines, kv_dim as u32, hd, 1);
+            let (o_matmul_params, o_matmul_wg) = precompute_matmul_fn(hs, q_dim as u32);
+            let (post_norm_params, post_norm_wg) =
+                precompute_rms_norm(&pipelines, 1, hs, rms_norm_eps);
+            let (gate_matmul_params, gate_matmul_wg) = precompute_matmul_fn(intermediate_size as u32, hs);
+            let (up_matmul_params, up_matmul_wg) = precompute_matmul_fn(intermediate_size as u32, hs);
+            let (down_matmul_params, down_matmul_wg) = precompute_matmul_fn(hs, intermediate_size as u32);
+
+            layers.push(LayerWeights {
+                input_norm_weight,
+                q_proj_packed,
+                q_proj_scales,
+                q_n: q_dim as u32,
+                k_proj_packed,
+                k_proj_scales,
+                k_n: kv_dim as u32,
+                v_proj_packed,
+                v_proj_scales,
+                v_n: kv_dim as u32,
+                q_norm_weight: None,
+                k_norm_weight: None,
+                o_proj_packed,
+                o_proj_scales,
+                o_n: hidden_size as u32,
+                post_norm_weight,
+                gate_proj_packed,
+                gate_proj_scales,
+                gate_n: intermediate_size as u32,
+                up_proj_packed,
+                up_proj_scales,
+                up_n: intermediate_size as u32,
+                down_proj_packed,
+                down_proj_scales,
+                down_n: hidden_size as u32,
+                params: LayerParamBuffers {
+                    input_norm_params,
+                    input_norm_wg,
+                    q_norm_params: None,
+                    q_norm_wg: (0, 0, 0),
+                    k_norm_params: None,
+                    k_norm_wg: (0, 0, 0),
+                    post_norm_params,
+                    post_norm_wg,
+                    q_matmul_params,
+                    q_matmul_wg,
+                    k_matmul_params,
+                    k_matmul_wg,
+                    v_matmul_params,
+                    v_matmul_wg,
+                    o_matmul_params,
+                    o_matmul_wg,
+                    gate_matmul_params,
+                    gate_matmul_wg,
+                    up_matmul_params,
+                    up_matmul_wg,
+                    down_matmul_params,
+                    down_matmul_wg,
+                    q_rope_params,
+                    q_rope_wg,
+                    k_rope_params,
+                    k_rope_wg,
+                },
+            });
+        }
+
+        // Final norm
+        let final_norm_weight = load_f32_weight("output_norm.weight")?;
+
+        // Compute RoPE cos/sin cache
+        let max_seq_len = 2048;
+        let half_dim = head_dim / 2;
+        let mut cos_cache = vec![0.0f32; max_seq_len * half_dim];
+        let mut sin_cache = vec![0.0f32; max_seq_len * half_dim];
+        for pos in 0..max_seq_len {
+            for d in 0..half_dim {
+                let theta = (pos as f32) / rope_theta.powf(2.0 * d as f32 / head_dim as f32);
+                cos_cache[pos * half_dim + d] = theta.cos();
+                sin_cache[pos * half_dim + d] = theta.sin();
+            }
+        }
+        log::info!("Computed RoPE cache: max_seq={max_seq_len}, half_dim={half_dim}");
+
+        let kv_cache = (0..num_layers)
+            .map(|_| KVCache {
+                key: None,
+                value: None,
+            })
+            .collect();
+
+        let (final_norm_params, final_norm_wg) =
+            precompute_rms_norm(&pipelines, 1, hidden_size as u32, rms_norm_eps);
+        let (f32_matmul_params, f32_matmul_wg) =
+            precompute_f32_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
+        let (argmax_params, argmax_wg) = precompute_argmax(&pipelines, vocab_size as u32);
+
+        log::info!("GGUF model loaded successfully ({:?} projections)", quant_format);
+
+        Ok(Self {
+            config,
+            pipelines,
+            embed_table,
+            lm_head,
+            layers,
+            final_norm_weight,
+            cos_cache,
+            sin_cache,
+            kv_cache,
+            past_seq_len: 0,
+            greedy_mode: false,
+            quant_format,
             model_params: ModelParamBuffers {
                 final_norm_params,
                 final_norm_wg,
@@ -994,7 +1395,7 @@ impl NativeModel {
         let num_heads = self.config.num_heads as u32;
         let kv_num_heads = self.config.kv_num_heads as u32;
         let block_size = self.config.block_size as u32;
-        let use_f32 = self.use_f32_proj;
+        let quant_fmt = self.quant_format;
 
         let mut enc = p.device.create_command_encoder(&Default::default());
 
@@ -1039,51 +1440,84 @@ impl NativeModel {
                 );
                 all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: norm_bg, wg: norm_wg });
 
-                let (q_buf, q_bg, q_wg, q_shader) = if use_f32 {
-                    let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
-                        &p, &normed, &self.layers[i].q_proj_packed,
-                        &lp.q_matmul_params, self.layers[i].q_n, lp.q_matmul_wg,
-                    );
-                    (b, bg, wg, &p.f32_matmul)
-                } else {
-                    let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
-                        &p, &normed, &self.layers[i].q_proj_packed,
-                        &self.layers[i].q_proj_scales,
-                        &lp.q_matmul_params, self.layers[i].q_n, lp.q_matmul_wg,
-                    );
-                    (b, bg, wg, &p.q4_matmul)
+                let (q_buf, q_bg, q_wg, q_shader) = match quant_fmt {
+                    QuantFormat::F32 => {
+                        let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
+                            &p, &normed, &self.layers[i].q_proj_packed,
+                            &lp.q_matmul_params, self.layers[i].q_n, lp.q_matmul_wg,
+                        );
+                        (b, bg, wg, &p.f32_matmul)
+                    }
+                    QuantFormat::Q8 => {
+                        let (b, bg, wg) = dispatch::q8_matmul_prepare_precomputed(
+                            &p, &normed, &self.layers[i].q_proj_packed,
+                            &self.layers[i].q_proj_scales,
+                            &lp.q_matmul_params, self.layers[i].q_n, lp.q_matmul_wg,
+                        );
+                        (b, bg, wg, &p.q8_matmul)
+                    }
+                    QuantFormat::Q4 => {
+                        let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
+                            &p, &normed, &self.layers[i].q_proj_packed,
+                            &self.layers[i].q_proj_scales,
+                            &lp.q_matmul_params, self.layers[i].q_n, lp.q_matmul_wg,
+                        );
+                        (b, bg, wg, &p.q4_matmul)
+                    }
                 };
                 all_dispatches.push(DispatchCmd { shader: q_shader, bg: q_bg, wg: q_wg });
 
-                let (k_buf, k_bg, k_wg, k_shader) = if use_f32 {
-                    let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
-                        &p, &normed, &self.layers[i].k_proj_packed,
-                        &lp.k_matmul_params, self.layers[i].k_n, lp.k_matmul_wg,
-                    );
-                    (b, bg, wg, &p.f32_matmul)
-                } else {
-                    let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
-                        &p, &normed, &self.layers[i].k_proj_packed,
-                        &self.layers[i].k_proj_scales,
-                        &lp.k_matmul_params, self.layers[i].k_n, lp.k_matmul_wg,
-                    );
-                    (b, bg, wg, &p.q4_matmul)
+                let (k_buf, k_bg, k_wg, k_shader) = match quant_fmt {
+                    QuantFormat::F32 => {
+                        let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
+                            &p, &normed, &self.layers[i].k_proj_packed,
+                            &lp.k_matmul_params, self.layers[i].k_n, lp.k_matmul_wg,
+                        );
+                        (b, bg, wg, &p.f32_matmul)
+                    }
+                    QuantFormat::Q8 => {
+                        let (b, bg, wg) = dispatch::q8_matmul_prepare_precomputed(
+                            &p, &normed, &self.layers[i].k_proj_packed,
+                            &self.layers[i].k_proj_scales,
+                            &lp.k_matmul_params, self.layers[i].k_n, lp.k_matmul_wg,
+                        );
+                        (b, bg, wg, &p.q8_matmul)
+                    }
+                    QuantFormat::Q4 => {
+                        let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
+                            &p, &normed, &self.layers[i].k_proj_packed,
+                            &self.layers[i].k_proj_scales,
+                            &lp.k_matmul_params, self.layers[i].k_n, lp.k_matmul_wg,
+                        );
+                        (b, bg, wg, &p.q4_matmul)
+                    }
                 };
                 all_dispatches.push(DispatchCmd { shader: k_shader, bg: k_bg, wg: k_wg });
 
-                let (v_buf, v_bg, v_wg, v_shader) = if use_f32 {
-                    let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
-                        &p, &normed, &self.layers[i].v_proj_packed,
-                        &lp.v_matmul_params, self.layers[i].v_n, lp.v_matmul_wg,
-                    );
-                    (b, bg, wg, &p.f32_matmul)
-                } else {
-                    let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
-                        &p, &normed, &self.layers[i].v_proj_packed,
-                        &self.layers[i].v_proj_scales,
-                        &lp.v_matmul_params, self.layers[i].v_n, lp.v_matmul_wg,
-                    );
-                    (b, bg, wg, &p.q4_matmul)
+                let (v_buf, v_bg, v_wg, v_shader) = match quant_fmt {
+                    QuantFormat::F32 => {
+                        let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
+                            &p, &normed, &self.layers[i].v_proj_packed,
+                            &lp.v_matmul_params, self.layers[i].v_n, lp.v_matmul_wg,
+                        );
+                        (b, bg, wg, &p.f32_matmul)
+                    }
+                    QuantFormat::Q8 => {
+                        let (b, bg, wg) = dispatch::q8_matmul_prepare_precomputed(
+                            &p, &normed, &self.layers[i].v_proj_packed,
+                            &self.layers[i].v_proj_scales,
+                            &lp.v_matmul_params, self.layers[i].v_n, lp.v_matmul_wg,
+                        );
+                        (b, bg, wg, &p.q8_matmul)
+                    }
+                    QuantFormat::Q4 => {
+                        let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
+                            &p, &normed, &self.layers[i].v_proj_packed,
+                            &self.layers[i].v_proj_scales,
+                            &lp.v_matmul_params, self.layers[i].v_n, lp.v_matmul_wg,
+                        );
+                        (b, bg, wg, &p.q4_matmul)
+                    }
                 };
                 all_dispatches.push(DispatchCmd { shader: v_shader, bg: v_bg, wg: v_wg });
 
@@ -1163,19 +1597,30 @@ impl NativeModel {
                 );
                 all_dispatches.push(DispatchCmd { shader: &p.attention, bg: attn_bg, wg: attn_wg });
 
-                let (attn_proj, oproj_bg, oproj_wg, oproj_shader) = if use_f32 {
-                    let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
-                        &p, &attn_out, &self.layers[i].o_proj_packed,
-                        &lp.o_matmul_params, self.layers[i].o_n, lp.o_matmul_wg,
-                    );
-                    (b, bg, wg, &p.f32_matmul)
-                } else {
-                    let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
-                        &p, &attn_out, &self.layers[i].o_proj_packed,
-                        &self.layers[i].o_proj_scales,
-                        &lp.o_matmul_params, self.layers[i].o_n, lp.o_matmul_wg,
-                    );
-                    (b, bg, wg, &p.q4_matmul)
+                let (attn_proj, oproj_bg, oproj_wg, oproj_shader) = match quant_fmt {
+                    QuantFormat::F32 => {
+                        let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
+                            &p, &attn_out, &self.layers[i].o_proj_packed,
+                            &lp.o_matmul_params, self.layers[i].o_n, lp.o_matmul_wg,
+                        );
+                        (b, bg, wg, &p.f32_matmul)
+                    }
+                    QuantFormat::Q8 => {
+                        let (b, bg, wg) = dispatch::q8_matmul_prepare_precomputed(
+                            &p, &attn_out, &self.layers[i].o_proj_packed,
+                            &self.layers[i].o_proj_scales,
+                            &lp.o_matmul_params, self.layers[i].o_n, lp.o_matmul_wg,
+                        );
+                        (b, bg, wg, &p.q8_matmul)
+                    }
+                    QuantFormat::Q4 => {
+                        let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
+                            &p, &attn_out, &self.layers[i].o_proj_packed,
+                            &self.layers[i].o_proj_scales,
+                            &lp.o_matmul_params, self.layers[i].o_n, lp.o_matmul_wg,
+                        );
+                        (b, bg, wg, &p.q4_matmul)
+                    }
                 };
                 all_dispatches.push(DispatchCmd { shader: oproj_shader, bg: oproj_bg, wg: oproj_wg });
 
@@ -1188,54 +1633,87 @@ impl NativeModel {
                 );
                 all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: norm2_bg, wg: norm2_wg });
 
-                let (gate, gate_bg, gate_wg, gate_shader) = if use_f32 {
-                    let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
-                        &p, &normed2, &self.layers[i].gate_proj_packed,
-                        &lp.gate_matmul_params, self.layers[i].gate_n, lp.gate_matmul_wg,
-                    );
-                    (b, bg, wg, &p.f32_matmul)
-                } else {
-                    let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
-                        &p, &normed2, &self.layers[i].gate_proj_packed,
-                        &self.layers[i].gate_proj_scales,
-                        &lp.gate_matmul_params, self.layers[i].gate_n, lp.gate_matmul_wg,
-                    );
-                    (b, bg, wg, &p.q4_matmul)
+                let (gate, gate_bg, gate_wg, gate_shader) = match quant_fmt {
+                    QuantFormat::F32 => {
+                        let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
+                            &p, &normed2, &self.layers[i].gate_proj_packed,
+                            &lp.gate_matmul_params, self.layers[i].gate_n, lp.gate_matmul_wg,
+                        );
+                        (b, bg, wg, &p.f32_matmul)
+                    }
+                    QuantFormat::Q8 => {
+                        let (b, bg, wg) = dispatch::q8_matmul_prepare_precomputed(
+                            &p, &normed2, &self.layers[i].gate_proj_packed,
+                            &self.layers[i].gate_proj_scales,
+                            &lp.gate_matmul_params, self.layers[i].gate_n, lp.gate_matmul_wg,
+                        );
+                        (b, bg, wg, &p.q8_matmul)
+                    }
+                    QuantFormat::Q4 => {
+                        let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
+                            &p, &normed2, &self.layers[i].gate_proj_packed,
+                            &self.layers[i].gate_proj_scales,
+                            &lp.gate_matmul_params, self.layers[i].gate_n, lp.gate_matmul_wg,
+                        );
+                        (b, bg, wg, &p.q4_matmul)
+                    }
                 };
                 all_dispatches.push(DispatchCmd { shader: gate_shader, bg: gate_bg, wg: gate_wg });
 
-                let (up, up_bg, up_wg, up_shader) = if use_f32 {
-                    let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
-                        &p, &normed2, &self.layers[i].up_proj_packed,
-                        &lp.up_matmul_params, self.layers[i].up_n, lp.up_matmul_wg,
-                    );
-                    (b, bg, wg, &p.f32_matmul)
-                } else {
-                    let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
-                        &p, &normed2, &self.layers[i].up_proj_packed,
-                        &self.layers[i].up_proj_scales,
-                        &lp.up_matmul_params, self.layers[i].up_n, lp.up_matmul_wg,
-                    );
-                    (b, bg, wg, &p.q4_matmul)
+                let (up, up_bg, up_wg, up_shader) = match quant_fmt {
+                    QuantFormat::F32 => {
+                        let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
+                            &p, &normed2, &self.layers[i].up_proj_packed,
+                            &lp.up_matmul_params, self.layers[i].up_n, lp.up_matmul_wg,
+                        );
+                        (b, bg, wg, &p.f32_matmul)
+                    }
+                    QuantFormat::Q8 => {
+                        let (b, bg, wg) = dispatch::q8_matmul_prepare_precomputed(
+                            &p, &normed2, &self.layers[i].up_proj_packed,
+                            &self.layers[i].up_proj_scales,
+                            &lp.up_matmul_params, self.layers[i].up_n, lp.up_matmul_wg,
+                        );
+                        (b, bg, wg, &p.q8_matmul)
+                    }
+                    QuantFormat::Q4 => {
+                        let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
+                            &p, &normed2, &self.layers[i].up_proj_packed,
+                            &self.layers[i].up_proj_scales,
+                            &lp.up_matmul_params, self.layers[i].up_n, lp.up_matmul_wg,
+                        );
+                        (b, bg, wg, &p.q4_matmul)
+                    }
                 };
                 all_dispatches.push(DispatchCmd { shader: up_shader, bg: up_bg, wg: up_wg });
 
                 let (ffn, silu_bg, silu_wg) = dispatch::silu_mul_prepare(&p, &gate, &up, self.layers[i].gate_n);
                 all_dispatches.push(DispatchCmd { shader: &p.silu_mul, bg: silu_bg, wg: silu_wg });
 
-                let (ffn_out, down_bg, down_wg, down_shader) = if use_f32 {
-                    let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
-                        &p, &ffn, &self.layers[i].down_proj_packed,
-                        &lp.down_matmul_params, self.layers[i].down_n, lp.down_matmul_wg,
-                    );
-                    (b, bg, wg, &p.f32_matmul)
-                } else {
-                    let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
-                        &p, &ffn, &self.layers[i].down_proj_packed,
-                        &self.layers[i].down_proj_scales,
-                        &lp.down_matmul_params, self.layers[i].down_n, lp.down_matmul_wg,
-                    );
-                    (b, bg, wg, &p.q4_matmul)
+                let (ffn_out, down_bg, down_wg, down_shader) = match quant_fmt {
+                    QuantFormat::F32 => {
+                        let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
+                            &p, &ffn, &self.layers[i].down_proj_packed,
+                            &lp.down_matmul_params, self.layers[i].down_n, lp.down_matmul_wg,
+                        );
+                        (b, bg, wg, &p.f32_matmul)
+                    }
+                    QuantFormat::Q8 => {
+                        let (b, bg, wg) = dispatch::q8_matmul_prepare_precomputed(
+                            &p, &ffn, &self.layers[i].down_proj_packed,
+                            &self.layers[i].down_proj_scales,
+                            &lp.down_matmul_params, self.layers[i].down_n, lp.down_matmul_wg,
+                        );
+                        (b, bg, wg, &p.q8_matmul)
+                    }
+                    QuantFormat::Q4 => {
+                        let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
+                            &p, &ffn, &self.layers[i].down_proj_packed,
+                            &self.layers[i].down_proj_scales,
+                            &lp.down_matmul_params, self.layers[i].down_n, lp.down_matmul_wg,
+                        );
+                        (b, bg, wg, &p.q4_matmul)
+                    }
                 };
                 all_dispatches.push(DispatchCmd { shader: down_shader, bg: down_bg, wg: down_wg });
 
@@ -1320,20 +1798,20 @@ impl NativeModel {
 
             for s in 0..seq_len {
                 let normed_slice = slice_buffer(&p, &mut enc, &normed, s * self.config.hidden_size, self.config.hidden_size);
-                let q_pos = if use_f32 {
-                    dispatch::f32_matmul(&p, &mut enc, &normed_slice, &self.layers[i].q_proj_packed, layer_q_n, hidden_size)
-                } else {
-                    dispatch::q4_matmul(&p, &mut enc, &normed_slice, &self.layers[i].q_proj_packed, &self.layers[i].q_proj_scales, layer_q_n, hidden_size, block_size)
+                let q_pos = match quant_fmt {
+                    QuantFormat::F32 => dispatch::f32_matmul(&p, &mut enc, &normed_slice, &self.layers[i].q_proj_packed, layer_q_n, hidden_size),
+                    QuantFormat::Q8 => dispatch::q8_matmul(&p, &mut enc, &normed_slice, &self.layers[i].q_proj_packed, &self.layers[i].q_proj_scales, layer_q_n, hidden_size, block_size),
+                    QuantFormat::Q4 => dispatch::q4_matmul(&p, &mut enc, &normed_slice, &self.layers[i].q_proj_packed, &self.layers[i].q_proj_scales, layer_q_n, hidden_size, block_size),
                 };
-                let k_pos = if use_f32 {
-                    dispatch::f32_matmul(&p, &mut enc, &normed_slice, &self.layers[i].k_proj_packed, layer_k_n, hidden_size)
-                } else {
-                    dispatch::q4_matmul(&p, &mut enc, &normed_slice, &self.layers[i].k_proj_packed, &self.layers[i].k_proj_scales, layer_k_n, hidden_size, block_size)
+                let k_pos = match quant_fmt {
+                    QuantFormat::F32 => dispatch::f32_matmul(&p, &mut enc, &normed_slice, &self.layers[i].k_proj_packed, layer_k_n, hidden_size),
+                    QuantFormat::Q8 => dispatch::q8_matmul(&p, &mut enc, &normed_slice, &self.layers[i].k_proj_packed, &self.layers[i].k_proj_scales, layer_k_n, hidden_size, block_size),
+                    QuantFormat::Q4 => dispatch::q4_matmul(&p, &mut enc, &normed_slice, &self.layers[i].k_proj_packed, &self.layers[i].k_proj_scales, layer_k_n, hidden_size, block_size),
                 };
-                let v_pos = if use_f32 {
-                    dispatch::f32_matmul(&p, &mut enc, &normed_slice, &self.layers[i].v_proj_packed, layer_v_n, hidden_size)
-                } else {
-                    dispatch::q4_matmul(&p, &mut enc, &normed_slice, &self.layers[i].v_proj_packed, &self.layers[i].v_proj_scales, layer_v_n, hidden_size, block_size)
+                let v_pos = match quant_fmt {
+                    QuantFormat::F32 => dispatch::f32_matmul(&p, &mut enc, &normed_slice, &self.layers[i].v_proj_packed, layer_v_n, hidden_size),
+                    QuantFormat::Q8 => dispatch::q8_matmul(&p, &mut enc, &normed_slice, &self.layers[i].v_proj_packed, &self.layers[i].v_proj_scales, layer_v_n, hidden_size, block_size),
+                    QuantFormat::Q4 => dispatch::q4_matmul(&p, &mut enc, &normed_slice, &self.layers[i].v_proj_packed, &self.layers[i].v_proj_scales, layer_v_n, hidden_size, block_size),
                 };
                 copy_into(&mut enc, &q_pos, &q_combined, s * layer_q_n as usize, layer_q_n as usize);
                 copy_into(&mut enc, &k_pos, &k_combined, s * layer_k_n as usize, layer_k_n as usize);
@@ -1420,10 +1898,10 @@ impl NativeModel {
             let last_q = slice_buffer(&p, &mut enc, &q_roped, last_q_offset, self.layers[i].q_n as usize);
             let attn_out = dispatch::attention_decode(&p, &mut enc, &last_q, &attn_k, &attn_v, num_heads, head_dim, total_seq as u32, scale);
 
-            let attn_proj = if use_f32 {
-                dispatch::f32_matmul(&p, &mut enc, &attn_out, &self.layers[i].o_proj_packed, self.layers[i].o_n, self.layers[i].q_n)
-            } else {
-                dispatch::q4_matmul(&p, &mut enc, &attn_out, &self.layers[i].o_proj_packed, &self.layers[i].o_proj_scales, self.layers[i].o_n, self.layers[i].q_n, block_size)
+            let attn_proj = match quant_fmt {
+                QuantFormat::F32 => dispatch::f32_matmul(&p, &mut enc, &attn_out, &self.layers[i].o_proj_packed, self.layers[i].o_n, self.layers[i].q_n),
+                QuantFormat::Q8 => dispatch::q8_matmul(&p, &mut enc, &attn_out, &self.layers[i].o_proj_packed, &self.layers[i].o_proj_scales, self.layers[i].o_n, self.layers[i].q_n, block_size),
+                QuantFormat::Q4 => dispatch::q4_matmul(&p, &mut enc, &attn_out, &self.layers[i].o_proj_packed, &self.layers[i].o_proj_scales, self.layers[i].o_n, self.layers[i].q_n, block_size),
             };
 
             let residual_hidden = slice_buffer(&p, &mut enc, &hidden, (seq_len - 1) * self.config.hidden_size, self.config.hidden_size);
@@ -1431,21 +1909,21 @@ impl NativeModel {
 
             let normed2 = dispatch::rms_norm(&p, &mut enc, &hidden, &self.layers[i].post_norm_weight, 1, hidden_size, 1e-6);
 
-            let gate = if use_f32 {
-                dispatch::f32_matmul(&p, &mut enc, &normed2, &self.layers[i].gate_proj_packed, self.layers[i].gate_n, hidden_size)
-            } else {
-                dispatch::q4_matmul(&p, &mut enc, &normed2, &self.layers[i].gate_proj_packed, &self.layers[i].gate_proj_scales, self.layers[i].gate_n, hidden_size, block_size)
+            let gate = match quant_fmt {
+                QuantFormat::F32 => dispatch::f32_matmul(&p, &mut enc, &normed2, &self.layers[i].gate_proj_packed, self.layers[i].gate_n, hidden_size),
+                QuantFormat::Q8 => dispatch::q8_matmul(&p, &mut enc, &normed2, &self.layers[i].gate_proj_packed, &self.layers[i].gate_proj_scales, self.layers[i].gate_n, hidden_size, block_size),
+                QuantFormat::Q4 => dispatch::q4_matmul(&p, &mut enc, &normed2, &self.layers[i].gate_proj_packed, &self.layers[i].gate_proj_scales, self.layers[i].gate_n, hidden_size, block_size),
             };
-            let up = if use_f32 {
-                dispatch::f32_matmul(&p, &mut enc, &normed2, &self.layers[i].up_proj_packed, self.layers[i].up_n, hidden_size)
-            } else {
-                dispatch::q4_matmul(&p, &mut enc, &normed2, &self.layers[i].up_proj_packed, &self.layers[i].up_proj_scales, self.layers[i].up_n, hidden_size, block_size)
+            let up = match quant_fmt {
+                QuantFormat::F32 => dispatch::f32_matmul(&p, &mut enc, &normed2, &self.layers[i].up_proj_packed, self.layers[i].up_n, hidden_size),
+                QuantFormat::Q8 => dispatch::q8_matmul(&p, &mut enc, &normed2, &self.layers[i].up_proj_packed, &self.layers[i].up_proj_scales, self.layers[i].up_n, hidden_size, block_size),
+                QuantFormat::Q4 => dispatch::q4_matmul(&p, &mut enc, &normed2, &self.layers[i].up_proj_packed, &self.layers[i].up_proj_scales, self.layers[i].up_n, hidden_size, block_size),
             };
             let ffn = dispatch::silu_mul(&p, &mut enc, &gate, &up, self.layers[i].gate_n);
-            let ffn_out = if use_f32 {
-                dispatch::f32_matmul(&p, &mut enc, &ffn, &self.layers[i].down_proj_packed, self.layers[i].down_n, self.layers[i].gate_n)
-            } else {
-                dispatch::q4_matmul(&p, &mut enc, &ffn, &self.layers[i].down_proj_packed, &self.layers[i].down_proj_scales, self.layers[i].down_n, self.layers[i].gate_n, block_size)
+            let ffn_out = match quant_fmt {
+                QuantFormat::F32 => dispatch::f32_matmul(&p, &mut enc, &ffn, &self.layers[i].down_proj_packed, self.layers[i].down_n, self.layers[i].gate_n),
+                QuantFormat::Q8 => dispatch::q8_matmul(&p, &mut enc, &ffn, &self.layers[i].down_proj_packed, &self.layers[i].down_proj_scales, self.layers[i].down_n, self.layers[i].gate_n, block_size),
+                QuantFormat::Q4 => dispatch::q4_matmul(&p, &mut enc, &ffn, &self.layers[i].down_proj_packed, &self.layers[i].down_proj_scales, self.layers[i].down_n, self.layers[i].gate_n, block_size),
             };
 
             hidden = dispatch::add(&p, &mut enc, &hidden, &ffn_out, hidden_size);

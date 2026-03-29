@@ -15,12 +15,15 @@ pub struct Pipelines {
 
     // Shader pipelines
     pub q4_matmul: ComputeShader,
+    pub q8_matmul: ComputeShader,
     pub rms_norm: ComputeShader,
+    pub layernorm: ComputeShader,
     pub rope: ComputeShader,
     pub attention: ComputeShader,
     pub add: ComputeShader,
     pub mul: ComputeShader,
     pub silu_mul: ComputeShader,
+    pub gelu: ComputeShader,
     pub embed: ComputeShader,
     pub f32_matmul: ComputeShader,
     pub argmax: ComputeShader,
@@ -46,11 +49,23 @@ impl Pipelines {
             "main",
             &[storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform()],
         );
+        let q8_matmul = create_pipeline(
+            &device,
+            include_str!("shaders/q8_matmul.wgsl"),
+            "main",
+            &[storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform()],
+        );
         let rms_norm = create_pipeline(
             &device,
             include_str!("shaders/rms_norm.wgsl"),
             "main",
             &[storage_ro(), storage_ro(), storage_rw(), uniform()],
+        );
+        let layernorm = create_pipeline(
+            &device,
+            include_str!("shaders/layernorm.wgsl"),
+            "main",
+            &[storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform()],
         );
         let rope = create_pipeline(
             &device,
@@ -81,6 +96,12 @@ impl Pipelines {
             include_str!("shaders/elementwise.wgsl"),
             "silu_mul_kernel",
             &[storage_ro(), storage_ro(), storage_rw()],
+        );
+        let gelu = create_pipeline(
+            &device,
+            include_str!("shaders/elementwise.wgsl"),
+            "gelu_kernel",
+            &[storage_ro(), storage_rw()],
         );
         let embed = create_pipeline(
             &device,
@@ -145,12 +166,15 @@ impl Pipelines {
             device,
             queue,
             q4_matmul,
+            q8_matmul,
             rms_norm,
+            layernorm,
             rope,
             attention,
             add,
             mul,
             silu_mul,
+            gelu,
             embed,
             f32_matmul,
             argmax,

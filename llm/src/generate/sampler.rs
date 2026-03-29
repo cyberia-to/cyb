@@ -83,6 +83,72 @@ pub fn sample_top_k(logits: &[f32], temperature: f32, k: usize) -> u32 {
     exp_vals.last().map(|(i, _)| *i as u32).unwrap_or(0)
 }
 
+/// Combined top-k + top-p sampling: first filter to top K, then apply nucleus within that set
+pub fn sample_top_k_top_p(logits: &[f32], temperature: f32, k: usize, top_p: f32) -> u32 {
+    if temperature <= 0.0 || k == 1 {
+        return argmax(logits);
+    }
+
+    let scaled: Vec<f32> = logits.iter().map(|&v| v / temperature).collect();
+
+    // Top-k filter
+    let mut indexed: Vec<(usize, f32)> = scaled.iter().copied().enumerate().collect();
+    indexed.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap());
+    indexed.truncate(k);
+
+    // Softmax over top-k
+    let max_val = indexed.iter().map(|(_, v)| *v).fold(f32::NEG_INFINITY, f32::max);
+    let probs: Vec<(usize, f32)> = indexed
+        .iter()
+        .map(|(i, v)| (*i, (v - max_val).exp()))
+        .collect();
+    let sum: f32 = probs.iter().map(|(_, v)| v).sum();
+    let probs: Vec<(usize, f32)> = probs.iter().map(|(i, v)| (*i, v / sum)).collect();
+
+    // Top-p (nucleus) within top-k
+    let mut cumulative = 0.0;
+    let mut candidates: Vec<(usize, f32)> = Vec::new();
+    for &(idx, prob) in &probs {
+        cumulative += prob;
+        candidates.push((idx, prob));
+        if cumulative >= top_p {
+            break;
+        }
+    }
+
+    // Renormalize and sample
+    let total: f32 = candidates.iter().map(|(_, p)| p).sum();
+    let r = random_f32();
+
+    let mut acc = 0.0;
+    for (idx, prob) in &candidates {
+        acc += prob / total;
+        if acc >= r {
+            return *idx as u32;
+        }
+    }
+
+    candidates.last().map(|(i, _)| *i as u32).unwrap_or(0)
+}
+
+/// Apply repetition penalty to logits for recently generated tokens
+/// penalty > 1.0 reduces probability of recent tokens, < 1.0 increases it
+pub fn apply_repetition_penalty(logits: &mut [f32], recent_tokens: &[u32], penalty: f32) {
+    if penalty == 1.0 {
+        return;
+    }
+    for &token in recent_tokens {
+        let idx = token as usize;
+        if idx < logits.len() {
+            if logits[idx] > 0.0 {
+                logits[idx] /= penalty;
+            } else {
+                logits[idx] *= penalty;
+            }
+        }
+    }
+}
+
 /// Simple RNG using system time (not cryptographic)
 fn random_f32() -> f32 {
     use std::time::SystemTime;
