@@ -787,6 +787,89 @@ when input exceeds model's trained context:
 | tier 2 (reasoning) | 8-32K | full RAG + history + detailed system prompt |
 | tier 3 (oracle API) | 32-200K | maximum context — send everything relevant |
 
+### context API
+
+three access levels: automatic (runtime handles it), programmatic (Rust API), CLI (debug/manual).
+
+library (Rust):
+```rust
+let ctx = model.context();
+
+// inspect
+ctx.tokens()                          // total token count
+ctx.blocks()                          // list blocks with sizes
+ctx.show()                            // render full context as text
+
+// structure
+ctx.set_system("you are a router...") // set/replace system prompt
+ctx.inject_rag(chunks)                // add retrieved context blocks
+ctx.add_message(role, content)        // append to conversation history
+ctx.inject_tool_result(name, result)  // add tool output
+
+// manage
+ctx.compress()                        // summarize old history via tier 1 model
+ctx.trim(max_tokens)                  // drop lowest-priority blocks to fit budget
+ctx.clear_history()                   // keep system prompt, clear conversation
+ctx.reset()                           // clear everything
+
+// budget
+ctx.set_budget(Block::System, 500)    // limit system prompt to 500 tokens
+ctx.set_budget(Block::Rag, 2000)      // limit RAG injection to 2000 tokens
+ctx.set_budget(Block::History, 4000)  // limit conversation history
+
+// persist
+ctx.save("session.json")             // persist conversation state to disk
+ctx.load("session.json")             // restore from disk
+
+// escalation — pass context between tiers
+let tier2_ctx = ctx.escalate(tier2_model) // carry relevant context to higher tier
+                                          // compresses to fit tier 2 budget
+```
+
+CLI:
+```
+soma context show                     # render current context with token counts
+soma context tokens                   # total: 3847 / 32768
+soma context blocks                   # system: 312, rag: 1200, history: 2100, input: 235
+soma context compress                 # trigger compression now
+soma context clear history            # keep system, clear rest
+soma context budget rag 2000          # set RAG budget
+soma context save session.json        # persist
+soma context load session.json        # restore
+```
+
+automatic behaviors (no commands needed):
+- prefix cache: reuse system prompt KV cache between requests — zero config
+- auto-compress: when history exceeds budget, compress oldest messages automatically
+- auto-trim: when total exceeds window, drop lowest-priority blocks before inference
+- escalation context: when routing to higher tier, pack most relevant context into target budget
+
+### context flow in soma main loop
+
+```
+input arrives
+    │
+    ▼
+router context (2K budget):
+    system: "classify intent, output JSON"
+    input: raw message
+    → router decides: tier 2, slot: reasoner
+    │
+    ▼
+reasoner context (32K budget):
+    system: "you are a reasoning agent..."
+    rag: [3 chunks from episodic memory, scored by embedding similarity]
+    history: [last 5 exchanges, compressed]
+    tool_results: [previous look() outputs if any]
+    input: original message + router classification
+    → reasoner generates response, possibly calling tools
+    │
+    ▼
+tool call detected → execute → inject result → continue
+```
+
+each tier gets its own context built from shared state. the runtime manages context per-model, not globally — router sees 2K tokens, reasoner sees 32K, from the same conversation.
+
 ## tool use
 
 soma models call tools — they don't just generate text. the runtime manages the tool call loop:
