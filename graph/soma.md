@@ -213,7 +213,7 @@ qwen3.5-4b replaces 8 old slots: one 4B generalist of 2026 matches qwen2.5-7B qu
 | model | params | RAM (Q4) | tasks |
 |-------|--------|----------|-------|
 | [qwen3.5-9b-abliterated](https://huggingface.co/huihui-ai/Qwen3.5-9B-abliterated) | 9B | ~5.5GB | general reasoning, research, planning, social dynamics, legal, creative, biology, finance. outperforms GPT-OSS-120B on MMLU-Pro (82.5). one generalist replaces 8 fake "specialists" |
-| [qwen2.5-coder-7b](https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct) | 7B | ~4.7GB | code generation, SQL (81.7% Spider), infrastructure ops. 88.4% HumanEval — fine-tuned code specialist |
+| [qwen2.5-coder-14b](https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct) | 14B | ~8.5GB | code generation, SQL, infrastructure ops. fine-tuned code specialist, quality ceiling for local code — no point saving 4GB on the thing that writes your code |
 | [deepseek-r1-0528-qwen3-8b](https://huggingface.co/deepseek-ai/DeepSeek-R1-0528-Qwen3-8B) | 8B | ~5GB | deep reasoning, mathematics, strategic analysis. chain-of-thought, +10% vs qwen3-8b on AIME |
 | [llava-v1.6-mistral-7b](https://huggingface.co/liuhaotian/llava-v1.6-mistral-7b) | 7B | ~4.7GB | vision analysis, image understanding. multimodal — separate architecture required |
 
@@ -233,20 +233,20 @@ requires explicit routing decision with logged justification. <5% of queries.
 RAM budget (M1 Pro 16GB reference):
 ```
 tier 0 (always loaded):  ~1.5GB
-tier 2 model (worst):    ~5.5GB (qwen3.5-9b Q4)
+tier 2 model (worst):    ~8.5GB (qwen2.5-coder-14b Q4)
 KV cache + context:      ~2.5GB
 OS + processes:           ~3.0GB
 ────────────────────────────────
-total peak:              ~12.5GB  ✅ fits M1 Pro 16GB with margin
+total peak:              ~15.5GB  ✅ fits M1 Pro 16GB (tight with coder-14b)
 ```
 
 disk budget:
 ```
 tier 0:   ~2GB
 tier 1:   ~6GB  (3 models)
-tier 2:  ~20GB  (4 models)
+tier 2:  ~24GB  (4 models)
 ─────────────
-total:   ~28GB  (was 124GB — 4.4x reduction)
+total:   ~32GB  (was 124GB — 3.9x reduction)
 ```
 
 scaling:
