@@ -41,9 +41,9 @@ soma needs all of them because [[neuron]] runs on any hardware — phone, laptop
                   │ schedule
                   ▼
 ┌──────────────────────────────────────────┐
-│              op registry (~30 ops)        │
-│  each op: trait with backend impls       │
-│  dispatch: op × dtype × backend → kernel │
+│              jet registry (~48 jets)      │
+│  each jet: fused kernel over atoms       │
+│  dispatch: formula hash × backend → GPU  │
 └─────────────────┬────────────────────────┘
                   │ execute
                   ▼
@@ -171,7 +171,7 @@ stateful ops are explicitly marked in the IR. the STARK provability trace handle
 
 the runtime follows the same pattern as [[Nox]]: a small set of atoms (interpretable, provable, slow) + a registry of jets (fused GPU kernels, fast). any composition of atoms can be recognized by formula hash and accelerated.
 
-### 7 atoms
+### 8 atoms
 
 every neural network operation decomposes into these primitives:
 
@@ -243,7 +243,7 @@ no jet for a new op? the model still runs. write the jet later. this is how the 
 
 | concept | Nox | llm runtime |
 |---------|-----|-------------|
-| primitives | 16 patterns (axis, quote, cons...) | 8 atoms (mul, add, exp, read...) |
+| primitives | 16 patterns (axis, quote, cons...) | 8 atoms (mul, add, cmp, exp, read, write, reduce, slide) |
 | acceleration | jets recognized by formula hash | fused GPU kernels by op hash |
 | provability | STARK trace over reductions | STARK trace over atom compositions |
 | extensibility | new jet = new hash, same semantics | new shader = new hash, same atoms |
@@ -373,7 +373,7 @@ quantization is per-tensor, not per-model. a single model can have:
 - output projection in Q8
 - BitNet layers in ternary
 
-the op registry dispatches to the right kernel based on input tensor dtype:
+the jet registry dispatches to the right kernel based on input tensor dtype:
 ```
 matmul(a: f16, b: q4)    → kernel_matmul_f16_q4
 matmul(a: f16, b: ternary) → kernel_matmul_ternary  // add/subtract only
@@ -510,7 +510,7 @@ hot path identification: top-5 ops by time are the optimization targets. the run
 
 ## tokenization
 
-completely missing from the architecture — every LLM needs text → tokens → text. different models use different tokenizers.
+text → tokens → text. different models use different tokenizers.
 
 | tokenizer type | models | Rust crate |
 |---------------|--------|-----------|
@@ -533,7 +533,7 @@ the runtime loads chat_template from tokenizer_config.json (Jinja2 format) and a
 
 ## sampling
 
-`sample` op in the op list is a placeholder. real sampling is a subsystem:
+decoding strategy subsystem:
 
 - temperature scaling
 - top-k filtering
@@ -548,7 +548,7 @@ grammar-constrained decoding is critical for [[soma]] — the router (tier 0.1) 
 
 ## model registry
 
-the gap between "load safetensors" and "run inference" is larger than the doc suggests. each model family has different tensor naming conventions:
+maps model_type → architecture template + tensor names + tokenizer + chat template. each model family has different tensor naming conventions:
 
 ```
 qwen3:   model.layers.0.self_attn.q_proj.weight
@@ -558,8 +558,6 @@ bert:    encoder.layer.0.attention.self.query.weight  (different)
 whisper: decoder.layers.0.self_attn.q_proj.weight  (different prefix)
 yolo:    model.0.conv.weight  (completely different)
 ```
-
-the registry maps: model_type (from config.json) → architecture template + tensor name mapping + tokenizer type + chat template.
 
 ```rust
 struct ModelRegistry {

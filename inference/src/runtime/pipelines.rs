@@ -123,6 +123,15 @@ impl Pipelines {
         self.frame_alloc.borrow_mut().alloc_storage(size_bytes)
     }
 
+    /// Create a permanent uniform buffer (NOT pooled — for pre-computed params)
+    pub fn upload_uniform_permanent(&self, data: &[u8]) -> wgpu::Buffer {
+        self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: None,
+            contents: data,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        })
+    }
+
     /// Allocate permanent storage buffer (NOT pooled — for model weights)
     pub fn alloc_permanent(&self, size_bytes: u64) -> wgpu::Buffer {
         self.device.create_buffer(&wgpu::BufferDescriptor {

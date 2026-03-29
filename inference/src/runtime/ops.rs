@@ -378,6 +378,84 @@ pub fn embed(
 }
 
 // ========================================================================
+// Pre-computed param variants — use pre-existing uniform buffers
+// instead of calling upload_uniform each step. Eliminates ~564
+// queue.write_buffer() calls per decode step.
+// ========================================================================
+
+/// Q4 matmul with pre-computed params buffer — allocates output only
+pub fn q4_matmul_prepare_precomputed(
+    p: &Pipelines,
+    activation: &wgpu::Buffer, packed_weights: &wgpu::Buffer, scales: &wgpu::Buffer,
+    params_buf: &wgpu::Buffer, n: u32, wg: (u32, u32, u32),
+) -> (wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32)) {
+    let output = p.alloc((n as u64) * 4);
+    let bg = p.create_bind_group(&p.q4_matmul, &[
+        activation.as_entire_binding(), packed_weights.as_entire_binding(),
+        scales.as_entire_binding(), output.as_entire_binding(),
+        params_buf.as_entire_binding(),
+    ]);
+    (output, bg, wg)
+}
+
+/// RMS norm with pre-computed params buffer — allocates output only
+pub fn rms_norm_prepare_precomputed(
+    p: &Pipelines,
+    input: &wgpu::Buffer, weight: &wgpu::Buffer,
+    params_buf: &wgpu::Buffer, positions: u32, hidden: u32, wg: (u32, u32, u32),
+) -> (wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32)) {
+    let output = p.alloc((positions as u64) * (hidden as u64) * 4);
+    let bg = p.create_bind_group(&p.rms_norm, &[
+        input.as_entire_binding(), weight.as_entire_binding(),
+        output.as_entire_binding(), params_buf.as_entire_binding(),
+    ]);
+    (output, bg, wg)
+}
+
+/// RoPE with pre-computed params buffer — allocates output only
+pub fn rope_prepare_precomputed(
+    p: &Pipelines,
+    input: &wgpu::Buffer, cos_cache: &wgpu::Buffer, sin_cache: &wgpu::Buffer,
+    params_buf: &wgpu::Buffer, total_elements: u32, wg: (u32, u32, u32),
+) -> (wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32)) {
+    let output = p.alloc((total_elements as u64) * 4);
+    let bg = p.create_bind_group(&p.rope, &[
+        input.as_entire_binding(), cos_cache.as_entire_binding(),
+        sin_cache.as_entire_binding(), output.as_entire_binding(),
+        params_buf.as_entire_binding(),
+    ]);
+    (output, bg, wg)
+}
+
+/// f32 matmul with pre-computed params buffer — allocates output only
+pub fn f32_matmul_prepare_precomputed(
+    p: &Pipelines,
+    activation: &wgpu::Buffer, weight: &wgpu::Buffer,
+    params_buf: &wgpu::Buffer, n: u32, wg: (u32, u32, u32),
+) -> (wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32)) {
+    let output = p.alloc((n as u64) * 4);
+    let bg = p.create_bind_group(&p.f32_matmul, &[
+        activation.as_entire_binding(), weight.as_entire_binding(),
+        output.as_entire_binding(), params_buf.as_entire_binding(),
+    ]);
+    (output, bg, wg)
+}
+
+/// Argmax with pre-computed params buffer — allocates output only
+pub fn argmax_gpu_prepare_precomputed(
+    p: &Pipelines,
+    input: &wgpu::Buffer,
+    params_buf: &wgpu::Buffer, wg: (u32, u32, u32),
+) -> (wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32)) {
+    let output = p.alloc(4);
+    let bg = p.create_bind_group(&p.argmax, &[
+        input.as_entire_binding(), output.as_entire_binding(),
+        params_buf.as_entire_binding(),
+    ]);
+    (output, bg, wg)
+}
+
+// ========================================================================
 // Prepare variants — return (output_buffer, bind_group, workgroups)
 // without dispatching. Caller batches into one compute pass.
 // ========================================================================
