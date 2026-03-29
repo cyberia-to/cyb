@@ -1,5 +1,6 @@
 // Fused Attention Decode — one workgroup per head
 // Computes: softmax(Q·K^T / scale) · V
+// Uses subgroupMax/subgroupAdd for fast SIMD reductions
 //
 // Q: [num_heads * head_dim]
 // K, V: [num_heads * total_seq * head_dim]
@@ -8,6 +9,8 @@
 // Each workgroup handles one attention head.
 // Threads cooperate on dot products and reductions.
 // Uses online softmax (single pass for max + exp_sum).
+
+enable subgroups;
 
 const WG_SIZE: u32 = 256u;
 
@@ -24,18 +27,21 @@ struct Params {
 @group(0) @binding(3) var<storage, read_write> output: array<f32>;
 @group(0) @binding(4) var<uniform> params: Params;
 
-// Shared memory for scores, max, exp_sum
+// Shared memory for scores and cross-subgroup reduction scratch
 var<workgroup> scores: array<f32, 2048>;  // max total_seq we support
-var<workgroup> shared_max: array<f32, 256>;
-var<workgroup> shared_sum: array<f32, 256>;
+var<workgroup> wg_partial: array<f32, 8>; // 8 subgroups max
 
 @compute @workgroup_size(256)
 fn main(
     @builtin(workgroup_id) wg_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
+    @builtin(subgroup_invocation_id) sg_id: u32,
+    @builtin(subgroup_size) sg_size: u32,
 ) {
     let head = wg_id.x;
     let tid = local_id.x;
+    let sg_idx = tid / sg_size;
+    let num_sgs = WG_SIZE / sg_size;
 
     if (head >= params.num_heads) { return; }
 
@@ -43,7 +49,6 @@ fn main(
     let kv_base = head * params.total_seq * params.head_dim;
 
     // Step 1: Compute attention scores (parallel over total_seq)
-    // Each thread computes scores for positions: tid, tid+WG_SIZE, ...
     var local_max: f32 = -1000000.0;
     var t = tid;
     while (t < params.total_seq) {
@@ -57,17 +62,26 @@ fn main(
         t += WG_SIZE;
     }
 
-    // Step 2: Parallel max reduction
-    shared_max[tid] = local_max;
+    // Step 2: Subgroup max reduction
+    local_max = subgroupMax(local_max);
+
+    // Cross-subgroup max reduction
+    if (sg_id == 0u) {
+        wg_partial[sg_idx] = local_max;
+    }
     workgroupBarrier();
 
-    for (var stride = WG_SIZE / 2u; stride > 0u; stride >>= 1u) {
-        if (tid < stride) {
-            shared_max[tid] = max(shared_max[tid], shared_max[tid + stride]);
-        }
-        workgroupBarrier();
+    if (sg_idx == 0u && sg_id < num_sgs) {
+        local_max = wg_partial[sg_id];
+        local_max = subgroupMax(local_max);
     }
-    let global_max = shared_max[0];
+
+    // Broadcast global_max
+    if (tid == 0u) {
+        wg_partial[0] = local_max;
+    }
+    workgroupBarrier();
+    let global_max = wg_partial[0];
 
     // Step 3: Compute exp(score - max) and sum (parallel)
     var local_sum: f32 = 0.0;
@@ -79,19 +93,28 @@ fn main(
         t += WG_SIZE;
     }
 
-    shared_sum[tid] = local_sum;
+    // Subgroup sum reduction
+    local_sum = subgroupAdd(local_sum);
+
+    // Cross-subgroup sum reduction
+    if (sg_id == 0u) {
+        wg_partial[sg_idx] = local_sum;
+    }
     workgroupBarrier();
 
-    for (var stride = WG_SIZE / 2u; stride > 0u; stride >>= 1u) {
-        if (tid < stride) {
-            shared_sum[tid] += shared_sum[tid + stride];
-        }
-        workgroupBarrier();
+    if (sg_idx == 0u && sg_id < num_sgs) {
+        local_sum = wg_partial[sg_id];
+        local_sum = subgroupAdd(local_sum);
     }
-    let exp_total = shared_sum[0];
+
+    // Broadcast exp_total
+    if (tid == 0u) {
+        wg_partial[0] = local_sum;
+    }
+    workgroupBarrier();
+    let exp_total = wg_partial[0];
 
     // Normalize scores to softmax weights
-    workgroupBarrier();
     t = tid;
     while (t < params.total_seq) {
         scores[t] = scores[t] / exp_total;
@@ -100,7 +123,6 @@ fn main(
     workgroupBarrier();
 
     // Step 4: Weighted sum of V (parallel over head_dim)
-    // Each thread handles dimensions: tid, tid+WG_SIZE, ...
     var d = tid;
     while (d < params.head_dim) {
         var weighted_sum: f32 = 0.0;

@@ -1,4 +1,7 @@
 // RMS Normalization — each workgroup normalizes one row
+// Uses subgroupAdd for fast SIMD reduction
+
+enable subgroups;
 
 const WORKGROUP_SIZE: u32 = 256u;
 
@@ -12,15 +15,20 @@ struct Params {
 @group(0) @binding(2) var<storage, read_write> output: array<f32>;
 @group(0) @binding(3) var<uniform> params: Params;
 
-var<workgroup> shared_sums: array<f32, 256>;
+// Only need cross-subgroup scratch (8 subgroups max)
+var<workgroup> wg_partial: array<f32, 8>;
 
 @compute @workgroup_size(256)
 fn main(
     @builtin(workgroup_id) wg_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
+    @builtin(subgroup_invocation_id) sg_id: u32,
+    @builtin(subgroup_size) sg_size: u32,
 ) {
     let pos = wg_id.x;
     let tid = local_id.x;
+    let sg_idx = tid / sg_size;
+    let num_sgs = WORKGROUP_SIZE / sg_size;
     let base = pos * params.hidden;
 
     var sum_sq: f32 = 0.0;
@@ -31,17 +39,28 @@ fn main(
         i += WORKGROUP_SIZE;
     }
 
-    shared_sums[tid] = sum_sq;
+    // Subgroup reduction — instant SIMD sum
+    sum_sq = subgroupAdd(sum_sq);
+
+    // Cross-subgroup reduction
+    if (sg_id == 0u) {
+        wg_partial[sg_idx] = sum_sq;
+    }
     workgroupBarrier();
 
-    for (var stride = WORKGROUP_SIZE / 2u; stride > 0u; stride >>= 1u) {
-        if (tid < stride) {
-            shared_sums[tid] += shared_sums[tid + stride];
-        }
-        workgroupBarrier();
+    if (sg_idx == 0u && sg_id < num_sgs) {
+        sum_sq = wg_partial[sg_id];
+        sum_sq = subgroupAdd(sum_sq);
     }
 
-    let rms = sqrt(shared_sums[0] / f32(params.hidden) + params.eps);
+    // Broadcast result via shared memory
+    if (tid == 0u) {
+        wg_partial[0] = sum_sq;
+    }
+    workgroupBarrier();
+    let total_sum_sq = wg_partial[0];
+
+    let rms = sqrt(total_sum_sq / f32(params.hidden) + params.eps);
 
     i = tid;
     while (i < params.hidden) {
