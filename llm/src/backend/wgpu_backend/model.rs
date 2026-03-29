@@ -1050,16 +1050,26 @@ impl NativeModel {
         let head_dim = hidden_size / num_heads;
 
         // Detect vocab size from embedding table shape
+        // GGUF stores embed as [hidden_size, vocab_size]
         let embed_w = graph
             .get_weight("token_embd.weight")
             .ok_or("Missing token_embd.weight")?;
-        let vocab_size = embed_w.shape[0];
+        let vocab_size = if embed_w.shape.len() >= 2 {
+            embed_w.shape[1] // GGUF: [hidden, vocab]
+        } else {
+            embed_w.shape[0]
+        };
 
-        // Detect intermediate size from gate weight shape
-        let intermediate_size = graph
-            .get_weight("blk.0.ffn_gate.weight")
-            .map(|w| w.shape[0])
-            .unwrap_or(hidden_size * 4);
+        // Detect intermediate size from metadata or gate weight
+        let intermediate_size = metadata
+            .get(&format!("{arch}.feed_forward_length"))
+            .and_then(|v| v.as_u32())
+            .map(|v| v as usize)
+            .unwrap_or_else(|| {
+                graph.get_weight("blk.0.ffn_gate.weight")
+                    .map(|w| if w.shape.len() >= 2 { w.shape[1] } else { w.shape[0] })
+                    .unwrap_or(hidden_size * 4)
+            });
 
         // Detect quantization format from first weight
         // K-quant types are converted at load time to our simple Q4/Q8 format
@@ -1654,8 +1664,14 @@ impl NativeModel {
             Ok(pipelines.upload_f32(&f32_data))
         };
 
-        // Load embedding table (always f32)
-        let embed_f32 = gguf_to_f32(&embed_w.data, embed_w.dtype);
+        // Load embedding table — GGUF stores as [hidden, vocab], transpose to [vocab, hidden]
+        let embed_raw = gguf_to_f32(&embed_w.data, embed_w.dtype);
+        let mut embed_f32 = vec![0.0f32; vocab_size * hidden_size];
+        for v in 0..vocab_size {
+            for h in 0..hidden_size {
+                embed_f32[v * hidden_size + h] = embed_raw[h * vocab_size + v];
+            }
+        }
         let embed_table = pipelines.upload_f32(&embed_f32);
         log::info!("Loaded embedding table: [{vocab_size}, {hidden_size}]");
 
