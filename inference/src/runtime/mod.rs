@@ -6,6 +6,7 @@ pub mod kernels;
 pub mod pipelines;
 pub mod ops;
 pub mod model;
+pub mod alloc;
 
 use std::sync::Arc;
 use pipelines::Pipelines;

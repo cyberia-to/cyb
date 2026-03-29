@@ -1,11 +1,13 @@
 //! Compute pipeline cache — creates and caches wgpu pipelines for each shader
 
 use std::collections::HashMap;
+use std::cell::RefCell;
 use wgpu;
 use wgpu::util::DeviceExt;
 use std::sync::Arc;
 
 use super::tensor::GpuTensor;
+use super::alloc::FrameAllocator;
 
 /// All compute pipelines for inference
 pub struct Pipelines {
@@ -23,6 +25,9 @@ pub struct Pipelines {
     pub embed: ComputeShader,
     pub f32_matmul: ComputeShader,
     pub argmax: ComputeShader,
+
+    /// Frame allocator for zero-allocation decode after warmup
+    pub frame_alloc: RefCell<FrameAllocator>,
 }
 
 pub struct ComputeShader {
@@ -65,7 +70,9 @@ impl Pipelines {
             storage_ro(), storage_rw(), uniform(),
         ]);
 
-        Self { device, queue, q4_matmul, rms_norm, rope, attention, add, mul, silu_mul, embed, f32_matmul, argmax }
+        let frame_alloc = RefCell::new(FrameAllocator::new(device.clone()));
+
+        Self { device, queue, q4_matmul, rms_norm, rope, attention, add, mul, silu_mul, embed, f32_matmul, argmax, frame_alloc }
     }
 
     /// Create a GPU buffer from f32 data
@@ -86,23 +93,31 @@ impl Pipelines {
         })
     }
 
-    /// Create a uniform buffer from raw bytes
+    /// Create a uniform buffer (reused from pool after first step)
     pub fn upload_uniform(&self, data: &[u8]) -> wgpu::Buffer {
-        self.device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: None,
-            contents: data,
-            usage: wgpu::BufferUsages::UNIFORM,
-        })
+        let buf = self.frame_alloc.borrow_mut().alloc_uniform(data.len() as u64);
+        self.queue.write_buffer(&buf, 0, data);
+        buf
     }
 
-    /// Allocate empty storage buffer
+    /// Allocate storage buffer (reused from pool after first step)
     pub fn alloc(&self, size_bytes: u64) -> wgpu::Buffer {
+        self.frame_alloc.borrow_mut().alloc_storage(size_bytes)
+    }
+
+    /// Allocate permanent storage buffer (NOT pooled — for model weights)
+    pub fn alloc_permanent(&self, size_bytes: u64) -> wgpu::Buffer {
         self.device.create_buffer(&wgpu::BufferDescriptor {
             label: None,
             size: size_bytes,
             usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         })
+    }
+
+    /// Reset frame allocator — call at start of each forward pass
+    pub fn begin_frame(&self) {
+        self.frame_alloc.borrow_mut().reset();
     }
 
     /// Read buffer to CPU (blocking — forces GPU sync)

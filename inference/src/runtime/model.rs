@@ -542,6 +542,7 @@ impl NativeModel {
     /// Returns logits as Vec<f32> of size [vocab_size] (last position only)
     pub fn forward(&mut self, token_ids: &[u32]) -> Vec<f32> {
         let p = self.pipelines.clone();
+        p.begin_frame(); // Reset buffer pool — reuse all previous step's buffers
 
         let seq_len = token_ids.len();
         let pos_offset = self.past_seq_len;
@@ -797,8 +798,9 @@ impl NativeModel {
             }
 
             // Store copies in KV cache
-            let cache_k = p.alloc((total_kv_elements as u64) * 4);
-            let cache_v = p.alloc((total_kv_elements as u64) * 4);
+            // KV cache buffers persist between steps — don't pool them
+            let cache_k = p.alloc_permanent((total_kv_elements as u64) * 4);
+            let cache_v = p.alloc_permanent((total_kv_elements as u64) * 4);
             enc.copy_buffer_to_buffer(&full_k, 0, &cache_k, 0, (total_kv_elements as u64) * 4);
             enc.copy_buffer_to_buffer(&full_v, 0, &cache_v, 0, (total_kv_elements as u64) * 4);
             self.kv_cache[i].key = Some(cache_k);
