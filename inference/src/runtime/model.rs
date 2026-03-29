@@ -124,10 +124,8 @@ pub struct NativeModel {
     lm_head_n: u32,
 
     // Precomputed RoPE caches (full, sliced per forward call)
-    cos_cache_cpu: Vec<f32>, // [max_seq, head_dim/2] on CPU (for prefill slicing)
-    sin_cache_cpu: Vec<f32>,
-    cos_cache_gpu: wgpu::Buffer, // full cache on GPU
-    sin_cache_gpu: wgpu::Buffer,
+    cos_cache: Vec<f32>, // [max_seq, head_dim/2]
+    sin_cache: Vec<f32>,
 
     // KV cache
     kv_cache: Vec<KVCache>,
@@ -650,57 +648,18 @@ impl NativeModel {
         let final_norm_name = format!("model.layers.{num_layers}.final_norm_layernorm.weight");
         let final_norm_weight = load_f32_weight(&final_norm_name)?;
 
-        // LM head — quantize tied embed_table to Q4 for 4x less memory bandwidth
-        // embed_f32: [vocab, hidden] → Q4 packed + scales
-        let lm_block_size = 32usize;
-        let lm_num_blocks = hidden_size / lm_block_size;
-        let lm_half_bs = lm_block_size / 2;
-        let mut lm_packed_bytes: Vec<u8> = Vec::with_capacity(vocab_size * lm_num_blocks * lm_half_bs);
-        let mut lm_scales_f32: Vec<f32> = Vec::with_capacity(vocab_size * lm_num_blocks);
-
-        for row in 0..vocab_size {
-            for block in 0..lm_num_blocks {
-                let start = row * hidden_size + block * lm_block_size;
-                // Find max abs for scale
-                let mut max_abs: f32 = 0.0;
-                for j in 0..lm_block_size {
-                    let v = embed_f32[start + j].abs();
-                    if v > max_abs { max_abs = v; }
-                }
-                let scale = if max_abs > 0.0 { max_abs / 7.0 } else { 1.0 }; // symmetric Q4: range [-8,7] → [-7*s, 7*s]
-                lm_scales_f32.push(scale);
-
-                // Quantize to 4-bit: value → round((value / scale) + 8) → clamp to [0, 15]
-                for j in (0..lm_block_size).step_by(2) {
-                    let v0 = embed_f32[start + j];
-                    let v1 = embed_f32[start + j + 1];
-                    let q0 = ((v0 / scale + 8.0).round() as i32).clamp(0, 15) as u8;
-                    let q1 = ((v1 / scale + 8.0).round() as i32).clamp(0, 15) as u8;
-                    lm_packed_bytes.push(q0 | (q1 << 4));
-                }
-            }
-        }
-
-        // Pack bytes to u32 and upload
-        let lm_packed_u32: Vec<u32> = lm_packed_bytes.chunks(4).map(|c| {
-            let mut v = 0u32;
-            for (i, &b) in c.iter().enumerate() { v |= (b as u32) << (i * 8); }
-            v
-        }).collect();
-        let lm_head_packed = pipelines.upload_u32(&lm_packed_u32);
-        let lm_head_scales = pipelines.upload_f32(&lm_scales_f32);
-        log::info!("LM head quantized to Q4: {}MB → {}MB", embed_f32.len() * 4 / 1024 / 1024, lm_packed_bytes.len() / 1024 / 1024);
+        // LM head uses tied embedding table (f32 matmul)
+        let lm_head_packed = pipelines.upload_u32(&[0]); // dummy
+        let lm_head_scales = pipelines.upload_f32(&[0.0]); // dummy
 
         // RoPE caches
         let cos_tp = tensors.get("cos_cache").ok_or("Missing cos_cache")?;
         let cos_raw = read_tensor_raw(cos_tp, model_dir)?;
         let cos_cache = raw_to_f32(&cos_raw, cos_tp.data_type);
-        let cos_cache_gpu = pipelines.upload_f32(&cos_cache);
 
         let sin_tp = tensors.get("sin_cache").ok_or("Missing sin_cache")?;
         let sin_raw = read_tensor_raw(sin_tp, model_dir)?;
         let sin_cache = raw_to_f32(&sin_raw, sin_tp.data_type);
-        let sin_cache_gpu = pipelines.upload_f32(&sin_cache);
 
         // Initialize empty KV caches
         let kv_cache = (0..num_layers)
@@ -727,10 +686,8 @@ impl NativeModel {
             lm_head_packed,
             lm_head_scales,
             lm_head_n: lm_head_n_val,
-            cos_cache_cpu: cos_cache,
-            sin_cache_cpu: sin_cache,
-            cos_cache_gpu,
-            sin_cache_gpu,
+            cos_cache,
+            sin_cache,
             kv_cache,
             past_seq_len: 0,
             greedy_mode: false,
@@ -818,8 +775,8 @@ impl NativeModel {
         let half = half_dim as usize;
         let start = pos_offset * half;
         let end = start + seq_len * half;
-        let cos_buf = p.upload_f32(&self.cos_cache_cpu[start..end]);
-        let sin_buf = p.upload_f32(&self.sin_cache_cpu[start..end]);
+        let cos_buf = p.upload_f32(&self.cos_cache[start..end]);
+        let sin_buf = p.upload_f32(&self.sin_cache[start..end]);
 
         // 4. Transformer layers
         let num_layers = self.layers.len();
