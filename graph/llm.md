@@ -156,18 +156,22 @@ models distributed as "MLX format" (.safetensors + config.json) load identically
 | wgpu | `wgpu` | production (18.7M downloads) | yes — native Rust, the gold standard |
 | WebGPU | `wgpu` → WASM | production | yes — same crate, compile to wasm32 target |
 | CPU SIMD | `std::arch` | stable Rust | yes — NEON/AVX2/AVX512 intrinsics in std |
-| Android NNAPI | FFI to `libneuralnetworks.so` | needs unsafe FFI | yes — C API, ~200 lines of bindings |
-| Qualcomm QNN | FFI to QNN SDK | needs unsafe FFI | yes — C API, NDK build. or use `ort` crate with QNN EP as bridge |
+| Android NNAPI | FFI to `libneuralnetworks.so` | needs unsafe FFI | yes — pure C API, dlopen + ~30 functions, ~200 lines |
+| Qualcomm QNN | FFI to QNN SDK | needs unsafe FFI | yes — pure C API, dlopen + QnnBackend/QnnGraph/QnnTensor |
+
+zero C++ dependencies on any platform. every backend is either native Rust or thin FFI to a C API.
 
 the hard parts:
 
-1. Android NPU — no Rust crate exists. two paths: (a) write thin FFI bindings to NNAPI C API (~200 lines unsafe), or (b) use `ort` crate which wraps ONNX Runtime's NNAPI/QNN execution providers. path (b) adds a C++ dependency but covers all Android NPUs immediately.
+1. Android NPU — no Rust crate exists. write thin FFI: `dlopen("libneuralnetworks.so")` + ~30 extern "C" functions. NNAPI is a public C API on every Android device since API level 27. same pattern as objc2-metal — FFI to system library.
 
-2. ANE — `rustane` uses private Apple APIs that can break between macOS versions. production path: compile subgraphs to Core ML format (.mlmodelc) and dispatch via Core ML framework (stable public API) while keeping Metal as primary.
+2. Qualcomm QNN — same approach. `dlopen("libQnnHtp.so")` + QnnInterface C API. gives direct Hexagon NPU access, 100x vs CPU. only needed for Snapdragon devices.
 
-3. ROCm — `cubecl-hip-sys` is alpha. AMD GPU support is lowest priority — wgpu Vulkan fallback covers AMD adequately for now.
+3. ANE — `rustane` uses private Apple APIs that can break between macOS versions. production path: compile subgraphs to Core ML format (.mlmodelc) and dispatch via Core ML framework (stable public API) while keeping Metal as primary.
 
-everything else is production-ready from Rust today. the runtime is feasible.
+4. ROCm — `cubecl-hip-sys` is alpha. AMD GPU support is lowest priority — wgpu Vulkan fallback covers AMD adequately for now.
+
+everything is pure Rust + unsafe FFI to system C APIs. no vendored C++ anywhere.
 
 use ANE for: always-on tier 0 models (classifiers, embeddings) where latency matters less than power efficiency. use Metal GPU for: generative models where throughput matters.
 
@@ -263,7 +267,7 @@ none of them solve the full problem. this runtime does.
 | 8 | conv1d, flow layers | TTS (voice output) | medium |
 | 9 | CUDA backend | NVIDIA server deployment | cudarc integration |
 | 10 | ANE offload | power-efficient always-on inference | rustane integration |
-| 11 | NNAPI/QNN FFI | Android NPU inference | ~200 lines unsafe FFI or ort bridge |
+| 11 | NNAPI/QNN FFI | Android NPU inference | dlopen + ~30 extern "C" functions, zero C++ |
 
 after phase 6: one binary runs 90% of [[soma]] models.
 after phase 8: full media stack.
