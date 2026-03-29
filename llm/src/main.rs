@@ -133,9 +133,24 @@ fn main() {
             }
         }
 
-        Commands::Info { path } => match cyb_llm::loader::onnx::load_onnx_info(&path) {
-            Ok(info) => println!("{info}"),
-            Err(e) => eprintln!("Error: {e}"),
+        Commands::Info { path } => {
+            let p = std::path::Path::new(&path);
+            match cyb_llm::loader::detect_format(p) {
+                Ok(fmt) => {
+                    println!("Format: {fmt:?}");
+                    match cyb_llm::loader::load_model(p) {
+                        Ok(graph) => {
+                            println!("Nodes: {}", graph.nodes.len());
+                            println!("Weights: {}", graph.weights.len());
+                            for (name, w) in graph.weights.iter().take(10) {
+                                println!("  {}: {:?} {:?} ({}B)", name, w.shape, w.dtype, w.data.len());
+                            }
+                        }
+                        Err(e) => eprintln!("Load error: {e}"),
+                    }
+                }
+                Err(e) => eprintln!("Format detect error: {e}"),
+            }
         },
 
         Commands::Download { model } => {
