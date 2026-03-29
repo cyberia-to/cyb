@@ -377,6 +377,29 @@ pub fn embed(
     output
 }
 
+/// Prepare embedding lookup — return (output, bind_group, workgroups) without dispatching
+pub fn embed_prepare(
+    p: &Pipelines,
+    table: &wgpu::Buffer, token_ids: &wgpu::Buffer,
+    hidden: u32, seq_len: u32,
+) -> (wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32)) {
+    let output_size = seq_len * hidden;
+    let output = p.alloc((output_size as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params { hidden: u32, seq_len: u32 }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params { hidden, seq_len }));
+
+    let bg = p.create_bind_group(&p.embed, &[
+        table.as_entire_binding(), token_ids.as_entire_binding(),
+        output.as_entire_binding(), params_buf.as_entire_binding(),
+    ]);
+
+    (output, bg, ((output_size + 255) / 256, 1, 1))
+}
+
 // ========================================================================
 // Pre-computed param variants — use pre-existing uniform buffers
 // instead of calling upload_uniform each step. Eliminates ~564

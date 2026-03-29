@@ -9,7 +9,7 @@ use crate::onnx_proto::onnx::ModelProto;
 use prost::Message;
 
 use super::ops;
-use super::pipelines::Pipelines;
+use super::pipelines::{ComputeShader, Pipelines};
 
 /// Transformer model config detected from weight shapes
 struct ModelConfig {
@@ -715,8 +715,9 @@ impl NativeModel {
     /// Run one forward pass: token_ids -> logits buffer on GPU
     /// Returns logits as Vec<f32> of size [vocab_size] (last position only)
     ///
-    /// Decode path (seq_len=1): uses batched compute passes — ONE pass per phase
-    /// per layer instead of one pass per op. Reduces ~500 passes → ~30.
+    /// Decode path (seq_len=1): ONE compute pass for ALL 28 layers + final
+    /// norm + lm_head + argmax. All bind groups are pre-created (Phase 1),
+    /// then dispatched in a single pass (Phase 2).
     /// Prefill path (seq_len>1): uses legacy one-pass-per-op for simplicity.
     pub fn forward(&mut self, token_ids: &[u32]) -> Vec<f32> {
         let p = self.pipelines.clone();
@@ -738,9 +739,6 @@ impl NativeModel {
         // 1. Upload token IDs as f32 (embed shader reads f32 token_ids)
         let ids_f32: Vec<f32> = token_ids.iter().map(|&id| id as f32).collect();
         let ids_buf = p.upload_f32(&ids_f32);
-
-        // 2. Embedding lookup
-        let mut hidden = ops::embed(&p, &mut enc, &self.embed_table, &ids_buf, hidden_size, seq_len as u32);
 
         // 3. Slice RoPE caches for current positions [pos_offset..pos_offset+seq_len]
         //    cos_cache layout: [max_seq, half_dim]
@@ -768,17 +766,31 @@ impl NativeModel {
 
         if seq_len == 1 {
             // ================================================================
-            // DECODE PATH — batched compute passes (ONE pass per phase)
+            // DECODE PATH — ONE compute pass for ALL layers + final ops
             // ================================================================
-            for i in 0..num_layers {
-                // ---- Phase 1: Prepare all bind groups for pre-attention ----
-                // All output buffers and bind groups are created BEFORE the
-                // compute pass begins. Dispatches run in order within the pass,
-                // so norm output is written before matmul reads it, etc.
-                //
-                // Pre-computed param buffers (created at load time) eliminate
-                // ~564 upload_uniform / queue.write_buffer calls per step.
+            // Phase 1: Pre-create all output buffers and bind groups.
+            // Dispatches are collected into a Vec, then executed in Phase 2.
+            // BindGroup internally holds Arc refs to buffers, so everything
+            // stays alive until the Vec is dropped after the pass.
 
+            struct DispatchCmd<'a> {
+                shader: &'a ComputeShader,
+                bg: wgpu::BindGroup,
+                wg: (u32, u32, u32),
+            }
+
+            // ~21 dispatches per layer * 28 layers + embed + final ops ≈ 600
+            let mut all_dispatches: Vec<DispatchCmd> = Vec::with_capacity(num_layers * 21 + 5);
+
+            // 2. Embedding lookup (prepare, don't dispatch yet)
+            let (embed_out, embed_bg, embed_wg) = ops::embed_prepare(
+                &p, &self.embed_table, &ids_buf, hidden_size, seq_len as u32,
+            );
+            all_dispatches.push(DispatchCmd { shader: &p.embed, bg: embed_bg, wg: embed_wg });
+            let mut hidden = embed_out;
+
+            for i in 0..num_layers {
+                // ---- Phase 1: Create all bind groups for this layer ----
                 let lp = &self.layers[i].params;
 
                 // a. Input RMS Norm: hidden → normed (PRECOMPUTED params)
@@ -786,6 +798,7 @@ impl NativeModel {
                     &p, &hidden, &self.layers[i].input_norm_weight,
                     &lp.input_norm_params, 1, hidden_size, lp.input_norm_wg,
                 );
+                all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: norm_bg, wg: norm_wg });
 
                 // b. Q/K/V projections: normed → q, k, v (PRECOMPUTED params)
                 let (q_buf, q_bg, q_wg) = ops::q4_matmul_prepare_precomputed(
@@ -793,26 +806,34 @@ impl NativeModel {
                     &self.layers[i].q_proj_scales,
                     &lp.q_matmul_params, self.layers[i].q_n, lp.q_matmul_wg,
                 );
+                all_dispatches.push(DispatchCmd { shader: &p.q4_matmul, bg: q_bg, wg: q_wg });
+
                 let (k_buf, k_bg, k_wg) = ops::q4_matmul_prepare_precomputed(
                     &p, &normed, &self.layers[i].k_proj_packed,
                     &self.layers[i].k_proj_scales,
                     &lp.k_matmul_params, self.layers[i].k_n, lp.k_matmul_wg,
                 );
+                all_dispatches.push(DispatchCmd { shader: &p.q4_matmul, bg: k_bg, wg: k_wg });
+
                 let (v_buf, v_bg, v_wg) = ops::q4_matmul_prepare_precomputed(
                     &p, &normed, &self.layers[i].v_proj_packed,
                     &self.layers[i].v_proj_scales,
                     &lp.v_matmul_params, self.layers[i].v_n, lp.v_matmul_wg,
                 );
+                all_dispatches.push(DispatchCmd { shader: &p.q4_matmul, bg: v_bg, wg: v_wg });
 
                 // c. Q/K per-head RMS Norm (PRECOMPUTED params)
                 let (q_normed, qn_bg, qn_wg) = ops::rms_norm_prepare_precomputed(
                     &p, &q_buf, &self.layers[i].q_norm_weight,
                     &lp.q_norm_params, num_heads, head_dim, lp.q_norm_wg,
                 );
+                all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: qn_bg, wg: qn_wg });
+
                 let (k_normed, kn_bg, kn_wg) = ops::rms_norm_prepare_precomputed(
                     &p, &k_buf, &self.layers[i].k_norm_weight,
                     &lp.k_norm_params, kv_num_heads, head_dim, lp.k_norm_wg,
                 );
+                all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: kn_bg, wg: kn_wg });
 
                 // d. RoPE (PRECOMPUTED params)
                 let q_elements = self.layers[i].q_n;
@@ -822,35 +843,45 @@ impl NativeModel {
                     &p, &q_normed, &cos_buf, &sin_buf,
                     &lp.q_rope_params, q_elements, lp.q_rope_wg,
                 );
+                all_dispatches.push(DispatchCmd { shader: &p.rope, bg: qr_bg, wg: qr_wg });
+
                 let (k_roped, kr_bg, kr_wg) = ops::rope_prepare_precomputed(
                     &p, &k_normed, &cos_buf, &sin_buf,
                     &lp.k_rope_params, k_elements, lp.k_rope_wg,
                 );
+                all_dispatches.push(DispatchCmd { shader: &p.rope, bg: kr_bg, wg: kr_wg });
 
                 // ---- KV cache via compute (PER-STEP params — total_seq changes) ----
+                // Uses kv_append_prepare_permanent: output is alloc_permanent,
+                // no buffer copy needed after the pass!
                 let past_seq_u32 = self.past_seq_len as u32;
                 let empty_buf = p.alloc(4);
                 let past_k_ref = self.kv_cache[i].key.as_ref().unwrap_or(&empty_buf);
                 let past_v_ref = self.kv_cache[i].value.as_ref().unwrap_or(&empty_buf);
 
-                let (full_k, kv_k_bg, kv_k_wg) = ops::kv_append_prepare(
+                let (full_k, kv_k_bg, kv_k_wg) = ops::kv_append_prepare_permanent(
                     &p, past_k_ref, &k_roped, kv_num_heads, head_dim, past_seq_u32, seq_len as u32);
-                let (full_v, kv_v_bg, kv_v_wg) = ops::kv_append_prepare(
+                all_dispatches.push(DispatchCmd { shader: &p.kv_append, bg: kv_k_bg, wg: kv_k_wg });
+
+                let (full_v, kv_v_bg, kv_v_wg) = ops::kv_append_prepare_permanent(
                     &p, past_v_ref, &v_buf, kv_num_heads, head_dim, past_seq_u32, seq_len as u32);
+                all_dispatches.push(DispatchCmd { shader: &p.kv_append, bg: kv_v_bg, wg: kv_v_wg });
+
+                // Store permanent KV cache references (no copy needed!)
+                self.kv_cache[i].key = Some(full_k.clone());
+                self.kv_cache[i].value = Some(full_v.clone());
 
                 // GQA head expansion via compute (PER-STEP — total_seq changes)
-                let (attn_k, exp_k_bg, exp_k_wg, attn_v, exp_v_bg, exp_v_wg) = if num_heads != kv_num_heads {
+                let (attn_k, attn_v) = if num_heads != kv_num_heads {
                     let (ek, ekb, ekw) = ops::kv_expand_prepare(&p, &full_k, kv_num_heads, num_heads, head_dim, total_seq as u32);
+                    all_dispatches.push(DispatchCmd { shader: &p.kv_expand, bg: ekb, wg: ekw });
+
                     let (ev, evb, evw) = ops::kv_expand_prepare(&p, &full_v, kv_num_heads, num_heads, head_dim, total_seq as u32);
-                    (ek, ekb, ekw, ev, evb, evw)
+                    all_dispatches.push(DispatchCmd { shader: &p.kv_expand, bg: evb, wg: evw });
+
+                    (ek, ev)
                 } else {
-                    // No expansion needed — create dummy bind groups
-                    let dummy_bg = p.create_bind_group(&p.kv_expand, &[
-                        full_k.as_entire_binding(), full_k.as_entire_binding(),
-                        p.upload_uniform(&[0u8; 32]).as_entire_binding(),
-                    ]);
-                    (full_k.clone(), dummy_bg.clone(), (0,0,0),
-                     full_v.clone(), dummy_bg, (0,0,0))
+                    (full_k, full_v)
                 };
 
                 let scale = 1.0 / (head_dim as f32).sqrt();
@@ -860,6 +891,7 @@ impl NativeModel {
                     &p, &q_roped, &attn_k, &attn_v,
                     num_heads, head_dim, total_seq as u32, scale,
                 );
+                all_dispatches.push(DispatchCmd { shader: &p.attention, bg: attn_bg, wg: attn_wg });
 
                 // O projection: attn_out → attn_proj (PRECOMPUTED params)
                 let (attn_proj, oproj_bg, oproj_wg) = ops::q4_matmul_prepare_precomputed(
@@ -867,17 +899,20 @@ impl NativeModel {
                     &self.layers[i].o_proj_scales,
                     &lp.o_matmul_params, self.layers[i].o_n, lp.o_matmul_wg,
                 );
+                all_dispatches.push(DispatchCmd { shader: &p.q4_matmul, bg: oproj_bg, wg: oproj_wg });
 
                 // Residual: hidden + attn_proj → residual1 (no params)
                 let (residual1, res1_bg, res1_wg) = ops::add_prepare(
                     &p, &hidden, &attn_proj, hidden_size,
                 );
+                all_dispatches.push(DispatchCmd { shader: &p.add, bg: res1_bg, wg: res1_wg });
 
                 // Post-attention RMS Norm (PRECOMPUTED params)
                 let (normed2, norm2_bg, norm2_wg) = ops::rms_norm_prepare_precomputed(
                     &p, &residual1, &self.layers[i].post_norm_weight,
                     &lp.post_norm_params, 1, hidden_size, lp.post_norm_wg,
                 );
+                all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: norm2_bg, wg: norm2_wg });
 
                 // Gate + Up projections (PRECOMPUTED params)
                 let (gate, gate_bg, gate_wg) = ops::q4_matmul_prepare_precomputed(
@@ -885,16 +920,20 @@ impl NativeModel {
                     &self.layers[i].gate_proj_scales,
                     &lp.gate_matmul_params, self.layers[i].gate_n, lp.gate_matmul_wg,
                 );
+                all_dispatches.push(DispatchCmd { shader: &p.q4_matmul, bg: gate_bg, wg: gate_wg });
+
                 let (up, up_bg, up_wg) = ops::q4_matmul_prepare_precomputed(
                     &p, &normed2, &self.layers[i].up_proj_packed,
                     &self.layers[i].up_proj_scales,
                     &lp.up_matmul_params, self.layers[i].up_n, lp.up_matmul_wg,
                 );
+                all_dispatches.push(DispatchCmd { shader: &p.q4_matmul, bg: up_bg, wg: up_wg });
 
                 // SwiGLU: gate, up → ffn (no params)
                 let (ffn, silu_bg, silu_wg) = ops::silu_mul_prepare(
                     &p, &gate, &up, self.layers[i].gate_n,
                 );
+                all_dispatches.push(DispatchCmd { shader: &p.silu_mul, bg: silu_bg, wg: silu_wg });
 
                 // Down projection (PRECOMPUTED params)
                 let (ffn_out, down_bg, down_wg) = ops::q4_matmul_prepare_precomputed(
@@ -902,63 +941,85 @@ impl NativeModel {
                     &self.layers[i].down_proj_scales,
                     &lp.down_matmul_params, self.layers[i].down_n, lp.down_matmul_wg,
                 );
+                all_dispatches.push(DispatchCmd { shader: &p.q4_matmul, bg: down_bg, wg: down_wg });
 
                 // Final residual: residual1 + ffn_out → hidden (no params)
                 let (new_hidden, res2_bg, res2_wg) = ops::add_prepare(
                     &p, &residual1, &ffn_out, hidden_size,
                 );
-
-                // ---- ALL ops in ONE compute pass per layer! ----
-                {
-                    let mut pass = enc.begin_compute_pass(&Default::default());
-
-                    // Pre-attention: norm → QKV → Q/K norm → RoPE
-                    p.dispatch_in_pass(&mut pass, &p.rms_norm, &norm_bg, norm_wg);
-                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &q_bg, q_wg);
-                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &k_bg, k_wg);
-                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &v_bg, v_wg);
-                    p.dispatch_in_pass(&mut pass, &p.rms_norm, &qn_bg, qn_wg);
-                    p.dispatch_in_pass(&mut pass, &p.rms_norm, &kn_bg, kn_wg);
-                    p.dispatch_in_pass(&mut pass, &p.rope, &qr_bg, qr_wg);
-                    p.dispatch_in_pass(&mut pass, &p.rope, &kr_bg, kr_wg);
-
-                    // KV cache append + expand (compute, not buffer copies!)
-                    p.dispatch_in_pass(&mut pass, &p.kv_append, &kv_k_bg, kv_k_wg);
-                    p.dispatch_in_pass(&mut pass, &p.kv_append, &kv_v_bg, kv_v_wg);
-                    if num_heads != kv_num_heads {
-                        p.dispatch_in_pass(&mut pass, &p.kv_expand, &exp_k_bg, exp_k_wg);
-                        p.dispatch_in_pass(&mut pass, &p.kv_expand, &exp_v_bg, exp_v_wg);
-                    }
-
-                    // Post-attention: attn → O proj → residual → norm → FFN → residual
-                    p.dispatch_in_pass(&mut pass, &p.attention, &attn_bg, attn_wg);
-                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &oproj_bg, oproj_wg);
-                    p.dispatch_in_pass(&mut pass, &p.add, &res1_bg, res1_wg);
-                    p.dispatch_in_pass(&mut pass, &p.rms_norm, &norm2_bg, norm2_wg);
-                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &gate_bg, gate_wg);
-                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &up_bg, up_wg);
-                    p.dispatch_in_pass(&mut pass, &p.silu_mul, &silu_bg, silu_wg);
-                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &down_bg, down_wg);
-                    p.dispatch_in_pass(&mut pass, &p.add, &res2_bg, res2_wg);
-                }
-
-                // KV cache save (buffer copies, outside pass)
-                let kv_heads_usize = self.config.kv_num_heads;
-                let head_dim_usize = self.config.head_dim;
-                let total_kv_elements = total_seq * kv_heads_usize * head_dim_usize;
-                let cache_k = p.alloc_permanent((total_kv_elements as u64) * 4);
-                let cache_v = p.alloc_permanent((total_kv_elements as u64) * 4);
-                enc.copy_buffer_to_buffer(&full_k, 0, &cache_k, 0, (total_kv_elements as u64) * 4);
-                enc.copy_buffer_to_buffer(&full_v, 0, &cache_v, 0, (total_kv_elements as u64) * 4);
-                self.kv_cache[i].key = Some(cache_k);
-                self.kv_cache[i].value = Some(cache_v);
+                all_dispatches.push(DispatchCmd { shader: &p.add, bg: res2_bg, wg: res2_wg });
 
                 hidden = new_hidden;
             }
-        } else {
-            // ================================================================
-            // PREFILL PATH — legacy one-pass-per-op (unchanged)
-            // ================================================================
+
+            // ---- Final norm + LM head (+ argmax) — also in the same pass ----
+            let vocab = self.config.vocab_size as u32;
+            let mp = &self.model_params;
+
+            let (final_normed, fn_bg, fn_wg) = ops::rms_norm_prepare_precomputed(
+                &p, &hidden, &self.final_norm_weight,
+                &mp.final_norm_params, 1, hidden_size, mp.final_norm_wg,
+            );
+            all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: fn_bg, wg: fn_wg });
+
+            let (logits_buf, lm_bg, lm_wg) = ops::f32_matmul_prepare_precomputed(
+                &p, &final_normed, &self.embed_table,
+                &mp.f32_matmul_params, vocab, mp.f32_matmul_wg,
+            );
+            all_dispatches.push(DispatchCmd { shader: &p.f32_matmul, bg: lm_bg, wg: lm_wg });
+
+            if self.greedy_mode {
+                let (argmax_buf, argmax_bg, argmax_wg) = ops::argmax_gpu_prepare_precomputed(
+                    &p, &logits_buf, &mp.argmax_params, mp.argmax_wg,
+                );
+                all_dispatches.push(DispatchCmd { shader: &p.argmax, bg: argmax_bg, wg: argmax_wg });
+
+                // ---- Phase 2: ONE compute pass for EVERYTHING ----
+                {
+                    let mut pass = enc.begin_compute_pass(&Default::default());
+                    for cmd in &all_dispatches {
+                        p.dispatch_in_pass(&mut pass, cmd.shader, &cmd.bg, cmd.wg);
+                    }
+                }
+
+                let t0 = std::time::Instant::now();
+                p.queue.submit(std::iter::once(enc.finish()));
+                self.past_seq_len = total_seq;
+
+                let bytes = p.read_f32(&argmax_buf, 1);
+                let token_id = bytes[0].to_bits();
+                log::info!("GPU total (greedy, 1-pass): {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
+
+                let mut logits = vec![0.0f32; vocab as usize];
+                logits[token_id as usize] = 1.0;
+                return logits;
+            }
+
+            // Non-greedy: dispatch all layers + final norm + lm_head in ONE pass
+            {
+                let mut pass = enc.begin_compute_pass(&Default::default());
+                for cmd in &all_dispatches {
+                    p.dispatch_in_pass(&mut pass, cmd.shader, &cmd.bg, cmd.wg);
+                }
+            }
+
+            let t0 = std::time::Instant::now();
+            p.queue.submit(std::iter::once(enc.finish()));
+            self.past_seq_len = total_seq;
+
+            let logits = p.read_f32(&logits_buf, vocab as usize);
+            log::info!("GPU total (full readback, 1-pass): {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
+            return logits;
+        }
+
+        // ================================================================
+        // PREFILL PATH — legacy one-pass-per-op (unchanged)
+        // ================================================================
+
+        // 2. Embedding lookup (prefill uses legacy dispatch)
+        let mut hidden = ops::embed(&p, &mut enc, &self.embed_table, &ids_buf, hidden_size, seq_len as u32);
+
+        {
             for i in 0..num_layers {
                 // a. Input RMS Norm
                 let normed = ops::rms_norm(
@@ -1155,91 +1216,35 @@ impl NativeModel {
             }
         }
 
-        // 5. Final RMS Norm + LM head
+        // 5. Final RMS Norm + LM head (PREFILL PATH only — decode returns above)
         let vocab = self.config.vocab_size as u32;
 
-        if seq_len == 1 {
-            // DECODE PATH: use pre-computed params + batched compute pass
-            let mp = &self.model_params;
+        let normed = ops::rms_norm(&p, &mut enc, &hidden, &self.final_norm_weight, 1, hidden_size, 1e-6);
+        let logits_buf = ops::f32_matmul(&p, &mut enc, &normed, &self.embed_table, vocab, hidden_size);
 
-            let (normed, norm_bg, norm_wg) = ops::rms_norm_prepare_precomputed(
-                &p, &hidden, &self.final_norm_weight,
-                &mp.final_norm_params, 1, hidden_size, mp.final_norm_wg,
-            );
-            let (logits_buf, lm_bg, lm_wg) = ops::f32_matmul_prepare_precomputed(
-                &p, &normed, &self.embed_table,
-                &mp.f32_matmul_params, vocab, mp.f32_matmul_wg,
-            );
-
-            if self.greedy_mode {
-                let (argmax_buf, argmax_bg, argmax_wg) = ops::argmax_gpu_prepare_precomputed(
-                    &p, &logits_buf, &mp.argmax_params, mp.argmax_wg,
-                );
-
-                // Dispatch final norm + LM head + argmax in ONE pass
-                {
-                    let mut pass = enc.begin_compute_pass(&Default::default());
-                    p.dispatch_in_pass(&mut pass, &p.rms_norm, &norm_bg, norm_wg);
-                    p.dispatch_in_pass(&mut pass, &p.f32_matmul, &lm_bg, lm_wg);
-                    p.dispatch_in_pass(&mut pass, &p.argmax, &argmax_bg, argmax_wg);
-                }
-
-                let t0 = std::time::Instant::now();
-                p.queue.submit(std::iter::once(enc.finish()));
-                self.past_seq_len = total_seq;
-
-                let bytes = p.read_f32(&argmax_buf, 1);
-                let token_id = bytes[0].to_bits();
-                log::info!("GPU total (greedy): {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
-
-                let mut logits = vec![0.0f32; vocab as usize];
-                logits[token_id as usize] = 1.0;
-                return logits;
-            }
-
-            // Full logits readback — still use batched pass for norm + matmul
-            {
-                let mut pass = enc.begin_compute_pass(&Default::default());
-                p.dispatch_in_pass(&mut pass, &p.rms_norm, &norm_bg, norm_wg);
-                p.dispatch_in_pass(&mut pass, &p.f32_matmul, &lm_bg, lm_wg);
-            }
+        if self.greedy_mode {
+            let argmax_buf = ops::argmax_gpu(&p, &mut enc, &logits_buf, vocab);
 
             let t0 = std::time::Instant::now();
             p.queue.submit(std::iter::once(enc.finish()));
             self.past_seq_len = total_seq;
 
-            let logits = p.read_f32(&logits_buf, vocab as usize);
-            log::info!("GPU total (full readback): {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
-            logits
-        } else {
-            // PREFILL PATH: use legacy per-op dispatch (params created per call)
-            let normed = ops::rms_norm(&p, &mut enc, &hidden, &self.final_norm_weight, 1, hidden_size, 1e-6);
-            let logits_buf = ops::f32_matmul(&p, &mut enc, &normed, &self.embed_table, vocab, hidden_size);
+            let bytes = p.read_f32(&argmax_buf, 1);
+            let token_id = bytes[0].to_bits();
+            log::info!("GPU total (greedy): {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
 
-            if self.greedy_mode {
-                let argmax_buf = ops::argmax_gpu(&p, &mut enc, &logits_buf, vocab);
-
-                let t0 = std::time::Instant::now();
-                p.queue.submit(std::iter::once(enc.finish()));
-                self.past_seq_len = total_seq;
-
-                let bytes = p.read_f32(&argmax_buf, 1);
-                let token_id = bytes[0].to_bits();
-                log::info!("GPU total (greedy): {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
-
-                let mut logits = vec![0.0f32; vocab as usize];
-                logits[token_id as usize] = 1.0;
-                return logits;
-            }
-
-            let t0 = std::time::Instant::now();
-            p.queue.submit(std::iter::once(enc.finish()));
-            self.past_seq_len = total_seq;
-
-            let logits = p.read_f32(&logits_buf, vocab as usize);
-            log::info!("GPU total (full readback): {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
-            logits
+            let mut logits = vec![0.0f32; vocab as usize];
+            logits[token_id as usize] = 1.0;
+            return logits;
         }
+
+        let t0 = std::time::Instant::now();
+        p.queue.submit(std::iter::once(enc.finish()));
+        self.past_seq_len = total_seq;
+
+        let logits = p.read_f32(&logits_buf, vocab as usize);
+        log::info!("GPU total (full readback): {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
+        logits
     }
 }
 
