@@ -712,21 +712,7 @@ impl NativeModel {
 
         // Pre-compute model-level param buffers (final norm, f32 matmul, argmax)
         let (final_norm_params, final_norm_wg) = precompute_rms_norm(&pipelines, 1, hidden_size as u32, 1e-6);
-        // Pre-compute Q4 matmul params for lm_head (quantized embedding)
-        let (f32_matmul_params, f32_matmul_wg) = {
-            let n = vocab_size as u32;
-            let k = hidden_size as u32;
-            let num_blocks = k / lm_block_size as u32;
-            #[repr(C)]
-            #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
-            struct Q4Params { n: u32, k: u32, num_blocks: u32, u32s_per_row: u32 }
-            let params = Q4Params { n, k, num_blocks, u32s_per_row: num_blocks * (lm_block_size as u32 / 2) / 4 };
-            let buf = pipelines.upload_uniform_permanent(bytemuck::bytes_of(&params));
-            let num_wg = (n + 3) / 4;
-            let x = num_wg.min(65535);
-            let y = (num_wg + x - 1) / x;
-            (buf, (x, y, 1))
-        };
+        let (f32_matmul_params, f32_matmul_wg) = precompute_f32_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
         let (argmax_params, argmax_wg) = precompute_argmax(&pipelines, vocab_size as u32);
 
         log::info!("Model loaded successfully (with pre-computed param buffers)");
@@ -1046,13 +1032,12 @@ impl NativeModel {
             );
             all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: fn_bg, wg: fn_wg });
 
-            // LM head: Q4 matmul with quantized embedding table (4x less bandwidth!)
-            let (logits_buf, lm_bg, lm_wg) = ops::q4_matmul_prepare_precomputed(
-                &p, &final_normed, &self.lm_head_packed, &self.lm_head_scales,
-                &mp.f32_matmul_params, // reuse params slot for lm_head Q4 params
-                vocab, mp.f32_matmul_wg,
+            // LM head: f32 matmul with tied embedding table
+            let (logits_buf, lm_bg, lm_wg) = ops::f32_matmul_prepare_precomputed(
+                &p, &final_normed, &self.embed_table,
+                &mp.f32_matmul_params, vocab, mp.f32_matmul_wg,
             );
-            all_dispatches.push(DispatchCmd { shader: &p.q4_matmul, bg: lm_bg, wg: lm_wg });
+            all_dispatches.push(DispatchCmd { shader: &p.f32_matmul, bg: lm_bg, wg: lm_wg });
 
             if self.greedy_mode {
                 let (argmax_buf, argmax_bg, argmax_wg) = ops::argmax_gpu_prepare_precomputed(
