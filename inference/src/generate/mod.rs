@@ -84,11 +84,18 @@ impl TextGenerator {
             // Attention mask covers total sequence (past + current)
             let mask_data = burn::tensor::TensorData::new(vec![1.0f32; total_seq], vec![1, total_seq]);
 
+            // Position IDs: for prefill [0,1,...,seq-1], for decode [total_seq-1]
+            let pos_start = if step == 0 || !use_kv_cache { 0 } else { total_seq - 1 };
+            let pos_ids: Vec<f32> = (0..seq_len).map(|i| (pos_start + i) as f32).collect();
+            let pos_data = burn::tensor::TensorData::new(pos_ids, vec![1, seq_len]);
+
             let mut inputs = HashMap::new();
             inputs.insert("input_ids".to_string(),
                 Value::Float2(Tensor::from_data(input_data, &self.device)));
             inputs.insert("attention_mask".to_string(),
                 Value::Float2(Tensor::from_data(mask_data, &self.device)));
+            inputs.insert("position_ids".to_string(),
+                Value::Float2(Tensor::from_data(pos_data, &self.device)));
 
             // Feed KV-cache from previous step
             if use_kv_cache && step > 0 {

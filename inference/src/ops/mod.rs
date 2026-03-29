@@ -75,10 +75,11 @@ pub fn dispatch_proto(
         "MatMulNBits" => matmul::matmul_nbits_proto(node, values, device),
         "DequantizeLinear" => matmul::dequantize_linear_proto(node, values, device),
 
-        // Specialized fusion ops (Llama ONNX)
+        // Specialized fusion ops (Llama/Qwen ONNX)
         "GroupQueryAttention" => norm::group_query_attention_proto(node, values, device),
         "SkipSimplifiedLayerNormalization" | "SimplifiedLayerNormalization" =>
             norm::simplified_layer_norm_proto(node, values, device),
+        "RotaryEmbedding" => norm::rotary_embedding_proto(node, values, device),
         "ReduceSum" => norm::reduce_sum_proto(node, values, device),
 
         // Skip known harmless ops

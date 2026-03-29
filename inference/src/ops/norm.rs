@@ -267,6 +267,92 @@ fn apply_causal_mask_kv(
     scores + mask
 }
 
+/// RotaryEmbedding — standalone RoPE operator (Qwen3, etc.)
+/// Inputs: x [batch, seq, hidden], position_ids [1, seq], cos_cache [max_seq, dim/2], sin_cache [max_seq, dim/2]
+pub fn rotary_embedding_proto(
+    node: &NodeProto,
+    values: &mut HashMap<String, Value>,
+    _device: &Device,
+) -> Result<(), String> {
+    let x = values.get(&node.input[0]).ok_or("rope: input not found")?.clone();
+    let pos_ids = if node.input.len() > 1 && !node.input[1].is_empty() {
+        values.get(&node.input[1]).cloned()
+    } else { None };
+    let cos_cache = if node.input.len() > 2 && !node.input[2].is_empty() {
+        values.get(&node.input[2]).cloned()
+    } else { None };
+    let sin_cache = if node.input.len() > 3 && !node.input[3].is_empty() {
+        values.get(&node.input[3]).cloned()
+    } else { None };
+
+    let _interleaved = node.attribute.iter().find(|a| a.name == "interleaved").map(|a| a.i != 0).unwrap_or(false);
+
+    match x {
+        Value::Float3(x_t) => {
+            let [batch, seq_len, hidden] = x_t.dims();
+
+            if let (Some(Value::Float2(cos_c)), Some(Value::Float2(sin_c))) = (&cos_cache, &sin_cache) {
+                let rope_dim = cos_c.dims()[1]; // cos_cache: [max_seq, rope_dim] (= head_dim/2)
+                let head_dim = rope_dim * 2;
+                let num_heads = hidden / head_dim;
+
+                // Get position indices from pos_ids input
+                let positions = if let Some(ref pids) = pos_ids {
+                    let data = match pids {
+                        Value::Float2(p) => p.to_data(),
+                        Value::Float1(p) => p.to_data(),
+                        _ => burn::tensor::TensorData::new(vec![0.0f32], vec![1]),
+                    };
+                    data.as_slice::<f32>().map_err(|e| format!("{e:?}"))?.to_vec()
+                        .iter().map(|&v| v as usize).collect::<Vec<_>>()
+                } else {
+                    (0..seq_len).collect()
+                };
+
+                // Gather cos/sin for each position individually (handles non-contiguous positions)
+                let start = positions[0];
+                let contiguous = positions.iter().enumerate().all(|(i, &p)| p == start + i);
+
+                let (cos_gathered, sin_gathered) = if contiguous {
+                    (cos_c.clone().narrow(0, start, seq_len),
+                     sin_c.clone().narrow(0, start, seq_len))
+                } else {
+                    // Non-contiguous: gather each row
+                    let cos_rows: Vec<_> = positions.iter()
+                        .map(|&p| cos_c.clone().narrow(0, p, 1))
+                        .collect();
+                    let sin_rows: Vec<_> = positions.iter()
+                        .map(|&p| sin_c.clone().narrow(0, p, 1))
+                        .collect();
+                    (Tensor::cat(cos_rows, 0), Tensor::cat(sin_rows, 0))
+                };
+
+                // x: [batch, seq, hidden] → [batch, seq, num_heads, head_dim]
+                let x_4d = x_t.reshape([batch, seq_len, num_heads, head_dim]);
+                // cos/sin: [seq, rope_dim] → [1, seq, 1, rope_dim]
+                let cos_4d: Tensor<Backend, 4> = cos_gathered.reshape([1, seq_len, 1, rope_dim]);
+                let sin_4d: Tensor<Backend, 4> = sin_gathered.reshape([1, seq_len, 1, rope_dim]);
+
+                // Split head_dim into halves: first rope_dim and second rope_dim
+                let x1 = x_4d.clone().narrow(3, 0, rope_dim);
+                let x2 = x_4d.clone().narrow(3, rope_dim, rope_dim);
+
+                // RoPE: [x1*cos - x2*sin, x1*sin + x2*cos]
+                let out1 = x1.clone() * cos_4d.clone() - x2.clone() * sin_4d.clone();
+                let out2 = x1 * sin_4d + x2 * cos_4d;
+
+                let result = Tensor::cat(vec![out1, out2], 3)
+                    .reshape([batch, seq_len, hidden]);
+                values.insert(node.output[0].clone(), Value::Float3(result));
+            } else {
+                values.insert(node.output[0].clone(), Value::Float3(x_t));
+            }
+            Ok(())
+        }
+        _ => Err("rope: unsupported input dimensions".into()),
+    }
+}
+
 /// ReduceSum
 pub fn reduce_sum_proto(
     node: &NodeProto,

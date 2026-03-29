@@ -8,8 +8,12 @@ pub fn download_model(model_id: &str) -> Result<PathBuf, String> {
 
     // Try common ONNX model file names
     let candidates = [
+        "onnx/model_q4.onnx",
         "onnx/model_q4f16.onnx",
+        "onnx/model_bnb4.onnx",
         "onnx/model_quantized.onnx",
+        "onnx/model_int8.onnx",
+        "model_q4.onnx",
         "model_q4f16.onnx",
         "model_quantized.onnx",
         "onnx/model.onnx",
