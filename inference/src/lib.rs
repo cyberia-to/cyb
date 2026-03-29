@@ -4,6 +4,7 @@ pub mod ops;
 pub mod quant;
 pub mod generate;
 pub mod hub;
+pub mod runtime;
 
 use burn::backend::Wgpu;
 
