@@ -33,8 +33,9 @@ var<workgroup> shared_sums: array<f32, 256>;
 fn main(
     @builtin(workgroup_id) wg_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
+    @builtin(num_workgroups) num_wg: vec3<u32>,
 ) {
-    let row = wg_id.x;
+    let row = wg_id.y * num_wg.x + wg_id.x;
     let tid = local_id.x;
 
     if (row >= params.n) { return; }

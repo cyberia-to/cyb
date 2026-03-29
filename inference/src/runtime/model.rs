@@ -77,9 +77,6 @@ pub struct NativeModel {
     cos_cache: Vec<f32>, // [max_seq, head_dim/2] on CPU for slicing
     sin_cache: Vec<f32>,
 
-    // Cached embed table on CPU for lm_head (tied weights)
-    embed_table_cpu: Option<Vec<f32>>,
-
     // KV cache
     kv_cache: Vec<KVCache>,
     past_seq_len: usize,
@@ -464,7 +461,6 @@ impl NativeModel {
             lm_head_packed,
             lm_head_scales,
             lm_head_n: lm_head_n_val,
-            embed_table_cpu: None,
             cos_cache,
             sin_cache,
             kv_cache,
@@ -496,12 +492,15 @@ impl NativeModel {
         let kv_num_heads = self.config.kv_num_heads as u32;
         let block_size = self.config.block_size as u32;
 
+        // Single command encoder for ALL GPU work in this forward pass
+        let mut enc = p.device.create_command_encoder(&Default::default());
+
         // 1. Upload token IDs as f32 (embed shader reads f32 token_ids)
         let ids_f32: Vec<f32> = token_ids.iter().map(|&id| id as f32).collect();
         let ids_buf = p.upload_f32(&ids_f32);
 
         // 2. Embedding lookup
-        let mut hidden = ops::embed(&p, &self.embed_table, &ids_buf, hidden_size, seq_len as u32);
+        let mut hidden = ops::embed(&p, &mut enc, &self.embed_table, &ids_buf, hidden_size, seq_len as u32);
 
         // 3. Slice RoPE caches for current positions [pos_offset..pos_offset+seq_len]
         //    cos_cache layout: [max_seq, half_dim]
@@ -530,6 +529,7 @@ impl NativeModel {
             // a. Input RMS Norm
             let normed = ops::rms_norm(
                 &p,
+                &mut enc,
                 &hidden,
                 &self.layers[i].input_norm_weight,
                 seq_len as u32,
@@ -543,6 +543,7 @@ impl NativeModel {
             let (q_buf, k_buf, v_buf) = if seq_len == 1 {
                 let q = ops::q4_matmul(
                     &p,
+                    &mut enc,
                     &normed,
                     &self.layers[i].q_proj_packed,
                     &self.layers[i].q_proj_scales,
@@ -552,6 +553,7 @@ impl NativeModel {
                 );
                 let k = ops::q4_matmul(
                     &p,
+                    &mut enc,
                     &normed,
                     &self.layers[i].k_proj_packed,
                     &self.layers[i].k_proj_scales,
@@ -561,6 +563,7 @@ impl NativeModel {
                 );
                 let v = ops::q4_matmul(
                     &p,
+                    &mut enc,
                     &normed,
                     &self.layers[i].v_proj_packed,
                     &self.layers[i].v_proj_scales,
@@ -583,10 +586,11 @@ impl NativeModel {
 
                 for s in 0..seq_len {
                     let normed_slice =
-                        slice_buffer(&p, &normed, s * self.config.hidden_size, self.config.hidden_size);
+                        slice_buffer(&p, &mut enc, &normed, s * self.config.hidden_size, self.config.hidden_size);
 
                     let q_pos = ops::q4_matmul(
                         &p,
+                        &mut enc,
                         &normed_slice,
                         &self.layers[i].q_proj_packed,
                         &self.layers[i].q_proj_scales,
@@ -596,6 +600,7 @@ impl NativeModel {
                     );
                     let k_pos = ops::q4_matmul(
                         &p,
+                        &mut enc,
                         &normed_slice,
                         &self.layers[i].k_proj_packed,
                         &self.layers[i].k_proj_scales,
@@ -605,6 +610,7 @@ impl NativeModel {
                     );
                     let v_pos = ops::q4_matmul(
                         &p,
+                        &mut enc,
                         &normed_slice,
                         &self.layers[i].v_proj_packed,
                         &self.layers[i].v_proj_scales,
@@ -613,9 +619,9 @@ impl NativeModel {
                         block_size,
                     );
 
-                    copy_into(&p, &q_pos, &q_combined, s * layer_q_n as usize, layer_q_n as usize);
-                    copy_into(&p, &k_pos, &k_combined, s * layer_k_n as usize, layer_k_n as usize);
-                    copy_into(&p, &v_pos, &v_combined, s * layer_v_n as usize, layer_v_n as usize);
+                    copy_into(&mut enc, &q_pos, &q_combined, s * layer_q_n as usize, layer_q_n as usize);
+                    copy_into(&mut enc, &k_pos, &k_combined, s * layer_k_n as usize, layer_k_n as usize);
+                    copy_into(&mut enc, &v_pos, &v_combined, s * layer_v_n as usize, layer_v_n as usize);
                 }
 
                 (q_combined, k_combined, v_combined)
@@ -627,6 +633,7 @@ impl NativeModel {
 
             let q_normed = ops::rms_norm(
                 &p,
+                &mut enc,
                 &q_buf,
                 &self.layers[i].q_norm_weight,
                 q_positions,
@@ -635,6 +642,7 @@ impl NativeModel {
             );
             let k_normed = ops::rms_norm(
                 &p,
+                &mut enc,
                 &k_buf,
                 &self.layers[i].k_norm_weight,
                 k_positions,
@@ -648,6 +656,7 @@ impl NativeModel {
 
             let q_roped = ops::rope(
                 &p,
+                &mut enc,
                 &q_normed,
                 &cos_buf,
                 &sin_buf,
@@ -657,6 +666,7 @@ impl NativeModel {
             );
             let k_roped = ops::rope(
                 &p,
+                &mut enc,
                 &k_normed,
                 &cos_buf,
                 &sin_buf,
@@ -677,7 +687,6 @@ impl NativeModel {
             let full_v = p.alloc((total_kv_elements as u64) * 4);
 
             {
-                let mut encoder = p.device.create_command_encoder(&Default::default());
                 let past_seq = self.past_seq_len;
 
                 for h in 0..kv_heads_usize {
@@ -692,7 +701,7 @@ impl NativeModel {
                             if past_head_src + past_bytes > past_buf_size {
                                 log::error!("KV K copy OOB layer={i} h={h}: src_off={past_head_src} + size={past_bytes} > buf={past_buf_size}");
                             } else {
-                                encoder.copy_buffer_to_buffer(past_k, past_head_src, &full_k, new_head_offset, past_bytes);
+                                enc.copy_buffer_to_buffer(past_k, past_head_src, &full_k, new_head_offset, past_bytes);
                             }
                         }
                         if let Some(ref past_v) = self.kv_cache[i].value {
@@ -702,7 +711,7 @@ impl NativeModel {
                             if past_head_src + past_bytes > past_buf_size {
                                 log::error!("KV V copy OOB layer={i} h={h}: src_off={past_head_src} + size={past_bytes} > buf={past_buf_size}");
                             } else {
-                                encoder.copy_buffer_to_buffer(past_v, past_head_src, &full_v, new_head_offset, past_bytes);
+                                enc.copy_buffer_to_buffer(past_v, past_head_src, &full_v, new_head_offset, past_bytes);
                             }
                         }
                     }
@@ -720,30 +729,24 @@ impl NativeModel {
                             log::error!("K copy OOB: src={new_src}+{dim_bytes} > buf_size={k_buf_size}, h={h}, s={s}");
                             continue;
                         }
-                        encoder.copy_buffer_to_buffer(&k_roped, new_src, &full_k, new_dst, dim_bytes);
-                        encoder.copy_buffer_to_buffer(&v_buf, new_src, &full_v, new_dst, dim_bytes);
+                        enc.copy_buffer_to_buffer(&k_roped, new_src, &full_k, new_dst, dim_bytes);
+                        enc.copy_buffer_to_buffer(&v_buf, new_src, &full_v, new_dst, dim_bytes);
                     }
                 }
-
-                p.queue.submit(std::iter::once(encoder.finish()));
             }
 
             // Store copies in KV cache
             let cache_k = p.alloc((total_kv_elements as u64) * 4);
             let cache_v = p.alloc((total_kv_elements as u64) * 4);
-            {
-                let mut enc = p.device.create_command_encoder(&Default::default());
-                enc.copy_buffer_to_buffer(&full_k, 0, &cache_k, 0, (total_kv_elements as u64) * 4);
-                enc.copy_buffer_to_buffer(&full_v, 0, &cache_v, 0, (total_kv_elements as u64) * 4);
-                p.queue.submit(std::iter::once(enc.finish()));
-            }
+            enc.copy_buffer_to_buffer(&full_k, 0, &cache_k, 0, (total_kv_elements as u64) * 4);
+            enc.copy_buffer_to_buffer(&full_v, 0, &cache_v, 0, (total_kv_elements as u64) * 4);
             self.kv_cache[i].key = Some(cache_k);
             self.kv_cache[i].value = Some(cache_v);
 
             // f. Attention: GQA head expansion
             let (attn_k, attn_v) = if num_heads != kv_num_heads {
-                let expanded_k = expand_kv_heads(&p, &full_k, kv_num_heads, num_heads, head_dim, total_seq as u32);
-                let expanded_v = expand_kv_heads(&p, &full_v, kv_num_heads, num_heads, head_dim, total_seq as u32);
+                let expanded_k = expand_kv_heads(&p, &mut enc, &full_k, kv_num_heads, num_heads, head_dim, total_seq as u32);
+                let expanded_v = expand_kv_heads(&p, &mut enc, &full_v, kv_num_heads, num_heads, head_dim, total_seq as u32);
                 (expanded_k, expanded_v)
             } else {
                 (full_k, full_v)
@@ -754,6 +757,7 @@ impl NativeModel {
             let attn_out = if seq_len == 1 {
                 ops::attention_decode(
                     &p,
+                    &mut enc,
                     &q_roped,
                     &attn_k,
                     &attn_v,
@@ -765,9 +769,10 @@ impl NativeModel {
             } else {
                 // Prefill: use last position's Q only
                 let last_q_offset = (seq_len - 1) * (self.layers[i].q_n as usize);
-                let last_q = slice_buffer(&p, &q_roped, last_q_offset, self.layers[i].q_n as usize);
+                let last_q = slice_buffer(&p, &mut enc, &q_roped, last_q_offset, self.layers[i].q_n as usize);
                 ops::attention_decode(
                     &p,
+                    &mut enc,
                     &last_q,
                     &attn_k,
                     &attn_v,
@@ -781,6 +786,7 @@ impl NativeModel {
             // g. O projection
             let attn_proj = ops::q4_matmul(
                 &p,
+                &mut enc,
                 &attn_out,
                 &self.layers[i].o_proj_packed,
                 &self.layers[i].o_proj_scales,
@@ -791,16 +797,17 @@ impl NativeModel {
 
             // h. Residual connection
             let residual_hidden = if seq_len > 1 {
-                slice_buffer(&p, &hidden, (seq_len - 1) * self.config.hidden_size, self.config.hidden_size)
+                slice_buffer(&p, &mut enc, &hidden, (seq_len - 1) * self.config.hidden_size, self.config.hidden_size)
             } else {
                 hidden
             };
 
-            hidden = ops::add(&p, &residual_hidden, &attn_proj, hidden_size);
+            hidden = ops::add(&p, &mut enc, &residual_hidden, &attn_proj, hidden_size);
 
             // i. Post-attention RMS Norm
             let normed2 = ops::rms_norm(
                 &p,
+                &mut enc,
                 &hidden,
                 &self.layers[i].post_norm_weight,
                 1,
@@ -811,6 +818,7 @@ impl NativeModel {
             // j. Gate + Up projections
             let gate = ops::q4_matmul(
                 &p,
+                &mut enc,
                 &normed2,
                 &self.layers[i].gate_proj_packed,
                 &self.layers[i].gate_proj_scales,
@@ -820,6 +828,7 @@ impl NativeModel {
             );
             let up = ops::q4_matmul(
                 &p,
+                &mut enc,
                 &normed2,
                 &self.layers[i].up_proj_packed,
                 &self.layers[i].up_proj_scales,
@@ -829,11 +838,12 @@ impl NativeModel {
             );
 
             // k. SwiGLU
-            let ffn = ops::silu_mul(&p, &gate, &up, self.layers[i].gate_n);
+            let ffn = ops::silu_mul(&p, &mut enc, &gate, &up, self.layers[i].gate_n);
 
             // l. Down projection
             let ffn_out = ops::q4_matmul(
                 &p,
+                &mut enc,
                 &ffn,
                 &self.layers[i].down_proj_packed,
                 &self.layers[i].down_proj_scales,
@@ -843,36 +853,27 @@ impl NativeModel {
             );
 
             // m. Residual
-            hidden = ops::add(&p, &hidden, &ffn_out, hidden_size);
+            hidden = ops::add(&p, &mut enc, &hidden, &ffn_out, hidden_size);
         }
 
         // 5. Final RMS Norm
-        let normed = ops::rms_norm(&p, &hidden, &self.final_norm_weight, 1, hidden_size, 1e-6);
+        let normed = ops::rms_norm(&p, &mut enc, &hidden, &self.final_norm_weight, 1, hidden_size, 1e-6);
 
-        // 6. LM head — tied weights (embed_table transposed)
-        // Read normalized hidden state to CPU for matmul with embed_table
-        let hidden_data = p.read_f32(&normed, hidden_size as usize);
+        // 6. LM head — GPU f32 matmul with tied embed weights
+        // embed_table: [vocab, hidden] — use as weight matrix directly
+        let vocab = self.config.vocab_size as u32;
+        let logits_buf = ops::f32_matmul(&p, &mut enc, &normed, &self.embed_table, vocab, hidden_size);
+
+        // Submit ALL GPU work including lm_head
+        let t0 = std::time::Instant::now();
+        p.queue.submit(std::iter::once(enc.finish()));
 
         // Update past sequence length
         self.past_seq_len = total_seq;
 
-        // Read embed_table if not cached
-        if self.embed_table_cpu.is_none() {
-            self.embed_table_cpu = Some(p.read_f32(&self.embed_table, self.config.vocab_size * hidden_size as usize));
-        }
-        let embed = self.embed_table_cpu.as_ref().unwrap();
-
-        // CPU matmul: hidden[1, H] × embed[V, H]^T → logits[V]
-        let vocab = self.config.vocab_size;
-        let mut logits = vec![0.0f32; vocab];
-        for v in 0..vocab {
-            let mut sum = 0.0f32;
-            let base = v * hidden_size as usize;
-            for h in 0..hidden_size as usize {
-                sum += hidden_data[h] * embed[base + h];
-            }
-            logits[v] = sum;
-        }
+        // Read only logits back to CPU (vocab_size floats)
+        let logits = p.read_f32(&logits_buf, vocab as usize);
+        log::info!("GPU total (submit+readback): {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
 
         logits
     }
@@ -883,40 +884,37 @@ impl NativeModel {
 /// Slice a GPU buffer: copy `count` f32 elements from `offset` into a new buffer
 fn slice_buffer(
     p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
     src: &wgpu::Buffer,
     offset_elements: usize,
     count_elements: usize,
 ) -> wgpu::Buffer {
     let dst = p.alloc((count_elements as u64) * 4);
-    let mut encoder = p.device.create_command_encoder(&Default::default());
-    encoder.copy_buffer_to_buffer(
+    enc.copy_buffer_to_buffer(
         src,
         (offset_elements as u64) * 4,
         &dst,
         0,
         (count_elements as u64) * 4,
     );
-    p.queue.submit(std::iter::once(encoder.finish()));
     dst
 }
 
 /// Copy src buffer into dst buffer at given element offset
 fn copy_into(
-    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
     src: &wgpu::Buffer,
     dst: &wgpu::Buffer,
     offset_elements: usize,
     count_elements: usize,
 ) {
-    let mut encoder = p.device.create_command_encoder(&Default::default());
-    encoder.copy_buffer_to_buffer(
+    enc.copy_buffer_to_buffer(
         src,
         0,
         dst,
         (offset_elements as u64) * 4,
         (count_elements as u64) * 4,
     );
-    p.queue.submit(std::iter::once(encoder.finish()));
 }
 
 /// Expand KV heads for GQA: replicate each KV head to match Q heads
@@ -924,6 +922,7 @@ fn copy_into(
 /// Output: [num_heads * total_seq * head_dim]
 fn expand_kv_heads(
     p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
     kv: &wgpu::Buffer,
     kv_heads: u32,
     num_heads: u32,
@@ -935,11 +934,10 @@ fn expand_kv_heads(
     let output = p.alloc((output_elements as u64) * 4);
     let kv_head_size = (total_seq * head_dim) as u64 * 4;
 
-    let mut encoder = p.device.create_command_encoder(&Default::default());
     for kv_h in 0..kv_heads {
         for r in 0..repeats {
             let dst_head = kv_h * repeats + r;
-            encoder.copy_buffer_to_buffer(
+            enc.copy_buffer_to_buffer(
                 kv,
                 (kv_h as u64) * kv_head_size,
                 &output,
@@ -948,7 +946,6 @@ fn expand_kv_heads(
             );
         }
     }
-    p.queue.submit(std::iter::once(encoder.finish()));
 
     output
 }

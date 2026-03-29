@@ -21,6 +21,7 @@ pub struct Pipelines {
     pub mul: ComputeShader,
     pub silu_mul: ComputeShader,
     pub embed: ComputeShader,
+    pub f32_matmul: ComputeShader,
 }
 
 pub struct ComputeShader {
@@ -55,7 +56,11 @@ impl Pipelines {
             storage_ro(), storage_ro(), storage_rw(), uniform(),
         ]);
 
-        Self { device, queue, q4_matmul, rms_norm, rope, attention, add, mul, silu_mul, embed }
+        let f32_matmul = create_pipeline(&device, include_str!("shaders/f32_matmul.wgsl"), "main", &[
+            storage_ro(), storage_ro(), storage_rw(), uniform(),
+        ]);
+
+        Self { device, queue, q4_matmul, rms_norm, rope, attention, add, mul, silu_mul, embed, f32_matmul }
     }
 
     /// Create a GPU buffer from f32 data
@@ -122,7 +127,36 @@ impl Pipelines {
         result
     }
 
-    /// Execute a single compute pass with bind group
+    /// Add a compute pass to an existing encoder (for batching)
+    pub fn encode(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        shader: &ComputeShader,
+        bindings: &[wgpu::BindingResource],
+        workgroups: (u32, u32, u32),
+    ) {
+        let entries: Vec<wgpu::BindGroupEntry> = bindings.iter().enumerate()
+            .map(|(i, r)| wgpu::BindGroupEntry {
+                binding: i as u32,
+                resource: r.clone(),
+            })
+            .collect();
+
+        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: None,
+            layout: &shader.bind_group_layout,
+            entries: &entries,
+        });
+
+        {
+            let mut pass = encoder.begin_compute_pass(&Default::default());
+            pass.set_pipeline(&shader.pipeline);
+            pass.set_bind_group(0, &bind_group, &[]);
+            pass.dispatch_workgroups(workgroups.0, workgroups.1, workgroups.2);
+        }
+    }
+
+    /// Execute a single compute pass with bind group (creates own encoder + submit)
     pub fn dispatch(
         &self,
         shader: &ComputeShader,
