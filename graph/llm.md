@@ -188,6 +188,112 @@ every op execution produces a trace entry:
 
 the trace is a STARK-compatible execution record. given the same weights and input, any verifier can replay the trace and confirm the output. this is what makes [[soma]] inference provable — the model cannot lie because every matrix multiply is auditable.
 
+## multi-model orchestration
+
+soma runs 8+ models in parallel (tier 0) + loads/unloads tier 1-2 on demand. the runtime is not a "run one model" tool — it is a model scheduler.
+
+### concurrent execution
+- multiple models share GPU memory simultaneously
+- priority queue: tier 0 models preempt tier 1-2
+- memory pressure → shed lowest-priority model, not crash
+
+### hot-swap
+- load new model weights while old model still serves
+- atomic switch: old → new without dropping requests
+- use case: model update without downtime
+
+### model composition
+- chain models in a pipeline: whisper → LLM → TTS
+- output tensor of model A feeds directly as input to model B
+- zero-copy between models on same device (shared GPU buffers)
+
+## inference optimizations
+
+### speculative decoding
+use small model (tier 1) to draft N tokens, large model (tier 2) to verify in one forward pass. 2-3x speedup for autoregressive generation. the runtime manages draft/verify loop automatically when both models are loaded.
+
+### multi-token prediction (MTP)
+MiMo and Step 3.5 Flash generate 2-3 tokens per forward pass. the runtime supports variable output length per step — not hardcoded to 1 token.
+
+### prefill vs decode
+two distinct phases with different optimization strategies:
+- prefill (prompt processing): batch all tokens, maximize GPU utilization, parallelize
+- decode (token generation): sequential, optimize for latency, use KV cache
+
+### continuous batching
+handle multiple inference requests concurrently. new requests join mid-batch without waiting. vLLM-style iteration-level scheduling.
+
+### graph fusion
+fuse sequential ops into single kernels at graph IR level:
+- matmul + bias + activation → single kernel
+- attention (Q×K, scale, mask, softmax, ×V) → flash attention kernel
+- rmsnorm + matmul → single dispatch
+
+### KV cache optimization
+- paged attention: allocate KV cache in fixed-size blocks, not contiguous. eliminates fragmentation
+- KV cache quantization: compress cached keys/values to Q8 or Q4 during long generations
+- prefix caching: reuse KV cache for common prompt prefixes across requests
+
+### MoE routing
+Mixture-of-Experts models (Wan2.2, MiMo-V2-Flash) select top-K experts per token. the runtime handles:
+- expert weight loading (only active experts in GPU memory)
+- token-to-expert dispatch
+- load balancing across experts
+
+## adaptive resource management
+
+### graceful degradation
+when memory pressure hits, the runtime does not crash — it adapts:
+```
+OOM detected
+  → drop KV cache precision (f16 → q8)
+  → if still OOM → shed lowest-priority model
+  → if still OOM → offload layers to CPU
+  → if still OOM → reduce context window
+  → never crash
+```
+
+### adaptive precision
+dynamically switch quantization based on available memory:
+- plenty of RAM → f16 weights, f16 KV cache
+- moderate pressure → q8 weights, f16 KV cache
+- heavy pressure → q4 weights, q8 KV cache
+- extreme → q4 weights, q4 KV cache, reduced context
+
+### device splitting
+split a single model across multiple backends:
+- GPU + CPU: bottom layers on GPU, top layers on CPU (layer offloading)
+- GPU + ANE: attention on GPU, matmul on ANE (op-level split)
+- multi-GPU: tensor parallel across devices
+
+## observability
+
+every inference produces metrics:
+```
+{
+  model: "qwen3.5-9b",
+  tokens_generated: 142,
+  prefill_ms: 340,
+  decode_ms: 4200,
+  tok_per_sec: 33.8,
+  peak_memory_mb: 5840,
+  ops: [
+    { name: "matmul_q4", calls: 2840, total_ms: 3100 },
+    { name: "attention",  calls: 284,  total_ms: 890 },
+    ...
+  ]
+}
+```
+
+hot path identification: top-5 ops by time are the optimization targets. the runtime surfaces this automatically.
+
+## security
+
+- weight integrity: sha256 hash verification on load. tampered weights → refuse to run
+- input bounds: tensor shape/dtype validation before every op. malformed input → error, not UB
+- memory isolation: each model's buffers are separate. one model cannot read another's weights
+- no network: the runtime never phones home. fully offline. weights are local files
+
 ## what this enables
 
 one `cargo build` produces a binary that:
