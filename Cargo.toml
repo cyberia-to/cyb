@@ -13,3 +13,6 @@ tokio = { version = "1.40", features = ["full"] }
 lto = "fat"
 codegen-units = 1
 opt-level = 3
+
+[patch.crates-io]
+naga = { path = "vendor/naga" }

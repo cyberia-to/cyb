@@ -1,5 +1,8 @@
-// Q4 Tiled VecMat — NR=4 output rows per workgroup
-// Workgroup tree reduction (subgroups not yet available in WGSL/naga)
+// Q4 VecMat with SUBGROUP reduction (→ Metal simd_sum)
+// NR=4 output rows per workgroup
+// subgroupAdd replaces 8-level tree reduction → instant SIMD sum
+
+enable subgroups;
 
 const WG_SIZE: u32 = 256u;
 const NR: u32 = 4u;
@@ -17,17 +20,22 @@ struct Params {
 @group(0) @binding(3) var<storage, read_write> output: array<f32>;
 @group(0) @binding(4) var<uniform> params: Params;
 
-var<workgroup> shared_sums: array<f32, 1024>;
+// Only need cross-subgroup reduction scratch (8 subgroups max × NR)
+var<workgroup> wg_partial: array<f32, 32>;
 
 @compute @workgroup_size(256)
 fn main(
     @builtin(workgroup_id) wg_id: vec3<u32>,
     @builtin(local_invocation_id) local_id: vec3<u32>,
     @builtin(num_workgroups) num_wg: vec3<u32>,
+    @builtin(subgroup_invocation_id) sg_id: u32,
+    @builtin(subgroup_size) sg_size: u32,
 ) {
     let wg_idx = wg_id.y * num_wg.x + wg_id.x;
     let base_row = wg_idx * NR;
     let tid = local_id.x;
+    let sg_idx = tid / sg_size;
+    let num_sgs = WG_SIZE / sg_size;
 
     var sums: array<f32, 4>;
     sums[0] = 0.0; sums[1] = 0.0; sums[2] = 0.0; sums[3] = 0.0;
@@ -70,25 +78,33 @@ fn main(
         u32_idx += WG_SIZE;
     }
 
+    // SUBGROUP REDUCTION — instant SIMD sum (replaces 8 barriers!)
     for (var r = 0u; r < NR; r++) {
-        shared_sums[r * WG_SIZE + tid] = sums[r];
+        sums[r] = subgroupAdd(sums[r]);
+    }
+
+    // Cross-subgroup reduction (only num_sgs values, typically 8)
+    if (sg_id == 0u) {
+        for (var r = 0u; r < NR; r++) {
+            wg_partial[sg_idx * NR + r] = sums[r];
+        }
     }
     workgroupBarrier();
 
-    for (var stride = WG_SIZE / 2u; stride > 0u; stride >>= 1u) {
-        if (tid < stride) {
-            for (var r = 0u; r < NR; r++) {
-                shared_sums[r * WG_SIZE + tid] += shared_sums[r * WG_SIZE + tid + stride];
-            }
-        }
-        workgroupBarrier();
-    }
-
-    if (tid == 0u) {
+    // First subgroup finalizes
+    if (sg_idx == 0u && sg_id < num_sgs) {
         for (var r = 0u; r < NR; r++) {
-            let row = base_row + r;
-            if (row < params.n) {
-                output[row] = shared_sums[r * WG_SIZE];
+            sums[r] = wg_partial[sg_id * NR + r];
+        }
+        for (var r = 0u; r < NR; r++) {
+            sums[r] = subgroupAdd(sums[r]);
+        }
+        if (sg_id == 0u) {
+            for (var r = 0u; r < NR; r++) {
+                let row = base_row + r;
+                if (row < params.n) {
+                    output[row] = sums[r];
+                }
             }
         }
     }
