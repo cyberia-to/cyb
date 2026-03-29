@@ -109,71 +109,33 @@ every neural network — transformer, CNN, diffusion, TTS, BitNet — reduces to
 
 the key insight: wgpu is too slow for peak performance on Apple Silicon. Metal native is 2-5x faster for matmul because of `simdgroup_matrix_multiply_accumulate` — Apple's tensor core instruction that wgpu cannot access.
 
-strategy: native backend per platform, wgpu as universal fallback.
+strategy: native backend per platform, wgpu as universal fallback. zero C++ anywhere — pure Rust + thin FFI to system C APIs.
 
-| platform | primary backend | why | fallback |
-|----------|----------------|-----|----------|
-| macOS/iOS | Metal (objc2-metal) | simdgroup matrix, residency sets, zero translation overhead | wgpu |
-| macOS/iOS | ANE (rustane) | matmul+conv offload to neural engine, 3-5W power | Metal |
-| NVIDIA | CUDA (cudarc) | tensor cores, cuBLAS | wgpu (Vulkan) |
-| AMD | ROCm (cubecl-hip-sys) | WMMA, native HIP | wgpu (Vulkan) |
-| Linux/Windows (any GPU) | wgpu (Vulkan/DX12) | universal, no vendor SDK needed | CPU |
-| Android (Qualcomm) | QNN via ort | Hexagon NPU, 100x vs CPU | wgpu (Vulkan) |
-| Android (other) | NNAPI via ort | vendor NPU abstraction | wgpu (Vulkan) |
-| browser | wgpu (WebGPU) | only option, 25-40 tok/s for 1B | WASM CPU |
-| CPU everywhere | SIMD (NEON/AVX2/AVX512) | always available, no GPU needed | — |
+| platform | backend | Rust crate | maturity | why |
+|----------|---------|-----------|----------|-----|
+| macOS/iOS | Metal | `objc2-metal` | production | simdgroup matrix, residency sets, zero translation. 2-5x faster than wgpu for matmul |
+| macOS/iOS | ANE | `rustane` | experimental (30B validated) | matmul+conv offload to neural engine, 3-5W. dims must be ×128 |
+| NVIDIA | CUDA | `cudarc` | production (3.1M downloads) | tensor cores, cuBLAS |
+| AMD | ROCm | `cubecl-hip-sys` | early (Burn team) | WMMA, native HIP. low priority — wgpu Vulkan covers AMD |
+| any GPU | wgpu | `wgpu` | production (18.7M downloads) | Vulkan/DX12/Metal/WebGPU. universal fallback |
+| browser | WebGPU | `wgpu` → WASM | production | 25-40 tok/s for 1B models |
+| Android (Qualcomm) | QNN | FFI to `libQnnHtp.so` | needs unsafe FFI | Hexagon NPU, 100x vs CPU. dlopen + C API |
+| Android (other) | NNAPI | FFI to `libneuralnetworks.so` | needs unsafe FFI | vendor NPU abstraction. dlopen + ~30 C functions |
+| CPU everywhere | SIMD | `std::arch` | stable Rust | NEON/AVX2/AVX512. always available |
 
 ### Metal vs wgpu — why both
 
-wgpu on Metal translates WGSL→MSL via Naga. this loses:
-- `simdgroup_matrix_multiply_accumulate` (Apple tensor core)
-- fine-grained threadgroup memory barriers
-- residency sets (macOS 15+, keeps GPU memory wired)
-- compile-time specialization constants
+wgpu on Metal translates WGSL→MSL via Naga. this loses `simdgroup_matrix_multiply_accumulate` (Apple tensor core), fine-grained threadgroup barriers, residency sets (macOS 15+), and compile-time specialization constants.
 
-for matmul-heavy workloads (LLM inference), native Metal is 2-5x faster. for light workloads (softmax, normalization), wgpu is fine.
-
-approach: write Metal shaders (.metal) for the hot path (~5 ops: matmul, attention, rope, conv2d, quantized variants). use wgpu for everything else. runtime detects platform and dispatches.
+approach: Metal shaders (.metal) for the hot path (~5 ops: matmul, attention, rope, conv2d, quantized variants). wgpu for everything else. runtime detects platform and dispatches.
 
 ### ANE — the free accelerator
 
-Apple Neural Engine runs at 3-5W, leaving GPU free for other work. `rustane` crate provides direct access via private APIs. constraints: dimensions must be divisible by 128, efficiency cliff at dim=5120.
+Apple Neural Engine at 3-5W, leaving GPU free. `rustane` uses private APIs (fragile). production path: compile subgraphs to Core ML format (.mlmodelc) via stable public API while keeping Metal as primary. use ANE for always-on tier 0 models (low power), Metal GPU for generative (throughput).
 
 ### why not MLX?
 
-MLX is Apple's Python/C++ ML framework. it uses Metal under the hood. our runtime targets Metal directly — this IS the Rust equivalent of MLX, with more control. MLX abstracts away Metal details. we want those details (simdgroup ops, residency sets, buffer management). soma-runtime replaces MLX, not wraps it.
-
-models distributed as "MLX format" (.safetensors + config.json) load identically to any safetensors model — the format is the same, only the Python runtime differs.
-
-## Rust feasibility — can we actually build all backends?
-
-| backend | Rust crate | maturity | from Rust? |
-|---------|-----------|----------|------------|
-| Metal | `objc2-metal` | production (wgpu uses it) | yes — native Rust, full API access |
-| ANE | `rustane` | experimental (30B params validated) | yes — private API via objc2, fragile but working |
-| CUDA | `cudarc` | production (3.1M downloads) | yes — safe bindings to CUDA toolkit |
-| ROCm | `cubecl-hip-sys` | early (Burn team) | yes — sys bindings to HIP runtime |
-| wgpu | `wgpu` | production (18.7M downloads) | yes — native Rust, the gold standard |
-| WebGPU | `wgpu` → WASM | production | yes — same crate, compile to wasm32 target |
-| CPU SIMD | `std::arch` | stable Rust | yes — NEON/AVX2/AVX512 intrinsics in std |
-| Android NNAPI | FFI to `libneuralnetworks.so` | needs unsafe FFI | yes — pure C API, dlopen + ~30 functions, ~200 lines |
-| Qualcomm QNN | FFI to QNN SDK | needs unsafe FFI | yes — pure C API, dlopen + QnnBackend/QnnGraph/QnnTensor |
-
-zero C++ dependencies on any platform. every backend is either native Rust or thin FFI to a C API.
-
-the hard parts:
-
-1. Android NPU — no Rust crate exists. write thin FFI: `dlopen("libneuralnetworks.so")` + ~30 extern "C" functions. NNAPI is a public C API on every Android device since API level 27. same pattern as objc2-metal — FFI to system library.
-
-2. Qualcomm QNN — same approach. `dlopen("libQnnHtp.so")` + QnnInterface C API. gives direct Hexagon NPU access, 100x vs CPU. only needed for Snapdragon devices.
-
-3. ANE — `rustane` uses private Apple APIs that can break between macOS versions. production path: compile subgraphs to Core ML format (.mlmodelc) and dispatch via Core ML framework (stable public API) while keeping Metal as primary.
-
-4. ROCm — `cubecl-hip-sys` is alpha. AMD GPU support is lowest priority — wgpu Vulkan fallback covers AMD adequately for now.
-
-everything is pure Rust + unsafe FFI to system C APIs. no vendored C++ anywhere.
-
-use ANE for: always-on tier 0 models (classifiers, embeddings) where latency matters less than power efficiency. use Metal GPU for: generative models where throughput matters.
+MLX is Apple's Python/C++ framework over Metal. we target Metal directly — more control (simdgroup ops, residency sets, buffer management). MLX format (.safetensors + config.json) loads identically to any safetensors — the format is the same, only the Python runtime differs. soma-runtime replaces MLX.
 
 ## model format loading
 
