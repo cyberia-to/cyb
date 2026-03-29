@@ -349,7 +349,79 @@ Apple Neural Engine at 3-5W, leaving GPU free. custom pure Rust implementation �
 
 ### why not MLX?
 
-MLX is Apple's Python/C++ framework over Metal. we target Metal directly — more control (simdgroup ops, residency sets, buffer management). MLX format (.safetensors + config.json) loads identically to any safetensors — the format is the same, only the Python runtime differs. soma-runtime replaces MLX.
+MLX is Apple's Python/C++ framework over Metal. we target Metal directly — more control (simdgroup ops, residency sets, buffer management). MLX format (.safetensors + config.json) load identically to any safetensors — the format is the same, only the Python runtime differs. soma-runtime replaces MLX.
+
+## scheduling — where to run each op
+
+the scheduler decides which backend executes each op. four levels, each builds on the previous:
+
+### level 0 — static rules (works immediately)
+
+```
+op is pure memory layout (reshape, permute, split)? → CPU (zero compute)
+tensor < 4KB?  → CPU (GPU dispatch overhead > compute)
+tensor ≥ 4KB?  → GPU
+```
+
+### level 1 — capability detection (at startup)
+
+```rust
+match detect_hardware() {
+    AppleSilicon { ane }   → Metal + ANE + CPU
+    NvidiaGpu              → CUDA + CPU
+    AnyGpu                 → wgpu (Vulkan) + CPU
+    Browser                → WebGPU + WASM
+    Android { npu }        → NPU (QNN/NNAPI) + Vulkan + CPU
+    NoGpu                  → CPU SIMD only
+}
+```
+
+### level 2 — auto-tune (first run on new hardware)
+
+benchmark each jet on each available backend. measure three dimensions:
+
+| dimension | what it captures | why it matters |
+|-----------|-----------------|----------------|
+| compute | FLOPS per op | matmul is compute-bound on GPU |
+| bandwidth | bytes/sec memory throughput | attention is bandwidth-bound (KV cache reads) |
+| memory | peak allocation per op | large tensors may not fit on GPU, must split |
+
+benchmark produces a dispatch table:
+
+```
+(jet, tensor_shape) → (backend, expected_ms, bytes_transferred)
+
+matmul_f16(2048×2048): Metal=0.3ms/12MB  CPU=12ms/12MB  ANE=0.8ms/12MB → Metal
+matmul_f16(64×64):     Metal=0.12ms/32KB CPU=0.05ms/32KB              → CPU
+attention(2K ctx):     Metal=0.4ms/48MB  CPU=180ms/48MB               → Metal (bandwidth-bound)
+attention(32K ctx):    Metal=2.1ms/780MB CPU=OOM                      → Metal (only option)
+conv2d(3×3, 256ch):    Metal=0.2ms/4MB   ANE=0.15ms/4MB               → ANE
+embedding(32K vocab):  CPU=0.02ms/128KB                               → CPU (tiny lookup)
+rmsnorm(2048):         CPU=0.03ms/16KB                                → CPU
+```
+
+cached to disk. re-benchmark on hardware change or `soma-runtime autotune`.
+
+the bandwidth dimension is critical: LLM decode is memory-bandwidth-bound, not compute-bound. a 7B model at Q4 reads ~3.5GB of weights per token. on M1 Pro (200 GB/s bandwidth), that is ~17ms per token — the theoretical floor. no compute optimization beats the memory wall. the scheduler must account for this: if two models compete for bandwidth, one must wait or move to CPU.
+
+### level 3 — runtime adaptive (under load)
+
+```
+GPU busy (another model computing)?
+  → route this op to CPU or ANE
+
+bandwidth saturated?
+  → queue op, don't block other models
+
+ANE power budget exceeded?
+  → fallback to Metal GPU
+
+memory pressure?
+  → offload large tensors to CPU RAM, compute there
+  → or drop to lower quantization (f16 → q4)
+```
+
+the scheduler is a policy function over atoms — it decides WHERE, not WHAT. changing policy does not change computation results, only speed and power. the policy itself can be profiled and tuned per-device.
 
 ## model format loading
 
