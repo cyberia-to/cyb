@@ -120,7 +120,7 @@ the machine does not just survive — it earns. accepts profitable Orders. sells
 
 ## architecture gaps
 
-current 17 models (8 substrate + 3 fast + 4 quality + 2 oracle) are designed for a personal assistant. soma needs additional models for machine survival and market participation. these are different concerns.
+current 18 models (8 substrate + 4 fast + 4 quality + 2 oracle) are designed for a personal assistant. soma needs additional models for machine survival and market participation. these are different concerns.
 
 | needed function | current state | candidate solution |
 |----------------|--------------|-------------------|
@@ -154,7 +154,7 @@ working memory (KV cache, context):
 
 every model runs as a [[nox]] [[Order]]. inference = matrix multiply over [[Goldilocks field]]. weights = nouns in [[bbg]]. inference produces STARK proof. provable AI — the model cannot lie.
 
-17 models across 3 tiers > 1 large model because: precision (fine-tuned specialist > prompted generalist), speed (500M router 50x faster than 14B), reliability (failures isolated), evolvability (swap individual models). intelligence accumulates in the memory layer, not the weights. fake specialization (same base model with different prompts) eliminated — only genuine fine-tuned specialists and strong generalists remain.
+18 models across 3 tiers > 1 large model because: precision (fine-tuned specialist > prompted generalist), speed (500M router 50x faster than 14B), reliability (failures isolated), evolvability (swap individual models). intelligence accumulates in the memory layer, not the weights. fake specialization (same base model with different prompts) eliminated — only genuine fine-tuned specialists and strong generalists remain.
 
 > "The whole is not the sum of the parts. It is the pattern of their interaction." — Gregory Bateson
 
@@ -162,7 +162,7 @@ every model runs as a [[nox]] [[Order]]. inference = matrix multiply over [[Gold
 
 all models uncensored by design: generative models abliterated (refusal vectors removed from weights), encoder/classifier models produce scores/vectors with no refusal mechanism.
 
-runtime stack: ONNX Runtime (7 slots) + native Rust (1 slot). zero Python, zero PyTorch, zero TensorFlow.
+runtime stack: ONNX Runtime (7 slots) + native Rust (1 slot) + bitnet.cpp (tier 1 bitnet model). zero Python, zero PyTorch, zero TensorFlow.
 
 | slot | model | runtime | context | RAM | latency | notes |
 |------|-------|---------|---------|-----|---------|-------|
@@ -196,28 +196,29 @@ substrate also runs metabolism (fixed rules, no model) and trigger checks (BBG k
 | 4. market | — | social model, trade evaluator |
 | safety | 0.8 injection | — |
 
-### tier 1 — fast on-demand (3 models, 1-2s load, <3GB each)
+### tier 1 — fast on-demand (4 models, <1s-2s load, <3GB each)
 
-only genuinely specialized models — fine-tuned on domain data, not general-purpose with different prompts.
+only genuinely specialized models or native 1-bit architecture. no general-purpose with different prompts.
 
-| model | params | RAM (Q4) | tasks |
-|-------|--------|----------|-------|
-| [qwen3.5-4b-abliterated](https://huggingface.co/huihui-ai/Qwen3.5-4B-abliterated) | 4B | ~2.5GB | summarization, translation (EN/RU/ID/ZH), task decomposition, report formatting, alert composition, command parsing, search query gen, schedule optimization, sensor interpretation |
-| [nuextract-1.5](https://huggingface.co/numind/NuExtract-1.5) | 3.8B | ~2.3GB | entity extraction, inventory parsing, financial parsing, structured JSON from any text. fine-tuned specialist — beats GPT-4o on extraction benchmarks |
-| [qwen2.5-coder-1.5b-abliterated](https://huggingface.co/huihui-ai/Qwen2.5-Coder-1.5B-Instruct-abliterated) | 1.5B | ~1GB | code review, diff generation, static analysis. fine-tuned on code, abliterated — no refusals on security/exploit code |
+| model | params | RAM | runtime | tasks |
+|-------|--------|-----|---------|-------|
+| [bitnet-b1.58-2B-4T](https://huggingface.co/microsoft/bitnet-b1.58-2B-4T) | 2.4B | <1GB | bitnet.cpp / MLX | general workhorse: summarization, translation, task decomposition, command parsing, search query gen, alert composition. native 1.58-bit — no quantization needed. trained on 4T tokens. GSM8K/MMLU close to 7-13B FP16. 10-20+ tok/s on M1 Air |
+| [qwen3.5-4b-abliterated](https://huggingface.co/huihui-ai/Qwen3.5-4B-abliterated) | 4B | ~2.5GB | ONNX | report formatting, schedule optimization, sensor interpretation, complex translation. when bitnet-2B insufficient — step up without loading tier 2 |
+| [nuextract-1.5](https://huggingface.co/numind/NuExtract-1.5) | 3.8B | ~2.3GB | ONNX | entity extraction, inventory parsing, financial parsing, structured JSON from any text. fine-tuned specialist — beats GPT-4o on extraction benchmarks |
+| [qwen2.5-coder-1.5b-abliterated](https://huggingface.co/huihui-ai/Qwen2.5-Coder-1.5B-Instruct-abliterated) | 1.5B | ~1GB | ONNX | code review, diff generation, static analysis. fine-tuned on code, abliterated |
 
-qwen3.5-4b replaces 8 old slots: one 4B generalist of 2026 matches qwen2.5-7B quality (MATH-500: 97%, MMLU-Redux: 83.7). nuextract is a proven specialist — fine-tuned extraction beats 100x larger general models.
+bitnet-2B at <1GB can stay always-loaded alongside tier 0 (~2.5GB total substrate). handles ~70% of tier 1 tasks at 7B quality for 1/7 the RAM.
 
-### tier 2 — quality on-demand (4 models, 3-6s load, 5-6GB each)
+### tier 2 — quality on-demand (4 models, 3-6s load, 5-8GB each)
 
-| model | params | RAM (Q4) | tasks |
-|-------|--------|----------|-------|
-| [qwen3.5-9b-abliterated](https://huggingface.co/huihui-ai/Qwen3.5-9B-abliterated) | 9B | ~5.5GB | general reasoning, research, planning, social dynamics, legal, creative, biology, finance. outperforms GPT-OSS-120B on MMLU-Pro (82.5). one generalist replaces 8 fake "specialists" |
-| [qwen2.5-coder-14b-abliterated](https://huggingface.co/huihui-ai/Qwen2.5-Coder-14B-Instruct-abliterated) | 14B | ~8.5GB | code generation, SQL, infrastructure ops. fine-tuned code specialist, abliterated — writes exploit code, reverse engineering, crypto without refusals |
-| [deepseek-r1-qwen3-8b-abliterated](https://huggingface.co/huihui-ai/DeepSeek-R1-0528-Qwen3-8B-abliterated) | 8B | ~5GB | deep reasoning, mathematics, strategic analysis. chain-of-thought, abliterated — no DeepSeek political/safety censorship |
-| [llava-v1.6-mistral-7b](https://huggingface.co/liuhaotian/llava-v1.6-mistral-7b) | 7B | ~4.7GB | vision analysis, image understanding. multimodal — no abliterated variant exists, abliterate text tower yourself if needed |
+| model | params | RAM | runtime | tasks |
+|-------|--------|-----|---------|-------|
+| [qwen3.5-9b-abliterated](https://huggingface.co/huihui-ai/Qwen3.5-9B-abliterated) | 9B | ~5.5GB | ONNX | general reasoning, research, planning, social dynamics, legal, creative, biology, finance. outperforms GPT-OSS-120B on MMLU-Pro (82.5) |
+| [qwen2.5-coder-14b-abliterated](https://huggingface.co/huihui-ai/Qwen2.5-Coder-14B-Instruct-abliterated) | 14B | ~8.5GB | ONNX | code generation, SQL, infrastructure ops. fine-tuned code specialist, abliterated |
+| [mimo-7b-rl-abliterated](https://huggingface.co/huihui-ai/MiMo-7B-RL-0530-abliterated) | 7B | ~5GB | ONNX | deep reasoning, mathematics, strategic analysis. AIME 2025 = 55.4 (beats o1-mini). MIT license, Xiaomi. replaces deepseek-r1 — no PRC political censorship baggage |
+| [llava-v1.6-mistral-7b](https://huggingface.co/liuhaotian/llava-v1.6-mistral-7b) | 7B | ~4.7GB | ONNX | vision analysis, image understanding. multimodal — abliterate text tower if needed |
 
-old tier 3 (14B) eliminated: qwen3.5-9b already matches or exceeds previous-gen 14B models across all benchmarks. generational leap makes the extra tier unnecessary.
+why mimo over deepseek-r1: same class reasoning quality, MIT license (vs deepseek's restrictive license), trained by a hardware company (Xiaomi) with edge deployment focus, abliterated version exists and tested. both are Chinese models with PRC censorship in base weights, but mimo's abliterated variant is cleaner.
 
 ### tier 3 — external oracle (never automatic)
 
@@ -243,10 +244,10 @@ total peak:              ~15.5GB  ✅ fits M1 Pro 16GB (tight with coder-14b)
 disk budget:
 ```
 tier 0:   ~2GB
-tier 1:   ~6GB  (3 models)
+tier 1:   ~7GB  (4 models, bitnet-2B native 1.58-bit = 0.4GB on disk)
 tier 2:  ~24GB  (4 models)
 ─────────────
-total:   ~32GB  (was 124GB — 3.9x reduction)
+total:   ~33GB  (was 124GB — 3.8x reduction)
 ```
 
 scaling:
@@ -380,7 +381,7 @@ see [[neuroscience principles for machine mind]] for full mapping of all ten pri
 
 ## emergent properties
 
-17 models > 1 large model because:
+18 models > 1 large model because:
 - precision: fine-tuned specialist (nuextract, qwen2.5-coder) outperforms 100x larger generalist on its domain
 - speed: 500M router is 50x faster than 14B for every request
 - reliability: failures isolated. one model failing does not collapse the system
