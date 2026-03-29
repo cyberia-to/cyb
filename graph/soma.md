@@ -249,7 +249,7 @@ perception (input) and expression (output) models. all uncensored by design — 
 |-------|--------|-----|---------|------|
 | [XTTS v2](https://huggingface.co/coqui/XTTS-v2) | 467M | ~2.5GB | PyTorch | voice cloning EN+RU with 6s reference audio. when piper voice quality insufficient |
 | [flux-schnell Q4](https://huggingface.co/black-forest-labs/FLUX.1-schnell) | 12B | ~8GB | MLX (mflux) | image generation for posts. Apache 2.0, no NSFW filter. ~45-90s per 1024x1024 on M1 |
-| [AnimateDiff](https://github.com/guoyww/AnimateDiff) + SD 1.5 uncensored | ~1.5B | ~6GB | PyTorch/MLX | short video generation. 3-10 min per clip. use uncensored SD checkpoint |
+| [wan2.2-ti2v-5b GGUF](https://huggingface.co/QuantStack/Wan2.2-TI2V-5B-GGUF) | 5B | ~3.5GB (Q4) | GGUF/MLX | text+image → video, 720p 24fps. MoE architecture, Apache 2.0. ~9min per 5s clip on RTX 4090. same DiT ops as flux — one diffusion pipeline serves both |
 | [moondream2](https://huggingface.co/vikhyatk/moondream2) | 1.86B | ~2GB | GGUF | lightweight vision Q&A when qwen2.5-vl too heavy to load. uncensored by default, MIT |
 
 ### camera pipeline
