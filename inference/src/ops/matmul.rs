@@ -54,15 +54,7 @@ pub fn matmul_nbits_proto(
     let a_shape = a.shape();
     let m: usize = a_shape[..a_shape.len()-1].iter().product();
 
-    // Try custom Q4 shader for decode step (small M)
-    if m <= 4 {
-        if let Some(result) = try_q4_vecmat(node, &a, k, n, block_size, values, device) {
-            values.insert(node.output[0].clone(), result);
-            return Ok(());
-        }
-    }
-
-    // Fallback: GPU matmul with dequantized weights
+    // GPU matmul with dequantized weights (cached after first call)
     let cache_key = format!("{}__dequant_t", node.output[0]);
     let b_t = if let Some(cached) = values.get(&cache_key) {
         cached.clone()
