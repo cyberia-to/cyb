@@ -12,9 +12,9 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Run inference on a model from HuggingFace
+    /// Run inference on a model (HuggingFace ID or local path)
     Run {
-        /// Model ID (e.g. onnx-community/Qwen3-0.6B-ONNX)
+        /// Model ID (e.g. onnx-community/Qwen3-0.6B-ONNX) or local path to .safetensors/.onnx
         model: String,
 
         /// Prompt for text generation
@@ -33,9 +33,9 @@ enum Commands {
     /// List cached models
     List,
 
-    /// Show ONNX graph info for a local file
+    /// Show model info for a local file
     Info {
-        /// Path to local ONNX file
+        /// Path to local model file (ONNX, safetensors, GGUF)
         path: String,
     },
 
@@ -58,51 +58,126 @@ fn main() {
             max_tokens,
             temperature,
         } => {
-            println!("Loading model (native wgpu): {model}");
+            let model_path_buf = std::path::PathBuf::from(&model);
+            let is_local = model_path_buf.exists()
+                || model.ends_with(".safetensors")
+                || model.ends_with(".onnx");
 
-            // Download model and tokenizer
-            let model_path = match cyb_llm::hub::download_model(&model) {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!("Model download failed: {e}");
-                    return;
-                }
-            };
+            if is_local {
+                // Local file path — detect format
+                let model_path = resolve_model_path(&model_path_buf);
+                let model_dir = model_path.parent().unwrap_or(std::path::Path::new("."));
 
-            let tokenizer_path = match cyb_llm::hub::download_tokenizer(&model) {
-                Ok(p) => p,
-                Err(e) => {
-                    eprintln!("Tokenizer download failed: {e}");
-                    return;
-                }
-            };
+                let is_safetensors = model_path
+                    .extension()
+                    .map(|e| e == "safetensors")
+                    .unwrap_or(false);
 
-            // Initialize GPU backend
-            let backend = cyb_llm::backend::create_wgpu_backend();
-            let pipelines = backend.pipelines;
+                println!("Loading local model: {}", model_path.display());
 
-            // Load model
-            let load_start = std::time::Instant::now();
-            let mut generator =
-                match cyb_llm::generate::TextGenerator::new(&model_path, &tokenizer_path, pipelines)
-                {
-                    Ok(g) => g,
-                    Err(e) => {
-                        eprintln!("Model load failed: {e}");
+                // Find tokenizer in model directory
+                let tokenizer_path = find_tokenizer(model_dir);
+                let tokenizer_path = match tokenizer_path {
+                    Some(p) => p,
+                    None => {
+                        eprintln!("No tokenizer.json found in {} or parent directories", model_dir.display());
                         return;
                     }
                 };
-            println!(
-                "Model loaded in {:.1}s",
-                load_start.elapsed().as_secs_f64()
-            );
+                log::info!("Using tokenizer: {}", tokenizer_path.display());
 
-            // Generate
-            println!("---");
-            match generator.generate(&prompt, max_tokens, temperature) {
-                Ok(_text) => {}
-                Err(e) => {
-                    eprintln!("\nGeneration failed: {e}");
+                // Initialize GPU backend
+                let backend = cyb_llm::backend::create_wgpu_backend();
+                let pipelines = backend.pipelines;
+
+                let load_start = std::time::Instant::now();
+                let mut generator = if is_safetensors {
+                    match cyb_llm::generate::TextGenerator::new_safetensors(
+                        &model_path,
+                        &tokenizer_path,
+                        pipelines,
+                    ) {
+                        Ok(g) => g,
+                        Err(e) => {
+                            eprintln!("Model load failed: {e}");
+                            return;
+                        }
+                    }
+                } else {
+                    match cyb_llm::generate::TextGenerator::new(
+                        &model_path,
+                        &tokenizer_path,
+                        pipelines,
+                    ) {
+                        Ok(g) => g,
+                        Err(e) => {
+                            eprintln!("Model load failed: {e}");
+                            return;
+                        }
+                    }
+                };
+                println!(
+                    "Model loaded in {:.1}s",
+                    load_start.elapsed().as_secs_f64()
+                );
+
+                // Generate
+                println!("---");
+                match generator.generate(&prompt, max_tokens, temperature) {
+                    Ok(_text) => {}
+                    Err(e) => {
+                        eprintln!("\nGeneration failed: {e}");
+                    }
+                }
+            } else {
+                // HuggingFace model ID — download ONNX model
+                println!("Loading model (native wgpu): {model}");
+
+                let model_path = match cyb_llm::hub::download_model(&model) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("Model download failed: {e}");
+                        return;
+                    }
+                };
+
+                let tokenizer_path = match cyb_llm::hub::download_tokenizer(&model) {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("Tokenizer download failed: {e}");
+                        return;
+                    }
+                };
+
+                // Initialize GPU backend
+                let backend = cyb_llm::backend::create_wgpu_backend();
+                let pipelines = backend.pipelines;
+
+                let load_start = std::time::Instant::now();
+                let mut generator =
+                    match cyb_llm::generate::TextGenerator::new(
+                        &model_path,
+                        &tokenizer_path,
+                        pipelines,
+                    ) {
+                        Ok(g) => g,
+                        Err(e) => {
+                            eprintln!("Model load failed: {e}");
+                            return;
+                        }
+                    };
+                println!(
+                    "Model loaded in {:.1}s",
+                    load_start.elapsed().as_secs_f64()
+                );
+
+                // Generate
+                println!("---");
+                match generator.generate(&prompt, max_tokens, temperature) {
+                    Ok(_text) => {}
+                    Err(e) => {
+                        eprintln!("\nGeneration failed: {e}");
+                    }
                 }
             }
         }
@@ -161,4 +236,24 @@ fn main() {
             }
         }
     }
+}
+
+/// Resolve model path — keep symlink parent (don't canonicalize to blobs/)
+fn resolve_model_path(path: &std::path::Path) -> std::path::PathBuf {
+    // Don't canonicalize — HF cache uses symlinks from snapshots/ to blobs/
+    // We want the snapshot directory for finding config.json and tokenizer.json
+    path.to_path_buf()
+}
+
+/// Find tokenizer.json in the model directory or parent directories
+fn find_tokenizer(dir: &std::path::Path) -> Option<std::path::PathBuf> {
+    let mut current = Some(dir);
+    while let Some(d) = current {
+        let candidate = d.join("tokenizer.json");
+        if candidate.exists() {
+            return Some(candidate);
+        }
+        current = d.parent();
+    }
+    None
 }

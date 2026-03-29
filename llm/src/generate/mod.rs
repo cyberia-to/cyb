@@ -43,6 +43,42 @@ impl TextGenerator {
         })
     }
 
+    /// Create a new text generator from safetensors model + tokenizer paths
+    pub fn new_safetensors(
+        model_path: &Path,
+        tokenizer_path: &Path,
+        pipelines: Arc<Pipelines>,
+    ) -> Result<Self, String> {
+        let model = NativeModel::load_from_safetensors(model_path, pipelines)?;
+
+        let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path)
+            .map_err(|e| format!("Tokenizer load failed: {e}"))?;
+
+        // EOS tokens for common models
+        let mut eos_tokens = vec![
+            2,      // Llama </s>
+            0,      // SmolLM <|endoftext|> (id 0)
+            50256,  // GPT-2 <|endoftext|>
+        ];
+        // Try to detect EOS from tokenizer special tokens
+        if let Some(id) = tokenizer.token_to_id("<|endoftext|>") {
+            if !eos_tokens.contains(&id) {
+                eos_tokens.push(id);
+            }
+        }
+        if let Some(id) = tokenizer.token_to_id("</s>") {
+            if !eos_tokens.contains(&id) {
+                eos_tokens.push(id);
+            }
+        }
+
+        Ok(Self {
+            model,
+            tokenizer,
+            eos_tokens,
+        })
+    }
+
     /// Generate text from a prompt
     pub fn generate(
         &mut self,

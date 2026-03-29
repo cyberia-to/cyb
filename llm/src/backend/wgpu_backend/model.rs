@@ -1,5 +1,5 @@
 //! NativeModel — transformer forward pass on pure wgpu
-//! Loads ONNX Q4 weights, runs transformer layers via WGSL compute shaders
+//! Loads ONNX Q4 or safetensors f32/bf16 weights, runs transformer layers via WGSL compute shaders
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -104,6 +104,8 @@ pub struct NativeModel {
     config: ModelConfig,
     pipelines: Arc<Pipelines>,
     embed_table: wgpu::Buffer,
+    /// Separate LM head weights (None = tied to embed_table)
+    lm_head: Option<wgpu::Buffer>,
     layers: Vec<LayerWeights>,
     final_norm_weight: wgpu::Buffer,
     cos_cache: Vec<f32>,
@@ -112,6 +114,8 @@ pub struct NativeModel {
     past_seq_len: usize,
     /// When true, argmax is computed on GPU
     pub greedy_mode: bool,
+    /// When true, projections use f32_matmul instead of q4_matmul
+    use_f32_proj: bool,
     model_params: ModelParamBuffers,
 }
 
@@ -192,6 +196,34 @@ fn raw_to_f32(raw: &[u8], data_type: i32) -> Vec<f32> {
         _ => {
             log::warn!("Unsupported data type {data_type}, treating as f32 bytes");
             raw.chunks_exact(4)
+                .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+                .collect()
+        }
+    }
+}
+
+/// Convert safetensors weight bytes to f32, based on DType from IR
+fn safetensors_to_f32(data: &[u8], dtype: crate::ir::DType) -> Vec<f32> {
+    use crate::ir::DType;
+    match dtype {
+        DType::F32 => data
+            .chunks_exact(4)
+            .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
+            .collect(),
+        DType::BF16 => data
+            .chunks_exact(2)
+            .map(|c| {
+                let bits = u16::from_le_bytes([c[0], c[1]]);
+                f32::from_bits((bits as u32) << 16)
+            })
+            .collect(),
+        DType::F16 => data
+            .chunks_exact(2)
+            .map(|c| half::f16::from_le_bytes([c[0], c[1]]).to_f32())
+            .collect(),
+        _ => {
+            log::warn!("Unsupported safetensors dtype {:?}, treating as f32", dtype);
+            data.chunks_exact(4)
                 .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                 .collect()
         }
@@ -655,6 +687,7 @@ impl NativeModel {
             config,
             pipelines,
             embed_table,
+            lm_head: None,
             layers,
             final_norm_weight,
             cos_cache,
@@ -662,6 +695,271 @@ impl NativeModel {
             kv_cache,
             past_seq_len: 0,
             greedy_mode: false,
+            use_f32_proj: false,
+            model_params: ModelParamBuffers {
+                final_norm_params,
+                final_norm_wg,
+                f32_matmul_params,
+                f32_matmul_wg,
+                argmax_params,
+                argmax_wg,
+            },
+        })
+    }
+
+    /// Load model from safetensors file (f32/bf16/f16 weights)
+    pub fn load_from_safetensors(path: &Path, pipelines: Arc<Pipelines>) -> Result<Self, String> {
+        // Read config.json from the same directory
+        let model_dir = path.parent().unwrap_or(Path::new("."));
+        let config_path = model_dir.join("config.json");
+        let config_str = std::fs::read_to_string(&config_path)
+            .map_err(|e| format!("Cannot read config.json: {e}"))?;
+        let config_json: serde_json::Value = serde_json::from_str(&config_str)
+            .map_err(|e| format!("Invalid config.json: {e}"))?;
+
+        let hidden_size = config_json.get("hidden_size")
+            .and_then(|v| v.as_u64())
+            .ok_or("Missing hidden_size in config.json")? as usize;
+        let num_heads = config_json.get("num_attention_heads")
+            .and_then(|v| v.as_u64())
+            .ok_or("Missing num_attention_heads in config.json")? as usize;
+        let kv_num_heads = config_json.get("num_key_value_heads")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(num_heads as u64) as usize;
+        let num_layers = config_json.get("num_hidden_layers")
+            .and_then(|v| v.as_u64())
+            .ok_or("Missing num_hidden_layers in config.json")? as usize;
+        let vocab_size = config_json.get("vocab_size")
+            .and_then(|v| v.as_u64())
+            .ok_or("Missing vocab_size in config.json")? as usize;
+        let head_dim = config_json.get("head_dim")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or(hidden_size / num_heads);
+        let intermediate_size = config_json.get("intermediate_size")
+            .and_then(|v| v.as_u64())
+            .unwrap_or((hidden_size * 4) as u64) as usize;
+        let rope_theta = config_json.get("rope_theta")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(10000.0) as f32;
+        let rms_norm_eps = config_json.get("rms_norm_eps")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1e-6) as f32;
+        let tie_word_embeddings = config_json.get("tie_word_embeddings")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+
+        let config = ModelConfig {
+            hidden_size,
+            num_heads,
+            kv_num_heads,
+            head_dim,
+            num_layers,
+            vocab_size,
+            block_size: 32, // not used for f32
+            has_qk_norm: false,
+        };
+
+        log::info!(
+            "Safetensors config: hidden={}, heads={}, kv_heads={}, head_dim={}, layers={}, vocab={}, ffn={}, rope_theta={}",
+            hidden_size, num_heads, kv_num_heads, head_dim, num_layers, vocab_size, intermediate_size, rope_theta,
+        );
+
+        // Load safetensors file
+        let graph = crate::loader::safetensors::load_safetensors(path)?;
+
+        // Helper: convert weight data to f32 Vec
+        let weight_to_f32 = |name: &str| -> Result<Vec<f32>, String> {
+            let w = graph.get_weight(name)
+                .ok_or_else(|| format!("Missing weight: {name}"))?;
+            Ok(safetensors_to_f32(&w.data, w.dtype))
+        };
+
+        // Load embedding table
+        let embed_f32 = weight_to_f32("model.embed_tokens.weight")?;
+        let embed_table = pipelines.upload_f32(&embed_f32);
+        log::info!("Loaded embedding table: [{vocab_size}, {hidden_size}]");
+
+        // Load LM head (separate or tied)
+        let lm_head = if !tie_word_embeddings {
+            if let Some(lm_w) = graph.get_weight("lm_head.weight") {
+                let lm_f32 = safetensors_to_f32(&lm_w.data, lm_w.dtype);
+                Some(pipelines.upload_f32(&lm_f32))
+            } else {
+                log::warn!("tie_word_embeddings=false but no lm_head.weight found, using embed_tokens");
+                None
+            }
+        } else {
+            None
+        };
+
+        let q_dim = num_heads * head_dim;
+        let kv_dim = kv_num_heads * head_dim;
+
+        // Load layers
+        let mut layers = Vec::with_capacity(num_layers);
+        for i in 0..num_layers {
+            log::info!("Loading layer {i}/{num_layers}...");
+
+            let input_norm_f32 = weight_to_f32(&format!("model.layers.{i}.input_layernorm.weight"))?;
+            let input_norm_weight = pipelines.upload_f32(&input_norm_f32);
+
+            let q_proj_f32 = weight_to_f32(&format!("model.layers.{i}.self_attn.q_proj.weight"))?;
+            let q_proj_weight = pipelines.upload_f32(&q_proj_f32);
+
+            let k_proj_f32 = weight_to_f32(&format!("model.layers.{i}.self_attn.k_proj.weight"))?;
+            let k_proj_weight = pipelines.upload_f32(&k_proj_f32);
+
+            let v_proj_f32 = weight_to_f32(&format!("model.layers.{i}.self_attn.v_proj.weight"))?;
+            let v_proj_weight = pipelines.upload_f32(&v_proj_f32);
+
+            let o_proj_f32 = weight_to_f32(&format!("model.layers.{i}.self_attn.o_proj.weight"))?;
+            let o_proj_weight = pipelines.upload_f32(&o_proj_f32);
+
+            let post_norm_f32 = weight_to_f32(&format!("model.layers.{i}.post_attention_layernorm.weight"))?;
+            let post_norm_weight = pipelines.upload_f32(&post_norm_f32);
+
+            let gate_proj_f32 = weight_to_f32(&format!("model.layers.{i}.mlp.gate_proj.weight"))?;
+            let gate_proj_weight = pipelines.upload_f32(&gate_proj_f32);
+
+            let up_proj_f32 = weight_to_f32(&format!("model.layers.{i}.mlp.up_proj.weight"))?;
+            let up_proj_weight = pipelines.upload_f32(&up_proj_f32);
+
+            let down_proj_f32 = weight_to_f32(&format!("model.layers.{i}.mlp.down_proj.weight"))?;
+            let down_proj_weight = pipelines.upload_f32(&down_proj_f32);
+
+            // Dummy scales buffer (not used for f32 path)
+            let dummy_scales = pipelines.upload_f32(&[0.0]);
+
+            // Pre-compute param buffers (f32_matmul params, not q4)
+            let hs = hidden_size as u32;
+            let hd = head_dim as u32;
+            let (input_norm_params, input_norm_wg) =
+                precompute_rms_norm(&pipelines, 1, hs, rms_norm_eps);
+            let (q_matmul_params, q_matmul_wg) =
+                precompute_f32_matmul(&pipelines, q_dim as u32, hs);
+            let (k_matmul_params, k_matmul_wg) =
+                precompute_f32_matmul(&pipelines, kv_dim as u32, hs);
+            let (v_matmul_params, v_matmul_wg) =
+                precompute_f32_matmul(&pipelines, kv_dim as u32, hs);
+            let (q_rope_params, q_rope_wg) =
+                precompute_rope(&pipelines, q_dim as u32, hd, 1);
+            let (k_rope_params, k_rope_wg) =
+                precompute_rope(&pipelines, kv_dim as u32, hd, 1);
+            let (o_matmul_params, o_matmul_wg) =
+                precompute_f32_matmul(&pipelines, hs, q_dim as u32);
+            let (post_norm_params, post_norm_wg) =
+                precompute_rms_norm(&pipelines, 1, hs, rms_norm_eps);
+            let (gate_matmul_params, gate_matmul_wg) =
+                precompute_f32_matmul(&pipelines, intermediate_size as u32, hs);
+            let (up_matmul_params, up_matmul_wg) =
+                precompute_f32_matmul(&pipelines, intermediate_size as u32, hs);
+            let (down_matmul_params, down_matmul_wg) =
+                precompute_f32_matmul(&pipelines, hs, intermediate_size as u32);
+
+            layers.push(LayerWeights {
+                input_norm_weight,
+                q_proj_packed: q_proj_weight,
+                q_proj_scales: dummy_scales.clone(),
+                q_n: q_dim as u32,
+                k_proj_packed: k_proj_weight,
+                k_proj_scales: dummy_scales.clone(),
+                k_n: kv_dim as u32,
+                v_proj_packed: v_proj_weight,
+                v_proj_scales: dummy_scales.clone(),
+                v_n: kv_dim as u32,
+                q_norm_weight: None,
+                k_norm_weight: None,
+                o_proj_packed: o_proj_weight,
+                o_proj_scales: dummy_scales.clone(),
+                o_n: hidden_size as u32,
+                post_norm_weight,
+                gate_proj_packed: gate_proj_weight,
+                gate_proj_scales: dummy_scales.clone(),
+                gate_n: intermediate_size as u32,
+                up_proj_packed: up_proj_weight,
+                up_proj_scales: dummy_scales.clone(),
+                up_n: intermediate_size as u32,
+                down_proj_packed: down_proj_weight,
+                down_proj_scales: dummy_scales,
+                down_n: hidden_size as u32,
+                params: LayerParamBuffers {
+                    input_norm_params,
+                    input_norm_wg,
+                    q_norm_params: None,
+                    q_norm_wg: (0, 0, 0),
+                    k_norm_params: None,
+                    k_norm_wg: (0, 0, 0),
+                    post_norm_params,
+                    post_norm_wg,
+                    q_matmul_params,
+                    q_matmul_wg,
+                    k_matmul_params,
+                    k_matmul_wg,
+                    v_matmul_params,
+                    v_matmul_wg,
+                    o_matmul_params,
+                    o_matmul_wg,
+                    gate_matmul_params,
+                    gate_matmul_wg,
+                    up_matmul_params,
+                    up_matmul_wg,
+                    down_matmul_params,
+                    down_matmul_wg,
+                    q_rope_params,
+                    q_rope_wg,
+                    k_rope_params,
+                    k_rope_wg,
+                },
+            });
+        }
+
+        // Final norm
+        let final_norm_f32 = weight_to_f32("model.norm.weight")?;
+        let final_norm_weight = pipelines.upload_f32(&final_norm_f32);
+
+        // Compute RoPE cos/sin cache
+        let max_seq_len = 2048;
+        let half_dim = head_dim / 2;
+        let mut cos_cache = vec![0.0f32; max_seq_len * half_dim];
+        let mut sin_cache = vec![0.0f32; max_seq_len * half_dim];
+        for pos in 0..max_seq_len {
+            for i in 0..half_dim {
+                let theta = (pos as f32) / rope_theta.powf(2.0 * i as f32 / head_dim as f32);
+                cos_cache[pos * half_dim + i] = theta.cos();
+                sin_cache[pos * half_dim + i] = theta.sin();
+            }
+        }
+        log::info!("Computed RoPE cache: max_seq={max_seq_len}, half_dim={half_dim}");
+
+        let kv_cache = (0..num_layers)
+            .map(|_| KVCache {
+                key: None,
+                value: None,
+            })
+            .collect();
+
+        let (final_norm_params, final_norm_wg) =
+            precompute_rms_norm(&pipelines, 1, hidden_size as u32, rms_norm_eps);
+        let (f32_matmul_params, f32_matmul_wg) =
+            precompute_f32_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
+        let (argmax_params, argmax_wg) = precompute_argmax(&pipelines, vocab_size as u32);
+
+        log::info!("Safetensors model loaded successfully (f32 projections)");
+
+        Ok(Self {
+            config,
+            pipelines,
+            embed_table,
+            lm_head,
+            layers,
+            final_norm_weight,
+            cos_cache,
+            sin_cache,
+            kv_cache,
+            past_seq_len: 0,
+            greedy_mode: false,
+            use_f32_proj: true,
             model_params: ModelParamBuffers {
                 final_norm_params,
                 final_norm_wg,
@@ -696,6 +994,7 @@ impl NativeModel {
         let num_heads = self.config.num_heads as u32;
         let kv_num_heads = self.config.kv_num_heads as u32;
         let block_size = self.config.block_size as u32;
+        let use_f32 = self.use_f32_proj;
 
         let mut enc = p.device.create_command_encoder(&Default::default());
 
@@ -740,26 +1039,53 @@ impl NativeModel {
                 );
                 all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: norm_bg, wg: norm_wg });
 
-                let (q_buf, q_bg, q_wg) = dispatch::q4_matmul_prepare_precomputed(
-                    &p, &normed, &self.layers[i].q_proj_packed,
-                    &self.layers[i].q_proj_scales,
-                    &lp.q_matmul_params, self.layers[i].q_n, lp.q_matmul_wg,
-                );
-                all_dispatches.push(DispatchCmd { shader: &p.q4_matmul, bg: q_bg, wg: q_wg });
+                let (q_buf, q_bg, q_wg, q_shader) = if use_f32 {
+                    let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
+                        &p, &normed, &self.layers[i].q_proj_packed,
+                        &lp.q_matmul_params, self.layers[i].q_n, lp.q_matmul_wg,
+                    );
+                    (b, bg, wg, &p.f32_matmul)
+                } else {
+                    let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
+                        &p, &normed, &self.layers[i].q_proj_packed,
+                        &self.layers[i].q_proj_scales,
+                        &lp.q_matmul_params, self.layers[i].q_n, lp.q_matmul_wg,
+                    );
+                    (b, bg, wg, &p.q4_matmul)
+                };
+                all_dispatches.push(DispatchCmd { shader: q_shader, bg: q_bg, wg: q_wg });
 
-                let (k_buf, k_bg, k_wg) = dispatch::q4_matmul_prepare_precomputed(
-                    &p, &normed, &self.layers[i].k_proj_packed,
-                    &self.layers[i].k_proj_scales,
-                    &lp.k_matmul_params, self.layers[i].k_n, lp.k_matmul_wg,
-                );
-                all_dispatches.push(DispatchCmd { shader: &p.q4_matmul, bg: k_bg, wg: k_wg });
+                let (k_buf, k_bg, k_wg, k_shader) = if use_f32 {
+                    let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
+                        &p, &normed, &self.layers[i].k_proj_packed,
+                        &lp.k_matmul_params, self.layers[i].k_n, lp.k_matmul_wg,
+                    );
+                    (b, bg, wg, &p.f32_matmul)
+                } else {
+                    let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
+                        &p, &normed, &self.layers[i].k_proj_packed,
+                        &self.layers[i].k_proj_scales,
+                        &lp.k_matmul_params, self.layers[i].k_n, lp.k_matmul_wg,
+                    );
+                    (b, bg, wg, &p.q4_matmul)
+                };
+                all_dispatches.push(DispatchCmd { shader: k_shader, bg: k_bg, wg: k_wg });
 
-                let (v_buf, v_bg, v_wg) = dispatch::q4_matmul_prepare_precomputed(
-                    &p, &normed, &self.layers[i].v_proj_packed,
-                    &self.layers[i].v_proj_scales,
-                    &lp.v_matmul_params, self.layers[i].v_n, lp.v_matmul_wg,
-                );
-                all_dispatches.push(DispatchCmd { shader: &p.q4_matmul, bg: v_bg, wg: v_wg });
+                let (v_buf, v_bg, v_wg, v_shader) = if use_f32 {
+                    let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
+                        &p, &normed, &self.layers[i].v_proj_packed,
+                        &lp.v_matmul_params, self.layers[i].v_n, lp.v_matmul_wg,
+                    );
+                    (b, bg, wg, &p.f32_matmul)
+                } else {
+                    let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
+                        &p, &normed, &self.layers[i].v_proj_packed,
+                        &self.layers[i].v_proj_scales,
+                        &lp.v_matmul_params, self.layers[i].v_n, lp.v_matmul_wg,
+                    );
+                    (b, bg, wg, &p.q4_matmul)
+                };
+                all_dispatches.push(DispatchCmd { shader: v_shader, bg: v_bg, wg: v_wg });
 
                 // Q/K norm (optional)
                 let q_for_rope;
@@ -837,12 +1163,21 @@ impl NativeModel {
                 );
                 all_dispatches.push(DispatchCmd { shader: &p.attention, bg: attn_bg, wg: attn_wg });
 
-                let (attn_proj, oproj_bg, oproj_wg) = dispatch::q4_matmul_prepare_precomputed(
-                    &p, &attn_out, &self.layers[i].o_proj_packed,
-                    &self.layers[i].o_proj_scales,
-                    &lp.o_matmul_params, self.layers[i].o_n, lp.o_matmul_wg,
-                );
-                all_dispatches.push(DispatchCmd { shader: &p.q4_matmul, bg: oproj_bg, wg: oproj_wg });
+                let (attn_proj, oproj_bg, oproj_wg, oproj_shader) = if use_f32 {
+                    let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
+                        &p, &attn_out, &self.layers[i].o_proj_packed,
+                        &lp.o_matmul_params, self.layers[i].o_n, lp.o_matmul_wg,
+                    );
+                    (b, bg, wg, &p.f32_matmul)
+                } else {
+                    let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
+                        &p, &attn_out, &self.layers[i].o_proj_packed,
+                        &self.layers[i].o_proj_scales,
+                        &lp.o_matmul_params, self.layers[i].o_n, lp.o_matmul_wg,
+                    );
+                    (b, bg, wg, &p.q4_matmul)
+                };
+                all_dispatches.push(DispatchCmd { shader: oproj_shader, bg: oproj_bg, wg: oproj_wg });
 
                 let (residual1, res1_bg, res1_wg) = dispatch::add_prepare(&p, &hidden, &attn_proj, hidden_size);
                 all_dispatches.push(DispatchCmd { shader: &p.add, bg: res1_bg, wg: res1_wg });
@@ -853,29 +1188,56 @@ impl NativeModel {
                 );
                 all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: norm2_bg, wg: norm2_wg });
 
-                let (gate, gate_bg, gate_wg) = dispatch::q4_matmul_prepare_precomputed(
-                    &p, &normed2, &self.layers[i].gate_proj_packed,
-                    &self.layers[i].gate_proj_scales,
-                    &lp.gate_matmul_params, self.layers[i].gate_n, lp.gate_matmul_wg,
-                );
-                all_dispatches.push(DispatchCmd { shader: &p.q4_matmul, bg: gate_bg, wg: gate_wg });
+                let (gate, gate_bg, gate_wg, gate_shader) = if use_f32 {
+                    let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
+                        &p, &normed2, &self.layers[i].gate_proj_packed,
+                        &lp.gate_matmul_params, self.layers[i].gate_n, lp.gate_matmul_wg,
+                    );
+                    (b, bg, wg, &p.f32_matmul)
+                } else {
+                    let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
+                        &p, &normed2, &self.layers[i].gate_proj_packed,
+                        &self.layers[i].gate_proj_scales,
+                        &lp.gate_matmul_params, self.layers[i].gate_n, lp.gate_matmul_wg,
+                    );
+                    (b, bg, wg, &p.q4_matmul)
+                };
+                all_dispatches.push(DispatchCmd { shader: gate_shader, bg: gate_bg, wg: gate_wg });
 
-                let (up, up_bg, up_wg) = dispatch::q4_matmul_prepare_precomputed(
-                    &p, &normed2, &self.layers[i].up_proj_packed,
-                    &self.layers[i].up_proj_scales,
-                    &lp.up_matmul_params, self.layers[i].up_n, lp.up_matmul_wg,
-                );
-                all_dispatches.push(DispatchCmd { shader: &p.q4_matmul, bg: up_bg, wg: up_wg });
+                let (up, up_bg, up_wg, up_shader) = if use_f32 {
+                    let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
+                        &p, &normed2, &self.layers[i].up_proj_packed,
+                        &lp.up_matmul_params, self.layers[i].up_n, lp.up_matmul_wg,
+                    );
+                    (b, bg, wg, &p.f32_matmul)
+                } else {
+                    let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
+                        &p, &normed2, &self.layers[i].up_proj_packed,
+                        &self.layers[i].up_proj_scales,
+                        &lp.up_matmul_params, self.layers[i].up_n, lp.up_matmul_wg,
+                    );
+                    (b, bg, wg, &p.q4_matmul)
+                };
+                all_dispatches.push(DispatchCmd { shader: up_shader, bg: up_bg, wg: up_wg });
 
                 let (ffn, silu_bg, silu_wg) = dispatch::silu_mul_prepare(&p, &gate, &up, self.layers[i].gate_n);
                 all_dispatches.push(DispatchCmd { shader: &p.silu_mul, bg: silu_bg, wg: silu_wg });
 
-                let (ffn_out, down_bg, down_wg) = dispatch::q4_matmul_prepare_precomputed(
-                    &p, &ffn, &self.layers[i].down_proj_packed,
-                    &self.layers[i].down_proj_scales,
-                    &lp.down_matmul_params, self.layers[i].down_n, lp.down_matmul_wg,
-                );
-                all_dispatches.push(DispatchCmd { shader: &p.q4_matmul, bg: down_bg, wg: down_wg });
+                let (ffn_out, down_bg, down_wg, down_shader) = if use_f32 {
+                    let (b, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
+                        &p, &ffn, &self.layers[i].down_proj_packed,
+                        &lp.down_matmul_params, self.layers[i].down_n, lp.down_matmul_wg,
+                    );
+                    (b, bg, wg, &p.f32_matmul)
+                } else {
+                    let (b, bg, wg) = dispatch::q4_matmul_prepare_precomputed(
+                        &p, &ffn, &self.layers[i].down_proj_packed,
+                        &self.layers[i].down_proj_scales,
+                        &lp.down_matmul_params, self.layers[i].down_n, lp.down_matmul_wg,
+                    );
+                    (b, bg, wg, &p.q4_matmul)
+                };
+                all_dispatches.push(DispatchCmd { shader: down_shader, bg: down_bg, wg: down_wg });
 
                 let (new_hidden, res2_bg, res2_wg) = dispatch::add_prepare(&p, &residual1, &ffn_out, hidden_size);
                 all_dispatches.push(DispatchCmd { shader: &p.add, bg: res2_bg, wg: res2_wg });
@@ -893,8 +1255,9 @@ impl NativeModel {
             );
             all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: fn_bg, wg: fn_wg });
 
+            let lm_head_buf = self.lm_head.as_ref().unwrap_or(&self.embed_table);
             let (logits_buf, lm_bg, lm_wg) = dispatch::f32_matmul_prepare_precomputed(
-                &p, &final_normed, &self.embed_table,
+                &p, &final_normed, lm_head_buf,
                 &mp.f32_matmul_params, vocab, mp.f32_matmul_wg,
             );
             all_dispatches.push(DispatchCmd { shader: &p.f32_matmul, bg: lm_bg, wg: lm_wg });
@@ -957,9 +1320,21 @@ impl NativeModel {
 
             for s in 0..seq_len {
                 let normed_slice = slice_buffer(&p, &mut enc, &normed, s * self.config.hidden_size, self.config.hidden_size);
-                let q_pos = dispatch::q4_matmul(&p, &mut enc, &normed_slice, &self.layers[i].q_proj_packed, &self.layers[i].q_proj_scales, layer_q_n, hidden_size, block_size);
-                let k_pos = dispatch::q4_matmul(&p, &mut enc, &normed_slice, &self.layers[i].k_proj_packed, &self.layers[i].k_proj_scales, layer_k_n, hidden_size, block_size);
-                let v_pos = dispatch::q4_matmul(&p, &mut enc, &normed_slice, &self.layers[i].v_proj_packed, &self.layers[i].v_proj_scales, layer_v_n, hidden_size, block_size);
+                let q_pos = if use_f32 {
+                    dispatch::f32_matmul(&p, &mut enc, &normed_slice, &self.layers[i].q_proj_packed, layer_q_n, hidden_size)
+                } else {
+                    dispatch::q4_matmul(&p, &mut enc, &normed_slice, &self.layers[i].q_proj_packed, &self.layers[i].q_proj_scales, layer_q_n, hidden_size, block_size)
+                };
+                let k_pos = if use_f32 {
+                    dispatch::f32_matmul(&p, &mut enc, &normed_slice, &self.layers[i].k_proj_packed, layer_k_n, hidden_size)
+                } else {
+                    dispatch::q4_matmul(&p, &mut enc, &normed_slice, &self.layers[i].k_proj_packed, &self.layers[i].k_proj_scales, layer_k_n, hidden_size, block_size)
+                };
+                let v_pos = if use_f32 {
+                    dispatch::f32_matmul(&p, &mut enc, &normed_slice, &self.layers[i].v_proj_packed, layer_v_n, hidden_size)
+                } else {
+                    dispatch::q4_matmul(&p, &mut enc, &normed_slice, &self.layers[i].v_proj_packed, &self.layers[i].v_proj_scales, layer_v_n, hidden_size, block_size)
+                };
                 copy_into(&mut enc, &q_pos, &q_combined, s * layer_q_n as usize, layer_q_n as usize);
                 copy_into(&mut enc, &k_pos, &k_combined, s * layer_k_n as usize, layer_k_n as usize);
                 copy_into(&mut enc, &v_pos, &v_combined, s * layer_v_n as usize, layer_v_n as usize);
@@ -1045,17 +1420,33 @@ impl NativeModel {
             let last_q = slice_buffer(&p, &mut enc, &q_roped, last_q_offset, self.layers[i].q_n as usize);
             let attn_out = dispatch::attention_decode(&p, &mut enc, &last_q, &attn_k, &attn_v, num_heads, head_dim, total_seq as u32, scale);
 
-            let attn_proj = dispatch::q4_matmul(&p, &mut enc, &attn_out, &self.layers[i].o_proj_packed, &self.layers[i].o_proj_scales, self.layers[i].o_n, self.layers[i].q_n, block_size);
+            let attn_proj = if use_f32 {
+                dispatch::f32_matmul(&p, &mut enc, &attn_out, &self.layers[i].o_proj_packed, self.layers[i].o_n, self.layers[i].q_n)
+            } else {
+                dispatch::q4_matmul(&p, &mut enc, &attn_out, &self.layers[i].o_proj_packed, &self.layers[i].o_proj_scales, self.layers[i].o_n, self.layers[i].q_n, block_size)
+            };
 
             let residual_hidden = slice_buffer(&p, &mut enc, &hidden, (seq_len - 1) * self.config.hidden_size, self.config.hidden_size);
             hidden = dispatch::add(&p, &mut enc, &residual_hidden, &attn_proj, hidden_size);
 
             let normed2 = dispatch::rms_norm(&p, &mut enc, &hidden, &self.layers[i].post_norm_weight, 1, hidden_size, 1e-6);
 
-            let gate = dispatch::q4_matmul(&p, &mut enc, &normed2, &self.layers[i].gate_proj_packed, &self.layers[i].gate_proj_scales, self.layers[i].gate_n, hidden_size, block_size);
-            let up = dispatch::q4_matmul(&p, &mut enc, &normed2, &self.layers[i].up_proj_packed, &self.layers[i].up_proj_scales, self.layers[i].up_n, hidden_size, block_size);
+            let gate = if use_f32 {
+                dispatch::f32_matmul(&p, &mut enc, &normed2, &self.layers[i].gate_proj_packed, self.layers[i].gate_n, hidden_size)
+            } else {
+                dispatch::q4_matmul(&p, &mut enc, &normed2, &self.layers[i].gate_proj_packed, &self.layers[i].gate_proj_scales, self.layers[i].gate_n, hidden_size, block_size)
+            };
+            let up = if use_f32 {
+                dispatch::f32_matmul(&p, &mut enc, &normed2, &self.layers[i].up_proj_packed, self.layers[i].up_n, hidden_size)
+            } else {
+                dispatch::q4_matmul(&p, &mut enc, &normed2, &self.layers[i].up_proj_packed, &self.layers[i].up_proj_scales, self.layers[i].up_n, hidden_size, block_size)
+            };
             let ffn = dispatch::silu_mul(&p, &mut enc, &gate, &up, self.layers[i].gate_n);
-            let ffn_out = dispatch::q4_matmul(&p, &mut enc, &ffn, &self.layers[i].down_proj_packed, &self.layers[i].down_proj_scales, self.layers[i].down_n, self.layers[i].gate_n, block_size);
+            let ffn_out = if use_f32 {
+                dispatch::f32_matmul(&p, &mut enc, &ffn, &self.layers[i].down_proj_packed, self.layers[i].down_n, self.layers[i].gate_n)
+            } else {
+                dispatch::q4_matmul(&p, &mut enc, &ffn, &self.layers[i].down_proj_packed, &self.layers[i].down_proj_scales, self.layers[i].down_n, self.layers[i].gate_n, block_size)
+            };
 
             hidden = dispatch::add(&p, &mut enc, &hidden, &ffn_out, hidden_size);
         }
@@ -1063,7 +1454,8 @@ impl NativeModel {
         // Final norm + LM head (PREFILL PATH)
         let vocab = self.config.vocab_size as u32;
         let normed = dispatch::rms_norm(&p, &mut enc, &hidden, &self.final_norm_weight, 1, hidden_size, 1e-6);
-        let logits_buf = dispatch::f32_matmul(&p, &mut enc, &normed, &self.embed_table, vocab, hidden_size);
+        let lm_head_buf_pf = self.lm_head.as_ref().unwrap_or(&self.embed_table);
+        let logits_buf = dispatch::f32_matmul(&p, &mut enc, &normed, lm_head_buf_pf, vocab, hidden_size);
 
         if self.greedy_mode {
             let argmax_buf = dispatch::argmax_gpu(&p, &mut enc, &logits_buf, vocab);
