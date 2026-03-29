@@ -188,6 +188,10 @@ fn main() {
                 Ok(m) => m,
                 Err(e) => { eprintln!("Model load failed: {e}"); return; }
             };
+            // Use GPU argmax for greedy decoding (much faster readback)
+            if temperature <= 0.0 {
+                native_model.greedy_mode = true;
+            }
             println!("Model loaded in {:.1}s", load_start.elapsed().as_secs_f64());
 
             // Load tokenizer

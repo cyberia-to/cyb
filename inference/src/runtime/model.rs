@@ -80,6 +80,9 @@ pub struct NativeModel {
     // KV cache
     kv_cache: Vec<KVCache>,
     past_seq_len: usize,
+
+    /// When true, argmax is computed on GPU (reads 4 bytes instead of 608KB)
+    pub greedy_mode: bool,
 }
 
 /// Load and parse an ONNX model protobuf
@@ -465,6 +468,7 @@ impl NativeModel {
             sin_cache,
             kv_cache,
             past_seq_len: 0,
+            greedy_mode: false,
         })
     }
 
@@ -864,16 +868,32 @@ impl NativeModel {
         let vocab = self.config.vocab_size as u32;
         let logits_buf = ops::f32_matmul(&p, &mut enc, &normed, &self.embed_table, vocab, hidden_size);
 
-        // Submit ALL GPU work including lm_head
+        // For greedy decoding: argmax on GPU, read only 1 u32
+        if self.greedy_mode {
+            let argmax_buf = ops::argmax_gpu(&p, &mut enc, &logits_buf, vocab);
+
+            let t0 = std::time::Instant::now();
+            p.queue.submit(std::iter::once(enc.finish()));
+            self.past_seq_len = total_seq;
+
+            // Read single u32 (4 bytes instead of 608KB!)
+            let bytes = p.read_f32(&argmax_buf, 1);
+            let token_id = bytes[0].to_bits(); // reinterpret f32 bits as u32
+            log::info!("GPU total (greedy): {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
+
+            // Return fake logits with just the argmax token marked
+            let mut logits = vec![0.0f32; vocab as usize];
+            logits[token_id as usize] = 1.0;
+            return logits;
+        }
+
+        // Full logits readback (for sampling with temperature)
         let t0 = std::time::Instant::now();
         p.queue.submit(std::iter::once(enc.finish()));
-
-        // Update past sequence length
         self.past_seq_len = total_seq;
 
-        // Read only logits back to CPU (vocab_size floats)
         let logits = p.read_f32(&logits_buf, vocab as usize);
-        log::info!("GPU total (submit+readback): {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
+        log::info!("GPU total (full readback): {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
 
         logits
     }

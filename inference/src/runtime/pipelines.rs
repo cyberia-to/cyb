@@ -22,6 +22,7 @@ pub struct Pipelines {
     pub silu_mul: ComputeShader,
     pub embed: ComputeShader,
     pub f32_matmul: ComputeShader,
+    pub argmax: ComputeShader,
 }
 
 pub struct ComputeShader {
@@ -60,7 +61,11 @@ impl Pipelines {
             storage_ro(), storage_ro(), storage_rw(), uniform(),
         ]);
 
-        Self { device, queue, q4_matmul, rms_norm, rope, attention, add, mul, silu_mul, embed, f32_matmul }
+        let argmax = create_pipeline(&device, include_str!("shaders/argmax.wgsl"), "main", &[
+            storage_ro(), storage_rw(), uniform(),
+        ]);
+
+        Self { device, queue, q4_matmul, rms_norm, rope, attention, add, mul, silu_mul, embed, f32_matmul, argmax }
     }
 
     /// Create a GPU buffer from f32 data

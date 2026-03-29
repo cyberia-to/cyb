@@ -159,6 +159,28 @@ pub fn f32_matmul(
     output
 }
 
+/// Argmax on GPU — returns buffer with single u32 index
+pub fn argmax_gpu(
+    p: &Pipelines, enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer, n: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc(4); // single u32
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params { n: u32 }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params { n }));
+
+    p.encode(enc, &p.argmax, &[
+        input.as_entire_binding(),
+        output.as_entire_binding(),
+        params_buf.as_entire_binding(),
+    ], (1, 1, 1));
+
+    output
+}
+
 /// Embedding lookup
 pub fn embed(
     p: &Pipelines, enc: &mut wgpu::CommandEncoder,
