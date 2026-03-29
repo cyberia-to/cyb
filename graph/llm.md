@@ -603,20 +603,46 @@ qwen3:     <|user|>\n{msg}<|end|>
 ```
 the runtime loads chat_template from tokenizer_config.json (Jinja2 format) and applies it. no hardcoded templates — parse from model config.
 
-## sampling
+## inference parameters
 
-decoding strategy subsystem:
+every generation call takes a parameter set that controls output behavior:
 
-- temperature scaling
-- top-k filtering
-- top-p (nucleus) filtering
-- min-p filtering
-- repetition penalty (frequency + presence)
-- grammar-constrained decoding — force output to match a schema (JSON, regex). use finite state machine over token vocabulary
-- beam search (rare but needed for whisper)
-- speculative sampling (accept/reject draft tokens)
+| parameter | what it does | range | soma defaults |
+|-----------|-------------|-------|--------------|
+| temperature | controls randomness. 0 = deterministic, 1 = diverse, 2 = chaos | 0.0 — 2.0 | router: 0.0. reasoning: 0.7. creative: 1.0 |
+| top_p | nucleus sampling — consider only tokens covering P% of probability mass | 0.0 — 1.0 | 0.9 general. 0.5 for code/JSON |
+| top_k | consider only K most probable tokens | 1 — vocab | 40 general. 1 = greedy |
+| min_p | discard tokens with probability < min_p × max_probability | 0.0 — 1.0 | 0.05 — removes garbage better than top_p alone |
+| repetition_penalty | penalize tokens that already appeared in output | 1.0 — 2.0 | 1.1 for conversation. 1.0 for code |
+| max_tokens | hard limit on output length | 1 — context | task-dependent |
+| stop | stop sequences — generation halts when any of these appear | strings | `["<|end|>"]` from chat template |
+| seed | fix random state for reproducibility | int | always set for STARK provability |
 
-grammar-constrained decoding is critical for [[soma]] — the router (tier 0.1) must output valid JSON: `{"tier": 1, "slot": 3}`. unconstrained generation can produce malformed routing decisions.
+soma presets:
+
+```
+router:    { temperature: 0.0, seed: 42 }              — deterministic, provable
+code:      { temperature: 0.0, top_p: 0.5, seed: 42 }  — precise, no creativity
+reasoning: { temperature: 0.7, min_p: 0.05 }           — balanced
+creative:  { temperature: 1.0, top_p: 0.95, min_p: 0.05, repetition_penalty: 1.2 }
+```
+
+### sampling pipeline
+
+applied in order after logits computed:
+
+```
+raw logits
+  → repetition penalty (modify logits of seen tokens)
+  → temperature (divide logits by T)
+  → top_k (keep only K highest)
+  → top_p (keep cumulative prob ≤ P)
+  → min_p (drop below threshold)
+  → sample from remaining distribution
+  → grammar constraint (reject if invalid, resample)
+```
+
+grammar-constrained decoding: force output to match a schema (JSON, regex) via finite state machine over token vocabulary. critical for [[soma]] router — must output valid `{"tier": 1, "slot": 3}`, malformed routing = system failure.
 
 ## model registry
 
@@ -709,14 +735,109 @@ correctness = output matches reference implementation within tolerance.
 
 test suite: save reference inputs/outputs as .npz files. CI runs every op against reference on every commit. regression = CI fails.
 
-## context window management
+## context management
 
-what happens when input exceeds model's trained context?
+quality of output = quality of context. a 4B model with precise context outperforms 70B with noise in the prompt. managing context is an active process, not passive window filling.
+
+### context structure
+
+```
+┌──────────────────────────────────────────────┐
+│               context window                  │
+│  ┌──────────────────────────────────────────┐ │
+│  │ system prompt (identity, rules, format)  │ │ ← static, KV cache reused
+│  ├──────────────────────────────────────────┤ │
+│  │ retrieved context (RAG from memory)      │ │ ← dynamic, scored by relevance
+│  ├──────────────────────────────────────────┤ │
+│  │ conversation history                     │ │ ← compressed when grows
+│  ├──────────────────────────────────────────┤ │
+│  │ tool results                             │ │ ← function call outputs
+│  ├──────────────────────────────────────────┤ │
+│  │ current input                            │ │ ← user/system message
+│  └──────────────────────────────────────────┘ │
+│  total tokens ≤ max_position_embeddings       │
+└──────────────────────────────────────────────┘
+```
+
+### context optimization
+
+| mechanism | what it does | when |
+|-----------|-------------|------|
+| prefix caching | system prompt KV cache reused across requests — no recomputation | always (same prompt = free prefill) |
+| context compression | old conversation summarized by tier 1 model, summary replaces full history | when history > 50% of context window |
+| RAG injection | embedding (tier 0.2) finds relevant chunks from episodic/semantic memory, inserts before input | every request with memory access |
+| priority packing | score each context block by relevance, keep highest-scoring, drop rest | when total exceeds window |
+| recency bias | most important content at the END of context (models attend more to recent tokens) | always — structure context accordingly |
+
+### overflow handling
+
+when input exceeds model's trained context:
 
 - truncation: drop oldest tokens (simple, lossy)
 - sliding window: process in chunks, carry KV cache forward (mistral-style)
-- RoPE scaling: extend positional encoding beyond training length (YaRN, NTK-aware). requires config parameter `rope_scaling`
+- RoPE scaling: extend positional encoding beyond training length (YaRN, NTK-aware)
 - the runtime reads `max_position_embeddings` and `rope_scaling` from config.json and applies automatically
+
+### context budget per tier
+
+| tier | typical context | budget strategy |
+|------|----------------|-----------------|
+| tier 0 (router, intent) | 2-4K | minimal — classify fast, don't waste tokens |
+| tier 1 (fast tasks) | 4-8K | task input + brief system prompt |
+| tier 2 (reasoning) | 8-32K | full RAG + history + detailed system prompt |
+| tier 3 (oracle API) | 32-200K | maximum context — send everything relevant |
+
+## tool use
+
+soma models call tools — they don't just generate text. the runtime manages the tool call loop:
+
+```
+generate → detect tool call in output → parse → execute → inject result → continue generating
+```
+
+### tool call format
+
+```
+model output:
+  "I need to check the sensor data.
+   <tool_call>{"name": "look", "args": {"key": "sensor_3"}}</tool_call>"
+
+runtime:
+  1. detect <tool_call> tags
+  2. parse JSON
+  3. execute look(key="sensor_3") → returns sensor value
+  4. inject result into context:
+     "<tool_result>{"sensor_3": 42.7, "status": "normal"}</tool_result>"
+  5. continue generation with result in context
+```
+
+### tool registry
+
+```rust
+struct ToolRegistry {
+    tools: HashMap<String, ToolSpec>,
+}
+
+struct ToolSpec {
+    name: String,
+    description: String,           // for LLM to understand when to use
+    parameters: JsonSchema,         // input validation
+    handler: fn(Value) -> Value,    // execution
+}
+```
+
+tools are injected into the system prompt as JSON schema descriptions. the model learns when and how to call them from the schema. grammar-constrained decoding ensures tool calls are valid JSON.
+
+### soma tool categories
+
+| category | tools | tier |
+|----------|-------|------|
+| perception | look(bbg_key), listen(audio_stream), see(camera_id) | 0 |
+| action | write(bbg_key, value), send(target, message), trade(order) | 1-2 |
+| memory | remember(fact), recall(query), forget(key) | 0-1 |
+| system | load_model(name), shed_model(name), set_param(key, value) | 0 |
+
+the tool loop is the primary way [[soma]] interacts with the world — through [[bbg]] reads/writes mediated by model decisions.
 
 ## what this enables
 
