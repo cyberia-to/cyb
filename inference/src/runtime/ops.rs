@@ -189,6 +189,68 @@ pub fn attention_decode(
     output
 }
 
+/// Fused RMSNorm + Q4 matmul: norm(input) * weight → Q4 matmul → output
+/// Saves 1 dispatch + 1 buffer write/read
+pub fn fused_norm_q4_matmul(
+    p: &Pipelines, enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer, norm_weight: &wgpu::Buffer,
+    packed_weights: &wgpu::Buffer, scales: &wgpu::Buffer,
+    n: u32, k: u32, block_size: u32, eps: f32,
+) -> wgpu::Buffer {
+    let num_blocks = k / block_size;
+    let output = p.alloc((n as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params { n: u32, k: u32, num_blocks: u32, u32s_per_row: u32, eps: f32, _p0: u32, _p1: u32, _p2: u32 }
+
+    let params = Params { n, k, num_blocks, u32s_per_row: num_blocks * (block_size / 2) / 4, eps, _p0: 0, _p1: 0, _p2: 0 };
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&params));
+
+    let num_wg = (n + 3) / 4;
+    let x = num_wg.min(65535);
+    let y = (num_wg + x - 1) / x;
+    p.encode(enc, &p.fused_norm_q4, &[
+        input.as_entire_binding(),
+        norm_weight.as_entire_binding(),
+        packed_weights.as_entire_binding(),
+        scales.as_entire_binding(),
+        output.as_entire_binding(),
+        params_buf.as_entire_binding(),
+    ], (x, y, 1));
+
+    output
+}
+
+/// Fused skip connection + RMSNorm
+/// Returns (normed_output, skip_output = input + skip)
+pub fn fused_skip_norm(
+    p: &Pipelines, enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer, skip: &wgpu::Buffer, weight: &wgpu::Buffer,
+    positions: u32, hidden: u32, eps: f32,
+) -> (wgpu::Buffer, wgpu::Buffer) {
+    let size = (positions as u64) * (hidden as u64) * 4;
+    let normed_output = p.alloc(size);
+    let skip_output = p.alloc(size);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params { hidden: u32, eps: f32 }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params { hidden, eps }));
+
+    p.encode(enc, &p.fused_skip_norm, &[
+        input.as_entire_binding(),
+        skip.as_entire_binding(),
+        weight.as_entire_binding(),
+        normed_output.as_entire_binding(),
+        skip_output.as_entire_binding(),
+        params_buf.as_entire_binding(),
+    ], (positions, 1, 1));
+
+    (normed_output, skip_output)
+}
+
 /// f32 vector × matrix: [K] × [N, K] → [N]
 pub fn f32_matmul(
     p: &Pipelines, enc: &mut wgpu::CommandEncoder,
