@@ -62,6 +62,111 @@ soma needs all of them because [[neuron]] runs on any hardware — phone, laptop
 └──────────────────────────────────────────┘
 ```
 
+## graph IR
+
+the IR is a directed acyclic graph (DAG) of typed tensor operations. not just a list of ops — it encodes how data flows between them.
+
+### structure
+
+```rust
+struct Graph {
+    nodes: Vec<Node>,
+    tensors: TensorStore,       // weights + intermediate buffers
+}
+
+struct Node {
+    op: Op,                     // matmul, attention, rmsnorm, ...
+    inputs: Vec<TensorId>,      // edges in
+    outputs: Vec<TensorId>,     // edges out
+    attrs: Attrs,               // num_heads, eps, kernel_size, ...
+    backend_hint: Option<Backend>, // prefer ANE, prefer Metal, ...
+}
+
+struct TensorMeta {
+    shape: Shape,               // can be dynamic: [batch, seq_len, 2048]
+    dtype: DType,               // f16, q4, q8, ternary, f32
+    residency: Residency,       // resident | cached | streamed
+}
+```
+
+each edge is a typed tensor with known shape and dtype. the scheduler uses this to allocate GPU buffers, plan memory reuse, and dispatch ops to backends.
+
+### where does the graph come from?
+
+weight files (.safetensors, .gguf) contain tensors without graph structure. the graph must be constructed separately.
+
+| source | what it provides | how graph is built |
+|--------|-----------------|-------------------|
+| .onnx | explicit graph (protobuf) | parse directly into IR |
+| .safetensors + config.json | named tensors + architecture params | architecture template instantiation |
+| .gguf | named tensors + metadata | architecture template from metadata.architecture field |
+| code | nothing on disk | programmatic graph construction |
+
+### architecture templates
+
+for safetensors/GGUF models, the runtime has built-in templates for common architectures:
+
+```
+transformer_decoder(config) → Graph
+  for each layer in 0..config.num_layers:
+    → rmsnorm(eps)
+    → attention(num_heads, head_dim, rope)
+    → rmsnorm(eps)
+    → mlp(hidden_dim, intermediate_dim, silu)
+
+transformer_encoder(config) → Graph
+  for each layer:
+    → layernorm(eps)
+    → attention(num_heads, head_dim)  // no KV cache
+    → layernorm(eps)
+    → mlp(hidden_dim, intermediate_dim, gelu)
+
+encoder_decoder(config) → Graph     // whisper
+  encoder = transformer_encoder(enc_config)
+  decoder = transformer_decoder(dec_config) + cross_attention
+
+diffusion_dit(config) → Graph       // flux, wan2.2
+  for each block:
+    → layernorm → attention → layernorm → mlp
+  noise_schedule + vae_decoder
+
+cnn_detector(config) → Graph        // YOLO
+  backbone: conv2d chains
+  neck: feature pyramid
+  head: detection + NMS
+
+moe_decoder(config) → Graph         // MiMo-V2, Step 3.5
+  for each layer:
+    → rmsnorm → attention
+    → rmsnorm → router(num_experts, top_k) → expert_mlps
+```
+
+config comes from config.json (HuggingFace) or GGUF metadata. template + config = concrete graph.
+
+### dynamic shapes
+
+batch size and sequence length change at runtime. the IR represents these as symbolic dimensions:
+- shape `[B, S, 2048]` where B and S are resolved at inference time
+- KV cache grows with S on each decode step
+- the scheduler pre-allocates based on max expected S, resizes if exceeded
+
+### graph optimizations
+
+before execution, the IR is optimized:
+- op fusion: matmul + bias + silu → single fused kernel
+- dead node elimination: remove unused outputs
+- constant folding: precompute anything that doesn't depend on input
+- memory planning: assign buffer lifetimes, maximize reuse (op A's output buffer reused for op C if A is consumed before C starts)
+
+### stateful ops
+
+some ops carry state between inference calls:
+- `kv_cache`: grows across tokens, persists across calls
+- `moe_router`: load-balancing counters (optional)
+- all other ops are pure functions (same input → same output)
+
+stateful ops are explicitly marked in the IR. the STARK provability trace handles them by including state snapshots.
+
 ## the 30 ops
 
 every neural network — transformer, CNN, diffusion, TTS, BitNet — reduces to these operations:
