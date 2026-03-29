@@ -1,0 +1,33 @@
+[package]
+name = "cyb-llm"
+version = "0.1.0"
+edition = "2024"
+
+[[bin]]
+name = "cyb-llm"
+path = "src/main.rs"
+
+[dependencies]
+# GPU compute
+wgpu = { version = "24", features = ["wgsl"] }
+pollster = "0.4"
+bytemuck = { version = "1", features = ["derive"] }
+
+# Model loading
+prost = "0.13"
+memmap2 = "0.9"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+# Tokenization + HF
+tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
+hf-hub = { version = "0.5", features = ["default-tls"] }
+
+# Utils
+log = "0.4"
+env_logger = "0.11"
+clap = { version = "4", features = ["derive"] }
+half = { version = "2", features = ["num-traits"] }
+
+[build-dependencies]
+prost-build = "0.13"
