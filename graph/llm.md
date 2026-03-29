@@ -860,6 +860,39 @@ quality of output = quality of context. a 4B model with precise context outperfo
 └──────────────────────────────────────────────┘
 ```
 
+### cybergraph retrieval (not RAG)
+
+standard RAG: embed query → cosine similarity search → inject top-K text chunks. a blunt instrument for systems without structure.
+
+soma has [[cybergraph]] — a knowledge graph with typed links, [[tri-kernel]] weights, and provable history in [[bbg]]. retrieval uses the graph, not vectors alone.
+
+four relevance signals:
+
+```
+relevance(page, query) =
+    α · similarity(embed(query), embed(page))    — semantic proximity
+  + β · link_distance(query_context, page)        — graph hops from current focus
+  + γ · gravity(page)                             — tri-kernel importance score
+  + δ · diffusion(page)                           — temporal activity (recency)
+```
+
+retrieval algorithm:
+
+```
+1. embed(query) → find seed pages by semantic similarity
+2. from seeds, traverse outgoing [[wiki-links]] (1-2 hops)
+3. score all candidates by relevance formula
+4. rank by score, pack top pages into context budget
+5. inject as structured content (frontmatter + body + links), not raw text
+```
+
+what this gives over RAG:
+- a page about [[energy market]] links to [[sigma]], [[bounty]], [[neuron]] → all related context found via graph, no embedding needed
+- high-gravity pages (core concepts) naturally surface → the model gets foundational context
+- diffusion score captures "what changed recently" → temporal awareness without date filtering
+- retrieval path is recorded in [[bbg]] → provable, auditable
+- structured pages with frontmatter → model understands metadata, not just text
+
 ### context optimization
 
 | mechanism | what it does | when |
