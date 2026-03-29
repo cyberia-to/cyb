@@ -35,10 +35,17 @@ impl GpuRuntime {
         limits.max_buffer_size = 1 << 30; // 1GB
         limits.max_storage_buffer_binding_size = 1 << 30;
 
+        // Enable subgroup operations for SIMD-like reductions
+        let mut features = wgpu::Features::empty();
+        if adapter.features().contains(wgpu::Features::SUBGROUP) {
+            features |= wgpu::Features::SUBGROUP;
+            log::info!("Subgroup ops enabled (SIMD reduction)");
+        }
+
         let (device, queue) = pollster::block_on(adapter.request_device(
             &wgpu::DeviceDescriptor {
                 label: Some("cyb-inference"),
-                required_features: wgpu::Features::empty(),
+                required_features: features,
                 required_limits: limits,
                 memory_hints: Default::default(),
             },
