@@ -533,6 +533,64 @@ the context window is not ephemeral RAM — significant context persists in [[bb
 
 ephemeral state (KV cache, intermediate tensors) lives in GPU memory only. everything else has a bbg address and can be proven.
 
+## shared GPU infrastructure with [[Trident]]
+
+the llm runtime and [[Trident]] share GPU infrastructure. tensor compute (f16) and field arithmetic (F_p) use different shaders but the same dispatch, memory, and scheduling.
+
+### workspace crates (in trident repo)
+
+trident repo converts to a Cargo workspace with shared GPU crates:
+
+```
+trident/
+├── Cargo.toml                    # [workspace]
+├── trident-lang/                 # current src/ → compiler, VM, proofs
+├── cyber-gpu-dispatch/           # Metal/wgpu/CUDA kernel launch, command queues, pipeline cache
+├── cyber-gpu-memory/             # buffer pool, allocation, residency sets, LRU eviction
+├── cyber-gpu-scheduler/          # op → backend routing, auto-tune, dispatch table, profiling
+└── cyber-gpu-shaders/
+    ├── goldilocks/               # F_p field arithmetic (mul, ntt, poseidon) — from current src/gpu/shaders/
+    ├── f16/                      # neural inference (matmul, attention, conv2d, rmsnorm...)
+    └── ternary/                  # BitNet (add/subtract matmul)
+```
+
+consumers:
+```
+trident-lang    depends on: cyber-gpu-dispatch, cyber-gpu-memory, cyber-gpu-shaders/goldilocks
+llm runtime     depends on: cyber-gpu-dispatch, cyber-gpu-memory, cyber-gpu-scheduler, cyber-gpu-shaders/f16, cyber-gpu-shaders/ternary
+```
+
+### current state (trident src/gpu/)
+
+```
+src/gpu/mod.rs         — 37 lines, try_create_device() only
+src/gpu/shaders.rs     — 3 shader constants
+src/gpu/shaders/
+    goldilocks.wgsl    — 157 lines, F_p arithmetic (canonical form)
+    fixed_point.wgsl   — 52 lines, fixed-point over Goldilocks
+    grammar_mask.wgsl  — 63 lines, beam search mask
+```
+
+minimal GPU code — ideal moment for decomposition. no legacy to refactor.
+
+### Nox boundary
+
+the llm runtime is a host jet called from [[Nox]] reduction:
+
+```
+Nox (control plane, provable)
+    │
+    ├── pure jets → field arithmetic (Trident, proven)
+    │
+    └── host jet: infer(model, input)
+          │
+          └── llm runtime (data plane, native Rust + GPU)
+                │
+                └── cyber-gpu-dispatch → Metal/CUDA/wgpu
+```
+
+orchestration decisions (which model, what context, which tool) run ON Nox — provable. tensor computation runs THROUGH Nox as a host jet — fast, native GPU, auditable via STARK trace but not itself a Nox reduction.
+
 ## multi-model orchestration
 
 soma runs 8+ models in parallel (tier 0) + loads/unloads tier 1-2 on demand. the runtime is not a "run one model" tool — it is a model scheduler.
