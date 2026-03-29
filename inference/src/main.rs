@@ -46,6 +46,10 @@ enum Commands {
 
 fn main() {
     env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+
+    // Initialize custom Q4 compute shader pipeline
+    cyb_inference::quant::init_q4_compute();
+
     let cli = Cli::parse();
 
     match cli.command {
