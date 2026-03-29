@@ -9,4 +9,4 @@ pub mod templates;
 pub use graph::{Graph, Node, TensorId, TensorMeta, WeightData, Dim, Shape, Residency, BackendHint, Attrs, AttrValue, MemoryPlan, BufferLifetime};
 pub use ops::{Op, PoolMode, InterpolateMode, SampleMethod};
 pub use dtype::DType;
-pub use templates::{TransformerConfig, Activation};
+pub use templates::{TransformerConfig, Activation, DiTConfig, CnnDetectorConfig, MoeDecoderConfig};

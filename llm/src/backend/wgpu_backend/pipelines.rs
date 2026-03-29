@@ -32,6 +32,52 @@ pub struct Pipelines {
     pub kv_append: ComputeShader,
     pub kv_expand: ComputeShader,
 
+    // --- Batch 1: Trivial element-wise ---
+    pub sub: ComputeShader,
+    pub div: ComputeShader,
+    pub relu: ComputeShader,
+    pub leaky_relu: ComputeShader,
+    pub tanh_act: ComputeShader,
+    pub clamp: ComputeShader,
+    pub abs_op: ComputeShader,
+    pub neg: ComputeShader,
+    pub sqrt_op: ComputeShader,
+    pub exp_op: ComputeShader,
+    pub sigmoid: ComputeShader,
+
+    // --- Batch 2: Compound activations ---
+    pub geglu: ComputeShader,
+    pub swiglu: ComputeShader,
+    pub glu: ComputeShader,
+    pub prelu: ComputeShader,
+
+    // --- Batch 3: Normalization ---
+    pub batchnorm: ComputeShader,
+    pub groupnorm: ComputeShader,
+    pub instance_norm: ComputeShader,
+    pub adaln: ComputeShader,
+
+    // --- Batch 4: Convolution ---
+    pub conv2d: ComputeShader,
+    pub conv1d: ComputeShader,
+    pub depthwise_conv: ComputeShader,
+    pub pool: ComputeShader,
+
+    // --- Batch 5: Spatial ---
+    pub interpolate_nearest: ComputeShader,
+    pub interpolate_bilinear: ComputeShader,
+    pub pixel_shuffle: ComputeShader,
+    pub pixel_unshuffle: ComputeShader,
+    pub patch_embed: ComputeShader,
+
+    // --- Batch 6: Special ---
+    pub sinusoidal_embed: ComputeShader,
+    pub noise_schedule: ComputeShader,
+
+    // --- Batch 7: Attention variants ---
+    pub cross_attention: ComputeShader,
+    pub flash_attention: ComputeShader,
+
     /// Frame allocator for zero-allocation decode after warmup
     pub frame_alloc: RefCell<FrameAllocator>,
 }
@@ -160,6 +206,212 @@ impl Pipelines {
             ],
         );
 
+        // --- Batch 1: Trivial element-wise ---
+        let sub = create_pipeline(
+            &device,
+            include_str!("shaders/elementwise.wgsl"),
+            "sub_kernel",
+            &[storage_ro(), storage_ro(), storage_rw()],
+        );
+        let div = create_pipeline(
+            &device,
+            include_str!("shaders/elementwise.wgsl"),
+            "div_kernel",
+            &[storage_ro(), storage_ro(), storage_rw()],
+        );
+        let relu = create_pipeline(
+            &device,
+            include_str!("shaders/elementwise.wgsl"),
+            "relu_kernel",
+            &[storage_ro(), storage_rw()],
+        );
+        let leaky_relu = create_pipeline(
+            &device,
+            include_str!("shaders/elementwise.wgsl"),
+            "leaky_relu_kernel",
+            &[storage_ro(), storage_rw(), uniform()],
+        );
+        let tanh_act = create_pipeline(
+            &device,
+            include_str!("shaders/elementwise.wgsl"),
+            "tanh_kernel",
+            &[storage_ro(), storage_rw()],
+        );
+        let clamp = create_pipeline(
+            &device,
+            include_str!("shaders/elementwise.wgsl"),
+            "clamp_kernel",
+            &[storage_ro(), storage_rw(), uniform()],
+        );
+        let abs_op = create_pipeline(
+            &device,
+            include_str!("shaders/elementwise.wgsl"),
+            "abs_kernel",
+            &[storage_ro(), storage_rw()],
+        );
+        let neg = create_pipeline(
+            &device,
+            include_str!("shaders/elementwise.wgsl"),
+            "neg_kernel",
+            &[storage_ro(), storage_rw()],
+        );
+        let sqrt_op = create_pipeline(
+            &device,
+            include_str!("shaders/elementwise.wgsl"),
+            "sqrt_kernel",
+            &[storage_ro(), storage_rw()],
+        );
+        let exp_op = create_pipeline(
+            &device,
+            include_str!("shaders/elementwise.wgsl"),
+            "exp_kernel",
+            &[storage_ro(), storage_rw()],
+        );
+        let sigmoid = create_pipeline(
+            &device,
+            include_str!("shaders/elementwise.wgsl"),
+            "sigmoid_kernel",
+            &[storage_ro(), storage_rw()],
+        );
+
+        // --- Batch 2: Compound activations ---
+        let geglu = create_pipeline(
+            &device,
+            include_str!("shaders/activations.wgsl"),
+            "geglu_kernel",
+            &[storage_ro(), storage_ro(), storage_rw()],
+        );
+        let swiglu = create_pipeline(
+            &device,
+            include_str!("shaders/activations.wgsl"),
+            "swiglu_kernel",
+            &[storage_ro(), storage_ro(), storage_rw()],
+        );
+        let glu = create_pipeline(
+            &device,
+            include_str!("shaders/activations.wgsl"),
+            "glu_kernel",
+            &[storage_ro(), storage_ro(), storage_rw()],
+        );
+        let prelu = create_pipeline(
+            &device,
+            include_str!("shaders/activations.wgsl"),
+            "prelu_kernel",
+            &[storage_ro(), storage_ro(), storage_rw()],
+        );
+
+        // --- Batch 3: Normalization ---
+        let batchnorm = create_pipeline(
+            &device,
+            include_str!("shaders/norm.wgsl"),
+            "batchnorm_kernel",
+            &[storage_ro(), storage_ro(), storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform()],
+        );
+        let groupnorm = create_pipeline(
+            &device,
+            include_str!("shaders/norm.wgsl"),
+            "groupnorm_kernel",
+            &[storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform()],
+        );
+        let instance_norm = create_pipeline(
+            &device,
+            include_str!("shaders/norm.wgsl"),
+            "instance_norm_kernel",
+            &[storage_ro(), storage_rw(), uniform()],
+        );
+        let adaln = create_pipeline(
+            &device,
+            include_str!("shaders/norm.wgsl"),
+            "adaln_kernel",
+            &[storage_ro(), storage_ro(), storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform()],
+        );
+
+        // --- Batch 4: Convolution ---
+        let conv2d = create_pipeline(
+            &device,
+            include_str!("shaders/conv.wgsl"),
+            "conv2d_kernel",
+            &[storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform()],
+        );
+        let conv1d = create_pipeline(
+            &device,
+            include_str!("shaders/conv.wgsl"),
+            "conv1d_kernel",
+            &[storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform()],
+        );
+        let depthwise_conv = create_pipeline(
+            &device,
+            include_str!("shaders/conv.wgsl"),
+            "depthwise_conv_kernel",
+            &[storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform()],
+        );
+        let pool = create_pipeline(
+            &device,
+            include_str!("shaders/conv.wgsl"),
+            "pool_kernel",
+            &[storage_ro(), storage_rw(), uniform()],
+        );
+
+        // --- Batch 5: Spatial ---
+        let interpolate_nearest = create_pipeline(
+            &device,
+            include_str!("shaders/spatial.wgsl"),
+            "interpolate_nearest_kernel",
+            &[storage_ro(), storage_rw(), uniform()],
+        );
+        let interpolate_bilinear = create_pipeline(
+            &device,
+            include_str!("shaders/spatial.wgsl"),
+            "interpolate_bilinear_kernel",
+            &[storage_ro(), storage_rw(), uniform()],
+        );
+        let pixel_shuffle = create_pipeline(
+            &device,
+            include_str!("shaders/spatial.wgsl"),
+            "pixel_shuffle_kernel",
+            &[storage_ro(), storage_rw(), uniform()],
+        );
+        let pixel_unshuffle = create_pipeline(
+            &device,
+            include_str!("shaders/spatial.wgsl"),
+            "pixel_unshuffle_kernel",
+            &[storage_ro(), storage_rw(), uniform()],
+        );
+        let patch_embed = create_pipeline(
+            &device,
+            include_str!("shaders/spatial.wgsl"),
+            "patch_embed_kernel",
+            &[storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform()],
+        );
+
+        // --- Batch 6: Special ---
+        let sinusoidal_embed = create_pipeline(
+            &device,
+            include_str!("shaders/special.wgsl"),
+            "sinusoidal_embed_kernel",
+            &[storage_rw(), uniform()],
+        );
+        let noise_schedule = create_pipeline(
+            &device,
+            include_str!("shaders/special.wgsl"),
+            "noise_schedule_kernel",
+            &[storage_ro(), storage_rw(), uniform()],
+        );
+
+        // --- Batch 7: Attention variants ---
+        let cross_attention = create_pipeline(
+            &device,
+            include_str!("shaders/special.wgsl"),
+            "cross_attention_kernel",
+            &[storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform()],
+        );
+        let flash_attention = create_pipeline(
+            &device,
+            include_str!("shaders/special.wgsl"),
+            "flash_attention_kernel",
+            &[storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform()],
+        );
+
         let frame_alloc = RefCell::new(FrameAllocator::new(device.clone()));
 
         Self {
@@ -182,6 +434,45 @@ impl Pipelines {
             fused_skip_norm,
             kv_append,
             kv_expand,
+            // Batch 1
+            sub,
+            div,
+            relu,
+            leaky_relu,
+            tanh_act,
+            clamp,
+            abs_op,
+            neg,
+            sqrt_op,
+            exp_op,
+            sigmoid,
+            // Batch 2
+            geglu,
+            swiglu,
+            glu,
+            prelu,
+            // Batch 3
+            batchnorm,
+            groupnorm,
+            instance_norm,
+            adaln,
+            // Batch 4
+            conv2d,
+            conv1d,
+            depthwise_conv,
+            pool,
+            // Batch 5
+            interpolate_nearest,
+            interpolate_bilinear,
+            pixel_shuffle,
+            pixel_unshuffle,
+            patch_embed,
+            // Batch 6
+            sinusoidal_embed,
+            noise_schedule,
+            // Batch 7
+            cross_attention,
+            flash_attention,
             frame_alloc,
         }
     }

@@ -498,6 +498,1287 @@ pub fn embed(
 }
 
 // ========================================================================
+// Batch 1: Trivial element-wise dispatch functions
+// ========================================================================
+
+/// Element-wise subtract
+pub fn sub(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    a: &wgpu::Buffer,
+    b: &wgpu::Buffer,
+    n: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+    p.encode(
+        enc,
+        &p.sub,
+        &[
+            a.as_entire_binding(),
+            b.as_entire_binding(),
+            output.as_entire_binding(),
+        ],
+        ((n + 255) / 256, 1, 1),
+    );
+    output
+}
+
+/// Element-wise divide
+pub fn div(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    a: &wgpu::Buffer,
+    b: &wgpu::Buffer,
+    n: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+    p.encode(
+        enc,
+        &p.div,
+        &[
+            a.as_entire_binding(),
+            b.as_entire_binding(),
+            output.as_entire_binding(),
+        ],
+        ((n + 255) / 256, 1, 1),
+    );
+    output
+}
+
+/// ReLU activation
+pub fn relu(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    n: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+    p.encode(
+        enc,
+        &p.relu,
+        &[
+            input.as_entire_binding(),
+            output.as_entire_binding(),
+        ],
+        ((n + 255) / 256, 1, 1),
+    );
+    output
+}
+
+/// Leaky ReLU activation
+pub fn leaky_relu(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    n: u32,
+    slope: f32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        slope: f32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params { slope }));
+
+    p.encode(
+        enc,
+        &p.leaky_relu,
+        &[
+            input.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        ((n + 255) / 256, 1, 1),
+    );
+    output
+}
+
+/// Tanh activation
+pub fn tanh_act(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    n: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+    p.encode(
+        enc,
+        &p.tanh_act,
+        &[
+            input.as_entire_binding(),
+            output.as_entire_binding(),
+        ],
+        ((n + 255) / 256, 1, 1),
+    );
+    output
+}
+
+/// Clamp values to [min, max]
+pub fn clamp_op(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    n: u32,
+    min_val: f32,
+    max_val: f32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        min_val: f32,
+        max_val: f32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params { min_val, max_val }));
+
+    p.encode(
+        enc,
+        &p.clamp,
+        &[
+            input.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        ((n + 255) / 256, 1, 1),
+    );
+    output
+}
+
+/// Absolute value
+pub fn abs_op(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    n: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+    p.encode(
+        enc,
+        &p.abs_op,
+        &[
+            input.as_entire_binding(),
+            output.as_entire_binding(),
+        ],
+        ((n + 255) / 256, 1, 1),
+    );
+    output
+}
+
+/// Negate
+pub fn neg(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    n: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+    p.encode(
+        enc,
+        &p.neg,
+        &[
+            input.as_entire_binding(),
+            output.as_entire_binding(),
+        ],
+        ((n + 255) / 256, 1, 1),
+    );
+    output
+}
+
+/// Square root
+pub fn sqrt_op(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    n: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+    p.encode(
+        enc,
+        &p.sqrt_op,
+        &[
+            input.as_entire_binding(),
+            output.as_entire_binding(),
+        ],
+        ((n + 255) / 256, 1, 1),
+    );
+    output
+}
+
+/// Exponential
+pub fn exp_op(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    n: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+    p.encode(
+        enc,
+        &p.exp_op,
+        &[
+            input.as_entire_binding(),
+            output.as_entire_binding(),
+        ],
+        ((n + 255) / 256, 1, 1),
+    );
+    output
+}
+
+/// Sigmoid activation
+pub fn sigmoid(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    n: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+    p.encode(
+        enc,
+        &p.sigmoid,
+        &[
+            input.as_entire_binding(),
+            output.as_entire_binding(),
+        ],
+        ((n + 255) / 256, 1, 1),
+    );
+    output
+}
+
+// ========================================================================
+// Batch 2: Compound activations
+// ========================================================================
+
+/// GeGLU: gelu(gate) * up
+pub fn geglu(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    gate: &wgpu::Buffer,
+    up: &wgpu::Buffer,
+    n: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+    p.encode(
+        enc,
+        &p.geglu,
+        &[
+            gate.as_entire_binding(),
+            up.as_entire_binding(),
+            output.as_entire_binding(),
+        ],
+        ((n + 255) / 256, 1, 1),
+    );
+    output
+}
+
+/// SwiGLU: silu(gate) * up
+pub fn swiglu(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    gate: &wgpu::Buffer,
+    up: &wgpu::Buffer,
+    n: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+    p.encode(
+        enc,
+        &p.swiglu,
+        &[
+            gate.as_entire_binding(),
+            up.as_entire_binding(),
+            output.as_entire_binding(),
+        ],
+        ((n + 255) / 256, 1, 1),
+    );
+    output
+}
+
+/// GLU: sigmoid(gate) * value
+pub fn glu(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    gate: &wgpu::Buffer,
+    value: &wgpu::Buffer,
+    n: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+    p.encode(
+        enc,
+        &p.glu,
+        &[
+            gate.as_entire_binding(),
+            value.as_entire_binding(),
+            output.as_entire_binding(),
+        ],
+        ((n + 255) / 256, 1, 1),
+    );
+    output
+}
+
+/// PReLU: x > 0 ? x : x * slope[i]
+pub fn prelu(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    slopes: &wgpu::Buffer,
+    n: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+    p.encode(
+        enc,
+        &p.prelu,
+        &[
+            input.as_entire_binding(),
+            slopes.as_entire_binding(),
+            output.as_entire_binding(),
+        ],
+        ((n + 255) / 256, 1, 1),
+    );
+    output
+}
+
+// ========================================================================
+// Batch 3: Normalization
+// ========================================================================
+
+/// Batch normalization (inference mode with running stats)
+pub fn batchnorm(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    running_mean: &wgpu::Buffer,
+    running_var: &wgpu::Buffer,
+    weight: &wgpu::Buffer,
+    bias: &wgpu::Buffer,
+    channels: u32,
+    spatial_size: u32,
+    batch_size: u32,
+    eps: f32,
+) -> wgpu::Buffer {
+    let total = batch_size as u64 * channels as u64 * spatial_size as u64;
+    let output = p.alloc(total * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        channels: u32,
+        spatial_size: u32,
+        batch_size: u32,
+        eps: f32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        channels,
+        spatial_size,
+        batch_size,
+        eps,
+    }));
+
+    p.encode(
+        enc,
+        &p.batchnorm,
+        &[
+            input.as_entire_binding(),
+            running_mean.as_entire_binding(),
+            running_var.as_entire_binding(),
+            weight.as_entire_binding(),
+            bias.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        (channels, 1, 1),
+    );
+
+    output
+}
+
+/// Group normalization
+pub fn groupnorm(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    weight: &wgpu::Buffer,
+    bias: &wgpu::Buffer,
+    channels: u32,
+    spatial_size: u32,
+    num_groups: u32,
+    batch_size: u32,
+    eps: f32,
+) -> wgpu::Buffer {
+    let total = batch_size as u64 * channels as u64 * spatial_size as u64;
+    let output = p.alloc(total * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        channels: u32,
+        spatial_size: u32,
+        num_groups: u32,
+        channels_per_group: u32,
+        eps: f32,
+        _pad: u32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        channels,
+        spatial_size,
+        num_groups,
+        channels_per_group: channels / num_groups,
+        eps,
+        _pad: 0,
+    }));
+
+    p.encode(
+        enc,
+        &p.groupnorm,
+        &[
+            input.as_entire_binding(),
+            weight.as_entire_binding(),
+            bias.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        (batch_size, num_groups, 1),
+    );
+
+    output
+}
+
+/// Instance normalization
+pub fn instance_norm(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    channels: u32,
+    spatial_size: u32,
+    batch_size: u32,
+    eps: f32,
+) -> wgpu::Buffer {
+    let total = batch_size as u64 * channels as u64 * spatial_size as u64;
+    let output = p.alloc(total * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        channels: u32,
+        spatial_size: u32,
+        eps: f32,
+        _pad: u32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        channels,
+        spatial_size,
+        eps,
+        _pad: 0,
+    }));
+
+    p.encode(
+        enc,
+        &p.instance_norm,
+        &[
+            input.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        (batch_size, channels, 1),
+    );
+
+    output
+}
+
+/// Adaptive layer norm: (1 + scale) * layernorm(x) + shift
+pub fn adaln(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    scale: &wgpu::Buffer,
+    shift: &wgpu::Buffer,
+    weight: &wgpu::Buffer,
+    bias: &wgpu::Buffer,
+    positions: u32,
+    hidden: u32,
+    eps: f32,
+) -> wgpu::Buffer {
+    let output = p.alloc((positions as u64) * (hidden as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        hidden: u32,
+        eps: f32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params { hidden, eps }));
+
+    p.encode(
+        enc,
+        &p.adaln,
+        &[
+            input.as_entire_binding(),
+            scale.as_entire_binding(),
+            shift.as_entire_binding(),
+            weight.as_entire_binding(),
+            bias.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        (positions, 1, 1),
+    );
+
+    output
+}
+
+// ========================================================================
+// Batch 4: Convolution
+// ========================================================================
+
+/// 2D Convolution
+pub fn conv2d(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    weight: &wgpu::Buffer,
+    bias: &wgpu::Buffer,
+    batch_size: u32,
+    in_channels: u32,
+    out_channels: u32,
+    in_h: u32,
+    in_w: u32,
+    kernel_h: u32,
+    kernel_w: u32,
+    stride_h: u32,
+    stride_w: u32,
+    pad_h: u32,
+    pad_w: u32,
+    groups: u32,
+) -> wgpu::Buffer {
+    let out_h = (in_h + 2 * pad_h - kernel_h) / stride_h + 1;
+    let out_w = (in_w + 2 * pad_w - kernel_w) / stride_w + 1;
+    let total_output = batch_size * out_channels * out_h * out_w;
+    let output = p.alloc((total_output as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        in_channels: u32,
+        out_channels: u32,
+        in_h: u32,
+        in_w: u32,
+        out_h: u32,
+        out_w: u32,
+        kernel_h: u32,
+        kernel_w: u32,
+        stride_h: u32,
+        stride_w: u32,
+        pad_h: u32,
+        pad_w: u32,
+        groups: u32,
+        batch_size: u32,
+        total_output: u32,
+        _pad: u32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        in_channels,
+        out_channels,
+        in_h,
+        in_w,
+        out_h,
+        out_w,
+        kernel_h,
+        kernel_w,
+        stride_h,
+        stride_w,
+        pad_h,
+        pad_w,
+        groups,
+        batch_size,
+        total_output,
+        _pad: 0,
+    }));
+
+    p.encode(
+        enc,
+        &p.conv2d,
+        &[
+            input.as_entire_binding(),
+            weight.as_entire_binding(),
+            bias.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        ((total_output + 255) / 256, 1, 1),
+    );
+
+    output
+}
+
+/// 1D Convolution
+pub fn conv1d(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    weight: &wgpu::Buffer,
+    bias: &wgpu::Buffer,
+    batch_size: u32,
+    in_channels: u32,
+    out_channels: u32,
+    in_length: u32,
+    kernel_size: u32,
+    stride: u32,
+    padding: u32,
+    groups: u32,
+) -> wgpu::Buffer {
+    let out_length = (in_length + 2 * padding - kernel_size) / stride + 1;
+    let total_output = batch_size * out_channels * out_length;
+    let output = p.alloc((total_output as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        in_channels: u32,
+        out_channels: u32,
+        in_length: u32,
+        out_length: u32,
+        kernel_size: u32,
+        stride: u32,
+        padding: u32,
+        groups: u32,
+        batch_size: u32,
+        total_output: u32,
+        _pad0: u32,
+        _pad1: u32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        in_channels,
+        out_channels,
+        in_length,
+        out_length,
+        kernel_size,
+        stride,
+        padding,
+        groups,
+        batch_size,
+        total_output,
+        _pad0: 0,
+        _pad1: 0,
+    }));
+
+    p.encode(
+        enc,
+        &p.conv1d,
+        &[
+            input.as_entire_binding(),
+            weight.as_entire_binding(),
+            bias.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        ((total_output + 255) / 256, 1, 1),
+    );
+
+    output
+}
+
+/// Depthwise convolution (groups = channels)
+pub fn depthwise_conv(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    weight: &wgpu::Buffer,
+    bias: &wgpu::Buffer,
+    batch_size: u32,
+    channels: u32,
+    in_length: u32,
+    kernel_size: u32,
+    stride: u32,
+    padding: u32,
+) -> wgpu::Buffer {
+    let out_length = (in_length + 2 * padding - kernel_size) / stride + 1;
+    let total_output = batch_size * channels * out_length;
+    let output = p.alloc((total_output as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        channels: u32,
+        in_length: u32,
+        out_length: u32,
+        kernel_size: u32,
+        stride: u32,
+        padding: u32,
+        batch_size: u32,
+        total_output: u32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        channels,
+        in_length,
+        out_length,
+        kernel_size,
+        stride,
+        padding,
+        batch_size,
+        total_output,
+    }));
+
+    p.encode(
+        enc,
+        &p.depthwise_conv,
+        &[
+            input.as_entire_binding(),
+            weight.as_entire_binding(),
+            bias.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        ((total_output + 255) / 256, 1, 1),
+    );
+
+    output
+}
+
+/// 2D Pooling (max or avg)
+pub fn pool(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    batch_size: u32,
+    channels: u32,
+    in_h: u32,
+    in_w: u32,
+    kernel_h: u32,
+    kernel_w: u32,
+    stride_h: u32,
+    stride_w: u32,
+    mode: u32, // 0 = max, 1 = avg
+) -> wgpu::Buffer {
+    let out_h = (in_h - kernel_h) / stride_h + 1;
+    let out_w = (in_w - kernel_w) / stride_w + 1;
+    let total_output = batch_size * channels * out_h * out_w;
+    let output = p.alloc((total_output as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        channels: u32,
+        in_h: u32,
+        in_w: u32,
+        out_h: u32,
+        out_w: u32,
+        kernel_h: u32,
+        kernel_w: u32,
+        stride_h: u32,
+        stride_w: u32,
+        batch_size: u32,
+        total_output: u32,
+        mode: u32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        channels,
+        in_h,
+        in_w,
+        out_h,
+        out_w,
+        kernel_h,
+        kernel_w,
+        stride_h,
+        stride_w,
+        batch_size,
+        total_output,
+        mode,
+    }));
+
+    p.encode(
+        enc,
+        &p.pool,
+        &[
+            input.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        ((total_output + 255) / 256, 1, 1),
+    );
+
+    output
+}
+
+// ========================================================================
+// Batch 5: Spatial
+// ========================================================================
+
+/// Nearest-neighbor interpolation (upsampling)
+pub fn interpolate_nearest(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    batch_size: u32,
+    channels: u32,
+    in_h: u32,
+    in_w: u32,
+    out_h: u32,
+    out_w: u32,
+) -> wgpu::Buffer {
+    let total_output = batch_size * channels * out_h * out_w;
+    let output = p.alloc((total_output as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        channels: u32,
+        in_h: u32,
+        in_w: u32,
+        out_h: u32,
+        out_w: u32,
+        batch_size: u32,
+        total_output: u32,
+        _pad: u32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        channels,
+        in_h,
+        in_w,
+        out_h,
+        out_w,
+        batch_size,
+        total_output,
+        _pad: 0,
+    }));
+
+    p.encode(
+        enc,
+        &p.interpolate_nearest,
+        &[
+            input.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        ((total_output + 255) / 256, 1, 1),
+    );
+
+    output
+}
+
+/// Bilinear interpolation (upsampling)
+pub fn interpolate_bilinear(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    batch_size: u32,
+    channels: u32,
+    in_h: u32,
+    in_w: u32,
+    out_h: u32,
+    out_w: u32,
+) -> wgpu::Buffer {
+    let total_output = batch_size * channels * out_h * out_w;
+    let output = p.alloc((total_output as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        channels: u32,
+        in_h: u32,
+        in_w: u32,
+        out_h: u32,
+        out_w: u32,
+        batch_size: u32,
+        total_output: u32,
+        _pad: u32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        channels,
+        in_h,
+        in_w,
+        out_h,
+        out_w,
+        batch_size,
+        total_output,
+        _pad: 0,
+    }));
+
+    p.encode(
+        enc,
+        &p.interpolate_bilinear,
+        &[
+            input.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        ((total_output + 255) / 256, 1, 1),
+    );
+
+    output
+}
+
+/// Pixel shuffle: (batch, C*r^2, H, W) -> (batch, C, H*r, W*r)
+pub fn pixel_shuffle(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    batch_size: u32,
+    channels_out: u32,
+    in_h: u32,
+    in_w: u32,
+    upscale_factor: u32,
+) -> wgpu::Buffer {
+    let out_h = in_h * upscale_factor;
+    let out_w = in_w * upscale_factor;
+    let total_output = batch_size * channels_out * out_h * out_w;
+    let output = p.alloc((total_output as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        channels_out: u32,
+        in_h: u32,
+        in_w: u32,
+        out_h: u32,
+        out_w: u32,
+        upscale_factor: u32,
+        batch_size: u32,
+        total_output: u32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        channels_out,
+        in_h,
+        in_w,
+        out_h,
+        out_w,
+        upscale_factor,
+        batch_size,
+        total_output,
+    }));
+
+    p.encode(
+        enc,
+        &p.pixel_shuffle,
+        &[
+            input.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        ((total_output + 255) / 256, 1, 1),
+    );
+
+    output
+}
+
+/// Pixel unshuffle: (batch, C, H, W) -> (batch, C*r^2, H/r, W/r)
+pub fn pixel_unshuffle(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    batch_size: u32,
+    channels_in: u32,
+    in_h: u32,
+    in_w: u32,
+    downscale_factor: u32,
+) -> wgpu::Buffer {
+    let out_h = in_h / downscale_factor;
+    let out_w = in_w / downscale_factor;
+    let channels_out = channels_in * downscale_factor * downscale_factor;
+    let total_output = batch_size * channels_out * out_h * out_w;
+    let output = p.alloc((total_output as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        channels_in: u32,
+        in_h: u32,
+        in_w: u32,
+        out_h: u32,
+        out_w: u32,
+        downscale_factor: u32,
+        batch_size: u32,
+        total_output: u32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        channels_in,
+        in_h,
+        in_w,
+        out_h,
+        out_w,
+        downscale_factor,
+        batch_size,
+        total_output,
+    }));
+
+    p.encode(
+        enc,
+        &p.pixel_unshuffle,
+        &[
+            input.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        ((total_output + 255) / 256, 1, 1),
+    );
+
+    output
+}
+
+/// Patch embedding: conv2d with kernel=stride=patch_size
+pub fn patch_embed(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer,
+    weight: &wgpu::Buffer,
+    bias: &wgpu::Buffer,
+    batch_size: u32,
+    in_channels: u32,
+    embed_dim: u32,
+    in_h: u32,
+    in_w: u32,
+    patch_size: u32,
+) -> wgpu::Buffer {
+    let num_patches_h = in_h / patch_size;
+    let num_patches_w = in_w / patch_size;
+    let num_patches = num_patches_h * num_patches_w;
+    let total_output = batch_size * num_patches * embed_dim;
+    let output = p.alloc((total_output as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        in_channels: u32,
+        embed_dim: u32,
+        in_h: u32,
+        in_w: u32,
+        patch_size: u32,
+        num_patches_h: u32,
+        num_patches_w: u32,
+        total_output: u32,
+        batch_size: u32,
+        _pad0: u32,
+        _pad1: u32,
+        _pad2: u32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        in_channels,
+        embed_dim,
+        in_h,
+        in_w,
+        patch_size,
+        num_patches_h,
+        num_patches_w,
+        total_output,
+        batch_size,
+        _pad0: 0,
+        _pad1: 0,
+        _pad2: 0,
+    }));
+
+    p.encode(
+        enc,
+        &p.patch_embed,
+        &[
+            input.as_entire_binding(),
+            weight.as_entire_binding(),
+            bias.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        ((total_output + 255) / 256, 1, 1),
+    );
+
+    output
+}
+
+// ========================================================================
+// Batch 6: Special ops
+// ========================================================================
+
+/// Sinusoidal timestep embedding for diffusion models
+pub fn sinusoidal_embed(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    dim: u32,
+    timestep: f32,
+) -> wgpu::Buffer {
+    let output = p.alloc((dim as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        dim: u32,
+        half_dim: u32,
+        timestep: f32,
+        _pad: u32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        dim,
+        half_dim: dim / 2,
+        timestep,
+        _pad: 0,
+    }));
+
+    p.encode(
+        enc,
+        &p.sinusoidal_embed,
+        &[
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        ((dim + 255) / 256, 1, 1),
+    );
+
+    output
+}
+
+/// Noise schedule: compute sigma from timestep
+pub fn noise_schedule(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    timesteps: &wgpu::Buffer,
+    num_steps: u32,
+    max_sigma: f32,
+    schedule_type: u32, // 0=linear, 1=cosine, 2=flow_matching
+) -> wgpu::Buffer {
+    let output = p.alloc((num_steps as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        num_steps: u32,
+        max_sigma: f32,
+        schedule_type: u32,
+        _pad: u32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        num_steps,
+        max_sigma,
+        schedule_type,
+        _pad: 0,
+    }));
+
+    p.encode(
+        enc,
+        &p.noise_schedule,
+        &[
+            timesteps.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        ((num_steps + 255) / 256, 1, 1),
+    );
+
+    output
+}
+
+// ========================================================================
+// Batch 7: Cross-attention + Flash attention
+// ========================================================================
+
+/// Cross-attention: Q from decoder, K/V from encoder
+pub fn cross_attention(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    q: &wgpu::Buffer,
+    k: &wgpu::Buffer,
+    v: &wgpu::Buffer,
+    num_heads: u32,
+    head_dim: u32,
+    src_seq: u32,
+    scale: f32,
+) -> wgpu::Buffer {
+    let output_size = num_heads * head_dim;
+    let output = p.alloc((output_size as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        head_dim: u32,
+        src_seq: u32,
+        num_heads: u32,
+        scale: f32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        head_dim,
+        src_seq,
+        num_heads,
+        scale,
+    }));
+
+    p.encode(
+        enc,
+        &p.cross_attention,
+        &[
+            q.as_entire_binding(),
+            k.as_entire_binding(),
+            v.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        (num_heads, 1, 1),
+    );
+
+    output
+}
+
+/// Flash attention: tiled attention with online softmax
+pub fn flash_attention(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    q: &wgpu::Buffer,
+    k: &wgpu::Buffer,
+    v: &wgpu::Buffer,
+    num_heads: u32,
+    head_dim: u32,
+    total_seq: u32,
+    scale: f32,
+) -> wgpu::Buffer {
+    let output_size = num_heads * head_dim;
+    let output = p.alloc((output_size as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        head_dim: u32,
+        total_seq: u32,
+        num_heads: u32,
+        scale: f32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        head_dim,
+        total_seq,
+        num_heads,
+        scale,
+    }));
+
+    p.encode(
+        enc,
+        &p.flash_attention,
+        &[
+            q.as_entire_binding(),
+            k.as_entire_binding(),
+            v.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        (num_heads, 1, 1),
+    );
+
+    output
+}
+
+// ========================================================================
 // Prepare variants — return (output_buffer, bind_group, workgroups)
 // without dispatching. Caller batches into one compute pass.
 // ========================================================================
