@@ -42,6 +42,24 @@ enum Commands {
         /// Model ID on HuggingFace
         model: String,
     },
+
+    /// Run native wgpu inference (Qwen3-0.6B Q4)
+    RunNative {
+        /// Model ID (e.g. onnx-community/Qwen3-0.6B-ONNX)
+        model: String,
+
+        /// Prompt for text generation
+        #[arg(short, long, default_value = "Hello, world!")]
+        prompt: String,
+
+        /// Maximum tokens to generate
+        #[arg(short = 'n', long, default_value_t = 128)]
+        max_tokens: usize,
+
+        /// Temperature for sampling (0 = greedy)
+        #[arg(short, long, default_value_t = 0.7)]
+        temperature: f32,
+    },
 }
 
 fn main() {
@@ -135,6 +153,108 @@ fn main() {
                 Ok(path) => println!("Downloaded to: {}", path.display()),
                 Err(e) => eprintln!("Error: {e}"),
             }
+        }
+
+        Commands::RunNative {
+            model,
+            prompt,
+            max_tokens,
+            temperature,
+        } => {
+            use std::sync::Arc;
+            use cyb_inference::runtime::GpuRuntime;
+            use cyb_inference::runtime::model::{NativeModel, sample_top_p, argmax};
+
+            println!("Loading model (native wgpu): {model}");
+
+            // Download model and tokenizer
+            let model_path = match cyb_inference::hub::download_model(&model) {
+                Ok(p) => p,
+                Err(e) => { eprintln!("Model download failed: {e}"); return; }
+            };
+
+            let tokenizer_path = match cyb_inference::hub::download_tokenizer(&model) {
+                Ok(p) => p,
+                Err(e) => { eprintln!("Tokenizer download failed: {e}"); return; }
+            };
+
+            // Initialize GPU runtime
+            let runtime = GpuRuntime::new();
+            let pipelines = Arc::new(runtime.pipelines);
+
+            // Load model weights
+            let load_start = std::time::Instant::now();
+            let mut native_model = match NativeModel::load_from_onnx(&model_path, pipelines) {
+                Ok(m) => m,
+                Err(e) => { eprintln!("Model load failed: {e}"); return; }
+            };
+            println!("Model loaded in {:.1}s", load_start.elapsed().as_secs_f64());
+
+            // Load tokenizer
+            let tokenizer = match tokenizers::Tokenizer::from_file(&tokenizer_path) {
+                Ok(t) => t,
+                Err(e) => { eprintln!("Tokenizer load failed: {e}"); return; }
+            };
+
+            // Encode prompt
+            let encoding = match tokenizer.encode(prompt.as_str(), false) {
+                Ok(e) => e,
+                Err(e) => { eprintln!("Tokenization failed: {e}"); return; }
+            };
+            let mut token_ids: Vec<u32> = encoding.get_ids().to_vec();
+            log::info!("Prompt tokens ({} tokens): {:?}", token_ids.len(), token_ids);
+
+            println!("---");
+            print!("{prompt}");
+            use std::io::Write;
+            std::io::stdout().flush().ok();
+
+            let gen_start = std::time::Instant::now();
+
+            // Prefill: forward pass with all prompt tokens
+            let mut logits = native_model.forward(&token_ids);
+
+            // Autoregressive generation
+            let eos_tokens: &[u32] = &[151643, 151645]; // Qwen3 EOS tokens
+
+            for step in 0..max_tokens {
+                let next_token = if temperature <= 0.0 {
+                    argmax(&logits)
+                } else {
+                    sample_top_p(&logits, temperature, 0.9)
+                };
+
+                if eos_tokens.contains(&next_token) {
+                    break;
+                }
+
+                token_ids.push(next_token);
+
+                let decoded = match tokenizer.decode(&[next_token], false) {
+                    Ok(s) => s,
+                    Err(_) => String::from("?"),
+                };
+                print!("{decoded}");
+                std::io::stdout().flush().ok();
+
+                // Decode: forward pass with single new token
+                logits = native_model.forward(&[next_token]);
+
+                if step > 0 && step % 20 == 0 {
+                    let elapsed = gen_start.elapsed().as_secs_f64();
+                    let tps = (step as f64) / elapsed;
+                    log::debug!("Step {step}: {tps:.1} tok/s");
+                }
+            }
+
+            let elapsed = gen_start.elapsed().as_secs_f64();
+            let generated = token_ids.len() - encoding.get_ids().len();
+            println!();
+            println!("---");
+            println!(
+                "Generated {generated} tokens in {elapsed:.1}s ({:.1} tok/s)",
+                generated as f64 / elapsed
+            );
         }
     }
 }

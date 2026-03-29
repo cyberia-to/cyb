@@ -120,7 +120,7 @@ the machine does not just survive — it earns. accepts profitable Orders. sells
 
 ## architecture gaps
 
-current 42 models are designed for a personal assistant (code review, SQL, translation). soma needs models for machine survival and market participation. these are different concerns.
+current 17 models (8 substrate + 3 fast + 4 quality + 2 oracle) are designed for a personal assistant. soma needs additional models for machine survival and market participation. these are different concerns.
 
 | needed function | current state | candidate solution |
 |----------------|--------------|-------------------|
@@ -154,7 +154,7 @@ working memory (KV cache, context):
 
 every model runs as a [[nox]] [[Order]]. inference = matrix multiply over [[Goldilocks field]]. weights = nouns in [[bbg]]. inference produces STARK proof. provable AI — the model cannot lie.
 
-42 narrow models > 1 large model because: precision (specialist > generalist), speed (500M router 50x faster than 14B), reliability (failures isolated), evolvability (swap individual models). intelligence accumulates in the memory layer, not the weights.
+17 models across 3 tiers > 1 large model because: precision (fine-tuned specialist > prompted generalist), speed (500M router 50x faster than 14B), reliability (failures isolated), evolvability (swap individual models). intelligence accumulates in the memory layer, not the weights. fake specialization (same base model with different prompts) eliminated — only genuine fine-tuned specialists and strong generalists remain.
 
 > "The whole is not the sum of the parts. It is the pattern of their interaction." — Gregory Bateson
 
@@ -196,59 +196,35 @@ substrate also runs metabolism (fixed rules, no model) and trigger checks (BBG k
 | 4. market | — | social model, trade evaluator |
 | safety | 0.8 injection | — |
 
-### tier 1 — fast specialists (16 models, sequential, 1-2s load, 1-2GB)
+### tier 1 — fast on-demand (3 models, 1-2s load, <3GB each)
 
-| # | role | model | params | source |
-|---|------|-------|--------|--------|
-| 1.1 | code reviewer | qwen2.5-coder-1.5b | 1.5B | Alibaba |
-| 1.2 | SQL generator | sqlcoder-1.5b | 1.5B | Defog |
-| 1.3 | translator | madlad400-3b | 3B | Google |
-| 1.4 | summarizer | qwen2.5-3b | 3B | Alibaba |
-| 1.5 | entity extractor | gliner-large | 1.5B | NuMind |
-| 1.6 | inventory parser | qwen2.5-0.5b (fine-tuned) | 1B | Alibaba |
-| 1.7 | sensor interpreter | smollm2-1.7b | 1B | HuggingFace |
-| 1.8 | financial parser | qwen2.5-1.5b | 1.5B | Alibaba |
-| 1.9 | search query gen | qwen2.5-0.5b | 1B | Alibaba |
-| 1.10 | task decomposer | llama-3.2-3b | 3B | Meta |
-| 1.11 | report formatter | qwen2.5-3b | 3B | Alibaba |
-| 1.12 | alert composer | smollm2-360m | 1B | HuggingFace |
-| 1.13 | command parser | qwen2.5-1.5b | 1.5B | Alibaba |
-| 1.14 | memory retriever | nomic-embed + BM25 | 1.5B | Nomic |
-| 1.15 | diff generator | qwen2.5-1.5b | 1.5B | Alibaba |
-| 1.16 | schedule optimizer | llama-3.2-3b | 3B | Meta |
+only genuinely specialized models — fine-tuned on domain data, not general-purpose with different prompts.
 
-### tier 2 — domain reasoners (12 models, sequential, 3-6s load, 5-6GB)
+| model | params | RAM (Q4) | tasks |
+|-------|--------|----------|-------|
+| [qwen3.5-4b-abliterated](https://huggingface.co/huihui-ai/Qwen3.5-4B-abliterated) | 4B | ~2.5GB | summarization, translation (EN/RU/ID/ZH), task decomposition, report formatting, alert composition, command parsing, search query gen, schedule optimization, sensor interpretation |
+| [nuextract-1.5](https://huggingface.co/numind/NuExtract-1.5) | 3.8B | ~2.3GB | entity extraction, inventory parsing, financial parsing, structured JSON from any text. fine-tuned specialist — beats GPT-4o on extraction benchmarks |
+| [qwen2.5-coder-1.5b](https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct) | 1.5B | ~1GB | code review, diff generation, static analysis. fine-tuned on code — lightweight fast tasks |
 
-| # | domain | model | params | source |
-|---|--------|-------|--------|--------|
-| 2.1 | general reasoner | deepseek-r1:8b | 8B | DeepSeek |
-| 2.2 | code generator | qwen2.5-coder:7b | 7B | Alibaba |
-| 2.3 | research analyst | mistral-7b-v0.3 | 8B | Mistral |
-| 2.4 | project planner | llama-3.1-8b | 7B | Meta |
-| 2.5 | social dynamics | llama-3.1-8b | 7B | Meta |
-| 2.6 | financial analyst | qwen2.5-7b | 7B | Alibaba |
-| 2.7 | infrastructure ops | qwen2.5-coder:7b | 8B | Alibaba |
-| 2.8 | biology / permaculture | llama-3.1-8b | 7B | Meta |
-| 2.9 | legal / compliance | qwen2.5-7b | 7B | Alibaba |
-| 2.10 | creative / comms | mistral-7b-v0.3 | 8B | Mistral |
-| 2.11 | mathematics | qwen2.5-math-7b | 7B | Alibaba |
-| 2.12 | vision analyst | llava-v1.6-mistral-7b | 8B | LLaVA |
+qwen3.5-4b replaces 8 old slots: one 4B generalist of 2026 matches qwen2.5-7B quality (MATH-500: 97%, MMLU-Redux: 83.7). nuextract is a proven specialist — fine-tuned extraction beats 100x larger general models.
 
-### tier 3 — deep synthesis (4 models, sequential, 8-12s load, ~10GB)
+### tier 2 — quality on-demand (4 models, 3-6s load, 5-6GB each)
 
-| # | role | model | params | source |
-|---|------|-------|--------|--------|
-| 3.1 | master coder | qwen2.5-coder:14b | 14B | Alibaba |
-| 3.2 | strategic reasoner | deepseek-r1:14b | 14B | DeepSeek |
-| 3.3 | deep generalist | qwen2.5:14b | 13B | Alibaba |
-| 3.4 | synthesis writer | mistral-nemo:12b | 14B | Mistral |
+| model | params | RAM (Q4) | tasks |
+|-------|--------|----------|-------|
+| [qwen3.5-9b-abliterated](https://huggingface.co/huihui-ai/Qwen3.5-9B-abliterated) | 9B | ~5.5GB | general reasoning, research, planning, social dynamics, legal, creative, biology, finance. outperforms GPT-OSS-120B on MMLU-Pro (82.5). one generalist replaces 8 fake "specialists" |
+| [qwen2.5-coder-7b](https://huggingface.co/Qwen/Qwen2.5-Coder-7B-Instruct) | 7B | ~4.7GB | code generation, SQL (81.7% Spider), infrastructure ops. 88.4% HumanEval — fine-tuned code specialist |
+| [deepseek-r1-0528-qwen3-8b](https://huggingface.co/deepseek-ai/DeepSeek-R1-0528-Qwen3-8B) | 8B | ~5GB | deep reasoning, mathematics, strategic analysis. chain-of-thought, +10% vs qwen3-8b on AIME |
+| [llava-v1.6-mistral-7b](https://huggingface.co/liuhaotian/llava-v1.6-mistral-7b) | 7B | ~4.7GB | vision analysis, image understanding. multimodal — separate architecture required |
 
-### tier 4 — external oracle (never automatic)
+old tier 3 (14B) eliminated: qwen3.5-9b already matches or exceeds previous-gen 14B models across all benchmarks. generational leap makes the extra tier unnecessary.
 
-| # | service | model | when invoked |
-|---|---------|-------|--------------|
-| 4.1 | Anthropic API | claude-sonnet-4-5 | irreversible decisions, novel strategy |
-| 4.2 | Perplexity API | sonar-pro | real-time info, time-sensitive verification |
+### tier 3 — external oracle (never automatic)
+
+| service | model | when invoked |
+|---------|-------|--------------|
+| Anthropic API | claude-sonnet-4-5 | irreversible decisions, multi-file refactoring, complex agents |
+| Perplexity API | sonar-pro | real-time info, time-sensitive verification |
 
 requires explicit routing decision with logged justification. <5% of queries.
 
@@ -257,28 +233,27 @@ requires explicit routing decision with logged justification. <5% of queries.
 RAM budget (M1 Pro 16GB reference):
 ```
 tier 0 (always loaded):  ~1.5GB
-tier 3 model (worst):    ~7.5GB (Q3_K_M)
+tier 2 model (worst):    ~5.5GB (qwen3.5-9b Q4)
 KV cache + context:      ~2.5GB
 OS + processes:           ~3.0GB
 ────────────────────────────────
-total peak:              ~14.5GB  ✅ fits M1 Pro 16GB
+total peak:              ~12.5GB  ✅ fits M1 Pro 16GB with margin
 ```
 
 disk budget:
 ```
 tier 0:   ~2GB
-tier 1:  ~28GB
-tier 2:  ~58GB
-tier 3:  ~35GB
+tier 1:   ~6GB  (3 models)
+tier 2:  ~20GB  (4 models)
 ─────────────
-total:  ~124GB
+total:   ~28GB  (was 124GB — 4.4x reduction)
 ```
 
 scaling:
 ```
 phone (4GB RAM):     Tier 0 always + Tier 1 on-demand    ~3GB peak
 laptop (16GB RAM):   Tier 0-2 concurrent                 ~7GB peak
-server (64GB RAM):   all tiers concurrent                 ~16GB peak
+server (64GB RAM):   all tiers concurrent + multiple      ~12GB peak
 ```
 
 ## memory architecture
@@ -301,26 +276,21 @@ tier 0 processes (always, <100ms)
     ├── substrate answers directly? → done
     │
     ▼
-tier 1 selected (structured task?)
+tier 1 selected (structured task, extraction, fast code?)
     │
-    ├── sufficient? → done
-    │
-    ▼
-tier 2 selected (domain reasoning needed?)
-    │
-    ├── sufficient? → done
+    ├── sufficient? → done (1-2s load, ~60 tok/s)
     │
     ▼
-tier 3 activated (deep synthesis required?)
+tier 2 selected (reasoning, complex code, vision?)
     │
-    ├── sufficient? → done
+    ├── sufficient? → done (3-6s load, ~20 tok/s)
     │
     ▼
-tier 4 invoked (irreversible / strategic / novel?)
+tier 3 invoked (irreversible / strategic / novel?)
     └── answer + log decision + update memory
 ```
 
-most queries never leave tier 1. tier 3 activates ~10-15%. tier 4 <5%.
+most queries resolve at tier 1 (~70%). tier 2 handles ~25%. tier 3 <5%.
 
 ## soma main loop
 
@@ -346,7 +316,7 @@ soma:
     chunks = splitter(signals, mode)          // 0.7 smollm2-360m
 
     if mode == TaskPositive:
-        result = escalate(tier, chunks)       // tier 1-3 on demand
+        result = escalate(tier, chunks)       // tier 1-2 on demand, tier 3 = API
     else:
         mode = DefaultMode
         consolidate()                         // tri-kernel recomputation
@@ -355,7 +325,7 @@ soma:
     if profitable_opportunity:
         trade(best_opportunity)
 
-    // complex decisions (rare, tier 2-3)
+    // complex decisions (rare, tier 2 or API)
     if novel_situation:
         plan = escalate(tier_2, state, goal)
 
@@ -410,11 +380,12 @@ see [[neuroscience principles for machine mind]] for full mapping of all ten pri
 
 ## emergent properties
 
-42 narrow models > 1 large model because:
-- precision: specialist interprets anomalies better than generalist
+17 models > 1 large model because:
+- precision: fine-tuned specialist (nuextract, qwen2.5-coder) outperforms 100x larger generalist on its domain
 - speed: 500M router is 50x faster than 14B for every request
 - reliability: failures isolated. one model failing does not collapse the system
 - evolvability: individual models swapped without rebuilding
+- honesty: fake specialization (same weights, different prompt) eliminated. only real specialists and strong generalists
 
 intelligence accumulates in the memory layer, not the weights. routing logic IS the self of the system — mirrors the binding problem in neuroscience.
 
