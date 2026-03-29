@@ -167,9 +167,92 @@ some ops carry state between inference calls:
 
 stateful ops are explicitly marked in the IR. the STARK provability trace handles them by including state snapshots.
 
-## the ~48 ops
+## atom / jet architecture
 
-every model in the ComfyUI ecosystem (SD, SDXL, Flux, SD3, Wan2.2, ESRGAN, whisper, YOLO, TTS, BitNet) reduces to these operations. validated against ComfyUI source code.
+the runtime follows the same pattern as [[Nox]]: a small set of atoms (interpretable, provable, slow) + a registry of jets (fused GPU kernels, fast). any composition of atoms can be recognized by formula hash and accelerated.
+
+### 7 atoms
+
+every neural network operation decomposes into these primitives:
+
+| atom | what it does | type |
+|------|-------------|------|
+| `mul` | multiply two values | arithmetic |
+| `add` | add two values | arithmetic |
+| `cmp` | compare (max, min, less_than) | logic |
+| `exp` | exponential function | transcendental |
+| `read` | indexed memory lookup | memory |
+| `write` | indexed memory store | memory |
+| `reduce` | collapse dimension (sum, max) | aggregation |
+| `slide` | windowed memory access pattern | pattern |
+
+8 atoms are computationally complete for all tensor operations. a model expressed purely in atoms will run correctly on any backend — this is the reference interpreter.
+
+### decomposition
+
+every fused op is a composition of atoms:
+
+```
+matmul       = slide + mul + reduce(sum)
+conv2d       = slide(2D) + mul + reduce(sum)
+conv3d       = slide(3D) + mul + reduce(sum)
+softmax      = exp + reduce(sum) + mul
+sigmoid      = exp + add + mul
+silu         = mul + sigmoid
+relu         = cmp(max, 0)
+rmsnorm      = mul + reduce(sum) + exp(rsqrt)
+layernorm    = reduce(mean) + reduce(var) + add + mul
+attention    = matmul + matmul + softmax + matmul
+rope         = mul + add
+embedding    = read(index)
+kv_cache     = write + read
+adaln        = mul + add
+geglu        = split + gelu + mul
+pixel_shuffle = reshape (zero compute, memory layout)
+```
+
+### jets — fused acceleration
+
+a jet is a recognized composition of atoms replaced by a single GPU kernel dispatch. the runtime maintains a jet registry mapping formula hashes to fused implementations:
+
+```
+formula: {slide, mul, reduce(sum)} over [N,K] × [K,M]
+  → jet hash: 0xa3f7...
+  → dispatch: matmul_f16.metal (single GPU kernel, 1000x faster)
+
+formula: {matmul, matmul, exp, reduce, mul, matmul} with KV cache
+  → jet hash: 0xb2c1...
+  → dispatch: flash_attention_f16.metal (single fused kernel)
+```
+
+### the three-level guarantee
+
+```
+level 0: atoms      — always correct, any backend, ~1000x slow
+level 1: jets       — fused kernel, hardware-specific, ~1000x fast
+level 2: STARK      — trace records (input, output, jet hash), verifiable
+
+unknown model → runs through atoms (slow but works)
+write jet     → 1000x speedup, same result
+verifier      → replays atoms, confirms jet output matches
+```
+
+no jet for a new op? the model still runs. write the jet later. this is how the runtime stays universal without sacrificing performance: correctness is free, speed is incremental.
+
+### mapping to [[Nox]]
+
+| concept | Nox | llm runtime |
+|---------|-----|-------------|
+| primitives | 16 patterns (axis, quote, cons...) | 8 atoms (mul, add, exp, read...) |
+| acceleration | jets recognized by formula hash | fused GPU kernels by op hash |
+| provability | STARK trace over reductions | STARK trace over atom compositions |
+| extensibility | new jet = new hash, same semantics | new shader = new hash, same atoms |
+
+the llm runtime IS a [[Nox]] reduction engine specialized for tensor computation. the atoms are [[Ten]] (tensor language) primitives. the jets are [[Goldilocks field processor]] accelerations. the same architecture, different domain.
+
+## the ~48 jets
+
+the jet registry. each jet is a fused GPU kernel replacing a recognized composition of atoms. validated against ComfyUI source code — covers SD, SDXL, Flux, SD3, Wan2.2, ESRGAN, whisper, YOLO, TTS, BitNet.
 
 ### core linear algebra
 - `matmul` — 60% of all compute. variants: f16, q8, q4, ternary (BitNet)
