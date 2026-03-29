@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use burn::prelude::*;
 use crate::onnx_proto::onnx::NodeProto;
 
 use crate::Backend;
@@ -24,59 +23,15 @@ pub fn matmul_proto(
         .map(|a| a.i != 0)
         .unwrap_or(false);
 
-    let result = match (a, b) {
-        (Value::Float2(a), Value::Float2(b)) => {
-            let b = if trans_b { b.transpose() } else { b };
-            let mut out = a.matmul(b);
-            if node.input.len() > 2 && !node.input[2].is_empty() {
-                if let Some(Value::Float1(bias)) = values.get(&node.input[2]) {
-                    out = out + bias.clone().reshape([1, bias.dims()[0]]);
-                }
-            }
-            Value::Float2(out)
+    let b = if trans_b { b.transpose() } else { b };
+    let mut result = a.matmul(b);
+
+    // Gemm bias (input[2])
+    if node.input.len() > 2 && !node.input[2].is_empty() {
+        if let Some(bias) = values.get(&node.input[2]) {
+            result = result.add(bias.clone());
         }
-        (Value::Float3(a), Value::Float3(b)) => Value::Float3(a.matmul(b)),
-        (Value::Float4(a), Value::Float4(b)) => Value::Float4(a.matmul(b)),
-        (Value::Float3(a), Value::Float2(b)) => {
-            let b = if trans_b { b.transpose() } else { b };
-            let [k, n] = b.dims();
-            let b = b.reshape([1, k, n]);
-            let mut out = a.matmul(b);
-            if node.input.len() > 2 && !node.input[2].is_empty() {
-                if let Some(Value::Float1(bias)) = values.get(&node.input[2]) {
-                    out = out + bias.clone().reshape([1, 1, bias.dims()[0]]);
-                }
-            }
-            Value::Float3(out)
-        }
-        (Value::Float1(a), Value::Float2(b)) => {
-            let n = a.dims()[0];
-            let a_2d: Tensor<Backend, 2> = a.reshape([1, n]);
-            let b = if trans_b { b.transpose() } else { b };
-            let mut out = a_2d.matmul(b);
-            if node.input.len() > 2 && !node.input[2].is_empty() {
-                if let Some(Value::Float1(bias)) = values.get(&node.input[2]) {
-                    out = out + bias.clone().reshape([1, bias.dims()[0]]);
-                }
-            }
-            Value::Float2(out)
-        }
-        (Value::Float4(a), Value::Float2(b)) => {
-            let dims = a.dims();
-            let last = dims[3];
-            let rest: usize = dims[..3].iter().product();
-            let a_2d: Tensor<Backend, 2> = a.reshape([rest, last]);
-            let b = if trans_b { b.transpose() } else { b };
-            let mut out = a_2d.matmul(b);
-            if node.input.len() > 2 && !node.input[2].is_empty() {
-                if let Some(Value::Float1(bias)) = values.get(&node.input[2]) {
-                    out = out + bias.clone().reshape([1, bias.dims()[0]]);
-                }
-            }
-            Value::Float2(out)
-        }
-        _ => return Err("matmul: unsupported tensor dimension combination".into()),
-    };
+    }
 
     values.insert(node.output[0].clone(), result);
     Ok(())
@@ -91,7 +46,7 @@ pub fn dequantize_nbits_weights(
     n: usize,
     block_size: usize,
     device: &Device,
-) -> Tensor<Backend, 2> {
+) -> Value {
     let num_blocks = k / block_size;
     let mut dequantized = vec![0.0f32; n * k];
 
@@ -121,10 +76,7 @@ pub fn dequantize_nbits_weights(
         }
     }
 
-    Tensor::from_data(
-        burn::tensor::TensorData::new(dequantized, vec![n, k]),
-        device,
-    )
+    Value::from_data(dequantized, vec![n, k], device)
 }
 
 /// MatMulNBits — uses pre-cached dequantized weight (key: "{output_name}__dequant")
@@ -143,42 +95,25 @@ pub fn matmul_nbits_proto(
 
     // Check for pre-cached dequantized+transposed weight [K, N]
     let cache_key = format!("{}__dequant_t", node.output[0]);
-    let b_t = if let Some(Value::Float2(cached)) = values.get(&cache_key) {
+    let b_t = if let Some(cached) = values.get(&cache_key) {
         cached.clone()
     } else {
         // Runtime dequantization (first call) — cache transposed result
         let b_packed = values.get(&node.input[1]).ok_or("matmul_nbits: weights not found")?.clone();
         let scales = values.get(&node.input[2]).ok_or("matmul_nbits: scales not found")?.clone();
 
-        let b_data = extract_f32_data(&b_packed)?;
-        let scale_data = extract_f32_data(&scales)?;
+        let b_data = b_packed.to_vec_f32();
+        let scale_data = scales.to_vec_f32();
 
         let dequant = dequantize_nbits_weights(&b_data, &scale_data, k, n, block_size, device);
-        let transposed = dequant.transpose(); // [N,K] → [K,N] — cache this
-        values.insert(cache_key, Value::Float2(transposed.clone()));
+        let transposed = dequant.transpose(); // [N,K] -> [K,N] — cache this
+        values.insert(cache_key, transposed.clone());
         transposed
     };
 
-    let result = match a {
-        Value::Float2(a_t) => Value::Float2(a_t.matmul(b_t)),
-        Value::Float3(a_t) => {
-            let b_3d = b_t.reshape([1, k, n]);
-            Value::Float3(a_t.matmul(b_3d))
-        }
-        _ => return Err("matmul_nbits: unsupported A dimensions".into()),
-    };
-
+    let result = a.matmul(b_t);
     values.insert(node.output[0].clone(), result);
     Ok(())
-}
-
-fn extract_f32_data(v: &Value) -> Result<Vec<f32>, String> {
-    match v {
-        Value::Float1(t) => t.to_data().as_slice::<f32>().map(|s| s.to_vec()).map_err(|e| format!("{e:?}")),
-        Value::Float2(t) => t.to_data().as_slice::<f32>().map(|s| s.to_vec()).map_err(|e| format!("{e:?}")),
-        Value::Float3(t) => t.to_data().as_slice::<f32>().map(|s| s.to_vec()).map_err(|e| format!("{e:?}")),
-        _ => Err("extract_f32: unsupported type".into()),
-    }
 }
 
 /// DequantizeLinear — pass through (data already stored as float)

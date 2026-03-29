@@ -3,18 +3,16 @@ pub mod sampler;
 use std::collections::HashMap;
 use std::path::Path;
 
-use burn::prelude::*;
-use tokenizers::Tokenizer;
-
-use crate::Backend;
 use crate::graph::OnnxExecutor;
 use crate::graph::value::Value;
+
+use crate::Backend;
 
 type Device = <Backend as burn::tensor::backend::Backend>::Device;
 
 pub struct TextGenerator {
     executor: OnnxExecutor,
-    tokenizer: Tokenizer,
+    tokenizer: tokenizers::Tokenizer,
     device: Device,
     /// Number of KV-cache layers (auto-detected from model outputs)
     num_kv_layers: usize,
@@ -29,7 +27,7 @@ impl TextGenerator {
         let mut executor = OnnxExecutor::from_file(model_path)?;
         executor.load_from_file(model_path, &device)?;
 
-        let tokenizer = Tokenizer::from_file(tokenizer_path)
+        let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path)
             .map_err(|e| format!("Failed to load tokenizer: {e}"))?;
 
         // Auto-detect number of KV-cache layers from model outputs
@@ -80,22 +78,17 @@ impl TextGenerator {
             let total_seq = token_ids.len(); // includes past tokens
             let input_floats: Vec<f32> = input_tokens.iter().map(|&id| id as f32).collect();
 
-            let input_data = burn::tensor::TensorData::new(input_floats, vec![1, seq_len]);
-            // Attention mask covers total sequence (past + current)
-            let mask_data = burn::tensor::TensorData::new(vec![1.0f32; total_seq], vec![1, total_seq]);
-
             // Position IDs: for prefill [0,1,...,seq-1], for decode [total_seq-1]
             let pos_start = if step == 0 || !use_kv_cache { 0 } else { total_seq - 1 };
             let pos_ids: Vec<f32> = (0..seq_len).map(|i| (pos_start + i) as f32).collect();
-            let pos_data = burn::tensor::TensorData::new(pos_ids, vec![1, seq_len]);
 
             let mut inputs = HashMap::new();
             inputs.insert("input_ids".to_string(),
-                Value::Float2(Tensor::from_data(input_data, &self.device)));
+                Value::from_data(input_floats, vec![1, seq_len], &self.device));
             inputs.insert("attention_mask".to_string(),
-                Value::Float2(Tensor::from_data(mask_data, &self.device)));
+                Value::from_data(vec![1.0f32; total_seq], vec![1, total_seq], &self.device));
             inputs.insert("position_ids".to_string(),
-                Value::Float2(Tensor::from_data(pos_data, &self.device)));
+                Value::from_data(pos_ids, vec![1, seq_len], &self.device));
 
             // Feed KV-cache from previous step
             if use_kv_cache && step > 0 {
@@ -104,14 +97,6 @@ impl TextGenerator {
                 }
             }
 
-            // Provide seqlens_k and total_sequence_length for GQA
-            // total_sequence_length input (input 6 of GQA — provided as model input)
-            // This varies by model, so we set it as a value
-            let total_seq_tensor = Tensor::<Backend, 1>::from_data(
-                burn::tensor::TensorData::new(vec![total_seq as f32], vec![1]),
-                &self.device,
-            );
-
             // Forward pass
             let outputs = self.executor.run(inputs, &self.device)?;
 
@@ -119,12 +104,14 @@ impl TextGenerator {
             let logits = outputs.get("logits")
                 .ok_or("No logits in output")?;
 
-            let last_logits = match logits {
-                Value::Float3(t) => {
-                    let [_batch, s, vocab] = t.dims();
-                    t.clone().narrow(1, s - 1, 1).reshape([vocab])
-                }
-                _ => return Err(format!("Unexpected logits shape: {:?}", logits.shape())),
+            // Get last position's logits
+            let logits_shape = logits.shape();
+            let last_logits = if logits_shape.len() >= 2 {
+                let s = logits_shape[logits_shape.len() - 2]; // seq dim
+                let vocab = *logits_shape.last().unwrap();
+                logits.clone().narrow(logits_shape.len() - 2, s - 1, 1).reshape(vec![vocab])
+            } else {
+                logits.clone()
             };
 
             let next_token = sampler::sample_top_p(&last_logits, temperature, 0.9);
@@ -137,7 +124,7 @@ impl TextGenerator {
 
             token_ids.push(next_token as u32);
 
-            // Save KV-cache: present.N.key → past_key_values.N.key
+            // Save KV-cache: present.N.key -> past_key_values.N.key
             if use_kv_cache {
                 kv_cache.clear();
                 for i in 0..self.num_kv_layers {

@@ -1,14 +1,12 @@
-use burn::prelude::*;
-use crate::Backend;
+use crate::graph::value::Value;
 
 /// Sample a token index from logits with temperature
 pub fn sample_top_p(
-    logits: &Tensor<Backend, 1>,
+    logits: &Value,
     temperature: f32,
     top_p: f32,
 ) -> usize {
-    let logits_data = logits.to_data();
-    let logits_vec: Vec<f32> = logits_data.as_slice::<f32>().unwrap().to_vec();
+    let logits_vec: Vec<f32> = logits.to_vec_f32();
 
     if temperature <= 0.0 {
         // Greedy — return argmax

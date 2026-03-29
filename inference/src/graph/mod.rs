@@ -4,8 +4,6 @@ use std::collections::HashMap;
 use std::io::Read;
 use std::path::Path;
 
-use burn::prelude::*;
-use burn::tensor::TensorData;
 use crate::onnx_proto::onnx::ModelProto;
 use prost::Message;
 
@@ -59,7 +57,7 @@ pub fn load_onnx_info(path: &str) -> Result<String, String> {
     Ok(info)
 }
 
-/// Convert an ONNX TensorProto to a burn Value, with external data support
+/// Convert an ONNX TensorProto to a Value, with external data support
 pub fn tensor_proto_to_value_ext(
     tp: &crate::onnx_proto::onnx::TensorProto,
     device: &Device,
@@ -114,19 +112,17 @@ pub fn tensor_proto_to_value_ext(
     tensor_proto_to_value(tp, device)
 }
 
-/// Convert an ONNX TensorProto to a burn Value
+/// Convert an ONNX TensorProto to a Value
 pub fn tensor_proto_to_value(
     tp: &crate::onnx_proto::onnx::TensorProto,
     device: &Device,
 ) -> Option<Value> {
     let shape: Vec<usize> = tp.dims.iter().map(|&d| d as usize).collect();
-    let rank = shape.len();
 
     // Extract float data
     let floats: Vec<f32> = if !tp.float_data.is_empty() {
         tp.float_data.clone()
     } else if !tp.raw_data.is_empty() {
-        // data_type 1 = FLOAT
         match tp.data_type {
             1 => { // FLOAT
                 tp.raw_data.chunks_exact(4)
@@ -184,24 +180,14 @@ pub fn tensor_proto_to_value(
         return None;
     }
 
-    // Scalars (rank 0) → treat as rank 1 with size 1
-    let (shape, rank) = if shape.is_empty() {
-        (vec![1_usize], 1)
+    // Scalars (rank 0) -> treat as rank 1 with size 1
+    let shape = if shape.is_empty() {
+        vec![1_usize]
     } else {
-        (shape, rank)
+        shape
     };
 
-    let data = TensorData::new(floats, shape.clone());
-    match rank {
-        1 => Some(Value::Float1(Tensor::from_data(data, device))),
-        2 => Some(Value::Float2(Tensor::from_data(data, device))),
-        3 => Some(Value::Float3(Tensor::from_data(data, device))),
-        4 => Some(Value::Float4(Tensor::from_data(data, device))),
-        _ => {
-            log::warn!("Unsupported rank {rank} for tensor {}", tp.name);
-            None
-        }
-    }
+    Some(Value::from_data(floats, shape, device))
 }
 
 /// Runtime ONNX graph executor over burn tensors
@@ -276,25 +262,23 @@ impl OnnxExecutor {
 
         let mut ok_count = 0;
         let mut fail_count = 0;
+        let mut op_timings: HashMap<String, (std::time::Duration, usize)> = HashMap::new();
+        let graph_start = std::time::Instant::now();
+
         for (i, node) in self.nodes.iter().enumerate() {
-            // Catch panics from burn tensor operations
+            let op_start = std::time::Instant::now();
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
                 crate::ops::dispatch_proto(node, &mut self.values, device)
             }));
 
+            let elapsed = op_start.elapsed();
+
             match result {
                 Ok(Ok(())) => {
                     ok_count += 1;
-                    // Only log on trace level for performance
-                    if log::log_enabled!(log::Level::Trace) && i < 300 {
-                        for out in &node.output {
-                            if !out.is_empty() {
-                                if let Some(v) = self.values.get(out) {
-                                    log::trace!("[{i}] {} {} → {} {:?}", node.op_type, node.name, out, v.shape());
-                                }
-                            }
-                        }
-                    }
+                    let entry = op_timings.entry(node.op_type.clone()).or_insert((std::time::Duration::ZERO, 0));
+                    entry.0 += elapsed;
+                    entry.1 += 1;
                 }
                 Ok(Err(e)) => {
                     fail_count += 1;
@@ -310,7 +294,19 @@ impl OnnxExecutor {
                 }
             }
         }
-        log::info!("Graph execution: {ok_count} ok, {fail_count} failed out of {} nodes", self.nodes.len());
+
+        let total = graph_start.elapsed();
+        log::info!("Graph execution: {ok_count} ok, {fail_count} failed out of {} nodes in {:.1}ms", self.nodes.len(), total.as_secs_f64() * 1000.0);
+
+        // Log op timings sorted by total time
+        if log::log_enabled!(log::Level::Debug) {
+            let mut timings: Vec<_> = op_timings.into_iter().collect();
+            timings.sort_by(|a, b| b.1.0.cmp(&a.1.0));
+            for (op, (dur, count)) in &timings {
+                let pct = dur.as_secs_f64() / total.as_secs_f64() * 100.0;
+                log::debug!("  {op}: {:.1}ms ({count}x, {pct:.0}%)", dur.as_secs_f64() * 1000.0);
+            }
+        }
 
         let mut outputs = HashMap::new();
         for name in &self.graph_outputs {

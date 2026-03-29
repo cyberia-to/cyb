@@ -29,24 +29,11 @@ pub fn reshape_proto(
     let input = values.get(&node.input[0])
         .ok_or("reshape: input not found")?.clone();
 
-    // Get target shape from second input — may be 1D or 2D
-    let shape_val = values.get(&node.input[1]);
-    let target_shape: Vec<i64> = match shape_val {
-        Some(Value::Int1(t)) => {
-            let data = t.to_data();
-            data.as_slice::<i64>().map_err(|e| format!("reshape: {e:?}"))?.to_vec()
-        }
-        Some(Value::Float1(t)) => {
-            let data = t.to_data();
-            data.as_slice::<f32>().map_err(|e| format!("reshape: {e:?}"))?.iter().map(|&v| v as i64).collect()
-        }
-        Some(Value::Float2(t)) => {
-            // Shape stored as 2D — flatten to 1D
-            let data = t.to_data();
-            data.as_slice::<f32>().map_err(|e| format!("reshape: {e:?}"))?.iter().map(|&v| v as i64).collect()
-        }
-        _ => return Err("reshape: shape input not found".into()),
-    };
+    // Get target shape from second input (always stored as Value now)
+    let shape_val = values.get(&node.input[1])
+        .ok_or("reshape: shape input not found")?;
+
+    let target_shape: Vec<i64> = shape_val.to_vec_f32().iter().map(|&v| v as i64).collect();
 
     let input_size: usize = input.shape().iter().product();
     let mut new_shape: Vec<usize> = Vec::new();
@@ -71,34 +58,13 @@ pub fn reshape_proto(
         new_shape[idx] = input_size / known_product;
     }
 
-    let result = reshape_value(input, &new_shape)?;
+    if new_shape.is_empty() {
+        new_shape.push(1);
+    }
+
+    let result = input.reshape(new_shape);
     values.insert(node.output[0].clone(), result);
     Ok(())
-}
-
-fn reshape_value(input: Value, shape: &[usize]) -> Result<Value, String> {
-    // Flatten input to 1D first, then reshape to target
-    let flat: Vec<f32> = match &input {
-        Value::Float1(t) => t.to_data().as_slice::<f32>().map_err(|e| format!("{e:?}"))?.to_vec(),
-        Value::Float2(t) => t.to_data().as_slice::<f32>().map_err(|e| format!("{e:?}"))?.to_vec(),
-        Value::Float3(t) => t.to_data().as_slice::<f32>().map_err(|e| format!("{e:?}"))?.to_vec(),
-        Value::Float4(t) => t.to_data().as_slice::<f32>().map_err(|e| format!("{e:?}"))?.to_vec(),
-        _ => return Err("reshape: unsupported input type".into()),
-    };
-
-    let device = burn::backend::wgpu::WgpuDevice::default();
-
-    // Handle scalar (rank 0) — treat as rank 1
-    let shape = if shape.is_empty() { &[1_usize][..] } else { shape };
-
-    let data = burn::tensor::TensorData::new(flat, shape.to_vec());
-    match shape.len() {
-        1 => Ok(Value::Float1(Tensor::from_data(data, &device))),
-        2 => Ok(Value::Float2(Tensor::from_data(data, &device))),
-        3 => Ok(Value::Float3(Tensor::from_data(data, &device))),
-        4 => Ok(Value::Float4(Tensor::from_data(data, &device))),
-        _ => Err(format!("reshape: unsupported target rank {}", shape.len())),
-    }
 }
 
 pub fn transpose_proto(
@@ -109,7 +75,6 @@ pub fn transpose_proto(
     let input = values.get(&node.input[0])
         .ok_or("transpose: input not found")?.clone();
 
-    // Get perm attribute (handle negative values)
     let ndim = input.ndim();
     let perm: Vec<usize> = node.attribute.iter()
         .find(|a| a.name == "perm")
@@ -118,31 +83,49 @@ pub fn transpose_proto(
         }).collect())
         .unwrap_or_default();
 
-    let result = match input {
-        Value::Float2(t) => Value::Float2(t.transpose()),
-        Value::Float3(t) => {
-            if perm == [0, 2, 1] {
-                Value::Float3(t.swap_dims(1, 2))
-            } else if perm == [1, 0, 2] {
-                Value::Float3(t.swap_dims(0, 1))
-            } else {
-                Value::Float3(t.swap_dims(1, 2)) // default
+    let result = if ndim <= 1 {
+        // 0D/1D: no-op
+        input
+    } else if ndim == 2 {
+        // 2D: always swap(0,1)
+        input.transpose()
+    } else if perm.is_empty() {
+        // Default: reverse all dims — for 2D+ just swap last two
+        input.transpose()
+    } else {
+        // Apply permutation via swap_dims
+        // We implement common patterns; for arbitrary permutations we chain swaps
+        match ndim {
+            3 => {
+                if perm == [0, 2, 1] {
+                    input.swap_dims(1, 2)
+                } else if perm == [1, 0, 2] {
+                    input.swap_dims(0, 1)
+                } else if perm == [2, 0, 1] {
+                    input.swap_dims(0, 2).swap_dims(1, 2)
+                } else if perm == [1, 2, 0] {
+                    input.swap_dims(0, 1).swap_dims(1, 2)
+                } else if perm == [2, 1, 0] {
+                    input.swap_dims(0, 2)
+                } else {
+                    input.swap_dims(1, 2) // fallback
+                }
             }
-        }
-        Value::Float4(t) => {
-            if perm == [0, 2, 1, 3] {
-                // [batch, seq, heads, dim] → [batch, heads, seq, dim]
-                Value::Float4(t.swap_dims(1, 2))
-            } else if perm == [0, 2, 3, 1] {
-                Value::Float4(t.swap_dims(1, 2).swap_dims(2, 3))
-            } else if perm == [0, 1, 3, 2] {
-                Value::Float4(t.swap_dims(2, 3))
-            } else {
-                // Fallback: permute via reshape
-                Value::Float4(t.swap_dims(1, 2)) // common attention pattern
+            4 => {
+                if perm == [0, 2, 1, 3] {
+                    input.swap_dims(1, 2)
+                } else if perm == [0, 2, 3, 1] {
+                    input.swap_dims(1, 2).swap_dims(2, 3)
+                } else if perm == [0, 1, 3, 2] {
+                    input.swap_dims(2, 3)
+                } else if perm == [0, 3, 1, 2] {
+                    input.swap_dims(1, 3).swap_dims(2, 3)
+                } else {
+                    input.swap_dims(1, 2) // common attention pattern fallback
+                }
             }
+            _ => input.transpose(), // fallback
         }
-        _ => return Err("transpose: unsupported dimensions".into()),
     };
 
     values.insert(node.output[0].clone(), result);
@@ -154,95 +137,26 @@ pub fn concat_proto(
     values: &mut HashMap<String, Value>,
     _device: &Device,
 ) -> Result<(), String> {
-    // Determine axis from attributes (default 0), handle negative
+    let ndim_first = node.input.iter()
+        .find_map(|name| values.get(name))
+        .map(|v| v.ndim())
+        .unwrap_or(1);
+
     let raw_axis = node.attribute.iter()
         .find(|a| a.name == "axis")
         .map(|a| a.i)
         .unwrap_or(0);
-    // Resolve negative axis later when we know the rank
-    let axis = if raw_axis < 0 { 0_usize } else { raw_axis as usize };
+    let axis = if raw_axis < 0 { (ndim_first as i64 + raw_axis) as usize } else { raw_axis as usize };
 
-    let mut float1s: Vec<Tensor<Backend, 1>> = Vec::new();
-    let mut float2s: Vec<Tensor<Backend, 2>> = Vec::new();
-    let mut float3s: Vec<Tensor<Backend, 3>> = Vec::new();
-    let mut float4s: Vec<Tensor<Backend, 4>> = Vec::new();
-    let mut has_mixed_ranks = false;
-    let mut first_rank = None;
+    let tensors: Vec<Value> = node.input.iter()
+        .filter_map(|name| values.get(name).cloned())
+        .collect();
 
-    for name in &node.input {
-        if let Some(val) = values.get(name) {
-            let rank = val.ndim();
-            if let Some(fr) = first_rank {
-                if rank != fr { has_mixed_ranks = true; }
-            } else {
-                first_rank = Some(rank);
-            }
-            match val {
-                Value::Float1(t) => float1s.push(t.clone()),
-                Value::Float2(t) => float2s.push(t.clone()),
-                Value::Float3(t) => float3s.push(t.clone()),
-                Value::Float4(t) => float4s.push(t.clone()),
-                _ => {}
-            }
-        }
+    if tensors.is_empty() {
+        return Err("concat: no tensors found".into());
     }
 
-    // If mixed ranks, flatten everything to 1D preserving input ORDER
-    if has_mixed_ranks {
-        let mut all_1d: Vec<Tensor<Backend, 1>> = Vec::new();
-        for name in &node.input {
-            if let Some(val) = values.get(name) {
-                match val {
-                    Value::Float1(t) => all_1d.push(t.clone()),
-                    Value::Float2(t) => {
-                        let n: usize = t.dims().iter().product();
-                        all_1d.push(t.clone().reshape([n]));
-                    }
-                    Value::Float3(t) => {
-                        let n: usize = t.dims().iter().product();
-                        all_1d.push(t.clone().reshape([n]));
-                    }
-                    Value::Float4(t) => {
-                        let n: usize = t.dims().iter().product();
-                        all_1d.push(t.clone().reshape([n]));
-                    }
-                    _ => {}
-                }
-            }
-        }
-        if !all_1d.is_empty() {
-            values.insert(node.output[0].clone(), Value::Float1(Tensor::cat(all_1d, 0)));
-            return Ok(());
-        }
-    }
-
-    let result = if !float1s.is_empty() && float2s.is_empty() && float3s.is_empty() {
-        Value::Float1(Tensor::cat(float1s, 0))
-    } else if !float2s.is_empty() {
-        // Validate shapes match on non-concat dims
-        if float2s.len() > 1 {
-            let ref_shape = float2s[0].dims();
-            for t in &float2s[1..] {
-                let s = t.dims();
-                for d in 0..2 {
-                    if d != axis && s[d] != ref_shape[d] {
-                        log::warn!("concat: shape mismatch at dim {d}: {} vs {}", ref_shape[d], s[d]);
-                        // Try to just return the first tensor
-                        values.insert(node.output[0].clone(), Value::Float2(float2s[0].clone()));
-                        return Ok(());
-                    }
-                }
-            }
-        }
-        Value::Float2(Tensor::cat(float2s, axis))
-    } else if !float3s.is_empty() {
-        Value::Float3(Tensor::cat(float3s, axis))
-    } else if !float4s.is_empty() {
-        Value::Float4(Tensor::cat(float4s, axis))
-    } else {
-        return Err("concat: no compatible tensors found".into());
-    };
-
+    let result = Value::cat(tensors, axis);
     values.insert(node.output[0].clone(), result);
     Ok(())
 }
@@ -255,8 +169,17 @@ pub fn squeeze_proto(
     let input = values.get(&node.input[0])
         .ok_or("squeeze: input not found")?.clone();
 
-    let shape = input.shape();
-    let result = reshape_value(input, &shape.iter().filter(|&&d| d != 1).copied().collect::<Vec<_>>())?;
+    let new_shape: Vec<usize> = input.shape().iter()
+        .filter(|&&d| d != 1)
+        .copied()
+        .collect();
+
+    let result = if new_shape.is_empty() {
+        input.reshape(vec![1])
+    } else {
+        input.reshape(new_shape)
+    };
+
     values.insert(node.output[0].clone(), result);
     Ok(())
 }
@@ -271,9 +194,8 @@ pub fn unsqueeze_proto(
 
     // Get axes from second input or attribute
     let axes: Vec<i64> = if node.input.len() > 1 && !node.input[1].is_empty() {
-        if let Some(Value::Float1(t)) = values.get(&node.input[1]) {
-            let d = t.to_data();
-            d.as_slice::<f32>().map(|s| s.iter().map(|&v| v as i64).collect()).unwrap_or(vec![0])
+        if let Some(ax) = values.get(&node.input[1]) {
+            ax.to_vec_f32().iter().map(|&v| v as i64).collect()
         } else {
             vec![0]
         }
@@ -285,7 +207,6 @@ pub fn unsqueeze_proto(
     };
 
     let mut shape = input.shape();
-    // Insert dims at specified axes (handle negative axes)
     let mut sorted_axes: Vec<usize> = axes.iter()
         .map(|&a| if a < 0 { (shape.len() as i64 + a + 1) as usize } else { a as usize })
         .collect();
@@ -294,7 +215,7 @@ pub fn unsqueeze_proto(
         shape.insert(axis + offset, 1);
     }
 
-    let result = reshape_value(input, &shape)?;
+    let result = input.reshape(shape);
     values.insert(node.output[0].clone(), result);
     Ok(())
 }
@@ -311,88 +232,39 @@ pub fn gather_proto(
 
     let axis = node.attribute.iter()
         .find(|a| a.name == "axis")
-        .map(|a| a.i as usize)
+        .map(|a| {
+            let v = a.i;
+            if v < 0 { (data.ndim() as i64 + v) as usize } else { v as usize }
+        })
         .unwrap_or(0);
 
-    // Get indices as usize vec
-    let idx_vec: Vec<usize> = match &indices {
-        Value::Float1(t) => {
-            let d = t.to_data();
-            d.as_slice::<f32>().map_err(|e| format!("{e:?}"))?
-                .iter().map(|&v| v as usize).collect()
-        }
-        Value::Float2(t) => {
-            let d = t.to_data();
-            d.as_slice::<f32>().map_err(|e| format!("{e:?}"))?
-                .iter().map(|&v| v as usize).collect()
-        }
-        Value::Int1(t) => {
-            let d = t.to_data();
-            d.as_slice::<i64>().map_err(|e| format!("{e:?}"))?
-                .iter().map(|&v| v as usize).collect()
-        }
-        _ => return Err("gather: unsupported indices type".into()),
+    // Get indices as i64 vec for GPU tensor
+    let idx_vec: Vec<i64> = indices.to_vec_f32().iter().map(|&v| v as i64).collect();
+    let indices_shape = indices.shape();
+    let num_indices = idx_vec.len();
+
+    // Create indices tensor on GPU
+    let idx_tensor: Tensor<Backend, 1, burn::tensor::Int> = Tensor::from_data(
+        burn::tensor::TensorData::new(idx_vec, vec![num_indices]),
+        device,
+    );
+
+    // Use Value::select for the gather
+    let selected = data.clone().select(axis, idx_tensor);
+
+    // For axis==0 on 2D+ data, the output shape is indices_shape + trailing dims
+    // The select call already handles the shape correctly for the gathered dimension
+    // But we may need to reshape if indices had a specific shape
+    let result = if indices_shape.len() > 1 && axis == 0 {
+        let data_shape = data.shape();
+        let mut out_shape = indices_shape;
+        out_shape.extend_from_slice(&data_shape[1..]);
+        selected.reshape(out_shape)
+    } else {
+        selected
     };
 
-    let indices_shape = indices.shape();
-
-    match data {
-        Value::Float2(t) if axis == 0 => {
-            // Gather rows from [vocab, hidden] using indices → [indices_shape..., hidden]
-            let hidden = t.dims()[1];
-            let mut rows: Vec<f32> = Vec::with_capacity(idx_vec.len() * hidden);
-            let t_data = t.to_data();
-            let t_slice = t_data.as_slice::<f32>().map_err(|e| format!("{e:?}"))?;
-
-            for &idx in &idx_vec {
-                let start = idx * hidden;
-                let end = start + hidden;
-                if end <= t_slice.len() {
-                    rows.extend_from_slice(&t_slice[start..end]);
-                } else {
-                    rows.extend(vec![0.0f32; hidden]);
-                }
-            }
-
-            // Output shape: indices_shape + [hidden]
-            let mut out_shape = indices_shape;
-            out_shape.push(hidden);
-
-            let data = burn::tensor::TensorData::new(rows, out_shape.clone());
-            let result = match out_shape.len() {
-                1 => Value::Float1(Tensor::from_data(data, device)),
-                2 => Value::Float2(Tensor::from_data(data, device)),
-                3 => Value::Float3(Tensor::from_data(data, device)),
-                4 => Value::Float4(Tensor::from_data(data, device)),
-                _ => return Err("gather: unsupported output rank".into()),
-            };
-            values.insert(node.output[0].clone(), result);
-        }
-        Value::Float1(t) if axis == 0 => {
-            // Gather elements from 1D tensor
-            let t_data = t.to_data();
-            let t_slice = t_data.as_slice::<f32>().map_err(|e| format!("{e:?}"))?;
-
-            let gathered: Vec<f32> = idx_vec.iter()
-                .map(|&i| if i < t_slice.len() { t_slice[i] } else { 0.0 })
-                .collect();
-
-            if gathered.len() == 1 {
-                // Scalar output → 1D tensor with 1 element
-                let data = burn::tensor::TensorData::new(gathered, vec![1]);
-                values.insert(node.output[0].clone(), Value::Float1(Tensor::from_data(data, device)));
-            } else {
-                let n = gathered.len();
-                let data = burn::tensor::TensorData::new(gathered, vec![n]);
-                values.insert(node.output[0].clone(), Value::Float1(Tensor::from_data(data, device)));
-            }
-        }
-        _ => {
-            log::warn!("gather: unsupported data rank={} axis={}, passing through", data.ndim(), axis);
-            values.insert(node.output[0].clone(), data);
-        }
-    }
-
+    values.insert(node.output[0].clone(), result);
     Ok(())
 }
 
@@ -406,73 +278,61 @@ pub fn shape_proto(
 
     let shape: Vec<f32> = input.shape().iter().map(|&d| d as f32).collect();
     let n = shape.len();
-    let data = burn::tensor::TensorData::new(shape, vec![n]);
-    values.insert(node.output[0].clone(), Value::Float1(Tensor::from_data(data, device)));
+    let result = Value::from_data(shape, vec![n], device);
+    values.insert(node.output[0].clone(), result);
     Ok(())
 }
 
 pub fn slice_proto(
     node: &NodeProto,
     values: &mut HashMap<String, Value>,
-    device: &Device,
+    _device: &Device,
 ) -> Result<(), String> {
     let data = values.get(&node.input[0])
         .ok_or("slice: data not found")?.clone();
 
     // ONNX Slice: inputs are data, starts, ends, [axes], [steps]
-    let get_i64_vec_clamped = |idx: usize, node: &NodeProto, values: &HashMap<String, Value>| -> Vec<i64> {
+    let get_i64_vec = |idx: usize| -> Vec<i64> {
         if idx >= node.input.len() || node.input[idx].is_empty() { return vec![]; }
-        if let Some(Value::Float1(t)) = values.get(&node.input[idx]) {
-            let d = t.to_data();
-            d.as_slice::<f32>().map(|s| s.iter().map(|&v| {
-                // Clamp large f32 values (from INT64_MAX) to reasonable range
-                if v > 1e15 { i64::MAX } else if v < -1e15 { i64::MIN } else { v as i64 }
-            }).collect()).unwrap_or_default()
+        if let Some(v) = values.get(&node.input[idx]) {
+            v.to_vec_f32().iter().map(|&f| {
+                if f > 1e15 { i64::MAX } else if f < -1e15 { i64::MIN } else { f as i64 }
+            }).collect()
         } else { vec![] }
     };
 
-    let starts = get_i64_vec_clamped(1, node, values);
-    let ends = get_i64_vec_clamped(2, node, values);
-    let axes = get_i64_vec_clamped(3, node, values);
+    let starts = get_i64_vec(1);
+    let ends = get_i64_vec(2);
+    let axes_input = get_i64_vec(3);
 
     if starts.is_empty() || ends.is_empty() {
-        // Can't slice without starts/ends, pass through
         values.insert(node.output[0].clone(), data);
         return Ok(());
     }
 
-    match data {
-        Value::Float1(t) => {
-            let len = t.dims()[0] as i64;
-            let axis = axes.first().copied().unwrap_or(0);
-            if axis == 0 {
-                let s = if starts[0] < 0 { (len + starts[0]).max(0) } else { starts[0].min(len) } as usize;
-                let e = if ends[0] < 0 { (len + ends[0]).max(0) } else { ends[0].min(len) } as usize;
-                if e > s {
-                    values.insert(node.output[0].clone(), Value::Float1(t.narrow(0, s, e - s)));
-                } else {
-                    values.insert(node.output[0].clone(), Value::Float1(t));
-                }
-            } else {
-                values.insert(node.output[0].clone(), Value::Float1(t));
-            }
-        }
-        Value::Float3(t) => {
-            let axis = axes.first().copied().unwrap_or(0);
-            let axis = if axis < 0 { (3 + axis) as usize } else { axis as usize };
-            let dim_len = t.dims()[axis] as i64;
-            let s = if starts[0] < 0 { (dim_len + starts[0]).max(0) } else { starts[0].min(dim_len) } as usize;
-            let e = if ends[0] < 0 { (dim_len + ends[0]).max(0) } else { ends[0].min(dim_len) } as usize;
-            if e > s {
-                values.insert(node.output[0].clone(), Value::Float3(t.narrow(axis, s, e - s)));
-            } else {
-                values.insert(node.output[0].clone(), Value::Float3(t));
-            }
-        }
-        _ => {
-            values.insert(node.output[0].clone(), data);
+    let ndim = data.ndim();
+    let shape = data.shape();
+
+    // Apply slicing for each axis
+    let mut result = data;
+    for i in 0..starts.len() {
+        let axis = if i < axes_input.len() {
+            let a = axes_input[i];
+            if a < 0 { (ndim as i64 + a) as usize } else { a as usize }
+        } else {
+            i
+        };
+
+        let dim_len = shape[axis] as i64;
+        let s = if starts[i] < 0 { (dim_len + starts[i]).max(0) } else { starts[i].min(dim_len) } as usize;
+        let e = if ends[i] < 0 { (dim_len + ends[i]).max(0) } else { ends[i].min(dim_len) } as usize;
+
+        if e > s {
+            result = result.narrow(axis, s, e - s);
         }
     }
+
+    values.insert(node.output[0].clone(), result);
     Ok(())
 }
 
@@ -514,29 +374,29 @@ pub fn constant_proto(
         }
         // Scalar float
         if attr.name == "value_float" {
-            let data = burn::tensor::TensorData::new(vec![attr.f], vec![1]);
-            values.insert(node.output[0].clone(), Value::Float1(Tensor::from_data(data, device)));
+            let result = Value::from_data(vec![attr.f], vec![1], device);
+            values.insert(node.output[0].clone(), result);
             return Ok(());
         }
         // Scalar int
         if attr.name == "value_int" {
-            let data = burn::tensor::TensorData::new(vec![attr.i as f32], vec![1]);
-            values.insert(node.output[0].clone(), Value::Float1(Tensor::from_data(data, device)));
+            let result = Value::from_data(vec![attr.i as f32], vec![1], device);
+            values.insert(node.output[0].clone(), result);
             return Ok(());
         }
         // Float list
         if attr.name == "value_floats" && !attr.floats.is_empty() {
             let n = attr.floats.len();
-            let data = burn::tensor::TensorData::new(attr.floats.clone(), vec![n]);
-            values.insert(node.output[0].clone(), Value::Float1(Tensor::from_data(data, device)));
+            let result = Value::from_data(attr.floats.clone(), vec![n], device);
+            values.insert(node.output[0].clone(), result);
             return Ok(());
         }
         // Int list
         if attr.name == "value_ints" && !attr.ints.is_empty() {
             let vals: Vec<f32> = attr.ints.iter().map(|&v| v as f32).collect();
             let n = vals.len();
-            let data = burn::tensor::TensorData::new(vals, vec![n]);
-            values.insert(node.output[0].clone(), Value::Float1(Tensor::from_data(data, device)));
+            let result = Value::from_data(vals, vec![n], device);
+            values.insert(node.output[0].clone(), result);
             return Ok(());
         }
     }
@@ -551,12 +411,9 @@ pub fn constant_of_shape_proto(
     device: &Device,
 ) -> Result<(), String> {
     // Get shape from input
-    let shape: Vec<usize> = if let Some(Value::Float1(t)) = values.get(&node.input[0]) {
-        let d = t.to_data();
-        d.as_slice::<f32>().map_err(|e| format!("{e:?}"))?.iter().map(|&v| v as usize).collect()
-    } else {
-        return Err("constant_of_shape: shape not found".into());
-    };
+    let shape_val = values.get(&node.input[0])
+        .ok_or("constant_of_shape: shape not found")?;
+    let shape: Vec<usize> = shape_val.to_vec_f32().iter().map(|&v| v as usize).collect();
 
     // Get fill value from attribute (default 0.0)
     let fill_val = node.attribute.iter()
@@ -570,17 +427,10 @@ pub fn constant_of_shape_proto(
         })
         .unwrap_or(0.0);
 
-    let total: usize = shape.iter().product();
-    let vals = vec![fill_val; total.max(1)];
-    let data = burn::tensor::TensorData::new(vals, shape.clone());
-
-    let result = match shape.len() {
-        0 | 1 => Value::Float1(Tensor::from_data(data, device)),
-        2 => Value::Float2(Tensor::from_data(data, device)),
-        3 => Value::Float3(Tensor::from_data(data, device)),
-        4 => Value::Float4(Tensor::from_data(data, device)),
-        _ => return Err(format!("constant_of_shape: unsupported rank {}", shape.len())),
-    };
+    let total: usize = shape.iter().product::<usize>().max(1);
+    let vals = vec![fill_val; total];
+    let shape = if shape.is_empty() { vec![1] } else { shape };
+    let result = Value::from_data(vals, shape, device);
 
     values.insert(node.output[0].clone(), result);
     Ok(())
@@ -594,8 +444,7 @@ pub fn flatten_proto(
     let input = values.get(&node.input[0])
         .ok_or("flatten: input not found")?.clone();
 
-    let total: usize = input.shape().iter().product();
-    let result = reshape_value(input, &[total])?;
+    let result = input.flatten();
     values.insert(node.output[0].clone(), result);
     Ok(())
 }

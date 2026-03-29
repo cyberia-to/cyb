@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use burn::tensor::activation;
 use crate::onnx_proto::onnx::NodeProto;
 
 use crate::Backend;
@@ -17,58 +16,26 @@ pub fn activation_proto(
         .ok_or_else(|| format!("{op}: input {} not found", &node.input[0]))?
         .clone();
 
-    let result = match input {
-        Value::Float1(t) => Value::Float1(apply_activation_1d(t, op)?),
-        Value::Float2(t) => Value::Float2(apply_activation_2d(t, op)?),
-        Value::Float3(t) => Value::Float3(apply_activation_3d(t, op)?),
-        Value::Float4(t) => Value::Float4(apply_activation_4d(t, op)?),
-        _ => return Err(format!("{op}: unsupported tensor type")),
+    let result = match op {
+        "relu" => input.relu(),
+        "gelu" => input.gelu(),
+        "sigmoid" => input.sigmoid(),
+        "tanh" => input.tanh(),
+        "softmax" => {
+            // Get axis from attributes, default to last dim
+            let ndim = input.ndim();
+            let axis = node.attribute.iter()
+                .find(|a| a.name == "axis")
+                .map(|a| {
+                    let v = a.i;
+                    if v < 0 { (ndim as i64 + v) as usize } else { v as usize }
+                })
+                .unwrap_or(ndim - 1);
+            input.softmax(axis)
+        }
+        _ => return Err(format!("Unknown activation: {op}")),
     };
 
     values.insert(node.output[0].clone(), result);
     Ok(())
-}
-
-fn apply_activation_1d(t: burn::prelude::Tensor<Backend, 1>, op: &str) -> Result<burn::prelude::Tensor<Backend, 1>, String> {
-    match op {
-        "relu" => Ok(activation::relu(t)),
-        "gelu" => Ok(activation::gelu(t)),
-        "sigmoid" => Ok(activation::sigmoid(t)),
-        "softmax" => Ok(activation::softmax(t, 0)),
-        "tanh" => Ok(activation::tanh(t)),
-        _ => Err(format!("Unknown activation: {op}")),
-    }
-}
-
-fn apply_activation_2d(t: burn::prelude::Tensor<Backend, 2>, op: &str) -> Result<burn::prelude::Tensor<Backend, 2>, String> {
-    match op {
-        "relu" => Ok(activation::relu(t)),
-        "gelu" => Ok(activation::gelu(t)),
-        "sigmoid" => Ok(activation::sigmoid(t)),
-        "softmax" => Ok(activation::softmax(t, 1)),
-        "tanh" => Ok(activation::tanh(t)),
-        _ => Err(format!("Unknown activation: {op}")),
-    }
-}
-
-fn apply_activation_3d(t: burn::prelude::Tensor<Backend, 3>, op: &str) -> Result<burn::prelude::Tensor<Backend, 3>, String> {
-    match op {
-        "relu" => Ok(activation::relu(t)),
-        "gelu" => Ok(activation::gelu(t)),
-        "sigmoid" => Ok(activation::sigmoid(t)),
-        "softmax" => Ok(activation::softmax(t, 2)),
-        "tanh" => Ok(activation::tanh(t)),
-        _ => Err(format!("Unknown activation: {op}")),
-    }
-}
-
-fn apply_activation_4d(t: burn::prelude::Tensor<Backend, 4>, op: &str) -> Result<burn::prelude::Tensor<Backend, 4>, String> {
-    match op {
-        "relu" => Ok(activation::relu(t)),
-        "gelu" => Ok(activation::gelu(t)),
-        "sigmoid" => Ok(activation::sigmoid(t)),
-        "softmax" => Ok(activation::softmax(t, 3)),
-        "tanh" => Ok(activation::tanh(t)),
-        _ => Err(format!("Unknown activation: {op}")),
-    }
 }

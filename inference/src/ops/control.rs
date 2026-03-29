@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use burn::prelude::*;
-use prost::Message;
 use crate::onnx_proto::onnx::{NodeProto, GraphProto};
 
 use crate::Backend;
@@ -21,21 +19,13 @@ pub fn if_proto(
         None
     };
 
-    // Evaluate condition — default to true (then_branch)
+    // Evaluate condition — check if first element is nonzero
     let condition = match &cond_val {
-        Some(Value::Bool1(t)) => {
-            let data = t.to_data();
-            data.as_slice::<bool>().map(|s| s.first().copied().unwrap_or(true)).unwrap_or(true)
+        Some(v) => {
+            let data = v.to_vec_f32();
+            data.first().copied().unwrap_or(1.0) != 0.0
         }
-        Some(Value::Float1(t)) => {
-            let data = t.to_data();
-            data.as_slice::<f32>().map(|s| s.first().copied().unwrap_or(1.0) != 0.0).unwrap_or(true)
-        }
-        Some(Value::Int1(t)) => {
-            let data = t.to_data();
-            data.as_slice::<i64>().map(|s| s.first().copied().unwrap_or(1) != 0).unwrap_or(true)
-        }
-        _ => true, // default: take then_branch
+        None => true, // default: take then_branch
     };
 
     // Find then_branch and else_branch in attributes
@@ -46,7 +36,6 @@ pub fn if_proto(
 
     if let Some(attr) = branch {
         if let Some(ref graph) = attr.g {
-            // Execute subgraph
             execute_subgraph(graph, values, device, &node.output)?;
         } else {
             log::warn!("If: branch attribute has no graph");
@@ -144,8 +133,8 @@ pub fn range_proto(
     if n == 0 {
         vals.push(start);
     }
-    let data = burn::tensor::TensorData::new(vals, vec![n.max(1)]);
-    values.insert(node.output[0].clone(), Value::Float1(Tensor::from_data(data, device)));
+    let result = Value::from_data(vals, vec![n.max(1)], device);
+    values.insert(node.output[0].clone(), result);
     Ok(())
 }
 
@@ -158,19 +147,22 @@ pub fn split_proto(
     let input = values.get(&node.input[0])
         .ok_or("split: input not found")?.clone();
 
+    let ndim = input.ndim();
     let axis = node.attribute.iter()
         .find(|a| a.name == "axis")
-        .map(|a| a.i as usize)
+        .map(|a| {
+            let v = a.i;
+            if v < 0 { (ndim as i64 + v) as usize } else { v as usize }
+        })
         .unwrap_or(0);
 
-    // Number of outputs determines split count
     let num_outputs = node.output.len();
+    let dim_size = input.shape()[axis];
 
     // Get split sizes from attribute or second input
     let split_sizes: Vec<usize> = if node.input.len() > 1 && !node.input[1].is_empty() {
-        if let Some(Value::Float1(t)) = values.get(&node.input[1]) {
-            let d = t.to_data();
-            d.as_slice::<f32>().map(|s| s.iter().map(|&v| v as usize).collect()).unwrap_or_default()
+        if let Some(s) = values.get(&node.input[1]) {
+            s.to_vec_f32().iter().map(|&v| v as usize).collect()
         } else { vec![] }
     } else {
         node.attribute.iter()
@@ -179,63 +171,30 @@ pub fn split_proto(
             .unwrap_or_default()
     };
 
-    match input {
-        Value::Float3(t) => {
-            let dim_size = t.dims()[axis];
-            let chunk_size = if split_sizes.is_empty() {
-                if num_outputs == 0 { return Err("split: zero outputs".into()); }
-                dim_size / num_outputs
-            } else { 0 }; // use split_sizes instead
+    let chunk_size = if split_sizes.is_empty() {
+        if num_outputs == 0 { return Err("split: zero outputs".into()); }
+        dim_size / num_outputs
+    } else { 0 };
 
-            let mut offset = 0;
-            for (i, out_name) in node.output.iter().enumerate() {
-                if out_name.is_empty() { continue; }
-                let size = if !split_sizes.is_empty() && i < split_sizes.len() {
-                    split_sizes[i]
-                } else {
-                    if i == num_outputs - 1 { dim_size - offset } else { chunk_size }
-                };
-                if offset + size <= dim_size {
-                    let chunk = t.clone().narrow(axis, offset, size);
-                    values.insert(out_name.clone(), Value::Float3(chunk));
-                }
-                offset += size;
-            }
+    let mut offset = 0;
+    for (i, out_name) in node.output.iter().enumerate() {
+        if out_name.is_empty() { continue; }
+        let size = if !split_sizes.is_empty() && i < split_sizes.len() {
+            split_sizes[i]
+        } else {
+            if i == num_outputs - 1 { dim_size - offset } else { chunk_size }
+        };
+        if offset + size <= dim_size {
+            let chunk = input.clone().narrow(axis, offset, size);
+            values.insert(out_name.clone(), chunk);
         }
-        Value::Float2(t) => {
-            let dim_size = t.dims()[axis];
-            let chunk_size = if split_sizes.is_empty() {
-                if num_outputs == 0 { return Err("split: zero outputs".into()); }
-                dim_size / num_outputs
-            } else { 0 };
-
-            let mut offset = 0;
-            for (i, out_name) in node.output.iter().enumerate() {
-                if out_name.is_empty() { continue; }
-                let size = if !split_sizes.is_empty() && i < split_sizes.len() {
-                    split_sizes[i]
-                } else {
-                    if i == num_outputs - 1 { dim_size - offset } else { chunk_size }
-                };
-                if offset + size <= dim_size {
-                    let chunk = t.clone().narrow(axis, offset, size);
-                    values.insert(out_name.clone(), Value::Float2(chunk));
-                }
-                offset += size;
-            }
-        }
-        _ => return Err("split: unsupported dimensions".into()),
+        offset += size;
     }
 
     Ok(())
 }
 
 fn get_scalar_f32(values: &HashMap<String, Value>, name: &str) -> Option<f32> {
-    match values.get(name)? {
-        Value::Float1(t) => {
-            let data = t.to_data();
-            data.as_slice::<f32>().ok().and_then(|s| s.first().copied())
-        }
-        _ => None,
-    }
+    let v = values.get(name)?;
+    v.to_vec_f32().first().copied()
 }
