@@ -33,32 +33,32 @@ soma needs all of them because [[neuron]] runs on any hardware — phone, laptop
                   ▼
 ┌──────────────────────────────────────────┐
 │              graph IR                     │
-│  nodes: [(op, inputs, outputs, attrs)]   │
-│  weights: typed tensor store             │
-│  quantization: f16/q8/q4/ternary per     │
-│  tensor, not per model                   │
+│  DAG of typed tensor operations          │
+│  weights: per-tensor quantization        │
+│  (f16/q8/q4/ternary)                    │
 └─────────────────┬────────────────────────┘
-                  │ schedule
+                  │ decompose to atoms
                   ▼
 ┌──────────────────────────────────────────┐
-│              jet registry (~48 jets)      │
-│  each jet: fused kernel over atoms       │
-│  dispatch: formula hash × backend → GPU  │
+│         8 atoms (reference interpreter)   │
+│  mul add cmp exp read write reduce slide │
+│  always correct, any backend, slow       │
 └─────────────────┬────────────────────────┘
-                  │ execute
+                  │ jet recognition (formula hash)
+                  ▼
+┌──────────────────────────────────────────┐
+│         ~48 jets (fused GPU kernels)      │
+│  matmul, attention, conv2d, adaln, ...   │
+│  1000x faster, same result               │
+└─────────────────┬────────────────────────┘
+                  │ dispatch to backend
                   ▼
 ┌──────────────────────────────────────────┐
 │              backend layer                │
-│                                          │
-│  ┌─────────┐ ┌──────┐ ┌──────┐ ┌─────┐  │
-│  │  Metal  │ │ wgpu │ │ CUDA │ │ CPU │  │
-│  │ (Apple) │ │(cross)│ │(NV)  │ │(SIMD)│ │
-│  └────┬────┘ └──┬───┘ └──┬───┘ └──┬──┘  │
-│       │         │        │        │      │
-│  ┌────▼────┐                             │
-│  │   ANE   │  (Apple Neural Engine,      │
-│  │         │   subgraph offload)         │
-│  └─────────┘                             │
+│  ┌───────┐ ┌──────┐ ┌──────┐ ┌───────┐  │
+│  │ Metal │ │ wgpu │ │ CUDA │ │  CPU  │  │
+│  │+ ANE  │ │(cross)│ │(NV)  │ │(SIMD) │  │
+│  └───────┘ └──────┘ └──────┘ └───────┘  │
 └──────────────────────────────────────────┘
 ```
 
