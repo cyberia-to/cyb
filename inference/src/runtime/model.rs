@@ -20,6 +20,7 @@ struct ModelConfig {
     num_layers: usize,
     vocab_size: usize,
     block_size: usize,
+    has_qk_norm: bool,
 }
 
 /// Pre-computed uniform parameter buffers for constant-per-step ops.
@@ -28,9 +29,9 @@ struct LayerParamBuffers {
     // RMS norms (params: hidden, eps)
     input_norm_params: wgpu::Buffer,
     input_norm_wg: (u32, u32, u32),
-    q_norm_params: wgpu::Buffer,
+    q_norm_params: Option<wgpu::Buffer>,
     q_norm_wg: (u32, u32, u32),
-    k_norm_params: wgpu::Buffer,
+    k_norm_params: Option<wgpu::Buffer>,
     k_norm_wg: (u32, u32, u32),
     post_norm_params: wgpu::Buffer,
     post_norm_wg: (u32, u32, u32),
@@ -71,8 +72,8 @@ struct LayerWeights {
     v_proj_packed: wgpu::Buffer,
     v_proj_scales: wgpu::Buffer,
     v_n: u32,
-    q_norm_weight: wgpu::Buffer,
-    k_norm_weight: wgpu::Buffer,
+    q_norm_weight: Option<wgpu::Buffer>,
+    k_norm_weight: Option<wgpu::Buffer>,
     o_proj_packed: wgpu::Buffer,
     o_proj_scales: wgpu::Buffer,
     o_n: u32,
@@ -360,11 +361,21 @@ impl NativeModel {
             })
             .count();
 
-        // Detect head_dim from q_norm weight
-        let q_norm_tp = tensors
-            .get("model.layers.0.attn.q_norm.layernorm.weight")
-            .ok_or("Missing q_norm weight for layer 0")?;
-        let head_dim = q_norm_tp.dims[0] as usize;
+        // Detect head_dim: from q_norm weight if exists, otherwise from GQA/cos_cache
+        let has_qk_norm = tensors.contains_key("model.layers.0.attn.q_norm.layernorm.weight");
+        let head_dim = if has_qk_norm {
+            tensors["model.layers.0.attn.q_norm.layernorm.weight"].dims[0] as usize
+        } else {
+            // Infer from cos_cache: [max_seq, head_dim/2] → head_dim = dims[1] * 2
+            let cos_tp = tensors.get("cos_cache").ok_or("Missing cos_cache")?;
+            (cos_tp.dims[1] as usize) * 2
+        };
+
+        // Detect if RoPE is inside GQA (Llama) or separate (Qwen3)
+        let do_rotary_in_gqa = graph.node.iter()
+            .find(|n| n.op_type == "GroupQueryAttention")
+            .map(|n| n.attribute.iter().any(|a| a.name == "do_rotary" && a.i == 1))
+            .unwrap_or(false);
 
         // Detect block_size from MatMulNBits nodes
         let block_size = graph
@@ -415,6 +426,7 @@ impl NativeModel {
             num_layers,
             vocab_size,
             block_size,
+            has_qk_norm,
         };
 
         log::info!(
@@ -504,10 +516,12 @@ impl NativeModel {
                 load_scales(&format!("model.layers.{i}.attn.v_proj.MatMul.weight_scales"))?;
             let layer_v_n = get_matmul_n(i, "v_proj");
 
-            let q_norm_weight =
-                load_f32_weight(&format!("model.layers.{i}.attn.q_norm.layernorm.weight"))?;
-            let k_norm_weight =
-                load_f32_weight(&format!("model.layers.{i}.attn.k_norm.layernorm.weight"))?;
+            let q_norm_weight = if has_qk_norm {
+                Some(load_f32_weight(&format!("model.layers.{i}.attn.q_norm.layernorm.weight"))?)
+            } else { None };
+            let k_norm_weight = if has_qk_norm {
+                Some(load_f32_weight(&format!("model.layers.{i}.attn.k_norm.layernorm.weight"))?)
+            } else { None };
 
             let o_proj_packed =
                 load_q4_packed(&format!("model.layers.{i}.attn.o_proj.MatMul.weight_Q4"))?;
@@ -544,8 +558,14 @@ impl NativeModel {
             let (q_matmul_params, q_matmul_wg) = precompute_q4_matmul(&pipelines, layer_q_n, hs, bs);
             let (k_matmul_params, k_matmul_wg) = precompute_q4_matmul(&pipelines, layer_k_n, hs, bs);
             let (v_matmul_params, v_matmul_wg) = precompute_q4_matmul(&pipelines, layer_v_n, hs, bs);
-            let (q_norm_params, q_norm_wg) = precompute_rms_norm(&pipelines, num_heads as u32, hd, 1e-6);
-            let (k_norm_params, k_norm_wg) = precompute_rms_norm(&pipelines, kv_num_heads as u32, hd, 1e-6);
+            let (q_norm_params, q_norm_wg) = if has_qk_norm {
+                let (p, w) = precompute_rms_norm(&pipelines, num_heads as u32, hd, 1e-6);
+                (Some(p), w)
+            } else { (None, (0,0,0)) };
+            let (k_norm_params, k_norm_wg) = if has_qk_norm {
+                let (p, w) = precompute_rms_norm(&pipelines, kv_num_heads as u32, hd, 1e-6);
+                (Some(p), w)
+            } else { (None, (0,0,0)) };
             let (q_rope_params, q_rope_wg) = precompute_rope(&pipelines, layer_q_n, hd, 1);
             let (k_rope_params, k_rope_wg) = precompute_rope(&pipelines, layer_k_n, hd, 1);
             let (o_matmul_params, o_matmul_wg) = precompute_q4_matmul(&pipelines, layer_o_n, layer_q_n, bs);
@@ -822,31 +842,40 @@ impl NativeModel {
                 );
                 all_dispatches.push(DispatchCmd { shader: &p.q4_matmul, bg: v_bg, wg: v_wg });
 
-                // c. Q/K per-head RMS Norm (PRECOMPUTED params)
-                let (q_normed, qn_bg, qn_wg) = ops::rms_norm_prepare_precomputed(
-                    &p, &q_buf, &self.layers[i].q_norm_weight,
-                    &lp.q_norm_params, num_heads, head_dim, lp.q_norm_wg,
-                );
-                all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: qn_bg, wg: qn_wg });
-
-                let (k_normed, kn_bg, kn_wg) = ops::rms_norm_prepare_precomputed(
-                    &p, &k_buf, &self.layers[i].k_norm_weight,
-                    &lp.k_norm_params, kv_num_heads, head_dim, lp.k_norm_wg,
-                );
-                all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: kn_bg, wg: kn_wg });
+                // c. Q/K per-head RMS Norm (optional — Qwen3 has it, Llama doesn't)
+                let q_for_rope;
+                let k_for_rope;
+                if self.config.has_qk_norm {
+                    let (qn, qn_bg, qn_wg) = ops::rms_norm_prepare_precomputed(
+                        &p, &q_buf, self.layers[i].q_norm_weight.as_ref().unwrap(),
+                        lp.q_norm_params.as_ref().unwrap(), num_heads, head_dim, lp.q_norm_wg,
+                    );
+                    all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: qn_bg, wg: qn_wg });
+                    let (kn, kn_bg, kn_wg) = ops::rms_norm_prepare_precomputed(
+                        &p, &k_buf, self.layers[i].k_norm_weight.as_ref().unwrap(),
+                        lp.k_norm_params.as_ref().unwrap(), kv_num_heads, head_dim, lp.k_norm_wg,
+                    );
+                    all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: kn_bg, wg: kn_wg });
+                    q_for_rope = qn;
+                    k_for_rope = kn;
+                } else {
+                    // No Q/K norm — RoPE directly on matmul output
+                    q_for_rope = q_buf;
+                    k_for_rope = k_buf;
+                }
 
                 // d. RoPE (PRECOMPUTED params)
                 let q_elements = self.layers[i].q_n;
                 let k_elements = self.layers[i].k_n;
 
                 let (q_roped, qr_bg, qr_wg) = ops::rope_prepare_precomputed(
-                    &p, &q_normed, &cos_buf, &sin_buf,
+                    &p, &q_for_rope, &cos_buf, &sin_buf,
                     &lp.q_rope_params, q_elements, lp.q_rope_wg,
                 );
                 all_dispatches.push(DispatchCmd { shader: &p.rope, bg: qr_bg, wg: qr_wg });
 
                 let (k_roped, kr_bg, kr_wg) = ops::rope_prepare_precomputed(
-                    &p, &k_normed, &cos_buf, &sin_buf,
+                    &p, &k_for_rope, &cos_buf, &sin_buf,
                     &lp.k_rope_params, k_elements, lp.k_rope_wg,
                 );
                 all_dispatches.push(DispatchCmd { shader: &p.rope, bg: kr_bg, wg: kr_wg });
@@ -1069,25 +1098,30 @@ impl NativeModel {
                 let q_positions = seq_len as u32 * num_heads;
                 let k_positions = seq_len as u32 * kv_num_heads;
 
-                let q_normed = ops::rms_norm(
-                    &p, &mut enc, &q_buf, &self.layers[i].q_norm_weight,
-                    q_positions, head_dim, 1e-6,
-                );
-                let k_normed = ops::rms_norm(
-                    &p, &mut enc, &k_buf, &self.layers[i].k_norm_weight,
-                    k_positions, head_dim, 1e-6,
-                );
+                let (q_for_rope_pf, k_for_rope_pf) = if self.config.has_qk_norm {
+                    let qn = ops::rms_norm(
+                        &p, &mut enc, &q_buf, self.layers[i].q_norm_weight.as_ref().unwrap(),
+                        q_positions, head_dim, 1e-6,
+                    );
+                    let kn = ops::rms_norm(
+                        &p, &mut enc, &k_buf, self.layers[i].k_norm_weight.as_ref().unwrap(),
+                        k_positions, head_dim, 1e-6,
+                    );
+                    (qn, kn)
+                } else {
+                    (q_buf, k_buf)
+                };
 
                 // d. RoPE
                 let q_elements = seq_len as u32 * self.layers[i].q_n;
                 let k_elements = seq_len as u32 * self.layers[i].k_n;
 
                 let q_roped = ops::rope(
-                    &p, &mut enc, &q_normed, &cos_buf, &sin_buf,
+                    &p, &mut enc, &q_for_rope_pf, &cos_buf, &sin_buf,
                     q_elements, head_dim, seq_len as u32,
                 );
                 let k_roped = ops::rope(
-                    &p, &mut enc, &k_normed, &cos_buf, &sin_buf,
+                    &p, &mut enc, &k_for_rope_pf, &cos_buf, &sin_buf,
                     k_elements, head_dim, seq_len as u32,
                 );
 
