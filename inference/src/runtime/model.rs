@@ -139,6 +139,19 @@ pub struct NativeModel {
 
     // Pre-computed param buffers for model-level ops
     model_params: ModelParamBuffers,
+
+    // Cached dispatch plan: bind groups + workgroups from warmup step
+    // Reused every decode step — zero CPU bind group creation after warmup
+    cached_decode_plan: Option<CachedDecodePlan>,
+}
+
+/// Pre-compiled decode plan — cached after first decode step
+struct CachedDecodePlan {
+    bind_groups: Vec<wgpu::BindGroup>,
+    workgroups: Vec<(u32, u32, u32)>,
+    shader_indices: Vec<usize>, // index into pipeline array
+    output_buf: wgpu::Buffer,  // argmax or logits output
+    hidden_buf: wgpu::Buffer,  // final hidden state (input for next step's embed)
 }
 
 /// Pre-allocated GPU buffers for decode step (seq=1)
@@ -720,6 +733,7 @@ impl NativeModel {
                 argmax_params,
                 argmax_wg,
             },
+            cached_decode_plan: None,
         })
     }
 
@@ -800,6 +814,7 @@ impl NativeModel {
             }
 
             // ~21 dispatches per layer * 28 layers + embed + final ops ≈ 600
+            let t_phase1_start = std::time::Instant::now();
             let mut all_dispatches: Vec<DispatchCmd> = Vec::with_capacity(num_layers * 21 + 5);
 
             // 2. Embedding lookup (prepare, don't dispatch yet)
@@ -1003,6 +1018,9 @@ impl NativeModel {
                 );
                 all_dispatches.push(DispatchCmd { shader: &p.argmax, bg: argmax_bg, wg: argmax_wg });
 
+                let phase1_ms = t_phase1_start.elapsed().as_secs_f64() * 1000.0;
+                log::info!("Phase1(bind_groups+alloc): {phase1_ms:.1}ms");
+                let t_phase1 = std::time::Instant::now();
                 // ---- Phase 2: ONE compute pass for EVERYTHING ----
                 {
                     let mut pass = enc.begin_compute_pass(&Default::default());
@@ -1010,14 +1028,17 @@ impl NativeModel {
                         p.dispatch_in_pass(&mut pass, cmd.shader, &cmd.bg, cmd.wg);
                     }
                 }
+                let phase2_ms = t_phase1.elapsed().as_secs_f64() * 1000.0;
 
                 let t0 = std::time::Instant::now();
                 p.queue.submit(std::iter::once(enc.finish()));
+                let submit_ms = t0.elapsed().as_secs_f64() * 1000.0;
                 self.past_seq_len = total_seq;
 
                 let bytes = p.read_f32(&argmax_buf, 1);
                 let token_id = bytes[0].to_bits();
-                log::info!("GPU total (greedy, 1-pass): {:.1}ms", t0.elapsed().as_secs_f64() * 1000.0);
+                let total_ms = t0.elapsed().as_secs_f64() * 1000.0;
+                log::info!("Phase2(encode)={phase2_ms:.1}ms submit={submit_ms:.1}ms total={total_ms:.1}ms dispatches={}", all_dispatches.len());
 
                 let mut logits = vec![0.0f32; vocab as usize];
                 logits[token_id as usize] = 1.0;
