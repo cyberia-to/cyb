@@ -124,8 +124,10 @@ pub struct NativeModel {
     lm_head_n: u32,
 
     // Precomputed RoPE caches (full, sliced per forward call)
-    cos_cache: Vec<f32>, // [max_seq, head_dim/2] on CPU for slicing
-    sin_cache: Vec<f32>,
+    cos_cache_cpu: Vec<f32>, // [max_seq, head_dim/2] on CPU (for prefill slicing)
+    sin_cache_cpu: Vec<f32>,
+    cos_cache_gpu: wgpu::Buffer, // full cache on GPU
+    sin_cache_gpu: wgpu::Buffer,
 
     // KV cache
     kv_cache: Vec<KVCache>,
@@ -693,10 +695,12 @@ impl NativeModel {
         let cos_tp = tensors.get("cos_cache").ok_or("Missing cos_cache")?;
         let cos_raw = read_tensor_raw(cos_tp, model_dir)?;
         let cos_cache = raw_to_f32(&cos_raw, cos_tp.data_type);
+        let cos_cache_gpu = pipelines.upload_f32(&cos_cache);
 
         let sin_tp = tensors.get("sin_cache").ok_or("Missing sin_cache")?;
         let sin_raw = read_tensor_raw(sin_tp, model_dir)?;
         let sin_cache = raw_to_f32(&sin_raw, sin_tp.data_type);
+        let sin_cache_gpu = pipelines.upload_f32(&sin_cache);
 
         // Initialize empty KV caches
         let kv_cache = (0..num_layers)
@@ -737,8 +741,10 @@ impl NativeModel {
             lm_head_packed,
             lm_head_scales,
             lm_head_n: lm_head_n_val,
-            cos_cache,
-            sin_cache,
+            cos_cache_cpu: cos_cache,
+            sin_cache_cpu: sin_cache,
+            cos_cache_gpu,
+            sin_cache_gpu,
             kv_cache,
             past_seq_len: 0,
             greedy_mode: false,
@@ -822,26 +828,12 @@ impl NativeModel {
         let ids_f32: Vec<f32> = token_ids.iter().map(|&id| id as f32).collect();
         let ids_buf = p.upload_f32(&ids_f32);
 
-        // 3. Slice RoPE caches for current positions [pos_offset..pos_offset+seq_len]
-        //    cos_cache layout: [max_seq, half_dim]
-        let cos_slice: Vec<f32> = (0..seq_len)
-            .flat_map(|s| {
-                let pos = pos_offset + s;
-                let start = pos * (half_dim as usize);
-                let end = start + half_dim as usize;
-                self.cos_cache[start..end].iter().copied()
-            })
-            .collect();
-        let sin_slice: Vec<f32> = (0..seq_len)
-            .flat_map(|s| {
-                let pos = pos_offset + s;
-                let start = pos * (half_dim as usize);
-                let end = start + half_dim as usize;
-                self.sin_cache[start..end].iter().copied()
-            })
-            .collect();
-        let cos_buf = p.upload_f32(&cos_slice);
-        let sin_buf = p.upload_f32(&sin_slice);
+        // 3. RoPE caches — slice for current positions
+        let half = half_dim as usize;
+        let start = pos_offset * half;
+        let end = start + seq_len * half;
+        let cos_buf = p.upload_f32(&self.cos_cache_cpu[start..end]);
+        let sin_buf = p.upload_f32(&self.sin_cache_cpu[start..end]);
 
         // 4. Transformer layers
         let num_layers = self.layers.len();

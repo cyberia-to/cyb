@@ -745,7 +745,7 @@ model.list_loras()                           // → [{ name, alpha, params }]
 // ── context (see context management section) ──
 let ctx = model.context();
 ctx.set_system("...");
-ctx.inject_rag(chunks);
+ctx.inject_graph(query);
 
 // ── observability ──
 model.metrics()                              // → { tok_per_sec, prefill_ms, peak_memory, ... }
@@ -848,7 +848,7 @@ quality of output = quality of context. a 4B model with precise context outperfo
 │  ┌──────────────────────────────────────────┐ │
 │  │ system prompt (identity, rules, format)  │ │ ← static, KV cache reused
 │  ├──────────────────────────────────────────┤ │
-│  │ retrieved context (RAG from memory)      │ │ ← dynamic, scored by relevance
+│  │ graph context (cybergraph retrieval)      │ │ ← dynamic, scored by gravity + links
 │  ├──────────────────────────────────────────┤ │
 │  │ conversation history                     │ │ ← compressed when grows
 │  ├──────────────────────────────────────────┤ │
@@ -866,7 +866,7 @@ quality of output = quality of context. a 4B model with precise context outperfo
 |-----------|-------------|------|
 | prefix caching | system prompt KV cache reused across requests — no recomputation | always (same prompt = free prefill) |
 | context compression | old conversation summarized by tier 1 model, summary replaces full history | when history > 50% of context window |
-| RAG injection | embedding (tier 0.2) finds relevant chunks from episodic/semantic memory, inserts before input | every request with memory access |
+| graph retrieval | traverse [[cybergraph]] from query context, rank by gravity × link proximity × diffusion, inject structured pages (not raw chunks) | every request with memory access |
 | priority packing | score each context block by relevance, keep highest-scoring, drop rest | when total exceeds window |
 | recency bias | most important content at the END of context (models attend more to recent tokens) | always — structure context accordingly |
 
@@ -885,7 +885,7 @@ when input exceeds model's trained context:
 |------|----------------|-----------------|
 | tier 0 (router, intent) | 2-4K | minimal — classify fast, don't waste tokens |
 | tier 1 (fast tasks) | 4-8K | task input + brief system prompt |
-| tier 2 (reasoning) | 8-32K | full RAG + history + detailed system prompt |
+| tier 2 (reasoning) | 8-32K | graph context + history + detailed system prompt |
 | tier 3 (oracle API) | 32-200K | maximum context — send everything relevant |
 
 ### context API
@@ -903,7 +903,7 @@ ctx.show()                            // render full context as text
 
 // structure
 ctx.set_system("you are a router...") // set/replace system prompt
-ctx.inject_rag(chunks)                // add retrieved context blocks
+ctx.inject_graph(query)               // traverse cybergraph, inject relevant pages
 ctx.add_message(role, content)        // append to conversation history
 ctx.inject_tool_result(name, result)  // add tool output
 
@@ -915,7 +915,7 @@ ctx.reset()                           // clear everything
 
 // budget
 ctx.set_budget(Block::System, 500)    // limit system prompt to 500 tokens
-ctx.set_budget(Block::Rag, 2000)      // limit RAG injection to 2000 tokens
+ctx.set_budget(Block::Graph, 2000)    // limit graph context to 2000 tokens
 ctx.set_budget(Block::History, 4000)  // limit conversation history
 
 // persist
@@ -931,10 +931,10 @@ CLI:
 ```
 soma context show                     # render current context with token counts
 soma context tokens                   # total: 3847 / 32768
-soma context blocks                   # system: 312, rag: 1200, history: 2100, input: 235
+soma context blocks                   # system: 312, graph: 1200, history: 2100, input: 235
 soma context compress                 # trigger compression now
 soma context clear history            # keep system, clear rest
-soma context budget rag 2000          # set RAG budget
+soma context budget graph 2000        # set graph context budget
 soma context save session.json        # persist
 soma context load session.json        # restore
 ```
@@ -959,7 +959,7 @@ router context (2K budget):
     ▼
 reasoner context (32K budget):
     system: "you are a reasoning agent..."
-    rag: [3 chunks from episodic memory, scored by embedding similarity]
+    graph: [3 pages from cybergraph, ranked by gravity × link proximity × diffusion]
     history: [last 5 exchanges, compressed]
     tool_results: [previous look() outputs if any]
     input: original message + router classification
