@@ -13,7 +13,8 @@ prost = "0.13"
 
 # Tensor computation on GPU
 burn = { version = "0.20", default-features = false, features = ["wgpu", "std"] }
-# Raw GPU access for custom compute shaders
+# GPU compute — cubecl for custom kernels on burn's device (zero-copy)
+cubecl = { version = "0.9", features = ["wgpu"] }
 wgpu = { version = "24", features = ["wgsl"] }
 pollster = "0.4"
 

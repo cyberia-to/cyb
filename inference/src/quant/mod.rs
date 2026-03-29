@@ -1,3 +1,6 @@
+pub mod q4_kernel;
+pub mod q4_launch;
+
 use std::collections::HashMap;
 use std::sync::Arc;
 use wgpu;

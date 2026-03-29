@@ -54,7 +54,21 @@ pub fn matmul_nbits_proto(
     let a_shape = a.shape();
     let m: usize = a_shape[..a_shape.len()-1].iter().product();
 
-    // GPU matmul with dequantized weights (cached after first call)
+    // Try cubecl Q4 kernel for decode step (M <= 4)
+    if m <= 4 {
+        let result = crate::quant::q4_launch::q4_vecmat_cubecl(
+            &node.output[0],
+            &a,
+            values.get(&node.input[1]).ok_or("matmul_nbits: weights not found")?,
+            values.get(&node.input[2]).ok_or("matmul_nbits: scales not found")?,
+            n, k, block_size,
+            device,
+        );
+        values.insert(node.output[0].clone(), result);
+        return Ok(());
+    }
+
+    // GPU matmul with dequantized weights for prefill (M > 4)
     let cache_key = format!("{}__dequant_t", node.output[0]);
     let b_t = if let Some(cached) = values.get(&cache_key) {
         cached.clone()
