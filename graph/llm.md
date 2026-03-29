@@ -465,14 +465,73 @@ KV cache lifecycle:
 - free when generation completes
 - shared pool across concurrent inferences
 
-## provability
+## integration with [[Nox]]
+
+the llm runtime is not a standalone system — it is a [[Nox]] execution engine. every inference maps to cyber primitives:
+
+### inference = [[Order]]
+
+every inference request is a [[Nox]] [[Order]]:
+
+```
+Order {
+    formula:  hash(model_weights + graph_ir),    // what computation
+    input:    hash(prompt_tokens),                // input particle
+    budget:   { compute: N, memory: M },          // resource limits
+    sigma:    payment,                            // cost in Tok
+}
+```
+
+the runtime executes the Order. if budget exceeded → Order fails, no sigma spent. if successful → result produced, sigma transferred.
+
+### result = [[cyberlink]]
+
+every inference output creates a [[cyberlink]] in the [[cybergraph]]:
+
+```
+cyberlink(input_particle, output_particle, weight: confidence)
+```
+
+- question → answer = cyberlink
+- image → description = cyberlink (VLM)
+- audio → transcript = cyberlink (whisper)
+- prompt → generated_image = cyberlink (flux)
+
+the cybergraph grows with every inference. knowledge accumulates. [[tri-kernel]] recomputes weights. high-quality answers gain gravity. the system learns which model produces the best links.
+
+### trace = STARK proof
 
 every op execution produces a trace entry:
 ```
 (op_id, input_hashes, output_hash, timing_ns)
 ```
 
-the trace is a STARK-compatible execution record. given the same weights and input, any verifier can replay the trace and confirm the output. this is what makes [[soma]] inference provable — the model cannot lie because every matrix multiply is auditable.
+the trace is attached to the [[Order]] as a STARK-compatible execution record. given the same weights and input, any verifier can replay the trace and confirm the output. the model cannot lie because every matrix multiply is auditable.
+
+### cost = [[Tok]] pricing
+
+inference costs resources. the runtime meters:
+
+```
+Order cost = Σ(
+    compute:   ops_executed × π_compute,
+    memory:    peak_bytes × duration × π_memory,
+    bandwidth: bytes_transferred × π_bandwidth
+)
+```
+
+π prices derived from [[Tok]] conservation rules. the [[neuron]] pays for its own inference. profitable Orders earn more sigma than they cost. unprofitable Orders drain sigma. this is natural selection for useful computation.
+
+### context = [[bbg]] state
+
+the context window is not ephemeral RAM — significant context persists in [[bbg]]:
+
+- system prompts = [[particle]]s in bbg (permanent, content-addressed)
+- conversation history = chain of cyberlinks (append-only)
+- tool results = cyberlinks with tool output as target particle
+- model weights = nouns in bbg (content-addressed, shared across neurons)
+
+ephemeral state (KV cache, intermediate tensors) lives in GPU memory only. everything else has a bbg address and can be proven.
 
 ## multi-model orchestration
 
