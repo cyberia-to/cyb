@@ -399,6 +399,146 @@ hot path identification: top-5 ops by time are the optimization targets. the run
 - memory isolation: each model's buffers are separate. one model cannot read another's weights
 - no network: the runtime never phones home. fully offline. weights are local files
 
+## tokenization
+
+completely missing from the architecture — every LLM needs text → tokens → text. different models use different tokenizers.
+
+| tokenizer type | models | Rust crate |
+|---------------|--------|-----------|
+| BPE (tiktoken) | GPT, Qwen | `tiktoken-rs` |
+| SentencePiece | LLaMA, Mistral | `sentencepiece-rs` or custom |
+| HuggingFace tokenizers | most HF models | `tokenizers` (HF Rust crate, production) |
+| byte-level | RWKV, some custom | trivial |
+
+the `tokenizers` crate by HuggingFace is native Rust, production (it is the same engine Python uses via bindings). handles BPE, WordPiece, Unigram, SentencePiece. loads tokenizer.json directly.
+
+### chat templates
+
+models expect different chat formats. wrong template → garbage output:
+```
+chatml:    <|im_start|>user\n{msg}<|im_end|>
+llama:     [INST] {msg} [/INST]
+qwen3:     <|user|>\n{msg}<|end|>
+```
+the runtime loads chat_template from tokenizer_config.json (Jinja2 format) and applies it. no hardcoded templates — parse from model config.
+
+## sampling
+
+`sample` op in the op list is a placeholder. real sampling is a subsystem:
+
+- temperature scaling
+- top-k filtering
+- top-p (nucleus) filtering
+- min-p filtering
+- repetition penalty (frequency + presence)
+- grammar-constrained decoding — force output to match a schema (JSON, regex). use finite state machine over token vocabulary
+- beam search (rare but needed for whisper)
+- speculative sampling (accept/reject draft tokens)
+
+grammar-constrained decoding is critical for [[soma]] — the router (tier 0.1) must output valid JSON: `{"tier": 1, "slot": 3}`. unconstrained generation can produce malformed routing decisions.
+
+## model registry
+
+the gap between "load safetensors" and "run inference" is larger than the doc suggests. each model family has different tensor naming conventions:
+
+```
+qwen3:   model.layers.0.self_attn.q_proj.weight
+llama:   model.layers.0.self_attn.q_proj.weight  (same)
+mistral: model.layers.0.self_attn.q_proj.weight  (same)
+bert:    encoder.layer.0.attention.self.query.weight  (different)
+whisper: decoder.layers.0.self_attn.q_proj.weight  (different prefix)
+yolo:    model.0.conv.weight  (completely different)
+```
+
+the registry maps: model_type (from config.json) → architecture template + tensor name mapping + tokenizer type + chat template.
+
+```rust
+struct ModelRegistry {
+    // model_type → everything needed to instantiate
+    entries: HashMap<String, ModelSpec>,
+}
+
+struct ModelSpec {
+    template: ArchTemplate,          // transformer_decoder, cnn_detector, ...
+    tensor_map: TensorNameMapping,   // weight name pattern → graph node
+    tokenizer: TokenizerType,        // HF, sentencepiece, tiktoken
+    chat_template: Option<String>,   // Jinja2 template string
+    default_params: InferenceParams, // temperature, top_p, max_tokens
+}
+```
+
+### supported model families (initial)
+
+the registry must cover at minimum:
+- qwen2, qwen2.5, qwen3, qwen3.5 (all soma tier 1-2 models)
+- llama2, llama3, llama3.1, llama3.2
+- mistral, mixtral
+- deepseek, deepseek-r1
+- mimo (Xiaomi)
+- phi-3, phi-4
+- bert, deberta (tier 0 classifiers)
+- whisper (ASR)
+- clip, siglip (vision encoders)
+- stable-diffusion, flux, wan2.2 (diffusion)
+- yolo (detector)
+- vits, piper (TTS)
+
+each family = one entry in registry. adding a new model family = adding one struct, not changing runtime code.
+
+## API surface
+
+the runtime is three things:
+
+### library (embedded)
+```rust
+let rt = Runtime::new(Backend::auto())?;
+let model = rt.load("qwen3.5-9b.safetensors", config)?;
+let tokens = model.generate("hello", params)?;  // streaming iterator
+```
+
+### daemon (always-on)
+```
+soma-runtime serve --models tier0.toml
+```
+loads tier 0 models on startup, accepts requests via unix socket, manages model lifecycle. this is what [[soma]] main loop talks to.
+
+### CLI (one-shot)
+```
+soma-runtime run --model qwen3.5-9b.gguf --prompt "hello"
+soma-runtime bench --model qwen3.5-9b.gguf  // tok/s benchmark
+```
+
+## determinism and provability
+
+for STARK traces, inference must be deterministic: same weights + same input → same output. this is harder than it sounds:
+
+- floating point addition is not associative: `(a+b)+c ≠ a+(b+c)` at f16 precision
+- GPU thread execution order varies between runs
+- different backends (Metal vs CUDA) give different rounding
+
+solution: fix reduction order in all kernels. use tree reduction with deterministic thread mapping. accept that Metal output ≠ CUDA output, but Metal output is always the same across Metal runs. provability is per-backend, not cross-backend.
+
+## testing strategy
+
+correctness = output matches reference implementation within tolerance.
+
+| level | what | reference | tolerance |
+|-------|------|-----------|-----------|
+| op-level | each op in isolation | PyTorch reference output | max abs error < 1e-3 (f16) |
+| model-level | full forward pass | llama.cpp output for same model | token-level agreement (same top-1 token) |
+| end-to-end | generate N tokens | llama.cpp generates same sequence | exact match for greedy decoding (temp=0) |
+
+test suite: save reference inputs/outputs as .npz files. CI runs every op against reference on every commit. regression = CI fails.
+
+## context window management
+
+what happens when input exceeds model's trained context?
+
+- truncation: drop oldest tokens (simple, lossy)
+- sliding window: process in chunks, carry KV cache forward (mistral-style)
+- RoPE scaling: extend positional encoding beyond training length (YaRN, NTK-aware). requires config parameter `rope_scaling`
+- the runtime reads `max_position_embeddings` and `rope_scaling` from config.json and applies automatically
+
 ## what this enables
 
 one `cargo build` produces a binary that:
