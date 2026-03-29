@@ -189,6 +189,55 @@ pub fn attention_decode(
     output
 }
 
+/// KV cache append: past[heads,past_seq,dim] + new[seq*heads*dim] → full[heads,total_seq,dim]
+pub fn kv_append(
+    p: &Pipelines, enc: &mut wgpu::CommandEncoder,
+    past_kv: &wgpu::Buffer, new_kv: &wgpu::Buffer,
+    num_heads: u32, head_dim: u32, past_seq: u32, new_seq: u32,
+) -> wgpu::Buffer {
+    let total_seq = past_seq + new_seq;
+    let total_elements = num_heads * total_seq * head_dim;
+    let output = p.alloc((total_elements as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params { num_heads: u32, head_dim: u32, past_seq: u32, new_seq: u32, total_seq: u32, kv_heads: u32, _p0: u32, _p1: u32 }
+
+    let params = Params { num_heads, head_dim, past_seq, new_seq, total_seq, kv_heads: num_heads, _p0: 0, _p1: 0 };
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&params));
+
+    p.encode(enc, &p.kv_append, &[
+        past_kv.as_entire_binding(), new_kv.as_entire_binding(),
+        output.as_entire_binding(), params_buf.as_entire_binding(),
+    ], ((total_elements + 255) / 256, 1, 1));
+
+    output
+}
+
+/// KV head expansion: kv[kv_heads,seq,dim] → expanded[num_heads,seq,dim]
+pub fn kv_expand(
+    p: &Pipelines, enc: &mut wgpu::CommandEncoder,
+    kv_src: &wgpu::Buffer,
+    kv_heads: u32, num_heads: u32, head_dim: u32, total_seq: u32,
+) -> wgpu::Buffer {
+    let total_elements = num_heads * total_seq * head_dim;
+    let output = p.alloc((total_elements as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params { num_heads: u32, head_dim: u32, past_seq: u32, new_seq: u32, total_seq: u32, kv_heads: u32, _p0: u32, _p1: u32 }
+
+    let params = Params { num_heads, head_dim, past_seq: 0, new_seq: 0, total_seq, kv_heads, _p0: 0, _p1: 0 };
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&params));
+
+    p.encode(enc, &p.kv_expand, &[
+        kv_src.as_entire_binding(), output.as_entire_binding(),
+        params_buf.as_entire_binding(),
+    ], ((total_elements + 255) / 256, 1, 1));
+
+    output
+}
+
 /// Fused RMSNorm + Q4 matmul: norm(input) * weight → Q4 matmul → output
 /// Saves 1 dispatch + 1 buffer write/read
 pub fn fused_norm_q4_matmul(

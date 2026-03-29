@@ -27,6 +27,8 @@ pub struct Pipelines {
     pub argmax: ComputeShader,
     pub fused_norm_q4: ComputeShader,
     pub fused_skip_norm: ComputeShader,
+    pub kv_append: ComputeShader,
+    pub kv_expand: ComputeShader,
 
     /// Frame allocator for zero-allocation decode after warmup
     pub frame_alloc: RefCell<FrameAllocator>,
@@ -72,6 +74,13 @@ impl Pipelines {
             storage_ro(), storage_rw(), uniform(),
         ]);
 
+        let kv_append = create_pipeline(&device, include_str!("shaders/kv_cache.wgsl"), "kv_append", &[
+            storage_ro(), storage_ro(), storage_rw(), uniform(),
+        ]);
+        let kv_expand = create_pipeline(&device, include_str!("shaders/kv_cache.wgsl"), "kv_expand", &[
+            storage_ro(), storage_rw(), uniform(),
+        ]);
+
         let fused_norm_q4 = create_pipeline(&device, include_str!("shaders/fused_norm_q4.wgsl"), "main", &[
             storage_ro(), storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform(),
         ]);
@@ -81,7 +90,7 @@ impl Pipelines {
 
         let frame_alloc = RefCell::new(FrameAllocator::new(device.clone()));
 
-        Self { device, queue, q4_matmul, rms_norm, rope, attention, add, mul, silu_mul, embed, f32_matmul, argmax, fused_norm_q4, fused_skip_norm, frame_alloc }
+        Self { device, queue, q4_matmul, rms_norm, rope, attention, add, mul, silu_mul, embed, f32_matmul, argmax, fused_norm_q4, fused_skip_norm, kv_append, kv_expand, frame_alloc }
     }
 
     /// Create a GPU buffer from f32 data
