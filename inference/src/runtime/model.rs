@@ -648,84 +648,30 @@ impl NativeModel {
                     k_elements, head_dim, 1,
                 );
 
-                // ---- Phase 2: ONE compute pass for all pre-attention ops ----
-                {
-                    let mut pass = enc.begin_compute_pass(&Default::default());
-                    p.dispatch_in_pass(&mut pass, &p.rms_norm, &norm_bg, norm_wg);
-                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &q_bg, q_wg);
-                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &k_bg, k_wg);
-                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &v_bg, v_wg);
-                    p.dispatch_in_pass(&mut pass, &p.rms_norm, &qn_bg, qn_wg);
-                    p.dispatch_in_pass(&mut pass, &p.rms_norm, &kn_bg, kn_wg);
-                    p.dispatch_in_pass(&mut pass, &p.rope, &qr_bg, qr_wg);
-                    p.dispatch_in_pass(&mut pass, &p.rope, &kr_bg, kr_wg);
-                }
-                // pass dropped → compute pass ended
+                // ---- KV cache via compute (stays in same pass later) ----
+                let past_seq_u32 = self.past_seq_len as u32;
+                let empty_buf = p.alloc(4);
+                let past_k_ref = self.kv_cache[i].key.as_ref().unwrap_or(&empty_buf);
+                let past_v_ref = self.kv_cache[i].value.as_ref().unwrap_or(&empty_buf);
 
-                // ---- Phase 3: KV cache buffer copies (require no active pass) ----
-                let kv_heads_usize = self.config.kv_num_heads;
-                let head_dim_usize = self.config.head_dim;
-                let total_kv_elements = total_seq * kv_heads_usize * head_dim_usize;
+                let (full_k, kv_k_bg, kv_k_wg) = ops::kv_append_prepare(
+                    &p, past_k_ref, &k_roped, kv_num_heads, head_dim, past_seq_u32, seq_len as u32);
+                let (full_v, kv_v_bg, kv_v_wg) = ops::kv_append_prepare(
+                    &p, past_v_ref, &v_buf, kv_num_heads, head_dim, past_seq_u32, seq_len as u32);
 
-                let full_k = p.alloc((total_kv_elements as u64) * 4);
-                let full_v = p.alloc((total_kv_elements as u64) * 4);
-
-                {
-                    let past_seq = self.past_seq_len;
-
-                    for h in 0..kv_heads_usize {
-                        let new_head_offset = (total_seq * head_dim_usize * h) as u64 * 4;
-
-                        // Copy past K/V for this head
-                        if past_seq > 0 {
-                            if let Some(ref past_k) = self.kv_cache[i].key {
-                                let past_head_src = (h * past_seq * head_dim_usize) as u64 * 4;
-                                let past_bytes = (past_seq * head_dim_usize) as u64 * 4;
-                                let past_buf_size = past_k.size();
-                                if past_head_src + past_bytes > past_buf_size {
-                                    log::error!("KV K copy OOB layer={i} h={h}: src_off={past_head_src} + size={past_bytes} > buf={past_buf_size}");
-                                } else {
-                                    enc.copy_buffer_to_buffer(past_k, past_head_src, &full_k, new_head_offset, past_bytes);
-                                }
-                            }
-                            if let Some(ref past_v) = self.kv_cache[i].value {
-                                let past_head_src = (h * past_seq * head_dim_usize) as u64 * 4;
-                                let past_bytes = (past_seq * head_dim_usize) as u64 * 4;
-                                let past_buf_size = past_v.size();
-                                if past_head_src + past_bytes > past_buf_size {
-                                    log::error!("KV V copy OOB layer={i} h={h}: src_off={past_head_src} + size={past_bytes} > buf={past_buf_size}");
-                                } else {
-                                    enc.copy_buffer_to_buffer(past_v, past_head_src, &full_v, new_head_offset, past_bytes);
-                                }
-                            }
-                        }
-
-                        // Append new K/V (seq_len=1, single token)
-                        let new_src = (h * head_dim_usize) as u64 * 4;
-                        let new_dst = new_head_offset + (past_seq * head_dim_usize) as u64 * 4;
-                        let dim_bytes = (head_dim_usize as u64) * 4;
-                        enc.copy_buffer_to_buffer(&k_roped, new_src, &full_k, new_dst, dim_bytes);
-                        enc.copy_buffer_to_buffer(&v_buf, new_src, &full_v, new_dst, dim_bytes);
-                    }
-                }
-
-                // Store copies in KV cache (permanent buffers)
-                let cache_k = p.alloc_permanent((total_kv_elements as u64) * 4);
-                let cache_v = p.alloc_permanent((total_kv_elements as u64) * 4);
-                enc.copy_buffer_to_buffer(&full_k, 0, &cache_k, 0, (total_kv_elements as u64) * 4);
-                enc.copy_buffer_to_buffer(&full_v, 0, &cache_v, 0, (total_kv_elements as u64) * 4);
-                self.kv_cache[i].key = Some(cache_k);
-                self.kv_cache[i].value = Some(cache_v);
-
-                // ---- Phase 4: Prepare post-attention bind groups ----
-
-                // GQA head expansion (buffer copies, outside compute pass)
-                let (attn_k, attn_v) = if num_heads != kv_num_heads {
-                    let expanded_k = expand_kv_heads(&p, &mut enc, &full_k, kv_num_heads, num_heads, head_dim, total_seq as u32);
-                    let expanded_v = expand_kv_heads(&p, &mut enc, &full_v, kv_num_heads, num_heads, head_dim, total_seq as u32);
-                    (expanded_k, expanded_v)
+                // GQA head expansion via compute
+                let (attn_k, exp_k_bg, exp_k_wg, attn_v, exp_v_bg, exp_v_wg) = if num_heads != kv_num_heads {
+                    let (ek, ekb, ekw) = ops::kv_expand_prepare(&p, &full_k, kv_num_heads, num_heads, head_dim, total_seq as u32);
+                    let (ev, evb, evw) = ops::kv_expand_prepare(&p, &full_v, kv_num_heads, num_heads, head_dim, total_seq as u32);
+                    (ek, ekb, ekw, ev, evb, evw)
                 } else {
-                    (full_k, full_v)
+                    // No expansion needed — create dummy bind groups
+                    let dummy_bg = p.create_bind_group(&p.kv_expand, &[
+                        full_k.as_entire_binding(), full_k.as_entire_binding(),
+                        p.upload_uniform(&[0u8; 32]).as_entire_binding(),
+                    ]);
+                    (full_k.clone(), dummy_bg.clone(), (0,0,0),
+                     full_v.clone(), dummy_bg, (0,0,0))
                 };
 
                 let scale = 1.0 / (head_dim as f32).sqrt();
@@ -783,9 +729,29 @@ impl NativeModel {
                     &p, &residual1, &ffn_out, hidden_size,
                 );
 
-                // ---- Phase 5: ONE compute pass for all post-attention ops ----
+                // ---- ALL ops in ONE compute pass per layer! ----
                 {
                     let mut pass = enc.begin_compute_pass(&Default::default());
+
+                    // Pre-attention: norm → QKV → Q/K norm → RoPE
+                    p.dispatch_in_pass(&mut pass, &p.rms_norm, &norm_bg, norm_wg);
+                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &q_bg, q_wg);
+                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &k_bg, k_wg);
+                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &v_bg, v_wg);
+                    p.dispatch_in_pass(&mut pass, &p.rms_norm, &qn_bg, qn_wg);
+                    p.dispatch_in_pass(&mut pass, &p.rms_norm, &kn_bg, kn_wg);
+                    p.dispatch_in_pass(&mut pass, &p.rope, &qr_bg, qr_wg);
+                    p.dispatch_in_pass(&mut pass, &p.rope, &kr_bg, kr_wg);
+
+                    // KV cache append + expand (compute, not buffer copies!)
+                    p.dispatch_in_pass(&mut pass, &p.kv_append, &kv_k_bg, kv_k_wg);
+                    p.dispatch_in_pass(&mut pass, &p.kv_append, &kv_v_bg, kv_v_wg);
+                    if num_heads != kv_num_heads {
+                        p.dispatch_in_pass(&mut pass, &p.kv_expand, &exp_k_bg, exp_k_wg);
+                        p.dispatch_in_pass(&mut pass, &p.kv_expand, &exp_v_bg, exp_v_wg);
+                    }
+
+                    // Post-attention: attn → O proj → residual → norm → FFN → residual
                     p.dispatch_in_pass(&mut pass, &p.attention, &attn_bg, attn_wg);
                     p.dispatch_in_pass(&mut pass, &p.q4_matmul, &oproj_bg, oproj_wg);
                     p.dispatch_in_pass(&mut pass, &p.add, &res1_bg, res1_wg);
@@ -796,7 +762,17 @@ impl NativeModel {
                     p.dispatch_in_pass(&mut pass, &p.q4_matmul, &down_bg, down_wg);
                     p.dispatch_in_pass(&mut pass, &p.add, &res2_bg, res2_wg);
                 }
-                // pass dropped → compute pass ended
+
+                // KV cache save (buffer copies, outside pass)
+                let kv_heads_usize = self.config.kv_num_heads;
+                let head_dim_usize = self.config.head_dim;
+                let total_kv_elements = total_seq * kv_heads_usize * head_dim_usize;
+                let cache_k = p.alloc_permanent((total_kv_elements as u64) * 4);
+                let cache_v = p.alloc_permanent((total_kv_elements as u64) * 4);
+                enc.copy_buffer_to_buffer(&full_k, 0, &cache_k, 0, (total_kv_elements as u64) * 4);
+                enc.copy_buffer_to_buffer(&full_v, 0, &cache_v, 0, (total_kv_elements as u64) * 4);
+                self.kv_cache[i].key = Some(cache_k);
+                self.kv_cache[i].value = Some(cache_v);
 
                 hidden = new_hidden;
             }
