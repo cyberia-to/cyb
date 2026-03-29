@@ -167,48 +167,74 @@ some ops carry state between inference calls:
 
 stateful ops are explicitly marked in the IR. the STARK provability trace handles them by including state snapshots.
 
-## the 30 ops
+## the ~48 ops
 
-every neural network — transformer, CNN, diffusion, TTS, BitNet — reduces to these operations:
+every model in the ComfyUI ecosystem (SD, SDXL, Flux, SD3, Wan2.2, ESRGAN, whisper, YOLO, TTS, BitNet) reduces to these operations. validated against ComfyUI source code.
 
 ### core linear algebra
 - `matmul` — 60% of all compute. variants: f16, q8, q4, ternary (BitNet)
-- `add`, `mul`, `sub` — elementwise
-- `transpose`, `reshape`, `permute`, `concat`
+- `add`, `mul`, `sub` — elementwise (must support broadcasting for adaLN modulation)
+- `transpose`, `reshape`, `permute`, `concat`, `split`, `chunk`
+- `clamp`, `nan_to_num` — numerical stability for fp16/fp8
 
 ### attention
 - `sdpa` — scaled dot-product attention + flash attention path
-- `sdpa_cross` — cross-attention (whisper decoder, diffusion)
+- `sdpa_cross` — cross-attention (whisper decoder, diffusion, IP-adapter)
+- `sdpa_window` — shifted window attention (SwinIR): window partition, `roll`, masked attention
 - `kv_cache` — append/lookup, memory lifecycle
-- `rope` — rotary position embedding
+- `rope` — rotary position embedding (1D for LLMs, multi-axis for DiT/video)
+- `sinusoidal_embed` — timestep encoding for all diffusion models
+- `relative_pos_bias` — learned position bias table (T5, SwinIR)
 
 ### normalization
-- `rmsnorm` — llama, qwen, mistral
-- `layernorm` — BERT, DeBERTa, whisper
+- `rmsnorm` — llama, qwen, mistral, T5, Flux QKNorm
+- `layernorm` — BERT, DeBERTa, whisper, CLIP, SwinIR
 - `batchnorm` — YOLO
-- `groupnorm` — diffusion UNet/DiT
+- `groupnorm` — diffusion UNet, VAE (groups=32)
+- `instance_norm` — ACE Step audio
+- `adaln` — adaptive layer norm: `shift + x * (1 + scale)` where shift/scale projected from conditioning. all DiT-family (Flux, SD3, Wan2.2, HunyuanDiT)
 
 ### activation
-- `silu` — llama, qwen
-- `gelu` — BERT, GPT
+- `silu` — llama, qwen, UNet ResBlocks
+- `gelu` — BERT, GPT, SwinIR. variants: standard, tanh-approximate, quick (`x * sigmoid(1.702x)`)
+- `geglu` — gated GELU feedforward in UNet: `gelu(gate) * x`
+- `swiglu` — gated SiLU feedforward in DiT/Flux: `w2(silu(w1(x)) * w3(x))`
+- `glu` — gated linear unit with sigmoid (Stable Audio Conformer)
 - `relu` — YOLO, classic CNNs
+- `leaky_relu` — ESRGAN, upscalers (slope=0.2)
+- `prelu` — parametric ReLU (some upscaler variants)
 - `sigmoid`, `tanh`, `softmax`
 
 ### convolution
-- `conv2d` — YOLO, VAE (diffusion), VITS (TTS)
 - `conv1d` — TTS, audio models
-- `depthwise_conv` — efficient mobile CNNs
-- `pooling` — max, avg
+- `conv2d` — YOLO, UNet, VAE, ControlNet, upscalers
+- `conv3d` — video models (SVD, Wan2.2, HunyuanVideo VAE)
+- `conv_transpose2d` — learned upsampling in some decoder paths
+- `causal_conv1d` — temporal causality with replicate padding (Wan video)
+- `depthwise_conv` — groups=dim, audio Conformer (kernel=17), efficient mobile CNNs
+- `pooling` — max, avg (2d and 3d)
+
+### spatial ops
+- `interpolate` — nearest/bilinear/area upsampling. used everywhere: UNet, VAE, resolution matching
+- `pixel_shuffle` — sub-pixel convolution for upscaling: `(C*r², H, W) → (C, H*r, W*r)`. ESRGAN, SwinIR
+- `pixel_unshuffle` — inverse: `(C, H, W) → (C*r², H/r, W/r)`. T2I-Adapter, WanCamAdapter
+- `patch_embed` — Conv2d/Conv3d with kernel=patch_size, stride=patch_size. all DiT models
+- `unpatchify` — reconstruct spatial tensor from patch sequence
 
 ### embedding
 - `token_embed` — lookup table
 - `pos_embed` — learned or sinusoidal
 
 ### special
-- `noise_schedule` — diffusion timestep
+- `noise_schedule` — diffusion timestep (cosine, linear, flow-matching sigma schedules)
 - `flow_step` — normalizing flow (VITS/TTS)
 - `quantize` / `dequantize` — runtime Q4/Q8 conversion
-- `sample` — top-p, top-k, temperature
+- `sample` — top-p, top-k, temperature, grammar-constrained
+
+### adapter ops (LoRA runtime)
+- `lora_apply` — `up @ down` with alpha/rank scaling, applied lazily during inference
+- `kron` — Kronecker product for LoKr adapter
+- `matrix_inverse` — Cayley transform for OFT adapter: `R = (I+Q)(I-Q)⁻¹`
 
 ## backend strategy
 
