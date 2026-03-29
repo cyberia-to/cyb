@@ -540,6 +540,10 @@ impl NativeModel {
 
     /// Run one forward pass: token_ids -> logits buffer on GPU
     /// Returns logits as Vec<f32> of size [vocab_size] (last position only)
+    ///
+    /// Decode path (seq_len=1): uses batched compute passes — ONE pass per phase
+    /// per layer instead of one pass per op. Reduces ~500 passes → ~30.
+    /// Prefill path (seq_len>1): uses legacy one-pass-per-op for simplicity.
     pub fn forward(&mut self, token_ids: &[u32]) -> Vec<f32> {
         let p = self.pipelines.clone();
         p.begin_frame(); // Reset buffer pool — reuse all previous step's buffers
@@ -587,55 +591,227 @@ impl NativeModel {
 
         // 4. Transformer layers
         let num_layers = self.layers.len();
-        for i in 0..num_layers {
-            // a. Input RMS Norm
-            let normed = ops::rms_norm(
-                &p,
-                &mut enc,
-                &hidden,
-                &self.layers[i].input_norm_weight,
-                seq_len as u32,
-                hidden_size,
-                1e-6,
-            );
 
-            // b. Q/K/V projections (Q4 matmul, one position at a time for decode)
-            //    For seq_len=1 (decode): straightforward matvec
-            //    For seq_len>1 (prefill): need to run matvec per position
-            let (q_buf, k_buf, v_buf) = if seq_len == 1 {
-                let q = ops::q4_matmul(
-                    &p,
-                    &mut enc,
-                    &normed,
-                    &self.layers[i].q_proj_packed,
+        if seq_len == 1 {
+            // ================================================================
+            // DECODE PATH — batched compute passes (ONE pass per phase)
+            // ================================================================
+            for i in 0..num_layers {
+                // ---- Phase 1: Prepare all bind groups for pre-attention ----
+                // All output buffers and bind groups are created BEFORE the
+                // compute pass begins. Dispatches run in order within the pass,
+                // so norm output is written before matmul reads it, etc.
+
+                // a. Input RMS Norm: hidden → normed
+                let (normed, norm_bg, norm_wg) = ops::rms_norm_prepare(
+                    &p, &hidden, &self.layers[i].input_norm_weight,
+                    1, hidden_size, 1e-6,
+                );
+
+                // b. Q/K/V projections: normed → q, k, v
+                let (q_buf, q_bg, q_wg) = ops::q4_matmul_prepare(
+                    &p, &normed, &self.layers[i].q_proj_packed,
                     &self.layers[i].q_proj_scales,
-                    self.layers[i].q_n,
-                    hidden_size,
-                    block_size,
+                    self.layers[i].q_n, hidden_size, block_size,
                 );
-                let k = ops::q4_matmul(
-                    &p,
-                    &mut enc,
-                    &normed,
-                    &self.layers[i].k_proj_packed,
+                let (k_buf, k_bg, k_wg) = ops::q4_matmul_prepare(
+                    &p, &normed, &self.layers[i].k_proj_packed,
                     &self.layers[i].k_proj_scales,
-                    self.layers[i].k_n,
-                    hidden_size,
-                    block_size,
+                    self.layers[i].k_n, hidden_size, block_size,
                 );
-                let v = ops::q4_matmul(
-                    &p,
-                    &mut enc,
-                    &normed,
-                    &self.layers[i].v_proj_packed,
+                let (v_buf, v_bg, v_wg) = ops::q4_matmul_prepare(
+                    &p, &normed, &self.layers[i].v_proj_packed,
                     &self.layers[i].v_proj_scales,
-                    self.layers[i].v_n,
-                    hidden_size,
-                    block_size,
+                    self.layers[i].v_n, hidden_size, block_size,
                 );
-                (q, k, v)
-            } else {
-                // Prefill: run matvec per position and concatenate
+
+                // c. Q/K per-head RMS Norm
+                let (q_normed, qn_bg, qn_wg) = ops::rms_norm_prepare(
+                    &p, &q_buf, &self.layers[i].q_norm_weight,
+                    num_heads, head_dim, 1e-6,
+                );
+                let (k_normed, kn_bg, kn_wg) = ops::rms_norm_prepare(
+                    &p, &k_buf, &self.layers[i].k_norm_weight,
+                    kv_num_heads, head_dim, 1e-6,
+                );
+
+                // d. RoPE
+                let q_elements = self.layers[i].q_n;
+                let k_elements = self.layers[i].k_n;
+
+                let (q_roped, qr_bg, qr_wg) = ops::rope_prepare(
+                    &p, &q_normed, &cos_buf, &sin_buf,
+                    q_elements, head_dim, 1,
+                );
+                let (k_roped, kr_bg, kr_wg) = ops::rope_prepare(
+                    &p, &k_normed, &cos_buf, &sin_buf,
+                    k_elements, head_dim, 1,
+                );
+
+                // ---- Phase 2: ONE compute pass for all pre-attention ops ----
+                {
+                    let mut pass = enc.begin_compute_pass(&Default::default());
+                    p.dispatch_in_pass(&mut pass, &p.rms_norm, &norm_bg, norm_wg);
+                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &q_bg, q_wg);
+                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &k_bg, k_wg);
+                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &v_bg, v_wg);
+                    p.dispatch_in_pass(&mut pass, &p.rms_norm, &qn_bg, qn_wg);
+                    p.dispatch_in_pass(&mut pass, &p.rms_norm, &kn_bg, kn_wg);
+                    p.dispatch_in_pass(&mut pass, &p.rope, &qr_bg, qr_wg);
+                    p.dispatch_in_pass(&mut pass, &p.rope, &kr_bg, kr_wg);
+                }
+                // pass dropped → compute pass ended
+
+                // ---- Phase 3: KV cache buffer copies (require no active pass) ----
+                let kv_heads_usize = self.config.kv_num_heads;
+                let head_dim_usize = self.config.head_dim;
+                let total_kv_elements = total_seq * kv_heads_usize * head_dim_usize;
+
+                let full_k = p.alloc((total_kv_elements as u64) * 4);
+                let full_v = p.alloc((total_kv_elements as u64) * 4);
+
+                {
+                    let past_seq = self.past_seq_len;
+
+                    for h in 0..kv_heads_usize {
+                        let new_head_offset = (total_seq * head_dim_usize * h) as u64 * 4;
+
+                        // Copy past K/V for this head
+                        if past_seq > 0 {
+                            if let Some(ref past_k) = self.kv_cache[i].key {
+                                let past_head_src = (h * past_seq * head_dim_usize) as u64 * 4;
+                                let past_bytes = (past_seq * head_dim_usize) as u64 * 4;
+                                let past_buf_size = past_k.size();
+                                if past_head_src + past_bytes > past_buf_size {
+                                    log::error!("KV K copy OOB layer={i} h={h}: src_off={past_head_src} + size={past_bytes} > buf={past_buf_size}");
+                                } else {
+                                    enc.copy_buffer_to_buffer(past_k, past_head_src, &full_k, new_head_offset, past_bytes);
+                                }
+                            }
+                            if let Some(ref past_v) = self.kv_cache[i].value {
+                                let past_head_src = (h * past_seq * head_dim_usize) as u64 * 4;
+                                let past_bytes = (past_seq * head_dim_usize) as u64 * 4;
+                                let past_buf_size = past_v.size();
+                                if past_head_src + past_bytes > past_buf_size {
+                                    log::error!("KV V copy OOB layer={i} h={h}: src_off={past_head_src} + size={past_bytes} > buf={past_buf_size}");
+                                } else {
+                                    enc.copy_buffer_to_buffer(past_v, past_head_src, &full_v, new_head_offset, past_bytes);
+                                }
+                            }
+                        }
+
+                        // Append new K/V (seq_len=1, single token)
+                        let new_src = (h * head_dim_usize) as u64 * 4;
+                        let new_dst = new_head_offset + (past_seq * head_dim_usize) as u64 * 4;
+                        let dim_bytes = (head_dim_usize as u64) * 4;
+                        enc.copy_buffer_to_buffer(&k_roped, new_src, &full_k, new_dst, dim_bytes);
+                        enc.copy_buffer_to_buffer(&v_buf, new_src, &full_v, new_dst, dim_bytes);
+                    }
+                }
+
+                // Store copies in KV cache (permanent buffers)
+                let cache_k = p.alloc_permanent((total_kv_elements as u64) * 4);
+                let cache_v = p.alloc_permanent((total_kv_elements as u64) * 4);
+                enc.copy_buffer_to_buffer(&full_k, 0, &cache_k, 0, (total_kv_elements as u64) * 4);
+                enc.copy_buffer_to_buffer(&full_v, 0, &cache_v, 0, (total_kv_elements as u64) * 4);
+                self.kv_cache[i].key = Some(cache_k);
+                self.kv_cache[i].value = Some(cache_v);
+
+                // ---- Phase 4: Prepare post-attention bind groups ----
+
+                // GQA head expansion (buffer copies, outside compute pass)
+                let (attn_k, attn_v) = if num_heads != kv_num_heads {
+                    let expanded_k = expand_kv_heads(&p, &mut enc, &full_k, kv_num_heads, num_heads, head_dim, total_seq as u32);
+                    let expanded_v = expand_kv_heads(&p, &mut enc, &full_v, kv_num_heads, num_heads, head_dim, total_seq as u32);
+                    (expanded_k, expanded_v)
+                } else {
+                    (full_k, full_v)
+                };
+
+                let scale = 1.0 / (head_dim as f32).sqrt();
+
+                // Attention decode: q_roped × K^T → softmax → V
+                let (attn_out, attn_bg, attn_wg) = ops::attention_decode_prepare(
+                    &p, &q_roped, &attn_k, &attn_v,
+                    num_heads, head_dim, total_seq as u32, scale,
+                );
+
+                // O projection: attn_out → attn_proj
+                let (attn_proj, oproj_bg, oproj_wg) = ops::q4_matmul_prepare(
+                    &p, &attn_out, &self.layers[i].o_proj_packed,
+                    &self.layers[i].o_proj_scales,
+                    self.layers[i].o_n, self.layers[i].q_n, block_size,
+                );
+
+                // Residual: hidden + attn_proj → residual1
+                let (residual1, res1_bg, res1_wg) = ops::add_prepare(
+                    &p, &hidden, &attn_proj, hidden_size,
+                );
+
+                // Post-attention RMS Norm: residual1 → normed2
+                let (normed2, norm2_bg, norm2_wg) = ops::rms_norm_prepare(
+                    &p, &residual1, &self.layers[i].post_norm_weight,
+                    1, hidden_size, 1e-6,
+                );
+
+                // Gate + Up projections: normed2 → gate, up
+                let (gate, gate_bg, gate_wg) = ops::q4_matmul_prepare(
+                    &p, &normed2, &self.layers[i].gate_proj_packed,
+                    &self.layers[i].gate_proj_scales,
+                    self.layers[i].gate_n, hidden_size, block_size,
+                );
+                let (up, up_bg, up_wg) = ops::q4_matmul_prepare(
+                    &p, &normed2, &self.layers[i].up_proj_packed,
+                    &self.layers[i].up_proj_scales,
+                    self.layers[i].up_n, hidden_size, block_size,
+                );
+
+                // SwiGLU: gate, up → ffn
+                let (ffn, silu_bg, silu_wg) = ops::silu_mul_prepare(
+                    &p, &gate, &up, self.layers[i].gate_n,
+                );
+
+                // Down projection: ffn → ffn_out
+                let (ffn_out, down_bg, down_wg) = ops::q4_matmul_prepare(
+                    &p, &ffn, &self.layers[i].down_proj_packed,
+                    &self.layers[i].down_proj_scales,
+                    self.layers[i].down_n, self.layers[i].gate_n, block_size,
+                );
+
+                // Final residual: residual1 + ffn_out → hidden
+                let (new_hidden, res2_bg, res2_wg) = ops::add_prepare(
+                    &p, &residual1, &ffn_out, hidden_size,
+                );
+
+                // ---- Phase 5: ONE compute pass for all post-attention ops ----
+                {
+                    let mut pass = enc.begin_compute_pass(&Default::default());
+                    p.dispatch_in_pass(&mut pass, &p.attention, &attn_bg, attn_wg);
+                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &oproj_bg, oproj_wg);
+                    p.dispatch_in_pass(&mut pass, &p.add, &res1_bg, res1_wg);
+                    p.dispatch_in_pass(&mut pass, &p.rms_norm, &norm2_bg, norm2_wg);
+                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &gate_bg, gate_wg);
+                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &up_bg, up_wg);
+                    p.dispatch_in_pass(&mut pass, &p.silu_mul, &silu_bg, silu_wg);
+                    p.dispatch_in_pass(&mut pass, &p.q4_matmul, &down_bg, down_wg);
+                    p.dispatch_in_pass(&mut pass, &p.add, &res2_bg, res2_wg);
+                }
+                // pass dropped → compute pass ended
+
+                hidden = new_hidden;
+            }
+        } else {
+            // ================================================================
+            // PREFILL PATH — legacy one-pass-per-op (unchanged)
+            // ================================================================
+            for i in 0..num_layers {
+                // a. Input RMS Norm
+                let normed = ops::rms_norm(
+                    &p, &mut enc, &hidden, &self.layers[i].input_norm_weight,
+                    seq_len as u32, hidden_size, 1e-6,
+                );
+
+                // b. Q/K/V projections: per-position matvec
                 let layer_q_n = self.layers[i].q_n;
                 let layer_k_n = self.layers[i].k_n;
                 let layer_v_n = self.layers[i].v_n;
@@ -651,34 +827,19 @@ impl NativeModel {
                         slice_buffer(&p, &mut enc, &normed, s * self.config.hidden_size, self.config.hidden_size);
 
                     let q_pos = ops::q4_matmul(
-                        &p,
-                        &mut enc,
-                        &normed_slice,
-                        &self.layers[i].q_proj_packed,
-                        &self.layers[i].q_proj_scales,
-                        layer_q_n,
-                        hidden_size,
-                        block_size,
+                        &p, &mut enc, &normed_slice,
+                        &self.layers[i].q_proj_packed, &self.layers[i].q_proj_scales,
+                        layer_q_n, hidden_size, block_size,
                     );
                     let k_pos = ops::q4_matmul(
-                        &p,
-                        &mut enc,
-                        &normed_slice,
-                        &self.layers[i].k_proj_packed,
-                        &self.layers[i].k_proj_scales,
-                        layer_k_n,
-                        hidden_size,
-                        block_size,
+                        &p, &mut enc, &normed_slice,
+                        &self.layers[i].k_proj_packed, &self.layers[i].k_proj_scales,
+                        layer_k_n, hidden_size, block_size,
                     );
                     let v_pos = ops::q4_matmul(
-                        &p,
-                        &mut enc,
-                        &normed_slice,
-                        &self.layers[i].v_proj_packed,
-                        &self.layers[i].v_proj_scales,
-                        layer_v_n,
-                        hidden_size,
-                        block_size,
+                        &p, &mut enc, &normed_slice,
+                        &self.layers[i].v_proj_packed, &self.layers[i].v_proj_scales,
+                        layer_v_n, hidden_size, block_size,
                     );
 
                     copy_into(&mut enc, &q_pos, &q_combined, s * layer_q_n as usize, layer_q_n as usize);
@@ -686,244 +847,163 @@ impl NativeModel {
                     copy_into(&mut enc, &v_pos, &v_combined, s * layer_v_n as usize, layer_v_n as usize);
                 }
 
-                (q_combined, k_combined, v_combined)
-            };
+                let (q_buf, k_buf, v_buf) = (q_combined, k_combined, v_combined);
 
-            // c. Q/K per-head RMS Norm
-            let q_positions = seq_len as u32 * num_heads;
-            let k_positions = seq_len as u32 * kv_num_heads;
+                // c. Q/K per-head RMS Norm
+                let q_positions = seq_len as u32 * num_heads;
+                let k_positions = seq_len as u32 * kv_num_heads;
 
-            let q_normed = ops::rms_norm(
-                &p,
-                &mut enc,
-                &q_buf,
-                &self.layers[i].q_norm_weight,
-                q_positions,
-                head_dim,
-                1e-6,
-            );
-            let k_normed = ops::rms_norm(
-                &p,
-                &mut enc,
-                &k_buf,
-                &self.layers[i].k_norm_weight,
-                k_positions,
-                head_dim,
-                1e-6,
-            );
+                let q_normed = ops::rms_norm(
+                    &p, &mut enc, &q_buf, &self.layers[i].q_norm_weight,
+                    q_positions, head_dim, 1e-6,
+                );
+                let k_normed = ops::rms_norm(
+                    &p, &mut enc, &k_buf, &self.layers[i].k_norm_weight,
+                    k_positions, head_dim, 1e-6,
+                );
 
-            // d. RoPE
-            let q_elements = seq_len as u32 * self.layers[i].q_n;
-            let k_elements = seq_len as u32 * self.layers[i].k_n;
+                // d. RoPE
+                let q_elements = seq_len as u32 * self.layers[i].q_n;
+                let k_elements = seq_len as u32 * self.layers[i].k_n;
 
-            let q_roped = ops::rope(
-                &p,
-                &mut enc,
-                &q_normed,
-                &cos_buf,
-                &sin_buf,
-                q_elements,
-                head_dim,
-                seq_len as u32,
-            );
-            let k_roped = ops::rope(
-                &p,
-                &mut enc,
-                &k_normed,
-                &cos_buf,
-                &sin_buf,
-                k_elements,
-                head_dim,
-                seq_len as u32,
-            );
+                let q_roped = ops::rope(
+                    &p, &mut enc, &q_normed, &cos_buf, &sin_buf,
+                    q_elements, head_dim, seq_len as u32,
+                );
+                let k_roped = ops::rope(
+                    &p, &mut enc, &k_normed, &cos_buf, &sin_buf,
+                    k_elements, head_dim, seq_len as u32,
+                );
 
-            // e. KV cache: concat with past
-            let kv_heads_usize = self.config.kv_num_heads;
-            let head_dim_usize = self.config.head_dim;
-            let new_kv_elements = seq_len * kv_heads_usize * head_dim_usize;
-            let total_kv_elements = total_seq * kv_heads_usize * head_dim_usize;
-            let past_kv_elements = self.past_seq_len * kv_heads_usize * head_dim_usize;
+                // e. KV cache: concat with past
+                let kv_heads_usize = self.config.kv_num_heads;
+                let head_dim_usize = self.config.head_dim;
+                let total_kv_elements = total_seq * kv_heads_usize * head_dim_usize;
 
-            // KV cache layout: [heads, seq, dim] — per-head sequence concat
-            let full_k = p.alloc((total_kv_elements as u64) * 4);
-            let full_v = p.alloc((total_kv_elements as u64) * 4);
+                let full_k = p.alloc((total_kv_elements as u64) * 4);
+                let full_v = p.alloc((total_kv_elements as u64) * 4);
 
-            {
-                let past_seq = self.past_seq_len;
+                {
+                    let past_seq = self.past_seq_len;
 
-                for h in 0..kv_heads_usize {
-                    let new_head_offset = (total_seq * head_dim_usize * h) as u64 * 4;
+                    for h in 0..kv_heads_usize {
+                        let new_head_offset = (total_seq * head_dim_usize * h) as u64 * 4;
 
-                    // Copy past K/V for this head
-                    if past_seq > 0 {
-                        if let Some(ref past_k) = self.kv_cache[i].key {
-                            let past_head_src = (h * past_seq * head_dim_usize) as u64 * 4;
-                            let past_bytes = (past_seq * head_dim_usize) as u64 * 4;
-                            let past_buf_size = past_k.size();
-                            if past_head_src + past_bytes > past_buf_size {
-                                log::error!("KV K copy OOB layer={i} h={h}: src_off={past_head_src} + size={past_bytes} > buf={past_buf_size}");
-                            } else {
-                                enc.copy_buffer_to_buffer(past_k, past_head_src, &full_k, new_head_offset, past_bytes);
+                        if past_seq > 0 {
+                            if let Some(ref past_k) = self.kv_cache[i].key {
+                                let past_head_src = (h * past_seq * head_dim_usize) as u64 * 4;
+                                let past_bytes = (past_seq * head_dim_usize) as u64 * 4;
+                                let past_buf_size = past_k.size();
+                                if past_head_src + past_bytes > past_buf_size {
+                                    log::error!("KV K copy OOB layer={i} h={h}: src_off={past_head_src} + size={past_bytes} > buf={past_buf_size}");
+                                } else {
+                                    enc.copy_buffer_to_buffer(past_k, past_head_src, &full_k, new_head_offset, past_bytes);
+                                }
+                            }
+                            if let Some(ref past_v) = self.kv_cache[i].value {
+                                let past_head_src = (h * past_seq * head_dim_usize) as u64 * 4;
+                                let past_bytes = (past_seq * head_dim_usize) as u64 * 4;
+                                let past_buf_size = past_v.size();
+                                if past_head_src + past_bytes > past_buf_size {
+                                    log::error!("KV V copy OOB layer={i} h={h}: src_off={past_head_src} + size={past_bytes} > buf={past_buf_size}");
+                                } else {
+                                    enc.copy_buffer_to_buffer(past_v, past_head_src, &full_v, new_head_offset, past_bytes);
+                                }
                             }
                         }
-                        if let Some(ref past_v) = self.kv_cache[i].value {
-                            let past_head_src = (h * past_seq * head_dim_usize) as u64 * 4;
-                            let past_bytes = (past_seq * head_dim_usize) as u64 * 4;
-                            let past_buf_size = past_v.size();
-                            if past_head_src + past_bytes > past_buf_size {
-                                log::error!("KV V copy OOB layer={i} h={h}: src_off={past_head_src} + size={past_bytes} > buf={past_buf_size}");
-                            } else {
-                                enc.copy_buffer_to_buffer(past_v, past_head_src, &full_v, new_head_offset, past_bytes);
-                            }
-                        }
-                    }
 
-                    // Append new K/V for this head
-                    // New K after RoPE and V: [kv_heads * head_dim] for decode
-                    // Layout: head-major [h0_d0..d127, h1_d0..d127, ...]
-                    for s in 0..seq_len {
-                        let new_src = ((s * kv_heads_usize + h) * head_dim_usize) as u64 * 4;
-                        let new_dst = new_head_offset + ((past_seq + s) * head_dim_usize) as u64 * 4;
-                        let dim_bytes = (head_dim_usize as u64) * 4;
-                        let k_buf_size = (seq_len * kv_heads_usize * head_dim_usize) as u64 * 4;
-                        let v_buf_size = k_buf_size; // same size
-                        if new_src + dim_bytes > k_buf_size {
-                            log::error!("K copy OOB: src={new_src}+{dim_bytes} > buf_size={k_buf_size}, h={h}, s={s}");
-                            continue;
+                        for s in 0..seq_len {
+                            let new_src = ((s * kv_heads_usize + h) * head_dim_usize) as u64 * 4;
+                            let new_dst = new_head_offset + ((past_seq + s) * head_dim_usize) as u64 * 4;
+                            let dim_bytes = (head_dim_usize as u64) * 4;
+                            let k_buf_size = (seq_len * kv_heads_usize * head_dim_usize) as u64 * 4;
+                            if new_src + dim_bytes > k_buf_size {
+                                log::error!("K copy OOB: src={new_src}+{dim_bytes} > buf_size={k_buf_size}, h={h}, s={s}");
+                                continue;
+                            }
+                            enc.copy_buffer_to_buffer(&k_roped, new_src, &full_k, new_dst, dim_bytes);
+                            enc.copy_buffer_to_buffer(&v_buf, new_src, &full_v, new_dst, dim_bytes);
                         }
-                        enc.copy_buffer_to_buffer(&k_roped, new_src, &full_k, new_dst, dim_bytes);
-                        enc.copy_buffer_to_buffer(&v_buf, new_src, &full_v, new_dst, dim_bytes);
                     }
                 }
-            }
 
-            // Store copies in KV cache
-            // KV cache buffers persist between steps — don't pool them
-            let cache_k = p.alloc_permanent((total_kv_elements as u64) * 4);
-            let cache_v = p.alloc_permanent((total_kv_elements as u64) * 4);
-            enc.copy_buffer_to_buffer(&full_k, 0, &cache_k, 0, (total_kv_elements as u64) * 4);
-            enc.copy_buffer_to_buffer(&full_v, 0, &cache_v, 0, (total_kv_elements as u64) * 4);
-            self.kv_cache[i].key = Some(cache_k);
-            self.kv_cache[i].value = Some(cache_v);
+                let cache_k = p.alloc_permanent((total_kv_elements as u64) * 4);
+                let cache_v = p.alloc_permanent((total_kv_elements as u64) * 4);
+                enc.copy_buffer_to_buffer(&full_k, 0, &cache_k, 0, (total_kv_elements as u64) * 4);
+                enc.copy_buffer_to_buffer(&full_v, 0, &cache_v, 0, (total_kv_elements as u64) * 4);
+                self.kv_cache[i].key = Some(cache_k);
+                self.kv_cache[i].value = Some(cache_v);
 
-            // f. Attention: GQA head expansion
-            let (attn_k, attn_v) = if num_heads != kv_num_heads {
-                let expanded_k = expand_kv_heads(&p, &mut enc, &full_k, kv_num_heads, num_heads, head_dim, total_seq as u32);
-                let expanded_v = expand_kv_heads(&p, &mut enc, &full_v, kv_num_heads, num_heads, head_dim, total_seq as u32);
-                (expanded_k, expanded_v)
-            } else {
-                (full_k, full_v)
-            };
+                // f. Attention: GQA head expansion
+                let (attn_k, attn_v) = if num_heads != kv_num_heads {
+                    let expanded_k = expand_kv_heads(&p, &mut enc, &full_k, kv_num_heads, num_heads, head_dim, total_seq as u32);
+                    let expanded_v = expand_kv_heads(&p, &mut enc, &full_v, kv_num_heads, num_heads, head_dim, total_seq as u32);
+                    (expanded_k, expanded_v)
+                } else {
+                    (full_k, full_v)
+                };
 
-            let scale = 1.0 / (head_dim as f32).sqrt();
+                let scale = 1.0 / (head_dim as f32).sqrt();
 
-            let attn_out = if seq_len == 1 {
-                ops::attention_decode(
-                    &p,
-                    &mut enc,
-                    &q_roped,
-                    &attn_k,
-                    &attn_v,
-                    num_heads,
-                    head_dim,
-                    total_seq as u32,
-                    scale,
-                )
-            } else {
                 // Prefill: use last position's Q only
                 let last_q_offset = (seq_len - 1) * (self.layers[i].q_n as usize);
                 let last_q = slice_buffer(&p, &mut enc, &q_roped, last_q_offset, self.layers[i].q_n as usize);
-                ops::attention_decode(
-                    &p,
-                    &mut enc,
-                    &last_q,
-                    &attn_k,
-                    &attn_v,
-                    num_heads,
-                    head_dim,
-                    total_seq as u32,
-                    scale,
-                )
-            };
+                let attn_out = ops::attention_decode(
+                    &p, &mut enc, &last_q, &attn_k, &attn_v,
+                    num_heads, head_dim, total_seq as u32, scale,
+                );
 
-            // g. O projection
-            let attn_proj = ops::q4_matmul(
-                &p,
-                &mut enc,
-                &attn_out,
-                &self.layers[i].o_proj_packed,
-                &self.layers[i].o_proj_scales,
-                self.layers[i].o_n,
-                self.layers[i].q_n,
-                block_size,
-            );
+                // g. O projection
+                let attn_proj = ops::q4_matmul(
+                    &p, &mut enc, &attn_out,
+                    &self.layers[i].o_proj_packed, &self.layers[i].o_proj_scales,
+                    self.layers[i].o_n, self.layers[i].q_n, block_size,
+                );
 
-            // h. Residual connection
-            let residual_hidden = if seq_len > 1 {
-                slice_buffer(&p, &mut enc, &hidden, (seq_len - 1) * self.config.hidden_size, self.config.hidden_size)
-            } else {
-                hidden
-            };
+                // h. Residual connection
+                let residual_hidden = slice_buffer(
+                    &p, &mut enc, &hidden,
+                    (seq_len - 1) * self.config.hidden_size, self.config.hidden_size,
+                );
+                hidden = ops::add(&p, &mut enc, &residual_hidden, &attn_proj, hidden_size);
 
-            hidden = ops::add(&p, &mut enc, &residual_hidden, &attn_proj, hidden_size);
+                // i. Post-attention RMS Norm
+                let normed2 = ops::rms_norm(
+                    &p, &mut enc, &hidden, &self.layers[i].post_norm_weight,
+                    1, hidden_size, 1e-6,
+                );
 
-            // i. Post-attention RMS Norm
-            let normed2 = ops::rms_norm(
-                &p,
-                &mut enc,
-                &hidden,
-                &self.layers[i].post_norm_weight,
-                1,
-                hidden_size,
-                1e-6,
-            );
+                // j. Gate + Up projections
+                let gate = ops::q4_matmul(
+                    &p, &mut enc, &normed2,
+                    &self.layers[i].gate_proj_packed, &self.layers[i].gate_proj_scales,
+                    self.layers[i].gate_n, hidden_size, block_size,
+                );
+                let up = ops::q4_matmul(
+                    &p, &mut enc, &normed2,
+                    &self.layers[i].up_proj_packed, &self.layers[i].up_proj_scales,
+                    self.layers[i].up_n, hidden_size, block_size,
+                );
 
-            // j. Gate + Up projections
-            let gate = ops::q4_matmul(
-                &p,
-                &mut enc,
-                &normed2,
-                &self.layers[i].gate_proj_packed,
-                &self.layers[i].gate_proj_scales,
-                self.layers[i].gate_n,
-                hidden_size,
-                block_size,
-            );
-            let up = ops::q4_matmul(
-                &p,
-                &mut enc,
-                &normed2,
-                &self.layers[i].up_proj_packed,
-                &self.layers[i].up_proj_scales,
-                self.layers[i].up_n,
-                hidden_size,
-                block_size,
-            );
+                // k. SwiGLU
+                let ffn = ops::silu_mul(&p, &mut enc, &gate, &up, self.layers[i].gate_n);
 
-            // k. SwiGLU
-            let ffn = ops::silu_mul(&p, &mut enc, &gate, &up, self.layers[i].gate_n);
+                // l. Down projection
+                let ffn_out = ops::q4_matmul(
+                    &p, &mut enc, &ffn,
+                    &self.layers[i].down_proj_packed, &self.layers[i].down_proj_scales,
+                    self.layers[i].down_n, self.layers[i].gate_n, block_size,
+                );
 
-            // l. Down projection
-            let ffn_out = ops::q4_matmul(
-                &p,
-                &mut enc,
-                &ffn,
-                &self.layers[i].down_proj_packed,
-                &self.layers[i].down_proj_scales,
-                self.layers[i].down_n,
-                self.layers[i].gate_n,
-                block_size,
-            );
-
-            // m. Residual
-            hidden = ops::add(&p, &mut enc, &hidden, &ffn_out, hidden_size);
+                // m. Residual
+                hidden = ops::add(&p, &mut enc, &hidden, &ffn_out, hidden_size);
+            }
         }
 
-        // 5. Final RMS Norm
+        // 5. Final RMS Norm + LM head
         let normed = ops::rms_norm(&p, &mut enc, &hidden, &self.final_norm_weight, 1, hidden_size, 1e-6);
 
         // 6. LM head — GPU f32 matmul with tied embed weights
-        // embed_table: [vocab, hidden] — use as weight matrix directly
         let vocab = self.config.vocab_size as u32;
         let logits_buf = ops::f32_matmul(&p, &mut enc, &normed, &self.embed_table, vocab, hidden_size);
 

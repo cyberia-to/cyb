@@ -165,14 +165,25 @@ impl Pipelines {
         result
     }
 
-    /// Add a compute pass to an existing encoder (for batching)
-    pub fn encode(
+    /// Add a dispatch to an existing compute pass (ZERO pass overhead!)
+    pub fn dispatch_in_pass<'a>(
         &self,
-        encoder: &mut wgpu::CommandEncoder,
+        pass: &mut wgpu::ComputePass<'a>,
         shader: &ComputeShader,
-        bindings: &[wgpu::BindingResource],
+        bind_group: &'a wgpu::BindGroup,
         workgroups: (u32, u32, u32),
     ) {
+        pass.set_pipeline(&shader.pipeline);
+        pass.set_bind_group(0, bind_group, &[]);
+        pass.dispatch_workgroups(workgroups.0, workgroups.1, workgroups.2);
+    }
+
+    /// Create a bind group for a shader (call before starting compute pass)
+    pub fn create_bind_group(
+        &self,
+        shader: &ComputeShader,
+        bindings: &[wgpu::BindingResource],
+    ) -> wgpu::BindGroup {
         let entries: Vec<wgpu::BindGroupEntry> = bindings.iter().enumerate()
             .map(|(i, r)| wgpu::BindGroupEntry {
                 binding: i as u32,
@@ -180,12 +191,22 @@ impl Pipelines {
             })
             .collect();
 
-        let bind_group = self.device.create_bind_group(&wgpu::BindGroupDescriptor {
+        self.device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: None,
             layout: &shader.bind_group_layout,
             entries: &entries,
-        });
+        })
+    }
 
+    /// Add a compute pass to an existing encoder (legacy — one pass per dispatch)
+    pub fn encode(
+        &self,
+        encoder: &mut wgpu::CommandEncoder,
+        shader: &ComputeShader,
+        bindings: &[wgpu::BindingResource],
+        workgroups: (u32, u32, u32),
+    ) {
+        let bind_group = self.create_bind_group(shader, bindings);
         {
             let mut pass = encoder.begin_compute_pass(&Default::default());
             pass.set_pipeline(&shader.pipeline);
