@@ -385,6 +385,52 @@ all fourteen compile through one structural IR. all fourteen share one [[proof]]
 
 ---
 
+## rendering engine — Typst
+
+the perception mapping above defines WHAT each language renders as. [Typst](https://github.com/typst/typst) is HOW — a single Rust binary that compiles structured markup to visual output (PDF, SVG).
+
+Typst covers six of the seven render types in the perception grid:
+
+| render type | languages | Typst capability |
+|-------------|-----------|-----------------|
+| formula | Tri, Sym, Bel | native math: `$integral_0^1 f(x) dx$` |
+| vector (diagrams) | Arc, Ren, Dif | [CeTZ](https://github.com/cetz-package/cetz) — canvas drawing, coordinate transforms, bezier curves |
+| vector (flowcharts) | Arc | [Fletcher](https://github.com/Jollywatt/typst-fletcher) — nodes, edges, auto-layout |
+| table | Inf, Tok | native tables with full styling |
+| text | Rs | native markup, markdown-like |
+| struct (tree) | Nox | CeTZ tree diagrams |
+
+two render types need separate engines: pixels (Bt → raster, handled by [[cyb/wgpu]]) and sound (Wav → audio, handled by media pipeline in [[soma]]).
+
+### key packages
+
+[CeTZ](https://github.com/cetz-package/cetz) — the drawing engine inside Typst. coordinate systems, transforms, plots, trees, function graphs. replaces TikZ (LaTeX) without the complexity. CeTZ.plot generates charts (bar, line, scatter, histogram) from data.
+
+[Polylux](https://github.com/andreasKroepworkerelin/polylux) — presentations inside Typst. slides, transitions, speaker notes. replaces PowerPoint, Keynote, Beamer. one `.typ` file → PDF slide deck.
+
+[Fletcher](https://github.com/Jollywatt/typst-fletcher) — diagram engine. nodes and edges with auto-routing. replaces Mermaid (needs Node.js), D2 (needs Go), GraphViz (needs C). LLM generates Fletcher code, `typst compile` produces SVG.
+
+[chronos](https://github.com/Mc-Zen/chronos) — sequence diagrams inside Typst. actors, messages, lifelines, fragments.
+
+### the pipeline
+
+```
+computation result (any language)
+    │
+    ▼
+LLM (qwen2.5-coder / qwen3.5) formats as Typst code
+    │
+    ▼
+typst compile input.typ output.svg
+    │  error? → feed compiler error back to LLM → retry
+    ▼
+SVG / PDF — rendered perception
+```
+
+one Rust binary. zero Node.js. zero Go. zero LaTeX. zero Python. charts, diagrams, documents, presentations, math, sequence diagrams — all from the same tool.
+
+---
+
 ---
 
 ## The Address Language
