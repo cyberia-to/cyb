@@ -1062,12 +1062,13 @@ impl NativeModel {
             .unwrap_or(hidden_size * 4);
 
         // Detect quantization format from first weight
+        // K-quant types are converted at load time to our simple Q4/Q8 format
         let first_weight_dtype = graph
             .get_weight("blk.0.attn_q.weight")
             .map(|w| w.dtype)
             .unwrap_or(DType::F32);
         let quant_format = match first_weight_dtype {
-            DType::Q4 => QuantFormat::Q4,
+            DType::Q4 | DType::Q4_K | DType::Q2_K | DType::Q3_K | DType::Q5_K | DType::Q6_K => QuantFormat::Q4,
             DType::Q8 => QuantFormat::Q8,
             _ => QuantFormat::F32,
         };
@@ -1149,6 +1150,434 @@ impl NativeModel {
             (packed_u32s, scales)
         };
 
+        // Convert GGUF Q4_K block format to our Q4_0 format via dequant + requant
+        // Q4_K: super block of 256 elements (8 sub-blocks of 32), 144 bytes
+        // Layout: d(f16) | dmin(f16) | scales[12] | qs[128]
+        let convert_gguf_q4k = |data: &[u8], shape: &[usize]| -> (Vec<u32>, Vec<f32>) {
+            let super_block_bytes = 144;
+            let num_elements: usize = shape.iter().product();
+            let num_super_blocks = num_elements / 256;
+            let total_blocks = num_super_blocks * 8; // 8 blocks of 32 per super block
+
+            let mut packed_u32s = Vec::with_capacity(total_blocks * 4);
+            let mut scales_out = Vec::with_capacity(total_blocks);
+
+            for sb in 0..num_super_blocks {
+                let offset = sb * super_block_bytes;
+                if offset + super_block_bytes > data.len() { break; }
+
+                let d = half::f16::from_le_bytes([data[offset], data[offset + 1]]).to_f32();
+                let dmin = half::f16::from_le_bytes([data[offset + 2], data[offset + 3]]).to_f32();
+
+                // Unpack 6-bit sub-block scales and mins from scales[12] at offset+4
+                let sc = &data[offset + 4..offset + 16];
+
+                let mut local_scales = [0u8; 8];
+                let mut local_mins = [0u8; 8];
+
+                for j in 0..8 {
+                    if j < 4 {
+                        local_scales[j] = sc[j] & 63;
+                        local_mins[j] = sc[j + 4] & 63;
+                    } else {
+                        local_scales[j] = (sc[j + 4] & 0xF) | ((sc[j - 4] >> 6) << 4);
+                        local_mins[j] = (sc[j + 4] >> 4) | ((sc[j] >> 6) << 4);
+                    }
+                }
+
+                // Dequantize all 256 elements to f32
+                // Q4_K qs: 128 bytes = 256 4-bit values (2 nibbles per byte)
+                let qs = &data[offset + 16..offset + 144];
+                let mut dequantized = [0.0f32; 256];
+
+                for i in 0..256usize {
+                    let sub_block = i / 32;
+                    let qs_byte_idx = i / 2;
+                    let nibble = if i % 2 == 0 {
+                        qs[qs_byte_idx] & 0xF
+                    } else {
+                        (qs[qs_byte_idx] >> 4) & 0xF
+                    };
+
+                    dequantized[i] = d * local_scales[sub_block] as f32 * nibble as f32
+                        - dmin * local_mins[sub_block] as f32;
+                }
+
+                // Requantize into our Q4 format (32-element blocks)
+                for blk in 0..8usize {
+                    let start = blk * 32;
+                    let block_vals = &dequantized[start..start + 32];
+
+                    let max_abs = block_vals.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
+                    let scale = if max_abs > 0.0 { max_abs / 7.0 } else { 0.0 };
+                    scales_out.push(scale);
+
+                    let inv_scale = if scale > 0.0 { 1.0 / scale } else { 0.0 };
+                    let mut nibbles = [0u8; 32];
+                    for (k, &val) in block_vals.iter().enumerate() {
+                        let q = (val * inv_scale + 8.0).round().clamp(0.0, 15.0) as u8;
+                        nibbles[k] = q;
+                    }
+
+                    // Pack 32 nibbles into 16 bytes (4 u32s)
+                    for chunk_idx in 0..4 {
+                        let base = chunk_idx * 8;
+                        let mut val = 0u32;
+                        for b in 0..4 {
+                            let lo = nibbles[base + b * 2];
+                            let hi = nibbles[base + b * 2 + 1];
+                            let byte = lo | (hi << 4);
+                            val |= (byte as u32) << (b * 8);
+                        }
+                        packed_u32s.push(val);
+                    }
+                }
+            }
+
+            (packed_u32s, scales_out)
+        };
+
+        // Convert GGUF Q6_K to our Q4_0 format via dequant + requant
+        // Q6_K: super block of 256 elements, 210 bytes
+        // Layout: ql[128] | qh[64] | scales[16] (int8) | d(f16)
+        let convert_gguf_q6k = |data: &[u8], shape: &[usize]| -> (Vec<u32>, Vec<f32>) {
+            let super_block_bytes = 210;
+            let num_elements: usize = shape.iter().product();
+            let num_super_blocks = num_elements / 256;
+            let total_blocks = num_super_blocks * 8; // 8 blocks of 32 per super block
+
+            let mut packed_u32s = Vec::with_capacity(total_blocks * 4);
+            let mut scales_out = Vec::with_capacity(total_blocks);
+
+            for sb in 0..num_super_blocks {
+                let offset = sb * super_block_bytes;
+                if offset + super_block_bytes > data.len() { break; }
+
+                let ql = &data[offset..offset + 128];
+                let qh = &data[offset + 128..offset + 192];
+                let sc = &data[offset + 192..offset + 208];
+                let d = half::f16::from_le_bytes([data[offset + 208], data[offset + 209]]).to_f32();
+
+                // Dequantize all 256 elements to f32
+                let mut dequantized = [0.0f32; 256];
+
+                for i in 0..256usize {
+                    // Lower 4 bits from ql
+                    let ql_byte_idx = i / 2;
+                    let ql_val = if i % 2 == 0 {
+                        ql[ql_byte_idx] & 0xF
+                    } else {
+                        (ql[ql_byte_idx] >> 4) & 0xF
+                    };
+
+                    // Upper 2 bits from qh
+                    let qh_byte_idx = i / 4;
+                    let qh_shift = (i % 4) * 2;
+                    let qh_val = (qh[qh_byte_idx] >> qh_shift) & 0x3;
+
+                    // 6-bit value: 0..63, subtract 32 for signed
+                    let q6 = ((ql_val | (qh_val << 4)) as i32) - 32;
+
+                    // Per-16-element sub-block scale
+                    let sub_block = i / 16;
+                    let local_scale = sc[sub_block] as i8;
+                    dequantized[i] = d * local_scale as f32 * q6 as f32;
+                }
+
+                // Requantize into Q4 format (32-element blocks)
+                for blk in 0..8usize {
+                    let start = blk * 32;
+                    let block_vals = &dequantized[start..start + 32];
+
+                    let max_abs = block_vals.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
+                    let scale = if max_abs > 0.0 { max_abs / 7.0 } else { 0.0 };
+                    scales_out.push(scale);
+
+                    let inv_scale = if scale > 0.0 { 1.0 / scale } else { 0.0 };
+                    let mut nibbles = [0u8; 32];
+                    for (k, &val) in block_vals.iter().enumerate() {
+                        let q = (val * inv_scale + 8.0).round().clamp(0.0, 15.0) as u8;
+                        nibbles[k] = q;
+                    }
+
+                    for chunk_idx in 0..4 {
+                        let base = chunk_idx * 8;
+                        let mut val = 0u32;
+                        for b in 0..4 {
+                            let lo = nibbles[base + b * 2];
+                            let hi = nibbles[base + b * 2 + 1];
+                            let byte = lo | (hi << 4);
+                            val |= (byte as u32) << (b * 8);
+                        }
+                        packed_u32s.push(val);
+                    }
+                }
+            }
+
+            (packed_u32s, scales_out)
+        };
+
+        // Convert GGUF Q2_K to our Q4_0 format: packed u32[] + f32 scales[]
+        // Q2_K: super block of 256 elements, 84 bytes
+        // Layout: scales[16] | qs[64] | d(f16) | dmin(f16)
+        let convert_gguf_q2k = |data: &[u8], shape: &[usize]| -> (Vec<u32>, Vec<f32>) {
+            let super_block_bytes = 84;
+            let num_elements: usize = shape.iter().product();
+            let num_super_blocks = num_elements / 256;
+            // Dequant to f32, then requantize to our Q4 format
+            let total_blocks = num_super_blocks * 8; // 8 blocks of 32 per super block
+
+            let mut packed_u32s = Vec::with_capacity(total_blocks * 4);
+            let mut scales_out = Vec::with_capacity(total_blocks);
+
+            for sb in 0..num_super_blocks {
+                let offset = sb * super_block_bytes;
+                if offset + super_block_bytes > data.len() { break; }
+
+                let sc = &data[offset..offset + 16];
+                let qs = &data[offset + 16..offset + 80];
+                let d = half::f16::from_le_bytes([data[offset + 80], data[offset + 81]]).to_f32();
+                let dmin = half::f16::from_le_bytes([data[offset + 82], data[offset + 83]]).to_f32();
+
+                // Dequantize all 256 elements to f32
+                let mut dequantized = [0.0f32; 256];
+                for i in 0..256usize {
+                    let sub_block = i / 16; // 16 sub-blocks of 16 elements
+                    let local_scale = (sc[sub_block] & 0xF) as f32;
+                    let local_min = (sc[sub_block] >> 4) as f32;
+
+                    // Each byte in qs contains 4 2-bit values
+                    let byte_idx = i / 4;
+                    let bit_shift = (i % 4) * 2;
+                    let q2 = ((qs[byte_idx] >> bit_shift) & 0x3) as f32;
+
+                    dequantized[i] = d * local_scale * q2 - dmin * local_min;
+                }
+
+                // Requantize into our Q4 format (32-element blocks)
+                for blk in 0..8usize {
+                    let start = blk * 32;
+                    let block_vals = &dequantized[start..start + 32];
+
+                    // Find range to compute scale
+                    let max_abs = block_vals.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
+                    let scale = if max_abs > 0.0 { max_abs / 7.0 } else { 0.0 };
+                    scales_out.push(scale);
+
+                    // Quantize to 4-bit (0-15 range, zero point 8)
+                    let inv_scale = if scale > 0.0 { 1.0 / scale } else { 0.0 };
+                    let mut nibbles = [0u8; 32];
+                    for (k, &val) in block_vals.iter().enumerate() {
+                        let q = (val * inv_scale + 8.0).round().clamp(0.0, 15.0) as u8;
+                        nibbles[k] = q;
+                    }
+
+                    // Pack 32 nibbles into 16 bytes (4 u32s)
+                    // Each byte holds 2 nibbles: lo = even index, hi = odd index
+                    for chunk_idx in 0..4 {
+                        let base = chunk_idx * 8;
+                        let mut val = 0u32;
+                        for b in 0..4 {
+                            let lo = nibbles[base + b * 2];
+                            let hi = nibbles[base + b * 2 + 1];
+                            let byte = lo | (hi << 4);
+                            val |= (byte as u32) << (b * 8);
+                        }
+                        packed_u32s.push(val);
+                    }
+                }
+            }
+
+            (packed_u32s, scales_out)
+        };
+
+        // Convert GGUF Q3_K to our Q4_0 format via dequant + requant
+        // Q3_K: super block of 256 elements, 110 bytes
+        // Layout: hmask[32] | qs[64] | scales[12] | d(f16)
+        let convert_gguf_q3k = |data: &[u8], shape: &[usize]| -> (Vec<u32>, Vec<f32>) {
+            let super_block_bytes = 110;
+            let num_elements: usize = shape.iter().product();
+            let num_super_blocks = num_elements / 256;
+            let total_blocks = num_super_blocks * 8;
+
+            let mut packed_u32s = Vec::with_capacity(total_blocks * 4);
+            let mut scales_out = Vec::with_capacity(total_blocks);
+
+            for sb in 0..num_super_blocks {
+                let offset = sb * super_block_bytes;
+                if offset + super_block_bytes > data.len() { break; }
+
+                let hmask = &data[offset..offset + 32];
+                let qs = &data[offset + 32..offset + 96];
+                let sc_raw = &data[offset + 96..offset + 108];
+                let d = half::f16::from_le_bytes([data[offset + 108], data[offset + 109]]).to_f32();
+
+                // Unpack scales (12 bytes -> 16 6-bit values)
+                // Based on llama.cpp: each group of 16 elements has a scale
+                let mut local_scales = [0i32; 16];
+                for j in 0..16 {
+                    if j < 8 {
+                        local_scales[j] = (sc_raw[j] as i32) - 32;
+                    } else {
+                        // Upper scales packed in remaining bytes
+                        let idx = j - 8;
+                        let byte_val = if idx < 4 {
+                            ((sc_raw[8 + idx] & 0xF) as i32) | (((sc_raw[idx] >> 4) as i32 & 3) << 4)
+                        } else {
+                            ((sc_raw[4 + idx] >> 4) as i32) | (((sc_raw[idx] >> 4) as i32 & 3) << 4)
+                        };
+                        local_scales[j] = byte_val - 32;
+                    }
+                }
+
+                // Dequantize: each element has 2 bits from qs + 1 bit from hmask = 3 bits
+                let mut dequantized = [0.0f32; 256];
+                for i in 0..256usize {
+                    let sub_block = i / 16;
+
+                    // 2 low bits from qs (64 bytes = 256 2-bit values)
+                    let byte_idx = i / 4;
+                    let bit_shift = (i % 4) * 2;
+                    let q_low = ((qs[byte_idx] >> bit_shift) & 0x3) as i32;
+
+                    // High bit from hmask (32 bytes = 256 bits)
+                    let hm_byte = i / 8;
+                    let hm_bit = i % 8;
+                    let q_high = ((hmask[hm_byte] >> hm_bit) & 1) as i32;
+
+                    // 3-bit value, subtract 4 for zero point
+                    let q3 = q_low | (q_high << 2);
+                    let q_signed = q3 - 4;
+
+                    dequantized[i] = d * local_scales[sub_block] as f32 * q_signed as f32;
+                }
+
+                // Requantize into Q4 format
+                for blk in 0..8usize {
+                    let start = blk * 32;
+                    let block_vals = &dequantized[start..start + 32];
+
+                    let max_abs = block_vals.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
+                    let scale = if max_abs > 0.0 { max_abs / 7.0 } else { 0.0 };
+                    scales_out.push(scale);
+
+                    let inv_scale = if scale > 0.0 { 1.0 / scale } else { 0.0 };
+                    let mut nibbles = [0u8; 32];
+                    for (k, &val) in block_vals.iter().enumerate() {
+                        let q = (val * inv_scale + 8.0).round().clamp(0.0, 15.0) as u8;
+                        nibbles[k] = q;
+                    }
+
+                    for chunk_idx in 0..4 {
+                        let base = chunk_idx * 8;
+                        let mut val = 0u32;
+                        for b in 0..4 {
+                            let lo = nibbles[base + b * 2];
+                            let hi = nibbles[base + b * 2 + 1];
+                            let byte = lo | (hi << 4);
+                            val |= (byte as u32) << (b * 8);
+                        }
+                        packed_u32s.push(val);
+                    }
+                }
+            }
+
+            (packed_u32s, scales_out)
+        };
+
+        // Convert GGUF Q5_K to our Q4_0 format via dequant + requant
+        // Q5_K: super block of 256 elements, 176 bytes
+        // Layout: d(f16) | dmin(f16) | scales[12] | qh[32] | qs[128]
+        let convert_gguf_q5k = |data: &[u8], shape: &[usize]| -> (Vec<u32>, Vec<f32>) {
+            let super_block_bytes = 176;
+            let num_elements: usize = shape.iter().product();
+            let num_super_blocks = num_elements / 256;
+            let total_blocks = num_super_blocks * 8;
+
+            let mut packed_u32s = Vec::with_capacity(total_blocks * 4);
+            let mut scales_out = Vec::with_capacity(total_blocks);
+
+            for sb in 0..num_super_blocks {
+                let offset = sb * super_block_bytes;
+                if offset + super_block_bytes > data.len() { break; }
+
+                let d = half::f16::from_le_bytes([data[offset], data[offset + 1]]).to_f32();
+                let dmin = half::f16::from_le_bytes([data[offset + 2], data[offset + 3]]).to_f32();
+
+                let sc = &data[offset + 4..offset + 16];
+                let qh = &data[offset + 16..offset + 48];
+                let qs = &data[offset + 48..offset + 176];
+
+                // Unpack 6-bit sub-block scales and mins (same packing as Q4_K)
+                let mut local_s = [0u8; 8];
+                let mut local_m = [0u8; 8];
+                for j in 0..8 {
+                    if j < 4 {
+                        local_s[j] = sc[j] & 63;
+                        local_m[j] = sc[j + 4] & 63;
+                    } else {
+                        local_s[j] = (sc[j + 4] & 0xF) | ((sc[j - 4] >> 6) << 4);
+                        local_m[j] = (sc[j + 4] >> 4) | ((sc[j] >> 6) << 4);
+                    }
+                }
+
+                // Dequantize all 256 elements
+                let mut dequantized = [0.0f32; 256];
+                for i in 0..256usize {
+                    let sub_block = i / 32;
+
+                    // Low 4 bits from qs (128 bytes, 2 nibbles per byte)
+                    let qs_byte_idx = i / 2;
+                    let q_low = if i % 2 == 0 {
+                        qs[qs_byte_idx] & 0xF
+                    } else {
+                        (qs[qs_byte_idx] >> 4) & 0xF
+                    };
+
+                    // High bit from qh (32 bytes = 256 bits)
+                    let qh_byte = i / 8;
+                    let qh_bit = i % 8;
+                    let q_high = (qh[qh_byte] >> qh_bit) & 1;
+
+                    // 5-bit quantized value
+                    let q5 = (q_low | (q_high << 4)) as f32;
+
+                    dequantized[i] = d * local_s[sub_block] as f32 * q5 - dmin * local_m[sub_block] as f32;
+                }
+
+                // Requantize into Q4 format
+                for blk in 0..8usize {
+                    let start = blk * 32;
+                    let block_vals = &dequantized[start..start + 32];
+
+                    let max_abs = block_vals.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
+                    let scale = if max_abs > 0.0 { max_abs / 7.0 } else { 0.0 };
+                    scales_out.push(scale);
+
+                    let inv_scale = if scale > 0.0 { 1.0 / scale } else { 0.0 };
+                    let mut nibbles = [0u8; 32];
+                    for (k, &val) in block_vals.iter().enumerate() {
+                        let q = (val * inv_scale + 8.0).round().clamp(0.0, 15.0) as u8;
+                        nibbles[k] = q;
+                    }
+
+                    for chunk_idx in 0..4 {
+                        let base = chunk_idx * 8;
+                        let mut val = 0u32;
+                        for b in 0..4 {
+                            let lo = nibbles[base + b * 2];
+                            let hi = nibbles[base + b * 2 + 1];
+                            let byte = lo | (hi << 4);
+                            val |= (byte as u32) << (b * 8);
+                        }
+                        packed_u32s.push(val);
+                    }
+                }
+            }
+
+            (packed_u32s, scales_out)
+        };
+
         // Convert weight data to f32 (for F32/F16 weights and norm weights)
         let gguf_to_f32 = |data: &[u8], dtype: DType| -> Vec<f32> {
             match dtype {
@@ -1179,6 +1608,32 @@ impl NativeModel {
                 }
                 DType::Q8 => {
                     let (packed, scales) = convert_gguf_q8_0(&w.data, &w.shape);
+                    Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
+                }
+                // K-quant types: convert at load time to our simple Q4/Q8 format
+                DType::Q4_K => {
+                    log::debug!("Converting Q4_K -> Q4 for {name}");
+                    let (packed, scales) = convert_gguf_q4k(&w.data, &w.shape);
+                    Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
+                }
+                DType::Q6_K => {
+                    log::debug!("Converting Q6_K -> Q4 for {name}");
+                    let (packed, scales) = convert_gguf_q6k(&w.data, &w.shape);
+                    Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
+                }
+                DType::Q2_K => {
+                    log::debug!("Converting Q2_K -> Q4 for {name}");
+                    let (packed, scales) = convert_gguf_q2k(&w.data, &w.shape);
+                    Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
+                }
+                DType::Q3_K => {
+                    log::debug!("Converting Q3_K -> Q4 for {name}");
+                    let (packed, scales) = convert_gguf_q3k(&w.data, &w.shape);
+                    Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
+                }
+                DType::Q5_K => {
+                    log::debug!("Converting Q5_K -> Q4 for {name}");
+                    let (packed, scales) = convert_gguf_q5k(&w.data, &w.shape);
                     Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
                 }
                 DType::F32 | DType::F16 => {

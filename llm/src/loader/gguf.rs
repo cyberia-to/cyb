@@ -94,6 +94,11 @@ fn gguf_type_to_dtype(type_id: u32) -> DType {
         2 => DType::Q4,     // GGML_TYPE_Q4_0
         3 => DType::Q4_1,   // GGML_TYPE_Q4_1
         8 => DType::Q8,     // GGML_TYPE_Q8_0
+        10 => DType::Q3_K,  // GGML_TYPE_Q3_K
+        11 => DType::Q2_K,  // GGML_TYPE_Q2_K
+        12 => DType::Q4_K,  // GGML_TYPE_Q4_K
+        13 => DType::Q5_K,  // GGML_TYPE_Q5_K
+        14 => DType::Q6_K,  // GGML_TYPE_Q6_K
         _ => {
             log::warn!("Unknown GGUF type {type_id}, defaulting to F32");
             DType::F32
@@ -104,11 +109,16 @@ fn gguf_type_to_dtype(type_id: u32) -> DType {
 /// Size of one block for quantized types
 fn gguf_type_block_size(type_id: u32) -> usize {
     match type_id {
-        0 => 1,   // F32: 1 element = 4 bytes
-        1 => 1,   // F16: 1 element = 2 bytes
-        2 => 32,  // Q4_0: 32 elements per block = 18 bytes (16 data + 2 scale)
-        3 => 32,  // Q4_1: 32 elements per block = 20 bytes (16 data + 2 scale + 2 min)
-        8 => 32,  // Q8_0: 32 elements per block = 34 bytes (32 data + 2 scale)
+        0 => 1,     // F32: 1 element = 4 bytes
+        1 => 1,     // F16: 1 element = 2 bytes
+        2 => 32,    // Q4_0: 32 elements per block
+        3 => 32,    // Q4_1: 32 elements per block
+        8 => 32,    // Q8_0: 32 elements per block
+        10 => 256,  // Q3_K: 256 elements per super block
+        11 => 256,  // Q2_K: 256 elements per super block
+        12 => 256,  // Q4_K: 256 elements per super block
+        13 => 256,  // Q5_K: 256 elements per super block
+        14 => 256,  // Q6_K: 256 elements per super block
         _ => 1,
     }
 }
@@ -116,11 +126,16 @@ fn gguf_type_block_size(type_id: u32) -> usize {
 /// Bytes per block for quantized types
 fn gguf_type_bytes_per_block(type_id: u32) -> usize {
     match type_id {
-        0 => 4,   // F32
-        1 => 2,   // F16
-        2 => 18,  // Q4_0
-        3 => 20,  // Q4_1
-        8 => 34,  // Q8_0
+        0 => 4,     // F32
+        1 => 2,     // F16
+        2 => 18,    // Q4_0
+        3 => 20,    // Q4_1
+        8 => 34,    // Q8_0
+        10 => 110,  // Q3_K: 256 elements in 110 bytes
+        11 => 84,   // Q2_K: 256 elements in 84 bytes
+        12 => 144,  // Q4_K: 256 elements in 144 bytes
+        13 => 176,  // Q5_K: 256 elements in 176 bytes
+        14 => 210,  // Q6_K: 256 elements in 210 bytes
         _ => 4,
     }
 }

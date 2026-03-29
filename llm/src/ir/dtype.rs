@@ -2,6 +2,7 @@
 
 /// Tensor element data type
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+#[allow(non_camel_case_types)]
 pub enum DType {
     F32,
     F16,
@@ -10,6 +11,12 @@ pub enum DType {
     Q4,
     Q4_1,
     Ternary,
+    // K-quant types (super blocks of 256 elements)
+    Q2_K,
+    Q3_K,
+    Q4_K,
+    Q5_K,
+    Q6_K,
 }
 
 impl DType {
@@ -21,6 +28,12 @@ impl DType {
             DType::Q8 => 1,
             DType::Q4 | DType::Q4_1 => 1, // approximate, actual is sub-byte
             DType::Ternary => 1,
+            // K-quant: approximate per-element sizes (actual is per-block)
+            DType::Q2_K => 1,
+            DType::Q3_K => 1,
+            DType::Q4_K => 1,
+            DType::Q5_K => 1,
+            DType::Q6_K => 1,
         }
     }
 
@@ -34,7 +47,17 @@ impl DType {
             DType::Q4 => "q4",
             DType::Q4_1 => "q4_1",
             DType::Ternary => "ternary",
+            DType::Q2_K => "q2_k",
+            DType::Q3_K => "q3_k",
+            DType::Q4_K => "q4_k",
+            DType::Q5_K => "q5_k",
+            DType::Q6_K => "q6_k",
         }
+    }
+
+    /// Whether this is a K-quant type (super blocks of 256 elements)
+    pub fn is_k_quant(&self) -> bool {
+        matches!(self, DType::Q2_K | DType::Q3_K | DType::Q4_K | DType::Q5_K | DType::Q6_K)
     }
 }
 
