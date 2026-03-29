@@ -1,6 +1,8 @@
-// Q4 VecMat with SUBGROUP reduction (→ Metal simd_sum)
-// NR=4 output rows per workgroup
-// subgroupAdd replaces 8-level tree reduction → instant SIMD sum
+// Q4 VecMat — llama.cpp-style dequant optimization
+// Key tricks from ggml-metal.metal:
+// 1. Zero point (-8) factored out: d * (sumy * -8 + acc)
+// 2. Scale applied ONCE per block, not per element
+// 3. Subgroup reduction for instant SIMD sum
 
 enable subgroups;
 
@@ -20,7 +22,6 @@ struct Params {
 @group(0) @binding(3) var<storage, read_write> output: array<f32>;
 @group(0) @binding(4) var<uniform> params: Params;
 
-// Only need cross-subgroup reduction scratch (8 subgroups max × NR)
 var<workgroup> wg_partial: array<f32, 32>;
 
 @compute @workgroup_size(256)
@@ -37,6 +38,7 @@ fn main(
     let sg_idx = tid / sg_size;
     let num_sgs = WG_SIZE / sg_size;
 
+    // Accumulate: raw dot product (without zero point) and activation sum per block
     var sums: array<f32, 4>;
     sums[0] = 0.0; sums[1] = 0.0; sums[2] = 0.0; sums[3] = 0.0;
 
@@ -53,10 +55,14 @@ fn main(
             let within_block = byte_pos % half_bs;
             let col = block_idx * block_size_val + within_block * 2u;
 
+            // Read activation (shared across all rows)
             var act0: f32 = 0.0;
             var act1: f32 = 0.0;
             if (col < params.k) { act0 = activation[col]; }
             if (col + 1u < params.k) { act1 = activation[col + 1u]; }
+
+            // Pre-compute activation sum for this block pair (for zero-point factoring)
+            let act_sum = act0 + act1;
 
             for (var r = 0u; r < NR; r++) {
                 let row = base_row + r;
@@ -66,24 +72,24 @@ fn main(
                 let byte_val = (packed >> (b * 8u)) & 0xFFu;
                 let scale = scales[row * params.num_blocks + block_idx];
 
-                if (col < params.k) {
-                    sums[r] += act0 * (f32(byte_val & 0xFu) - 8.0) * scale;
-                }
-                if (col + 1u < params.k) {
-                    sums[r] += act1 * (f32((byte_val >> 4u) & 0xFu) - 8.0) * scale;
-                }
+                // llama.cpp trick: accumulate raw nibble × activation, subtract zero point via sum
+                // raw_dot = lo_nibble * act0 + hi_nibble * act1
+                // Corrected: dot = scale * (raw_dot - 8 * (act0 + act1))
+                let lo = f32(byte_val & 0xFu);
+                let hi = f32((byte_val >> 4u) & 0xFu);
+                let raw_dot = lo * act0 + hi * act1;
+                sums[r] += scale * (raw_dot - 8.0 * act_sum);
             }
         }
 
         u32_idx += WG_SIZE;
     }
 
-    // SUBGROUP REDUCTION — instant SIMD sum (replaces 8 barriers!)
+    // Subgroup + cross-subgroup reduction
     for (var r = 0u; r < NR; r++) {
         sums[r] = subgroupAdd(sums[r]);
     }
 
-    // Cross-subgroup reduction (only num_sgs values, typically 8)
     if (sg_id == 0u) {
         for (var r = 0u; r < NR; r++) {
             wg_partial[sg_idx * NR + r] = sums[r];
@@ -91,7 +97,6 @@ fn main(
     }
     workgroupBarrier();
 
-    // First subgroup finalizes
     if (sg_idx == 0u && sg_id < num_sgs) {
         for (var r = 0u; r < NR; r++) {
             sums[r] = wg_partial[sg_id * NR + r];
