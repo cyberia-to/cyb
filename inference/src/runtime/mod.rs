@@ -1,40 +1,51 @@
-//! Pure cubecl GPU runtime — no burn dependency for inference
-//! Direct kernel dispatch, zero-copy tensors, minimal overhead.
+//! Pure wgpu GPU runtime — WGSL shaders, zero framework overhead
+//! Ported from llama.cpp Metal shader algorithms
 
 pub mod tensor;
 pub mod kernels;
+pub mod pipelines;
+pub mod ops;
 
-use cubecl::wgpu::{WgpuDevice, WgpuRuntime};
-use cubecl::Runtime;
-use tensor::{Client, GpuTensor};
+use std::sync::Arc;
+use pipelines::Pipelines;
 
-/// GPU runtime context
-pub struct GpuContext {
-    pub client: Client,
-    pub device: WgpuDevice,
+/// GPU runtime — wgpu device + shader pipelines
+pub struct GpuRuntime {
+    pub pipelines: Pipelines,
 }
 
-impl GpuContext {
-    /// Initialize GPU runtime
+impl GpuRuntime {
+    /// Initialize GPU runtime — creates wgpu device and compiles all shaders
     pub fn new() -> Self {
-        let device = WgpuDevice::default();
-        let client = WgpuRuntime::client(&device);
-        log::info!("GPU runtime initialized");
-        Self { client, device }
-    }
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            ..Default::default()
+        });
 
-    /// Create f32 tensor on GPU
-    pub fn tensor_f32(&self, data: &[f32], shape: Vec<usize>) -> GpuTensor {
-        GpuTensor::from_f32(&self.client, data, shape)
-    }
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            ..Default::default()
+        })).expect("No GPU adapter found");
 
-    /// Create empty f32 tensor
-    pub fn empty_f32(&self, shape: Vec<usize>) -> GpuTensor {
-        GpuTensor::empty_f32(&self.client, shape)
-    }
+        log::info!("GPU: {}", adapter.get_info().name);
 
-    /// Read tensor to CPU
-    pub fn read_f32(&self, tensor: &GpuTensor) -> Vec<f32> {
-        tensor.to_f32(&self.client)
+        let (device, queue) = pollster::block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("cyb-inference"),
+                required_features: wgpu::Features::empty(),
+                required_limits: wgpu::Limits::default(),
+                memory_hints: Default::default(),
+            },
+            None,
+        )).expect("Failed to create GPU device");
+
+        let device = Arc::new(device);
+        let queue = Arc::new(queue);
+
+        let pipelines = Pipelines::new(device, queue);
+
+        log::info!("All WGSL compute shaders compiled");
+
+        Self { pipelines }
     }
 }
