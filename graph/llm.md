@@ -697,4 +697,40 @@ after phase 10: optimal power management on Apple hardware.
 
 after phase 11: Android NPU via NNAPI FFI.
 
+## next-gen jets (emerging architectures)
+
+ops that don't exist yet in the jet registry but are appearing in research and early production. each decomposes into existing atoms — will run slow through interpreter immediately, jets added when architectures mature.
+
+### confirmed emerging (models shipping now)
+
+| jet | atoms decomposition | what it enables | models |
+|-----|---------------------|----------------|--------|
+| `selective_scan` | read + mul + add + write (recurrent state) | Mamba / State Space Models — linear attention alternative, O(n) not O(n²). 3B Mamba matches 7B transformer | Mamba-2, Jamba, Zamba-2 |
+| `linear_attention` | mul + reduce (no softmax) | sub-quadratic attention. MiniMax Lightning Attention, RWKV-6/7 | MiniMax-Text-01, RWKV-7 |
+| `ring_attention` | sdpa + distributed reduce | infinite context via distributed attention across devices. each device holds a context chunk | Ring Attention, Striped Attention |
+| `tree_attention` | sdpa + tree verify | speculative decoding verification — verify N draft tokens in one forward pass instead of N passes | Medusa, EAGLE-2 |
+
+### research horizon (papers, no production models yet)
+
+| jet | atoms decomposition | what it enables |
+|-----|---------------------|----------------|
+| `conditional_skip` | cmp + branch | Mixture-of-Depths — skip layers dynamically based on input difficulty. saves 30-50% compute |
+| `ode_step` | mul + add + cmp (adaptive) | Neural ODE — continuous-depth networks with adaptive step size |
+| `spike` | cmp + write (threshold + reset) | neuromorphic activation — binary spike instead of continuous. extreme efficiency on neuromorphic hardware |
+| `hyper_attention` | read + mul + reduce (locality-sensitive hash) | approximate attention via LSH. O(n log n) for very long sequences |
+| `tensor_product` | mul + reduce (higher-order) | Tensor Product Attention (TPA) — DeepSeek research, factorized KV heads. 5-10x KV cache compression |
+
+### the atom guarantee
+
+every jet above decomposes into the 8 atoms. when Mamba-3 or RWKV-8 drops tomorrow:
+
+```
+1. express as atom composition → runs immediately (slow)
+2. profile hot path → write fused jet shader
+3. register jet hash → 1000x speedup
+4. STARK trace → provable
+```
+
+no architecture can surprise the runtime. only speed varies.
+
 see [[soma]] for the model architecture this runtime serves.
