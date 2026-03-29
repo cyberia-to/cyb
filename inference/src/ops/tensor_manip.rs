@@ -238,8 +238,8 @@ pub fn gather_proto(
         })
         .unwrap_or(0);
 
-    // Get indices as i64 vec for GPU tensor
-    let idx_vec: Vec<i64> = indices.to_vec_f32().iter().map(|&v| v as i64).collect();
+    // Get indices as i32 vec for GPU tensor
+    let idx_vec: Vec<i32> = indices.to_vec_f32().iter().map(|&v| v as i32).collect();
     let indices_shape = indices.shape();
     let num_indices = idx_vec.len();
 

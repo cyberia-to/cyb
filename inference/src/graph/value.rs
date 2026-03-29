@@ -21,9 +21,11 @@ impl Value {
     }
 
     /// Create from raw f32 data + shape
+    /// Data is provided as f32 and auto-converted to backend's float type (f16 or f32)
     pub fn from_data(data: Vec<f32>, shape: Vec<usize>, device: &Device) -> Self {
         let shape4d = to_4d_shape(&shape);
-        let td = burn::tensor::TensorData::new(data, shape4d.clone());
+        // Convert f32 → backend float element type via TensorData
+        let td = burn::tensor::TensorData::new(data, shape4d.clone()).convert::<<Backend as burn::tensor::backend::Backend>::FloatElem>();
         let inner = Tensor::from_data(td, device);
         Self { inner, logical_shape: shape }
     }
@@ -62,7 +64,6 @@ impl Value {
     pub fn reshape(self, new_shape: Vec<usize>) -> Self {
         let new_4d = to_4d_shape(&new_shape);
         let old_4d = self.inner.dims();
-        // If 4D shape is identical, just update logical shape (truly free)
         if old_4d == new_4d {
             return Self { inner: self.inner, logical_shape: new_shape };
         }
@@ -86,9 +87,9 @@ impl Value {
         self.inner.to_data()
     }
 
-    /// Read as f32 slice (forces GPU sync!)
+    /// Read as f32 vec (forces GPU sync! — converts from backend float type)
     pub fn to_vec_f32(&self) -> Vec<f32> {
-        let data = self.inner.to_data();
+        let data = self.inner.to_data().convert::<f32>();
         data.as_slice::<f32>().unwrap_or(&[]).to_vec()
     }
 
@@ -210,6 +211,7 @@ impl Value {
         let ndim = self.logical_shape.len();
         let d1_4d = to_4d_dim(d1, ndim);
         let d2_4d = to_4d_dim(d2, ndim);
+        if d1_4d == d2_4d { return self; }
         let inner = self.inner.swap_dims(d1_4d, d2_4d);
         let mut shape = self.logical_shape.clone();
         shape.swap(d1, d2);
