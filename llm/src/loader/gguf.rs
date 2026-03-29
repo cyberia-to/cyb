@@ -261,10 +261,7 @@ pub fn load_gguf(path: &Path) -> Result<Graph, String> {
 
         graph.add_tensor(
             info.name.clone(),
-            TensorMeta {
-                shape: shape.clone(),
-                dtype,
-            },
+            TensorMeta::weight(shape.clone(), dtype),
         );
 
         graph.add_weight(
@@ -400,10 +397,7 @@ pub fn load_gguf_with_metadata(path: &Path) -> Result<(Graph, HashMap<String, Gg
 
         graph.add_tensor(
             info.name.clone(),
-            TensorMeta {
-                shape: shape.clone(),
-                dtype,
-            },
+            TensorMeta::weight(shape.clone(), dtype),
         );
 
         graph.add_weight(

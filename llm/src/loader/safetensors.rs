@@ -84,10 +84,7 @@ pub fn load_safetensors(path: &Path) -> Result<Graph, String> {
 
         graph.add_tensor(
             name.clone(),
-            TensorMeta {
-                shape: desc.shape.clone(),
-                dtype,
-            },
+            TensorMeta::weight(desc.shape.clone(), dtype),
         );
 
         graph.add_weight(
@@ -144,8 +141,8 @@ fn safetensors_dtype(s: &str) -> DType {
         "F32" => DType::F32,
         "F16" => DType::F16,
         "BF16" => DType::BF16,
-        "I8" => DType::Q8,
-        "U8" => DType::Q8,
+        "I8" => DType::I8,
+        "U8" => DType::U8,
         _ => {
             log::warn!("Unknown safetensors dtype: {s}, defaulting to F32");
             DType::F32

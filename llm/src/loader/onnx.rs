@@ -39,7 +39,7 @@ pub fn load_onnx(path: &Path) -> Result<Graph, String> {
         );
         graph.add_tensor(
             init.name.clone(),
-            TensorMeta { shape, dtype },
+            TensorMeta::weight(shape, dtype),
         );
     }
 
@@ -56,10 +56,7 @@ pub fn load_onnx(path: &Path) -> Result<Graph, String> {
             if !graph.tensors.contains_key(out) {
                 graph.add_tensor(
                     out.clone(),
-                    TensorMeta {
-                        shape: vec![],
-                        dtype: DType::F32,
-                    },
+                    TensorMeta::fixed(vec![], DType::F32),
                 );
             }
         }
@@ -199,9 +196,9 @@ fn onnx_op_to_ir(node: &crate::onnx_proto::onnx::NodeProto) -> Op {
         "Div" => Op::Div,
         "Relu" => Op::Relu,
         "Sigmoid" => Op::Sigmoid,
-        "Softmax" => Op::Softmax,
+        "Softmax" => Op::Softmax { dim: -1 },
         "Tanh" => Op::Tanh,
-        "Gelu" | "FastGelu" => Op::Gelu,
+        "Gelu" | "FastGelu" => Op::Gelu { approximate: false },
         "Silu" => Op::Silu,
         "LayerNormalization" => {
             let eps = get_attr_f(node, "epsilon").unwrap_or(1e-5);
@@ -212,15 +209,16 @@ fn onnx_op_to_ir(node: &crate::onnx_proto::onnx::NodeProto) -> Op {
             Op::RmsNorm { eps }
         }
         "RotaryEmbedding" => {
-            Op::Rope { head_dim: 0 } // detected from weights later
+            Op::Rope { head_dim: 0, base: 10000.0 } // detected from weights later
         }
         "GroupQueryAttention" | "MultiHeadAttention" => {
             let num_heads = get_attr_i(node, "num_heads").unwrap_or(1) as u32;
             let kv_heads = get_attr_i(node, "kv_num_heads").unwrap_or(num_heads as i64) as u32;
-            Op::Attention {
+            Op::Sdpa {
                 num_heads,
                 kv_heads,
                 head_dim: 0,
+                causal: true,
             }
         }
         "Reshape" => Op::Reshape { shape: vec![] },
@@ -236,7 +234,7 @@ fn onnx_op_to_ir(node: &crate::onnx_proto::onnx::NodeProto) -> Op {
             let axis = get_attr_i(node, "axis").unwrap_or(0) as usize;
             Op::Concat { axis }
         }
-        "Gather" => Op::Embed, // embedding lookup
+        "Gather" => Op::TokenEmbed, // embedding lookup
         "DequantizeLinear" => Op::Dequantize,
         "ArgMax" => Op::Argmax,
         _ => {
