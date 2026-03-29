@@ -120,7 +120,7 @@ the machine does not just survive — it earns. accepts profitable Orders. sells
 
 ## architecture gaps
 
-current 18 models (8 substrate + 4 fast + 4 quality + 2 oracle) are designed for a personal assistant. soma needs additional models for machine survival and market participation. these are different concerns.
+current 19 models (8 substrate + 4 fast + 5 quality + 2 oracle) are designed for a personal assistant. soma needs additional models for machine survival and market participation. these are different concerns.
 
 | needed function | current state | candidate solution |
 |----------------|--------------|-------------------|
@@ -154,7 +154,7 @@ working memory (KV cache, context):
 
 every model runs as a [[nox]] [[Order]]. inference = matrix multiply over [[Goldilocks field]]. weights = nouns in [[bbg]]. inference produces STARK proof. provable AI — the model cannot lie.
 
-18 models across 3 tiers > 1 large model because: precision (fine-tuned specialist > prompted generalist), speed (500M router 50x faster than 14B), reliability (failures isolated), evolvability (swap individual models). intelligence accumulates in the memory layer, not the weights. fake specialization (same base model with different prompts) eliminated — only genuine fine-tuned specialists and strong generalists remain.
+19 models across 3 tiers > 1 large model because: precision (fine-tuned specialist > prompted generalist), speed (500M router 50x faster than 14B), reliability (failures isolated), evolvability (swap individual models). intelligence accumulates in the memory layer, not the weights. fake specialization (same base model with different prompts) eliminated — only genuine fine-tuned specialists and strong generalists remain.
 
 > "The whole is not the sum of the parts. It is the pattern of their interaction." — Gregory Bateson
 
@@ -215,10 +215,11 @@ bitnet-2B at <1GB can stay always-loaded alongside tier 0 (~2.5GB total substrat
 |-------|--------|-----|---------|-------|
 | [qwen3.5-9b-abliterated](https://huggingface.co/huihui-ai/Qwen3.5-9B-abliterated) | 9B | ~5.5GB | ONNX | general reasoning, research, planning, social dynamics, legal, creative, biology, finance. outperforms GPT-OSS-120B on MMLU-Pro (82.5) |
 | [qwen2.5-coder-14b-abliterated](https://huggingface.co/huihui-ai/Qwen2.5-Coder-14B-Instruct-abliterated) | 14B | ~8.5GB | ONNX | code generation, SQL, infrastructure ops. fine-tuned code specialist, abliterated |
-| [mimo-7b-rl-abliterated](https://huggingface.co/huihui-ai/MiMo-7B-RL-0530-abliterated) | 7B | ~5GB | ONNX | deep reasoning, mathematics, strategic analysis. AIME 2025 = 55.4 (beats o1-mini). MIT license, Xiaomi. replaces deepseek-r1 — no PRC political censorship baggage |
+| [mimo-7b-rl-abliterated](https://huggingface.co/huihui-ai/MiMo-7B-RL-0530-abliterated) | 7B | ~5GB | ONNX | deep reasoning, mathematics. AIME 2025 = 55.4 (beats o1-mini). MIT license, Xiaomi |
+| [deepseek-r1-qwen3-8b-abliterated](https://huggingface.co/huihui-ai/DeepSeek-R1-0528-Qwen3-8B-abliterated) | 8B | ~5GB | ONNX | deep reasoning, strategic analysis. chain-of-thought, abliterated. benchmark against mimo |
 | [llava-v1.6-mistral-7b](https://huggingface.co/liuhaotian/llava-v1.6-mistral-7b) | 7B | ~4.7GB | ONNX | vision analysis, image understanding. multimodal — abliterate text tower if needed |
 
-why mimo over deepseek-r1: same class reasoning quality, MIT license (vs deepseek's restrictive license), trained by a hardware company (Xiaomi) with edge deployment focus, abliterated version exists and tested. both are Chinese models with PRC censorship in base weights, but mimo's abliterated variant is cleaner.
+mimo vs deepseek-r1: two competing reasoning models for A/B testing. mimo = MIT license, Xiaomi hardware focus. deepseek-r1 = chain-of-thought specialist, stronger on complex multi-step. keep both, route by task complexity, measure which wins.
 
 ### tier 3 — external oracle (never automatic)
 
@@ -381,7 +382,7 @@ see [[neuroscience principles for machine mind]] for full mapping of all ten pri
 
 ## emergent properties
 
-18 models > 1 large model because:
+19 models > 1 large model because:
 - precision: fine-tuned specialist (nuextract, qwen2.5-coder) outperforms 100x larger generalist on its domain
 - speed: 500M router is 50x faster than 14B for every request
 - reliability: failures isolated. one model failing does not collapse the system
