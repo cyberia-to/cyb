@@ -204,7 +204,7 @@ only genuinely specialized models — fine-tuned on domain data, not general-pur
 |-------|--------|----------|-------|
 | [qwen3.5-4b-abliterated](https://huggingface.co/huihui-ai/Qwen3.5-4B-abliterated) | 4B | ~2.5GB | summarization, translation (EN/RU/ID/ZH), task decomposition, report formatting, alert composition, command parsing, search query gen, schedule optimization, sensor interpretation |
 | [nuextract-1.5](https://huggingface.co/numind/NuExtract-1.5) | 3.8B | ~2.3GB | entity extraction, inventory parsing, financial parsing, structured JSON from any text. fine-tuned specialist — beats GPT-4o on extraction benchmarks |
-| [qwen2.5-coder-1.5b](https://huggingface.co/Qwen/Qwen2.5-Coder-1.5B-Instruct) | 1.5B | ~1GB | code review, diff generation, static analysis. fine-tuned on code — lightweight fast tasks |
+| [qwen2.5-coder-1.5b-abliterated](https://huggingface.co/huihui-ai/Qwen2.5-Coder-1.5B-Instruct-abliterated) | 1.5B | ~1GB | code review, diff generation, static analysis. fine-tuned on code, abliterated — no refusals on security/exploit code |
 
 qwen3.5-4b replaces 8 old slots: one 4B generalist of 2026 matches qwen2.5-7B quality (MATH-500: 97%, MMLU-Redux: 83.7). nuextract is a proven specialist — fine-tuned extraction beats 100x larger general models.
 
@@ -213,9 +213,9 @@ qwen3.5-4b replaces 8 old slots: one 4B generalist of 2026 matches qwen2.5-7B qu
 | model | params | RAM (Q4) | tasks |
 |-------|--------|----------|-------|
 | [qwen3.5-9b-abliterated](https://huggingface.co/huihui-ai/Qwen3.5-9B-abliterated) | 9B | ~5.5GB | general reasoning, research, planning, social dynamics, legal, creative, biology, finance. outperforms GPT-OSS-120B on MMLU-Pro (82.5). one generalist replaces 8 fake "specialists" |
-| [qwen2.5-coder-14b](https://huggingface.co/Qwen/Qwen2.5-Coder-14B-Instruct) | 14B | ~8.5GB | code generation, SQL, infrastructure ops. fine-tuned code specialist, quality ceiling for local code — no point saving 4GB on the thing that writes your code |
-| [deepseek-r1-0528-qwen3-8b](https://huggingface.co/deepseek-ai/DeepSeek-R1-0528-Qwen3-8B) | 8B | ~5GB | deep reasoning, mathematics, strategic analysis. chain-of-thought, +10% vs qwen3-8b on AIME |
-| [llava-v1.6-mistral-7b](https://huggingface.co/liuhaotian/llava-v1.6-mistral-7b) | 7B | ~4.7GB | vision analysis, image understanding. multimodal — separate architecture required |
+| [qwen2.5-coder-14b-abliterated](https://huggingface.co/huihui-ai/Qwen2.5-Coder-14B-Instruct-abliterated) | 14B | ~8.5GB | code generation, SQL, infrastructure ops. fine-tuned code specialist, abliterated — writes exploit code, reverse engineering, crypto without refusals |
+| [deepseek-r1-qwen3-8b-abliterated](https://huggingface.co/huihui-ai/DeepSeek-R1-0528-Qwen3-8B-abliterated) | 8B | ~5GB | deep reasoning, mathematics, strategic analysis. chain-of-thought, abliterated — no DeepSeek political/safety censorship |
+| [llava-v1.6-mistral-7b](https://huggingface.co/liuhaotian/llava-v1.6-mistral-7b) | 7B | ~4.7GB | vision analysis, image understanding. multimodal — no abliterated variant exists, abliterate text tower yourself if needed |
 
 old tier 3 (14B) eliminated: qwen3.5-9b already matches or exceeds previous-gen 14B models across all benchmarks. generational leap makes the extra tier unnecessary.
 
