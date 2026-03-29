@@ -211,8 +211,11 @@ fn main() {
 
             let gen_start = std::time::Instant::now();
 
-            // Prefill: forward pass with all prompt tokens
-            let mut logits = native_model.forward(&token_ids);
+            // Prefill: process prompt tokens one at a time (safe path)
+            let mut logits = Vec::new();
+            for t in 0..token_ids.len() {
+                logits = native_model.forward(&[token_ids[t]]);
+            }
 
             // Autoregressive generation
             let eos_tokens: &[u32] = &[151643, 151645]; // Qwen3 EOS tokens

@@ -672,25 +672,58 @@ impl NativeModel {
             let total_kv_elements = total_seq * kv_heads_usize * head_dim_usize;
             let past_kv_elements = self.past_seq_len * kv_heads_usize * head_dim_usize;
 
+            // KV cache layout: [heads, seq, dim] — per-head sequence concat
             let full_k = p.alloc((total_kv_elements as u64) * 4);
             let full_v = p.alloc((total_kv_elements as u64) * 4);
 
             {
                 let mut encoder = p.device.create_command_encoder(&Default::default());
+                let past_seq = self.past_seq_len;
 
-                if let Some(ref past_k) = self.kv_cache[i].key {
-                    encoder.copy_buffer_to_buffer(past_k, 0, &full_k, 0, (past_kv_elements as u64) * 4);
-                }
-                if let Some(ref past_v) = self.kv_cache[i].value {
-                    encoder.copy_buffer_to_buffer(past_v, 0, &full_v, 0, (past_kv_elements as u64) * 4);
-                }
+                for h in 0..kv_heads_usize {
+                    let new_head_offset = (total_seq * head_dim_usize * h) as u64 * 4;
 
-                encoder.copy_buffer_to_buffer(
-                    &k_roped, 0, &full_k, (past_kv_elements as u64) * 4, (new_kv_elements as u64) * 4,
-                );
-                encoder.copy_buffer_to_buffer(
-                    &v_buf, 0, &full_v, (past_kv_elements as u64) * 4, (new_kv_elements as u64) * 4,
-                );
+                    // Copy past K/V for this head
+                    if past_seq > 0 {
+                        if let Some(ref past_k) = self.kv_cache[i].key {
+                            let past_head_src = (h * past_seq * head_dim_usize) as u64 * 4;
+                            let past_bytes = (past_seq * head_dim_usize) as u64 * 4;
+                            let past_buf_size = past_k.size();
+                            if past_head_src + past_bytes > past_buf_size {
+                                log::error!("KV K copy OOB layer={i} h={h}: src_off={past_head_src} + size={past_bytes} > buf={past_buf_size}");
+                            } else {
+                                encoder.copy_buffer_to_buffer(past_k, past_head_src, &full_k, new_head_offset, past_bytes);
+                            }
+                        }
+                        if let Some(ref past_v) = self.kv_cache[i].value {
+                            let past_head_src = (h * past_seq * head_dim_usize) as u64 * 4;
+                            let past_bytes = (past_seq * head_dim_usize) as u64 * 4;
+                            let past_buf_size = past_v.size();
+                            if past_head_src + past_bytes > past_buf_size {
+                                log::error!("KV V copy OOB layer={i} h={h}: src_off={past_head_src} + size={past_bytes} > buf={past_buf_size}");
+                            } else {
+                                encoder.copy_buffer_to_buffer(past_v, past_head_src, &full_v, new_head_offset, past_bytes);
+                            }
+                        }
+                    }
+
+                    // Append new K/V for this head
+                    // New K after RoPE and V: [kv_heads * head_dim] for decode
+                    // Layout: head-major [h0_d0..d127, h1_d0..d127, ...]
+                    for s in 0..seq_len {
+                        let new_src = ((s * kv_heads_usize + h) * head_dim_usize) as u64 * 4;
+                        let new_dst = new_head_offset + ((past_seq + s) * head_dim_usize) as u64 * 4;
+                        let dim_bytes = (head_dim_usize as u64) * 4;
+                        let k_buf_size = (seq_len * kv_heads_usize * head_dim_usize) as u64 * 4;
+                        let v_buf_size = k_buf_size; // same size
+                        if new_src + dim_bytes > k_buf_size {
+                            log::error!("K copy OOB: src={new_src}+{dim_bytes} > buf_size={k_buf_size}, h={h}, s={s}");
+                            continue;
+                        }
+                        encoder.copy_buffer_to_buffer(&k_roped, new_src, &full_k, new_dst, dim_bytes);
+                        encoder.copy_buffer_to_buffer(&v_buf, new_src, &full_v, new_dst, dim_bytes);
+                    }
+                }
 
                 p.queue.submit(std::iter::once(encoder.finish()));
             }
