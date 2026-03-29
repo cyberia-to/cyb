@@ -4,6 +4,32 @@
 use super::pipelines::Pipelines;
 use wgpu;
 
+/// Q4 matmul writing into pre-allocated output buffer
+pub fn q4_matmul_into(
+    p: &Pipelines, enc: &mut wgpu::CommandEncoder,
+    activation: &wgpu::Buffer, packed_weights: &wgpu::Buffer, scales: &wgpu::Buffer,
+    output: &wgpu::Buffer,
+    n: u32, k: u32, block_size: u32,
+) {
+    let num_blocks = k / block_size;
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params { n: u32, k: u32, num_blocks: u32, u32s_per_row: u32 }
+
+    let params = Params { n, k, num_blocks, u32s_per_row: num_blocks * (block_size / 2) / 4 };
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&params));
+
+    let num_wg = (n + 3) / 4;
+    let x = num_wg.min(65535);
+    let y = (num_wg + x - 1) / x;
+    p.encode(enc, &p.q4_matmul, &[
+        activation.as_entire_binding(), packed_weights.as_entire_binding(),
+        scales.as_entire_binding(), output.as_entire_binding(),
+        params_buf.as_entire_binding(),
+    ], (x, y, 1));
+}
+
 /// Q4 matrix-vector multiply: [1, K] × Q4[N, K] → [1, N]
 pub fn q4_matmul(
     p: &Pipelines,
@@ -23,8 +49,10 @@ pub fn q4_matmul(
     let params = Params { n, k, num_blocks, u32s_per_row: num_blocks * (block_size / 2) / 4 };
     let params_buf = p.upload_uniform(bytemuck::bytes_of(&params));
 
-    let x = n.min(65535);
-    let y = (n + x - 1) / x;
+    // NR=4 rows per workgroup
+    let num_wg = (n + 3) / 4;
+    let x = num_wg.min(65535);
+    let y = (num_wg + x - 1) / x;
     p.encode(enc, &p.q4_matmul, &[
         activation.as_entire_binding(),
         packed_weights.as_entire_binding(),
@@ -34,6 +62,36 @@ pub fn q4_matmul(
     ], (x, y, 1));
 
     output
+}
+
+/// RMS Normalization into pre-allocated buffer
+pub fn rms_norm_into(
+    p: &Pipelines, enc: &mut wgpu::CommandEncoder,
+    input: &wgpu::Buffer, weight: &wgpu::Buffer, output: &wgpu::Buffer,
+    positions: u32, hidden: u32, eps: f32,
+) {
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params { hidden: u32, eps: f32 }
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params { hidden, eps }));
+    p.encode(enc, &p.rms_norm, &[
+        input.as_entire_binding(), weight.as_entire_binding(),
+        output.as_entire_binding(), params_buf.as_entire_binding(),
+    ], (positions, 1, 1));
+}
+
+/// Add into pre-allocated buffer
+pub fn add_into(p: &Pipelines, enc: &mut wgpu::CommandEncoder, a: &wgpu::Buffer, b: &wgpu::Buffer, output: &wgpu::Buffer, n: u32) {
+    p.encode(enc, &p.add, &[
+        a.as_entire_binding(), b.as_entire_binding(), output.as_entire_binding(),
+    ], ((n + 255) / 256, 1, 1));
+}
+
+/// SiLU gate into pre-allocated buffer
+pub fn silu_mul_into(p: &Pipelines, enc: &mut wgpu::CommandEncoder, gate: &wgpu::Buffer, up: &wgpu::Buffer, output: &wgpu::Buffer, n: u32) {
+    p.encode(enc, &p.silu_mul, &[
+        gate.as_entire_binding(), up.as_entire_binding(), output.as_entire_binding(),
+    ], ((n + 255) / 256, 1, 1));
 }
 
 /// RMS Normalization

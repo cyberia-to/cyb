@@ -83,6 +83,31 @@ pub struct NativeModel {
 
     /// When true, argmax is computed on GPU (reads 4 bytes instead of 608KB)
     pub greedy_mode: bool,
+
+    // Pre-allocated scratch buffers (reused every forward pass)
+    scratch: ScratchBuffers,
+}
+
+/// Pre-allocated GPU buffers for decode step (seq=1)
+struct ScratchBuffers {
+    hidden: wgpu::Buffer,     // [hidden_size]
+    normed: wgpu::Buffer,     // [hidden_size]
+    q: wgpu::Buffer,          // [q_n] = num_heads * head_dim
+    k: wgpu::Buffer,          // [k_n] = kv_heads * head_dim
+    v: wgpu::Buffer,          // [k_n]
+    q_normed: wgpu::Buffer,   // [q_n]
+    k_normed: wgpu::Buffer,   // [k_n]
+    q_roped: wgpu::Buffer,    // [q_n]
+    k_roped: wgpu::Buffer,    // [k_n]
+    attn_out: wgpu::Buffer,   // [q_n]
+    attn_proj: wgpu::Buffer,  // [hidden_size]
+    normed2: wgpu::Buffer,    // [hidden_size]
+    gate: wgpu::Buffer,       // [gate_n]
+    up: wgpu::Buffer,         // [gate_n]
+    ffn: wgpu::Buffer,        // [gate_n]
+    ffn_out: wgpu::Buffer,    // [hidden_size]
+    residual: wgpu::Buffer,   // [hidden_size]
+    logits: wgpu::Buffer,     // [vocab_size]
 }
 
 /// Load and parse an ONNX model protobuf
@@ -455,6 +480,7 @@ impl NativeModel {
 
         log::info!("Model loaded successfully");
 
+        let p_ref = pipelines.clone();
         Ok(Self {
             config,
             pipelines,
@@ -469,6 +495,37 @@ impl NativeModel {
             kv_cache,
             past_seq_len: 0,
             greedy_mode: false,
+            scratch: {
+                let q_n = num_heads * head_dim;
+                let k_n = kv_num_heads * head_dim;
+                let gate_n = if num_layers > 0 {
+                    graph.node.iter()
+                        .find(|n| n.op_type == "MatMulNBits" && n.name.contains("gate_proj") && n.name.contains("layers.0"))
+                        .and_then(|n| n.attribute.iter().find(|a| a.name == "N").map(|a| a.i as usize))
+                        .unwrap_or(hidden_size * 3)
+                } else { hidden_size * 3 };
+                let alloc = |size: usize| p_ref.alloc((size as u64) * 4);
+                ScratchBuffers {
+                    hidden: alloc(hidden_size),
+                    normed: alloc(hidden_size),
+                    q: alloc(q_n),
+                    k: alloc(k_n),
+                    v: alloc(k_n),
+                    q_normed: alloc(q_n),
+                    k_normed: alloc(k_n),
+                    q_roped: alloc(q_n),
+                    k_roped: alloc(k_n),
+                    attn_out: alloc(q_n),
+                    attn_proj: alloc(hidden_size),
+                    normed2: alloc(hidden_size),
+                    gate: alloc(gate_n),
+                    up: alloc(gate_n),
+                    ffn: alloc(gate_n),
+                    ffn_out: alloc(hidden_size),
+                    residual: alloc(hidden_size),
+                    logits: alloc(vocab_size),
+                }
+            },
         })
     }
 
