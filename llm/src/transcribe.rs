@@ -11,8 +11,8 @@ use std::path::Path;
 use std::sync::Arc;
 
 use crate::audio;
-use crate::backend::wgpu_backend::graph_model::{Architecture, GraphModel, GraphModelConfig};
-use crate::backend::wgpu_backend::pipelines::Pipelines;
+use crate::backend::wgpu::graph_model::{Architecture, GraphModel, GraphModelConfig};
+use crate::backend::wgpu::pipelines::Pipelines;
 use crate::ir::templates::{whisper_encoder_decoder, WhisperConfig};
 use crate::loader::ggml::{load_ggml_full, GgmlWhisperData, MelFilters, WhisperHparams};
 

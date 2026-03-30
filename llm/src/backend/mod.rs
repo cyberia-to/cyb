@@ -2,7 +2,7 @@
 //!
 //! Pluggable compute backends: wgpu (cross-platform) + metal (Apple Silicon).
 
-pub mod wgpu_backend;
+pub mod wgpu;
 
 #[cfg(target_os = "macos")]
 pub mod metal;
@@ -33,10 +33,10 @@ pub trait Backend {
 /// Detect best available backend
 pub fn detect_backend() -> Box<dyn Backend> {
     log::info!("Detecting best available backend...");
-    Box::new(wgpu_backend::WgpuBackend::new())
+    Box::new(wgpu::WgpuBackend::new())
 }
 
 /// Get the wgpu backend pipelines for direct model loading
-pub fn create_wgpu_backend() -> wgpu_backend::WgpuBackend {
-    wgpu_backend::WgpuBackend::new()
+pub fn create_wgpu_backend() -> wgpu::WgpuBackend {
+    wgpu::WgpuBackend::new()
 }

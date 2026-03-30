@@ -7,6 +7,10 @@ edition = "2024"
 name = "cyb-llm"
 path = "src/main.rs"
 
+[[example]]
+name = "bench"
+path = "examples/bench.rs"
+
 [dependencies]
 # GPU compute
 wgpu = { version = "24", features = ["wgsl"] }
@@ -29,9 +33,10 @@ env_logger = "0.11"
 clap = { version = "4", features = ["derive"] }
 half = { version = "2", features = ["num-traits"] }
 
-# ANE driver (macOS only)
+# Apple Silicon drivers (macOS only)
 [target.'cfg(target_os = "macos")'.dependencies]
-ane = { path = "../../rane" }
+rane = "0.1"
+aruminium = "0.1"
 
 [build-dependencies]
 prost-build = "0.13"

@@ -286,7 +286,7 @@ fn main() {
 /// Run BERT embedding via GraphModel
 fn run_embed(model_path: &str, text: &str) {
     use cyb_llm::ir::templates::{bert_encoder, modernbert_encoder, BertConfig};
-    use cyb_llm::backend::wgpu_backend::graph_model::{GraphModel, GraphModelConfig, Architecture};
+    use cyb_llm::backend::wgpu::graph_model::{GraphModel, GraphModelConfig, Architecture};
 
     let path = std::path::Path::new(model_path);
     let model_dir = path.parent().unwrap_or(std::path::Path::new("."));

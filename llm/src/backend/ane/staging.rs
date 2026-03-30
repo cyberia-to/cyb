@@ -4,7 +4,7 @@
 //! into IOSurface buffers in the fp16 layout expected by ANE programs.
 
 use crate::config::ModelConfig;
-use ane::{cvt_f16_f32, f32_to_fp16, AneSurface};
+use rane::{cvt_f16_f32, f32_to_fp16, AneSurface};
 
 // ── Weight staging ──
 

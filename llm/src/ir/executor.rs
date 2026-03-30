@@ -15,8 +15,8 @@ use super::graph::{AttrValue, Graph, Node, TensorId};
 use super::jets::JetRegistry;
 use super::ops::Op;
 
-use crate::backend::wgpu_backend::dispatch;
-use crate::backend::wgpu_backend::pipelines::{ComputeShader, Pipelines};
+use crate::backend::wgpu::dispatch;
+use crate::backend::wgpu::pipelines::{ComputeShader, Pipelines};
 
 /// Quantization format for GPU weight buffers
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

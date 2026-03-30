@@ -1,7 +1,7 @@
 //! FFN MIL kernel: fused SwiGLU forward with residual
 //! Full port of gen_ffn_fused_dynamic_alpha from mil_dynamic.h
 
-use ane::{mil_footer, mil_header, MilProgram};
+use rane::{mil_footer, mil_header, MilProgram};
 use crate::config::ModelConfig;
 
 /// Fused FFN forward: SwiGLU(x2norm @ W1, x2norm @ W3) @ W2 + x2 (residual)

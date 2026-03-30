@@ -5,8 +5,8 @@ pub mod sampler;
 use std::path::Path;
 use std::sync::Arc;
 
-use crate::backend::wgpu_backend::model::{NativeModel, argmax, sample_top_p};
-use crate::backend::wgpu_backend::pipelines::Pipelines;
+use crate::backend::wgpu::model::{NativeModel, argmax, sample_top_p};
+use crate::backend::wgpu::pipelines::Pipelines;
 
 /// Text generator — model + tokenizer + generation loop
 pub struct TextGenerator {

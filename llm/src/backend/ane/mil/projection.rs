@@ -1,7 +1,7 @@
 //! Projection MIL kernels: QKV, Wo, and backward passes
 //! Ports gen_qkv_proj_dynamic, gen_wo_fwd_dynamic, gen_*_bwd from mil_dynamic.h
 
-use ane::{gen_dyn_matmul, mil_footer, mil_header, MilProgram};
+use rane::{gen_dyn_matmul, mil_footer, mil_header, MilProgram};
 use crate::config::ModelConfig;
 
 /// QKV projection: xnorm @ [Wq, Wk, Wv] → concat(Q, K, V)

@@ -275,10 +275,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "ane"
-version = "0.1.0"
-
-[[package]]
 name = "anes"
 version = "0.1.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -403,6 +399,12 @@ name = "arrayvec"
 version = "0.7.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
+
+[[package]]
+name = "aruminium"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ab2465e8e9fffcee0fa18ccc8df279c986db1f188f7beccb5b9d51c92408d1de"
 
 [[package]]
 name = "as-raw-xcb-connection"
@@ -3262,7 +3264,7 @@ dependencies = [
 name = "cyb-llm"
 version = "0.1.0"
 dependencies = [
- "ane",
+ "aruminium",
  "bytemuck",
  "clap",
  "env_logger 0.11.9",
@@ -3273,6 +3275,7 @@ dependencies = [
  "pollster",
  "prost",
  "prost-build",
+ "rane",
  "serde",
  "serde_json",
  "tokenizers",
@@ -9150,6 +9153,12 @@ checksum = "16abd0c1b639e9eb4d7c50c0b8100b0d0f849be2349829c740fe8e6eb4816429"
 dependencies = [
  "rand_core 0.5.1",
 ]
+
+[[package]]
+name = "rane"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf865ba93e6e07be8f5a17f884f266f8df03daffd0efc53ff4af672d877d1b0d"
 
 [[package]]
 name = "range-alloc"

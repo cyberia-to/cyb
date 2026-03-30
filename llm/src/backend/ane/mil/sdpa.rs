@@ -1,9 +1,9 @@
 //! SDPA (Scaled Dot-Product Attention) MIL kernels
 //! Full port of gen_sdpa_fwd_dynamic, gen_sdpa_bwd1_noweight, gen_sdpa_bwd2
 
-use ane::{build_weight_blob, mil_footer, mil_header, MilProgram};
+use rane::{build_weight_blob, mil_footer, mil_header, MilProgram};
 use crate::config::ModelConfig;
-use ane::f32_to_fp16;
+use rane::f32_to_fp16;
 
 /// Generate causal mask blob: mask[t,t2] = 0 if t2<=t, -65504 otherwise
 pub fn causal_mask_blob(seq: usize) -> Vec<u8> {
