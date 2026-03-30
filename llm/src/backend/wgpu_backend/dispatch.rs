@@ -2036,6 +2036,53 @@ pub fn attention_decode_prepare(
     (output, bg, (num_heads, 1, 1))
 }
 
+/// Prepare encoder attention (multi-position self-attention, no causal mask)
+/// Q, K, V: [num_heads * seq_len * head_dim]
+/// Output:  [num_heads * seq_len * head_dim]
+/// Dispatch: (num_heads, seq_len, 1)
+pub fn attention_encode_prepare(
+    p: &Pipelines,
+    q: &wgpu::Buffer,
+    k: &wgpu::Buffer,
+    v: &wgpu::Buffer,
+    num_heads: u32,
+    head_dim: u32,
+    seq_len: u32,
+    scale: f32,
+) -> (wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32)) {
+    let output_size = num_heads * seq_len * head_dim;
+    let output = p.alloc((output_size as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        head_dim: u32,
+        total_seq: u32,  // = seq_len for encoder
+        num_heads: u32,
+        scale: f32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        head_dim,
+        total_seq: seq_len,
+        num_heads,
+        scale,
+    }));
+
+    let bg = p.create_bind_group(
+        &p.attention_encode,
+        &[
+            q.as_entire_binding(),
+            k.as_entire_binding(),
+            v.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+    );
+
+    (output, bg, (num_heads, seq_len, 1))
+}
+
 /// Prepare KV head expansion
 pub fn kv_expand_prepare(
     p: &Pipelines,
@@ -2555,3 +2602,69 @@ pub fn prepare_matmul_for_quant<'a>(
 
 // Note: precompute_matmul_for_quant is defined in model.rs where the
 // per-format precompute functions (precompute_q4_matmul etc.) are in scope.
+
+/// Prepare Conv1d dispatch — returns (output_buffer, bind_group, workgroups)
+pub fn conv1d_prepare(
+    p: &Pipelines,
+    input: &wgpu::Buffer,
+    weight: &wgpu::Buffer,
+    bias: &wgpu::Buffer,
+    batch_size: u32,
+    in_channels: u32,
+    out_channels: u32,
+    in_length: u32,
+    kernel_size: u32,
+    stride: u32,
+    padding: u32,
+    groups: u32,
+) -> (wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32)) {
+    let out_length = (in_length + 2 * padding - kernel_size) / stride + 1;
+    let total_output = batch_size * out_channels * out_length;
+    let output = p.alloc((total_output as u64) * 4);
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        in_channels: u32,
+        out_channels: u32,
+        in_length: u32,
+        out_length: u32,
+        kernel_size: u32,
+        stride: u32,
+        padding: u32,
+        groups: u32,
+        batch_size: u32,
+        total_output: u32,
+        _pad0: u32,
+        _pad1: u32,
+    }
+
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&Params {
+        in_channels,
+        out_channels,
+        in_length,
+        out_length,
+        kernel_size,
+        stride,
+        padding,
+        groups,
+        batch_size,
+        total_output,
+        _pad0: 0,
+        _pad1: 0,
+    }));
+
+    let bg = p.create_bind_group(
+        &p.conv1d,
+        &[
+            input.as_entire_binding(),
+            weight.as_entire_binding(),
+            bias.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+    );
+
+    let wg = ((total_output + 255) / 256, 1, 1);
+    (output, bg, wg)
+}

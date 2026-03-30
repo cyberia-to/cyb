@@ -84,6 +84,11 @@ pub fn detect_format(path: &Path) -> Result<ModelFormat, String> {
         return Ok(ModelFormat::Onnx);
     }
 
+    // FastText magic: 0x2f4f16ba (little-endian)
+    if bytes_read >= 4 && magic[0..4] == [0xba, 0x16, 0x4f, 0x2f] {
+        return Ok(ModelFormat::Bin);
+    }
+
     // Check if it could be a fasttext .bin (first 4 bytes as i32 could be vocab_size)
     if bytes_read >= 8 {
         let first = i32::from_le_bytes([magic[0], magic[1], magic[2], magic[3]]);

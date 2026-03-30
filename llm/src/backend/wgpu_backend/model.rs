@@ -80,6 +80,9 @@ struct LayerWeights {
     v_proj_scales: wgpu::Buffer,
     v_proj_quant: QuantFormat,
     v_n: u32,
+    q_proj_bias: Option<wgpu::Buffer>,
+    k_proj_bias: Option<wgpu::Buffer>,
+    v_proj_bias: Option<wgpu::Buffer>,
     q_norm_weight: Option<wgpu::Buffer>,
     k_norm_weight: Option<wgpu::Buffer>,
     o_proj_packed: wgpu::Buffer,
@@ -715,6 +718,9 @@ impl NativeModel {
                 v_proj_scales,
                 v_proj_quant: QuantFormat::Q4,
                 v_n: layer_v_n,
+                q_proj_bias: None,
+                k_proj_bias: None,
+                v_proj_bias: None,
                 q_norm_weight,
                 k_norm_weight,
                 o_proj_packed,
@@ -859,6 +865,22 @@ impl NativeModel {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
+        // Load safetensors file (needed to detect qk_norm and biases)
+        let graph = crate::loader::safetensors::load_safetensors(path)?;
+
+        // Detect QK norm from weight names
+        let has_qk_norm = graph.get_weight("model.layers.0.self_attn.q_norm.weight").is_some();
+
+        // Detect attention biases
+        let has_attn_bias = graph.get_weight("model.layers.0.self_attn.q_proj.bias").is_some();
+
+        if has_qk_norm {
+            log::info!("Detected QK normalization (Qwen3-style)");
+        }
+        if has_attn_bias {
+            log::info!("Detected attention biases (Qwen2-style)");
+        }
+
         let config = ModelConfig {
             hidden_size,
             num_heads,
@@ -867,16 +889,13 @@ impl NativeModel {
             num_layers,
             vocab_size,
             block_size: 32, // not used for f32
-            has_qk_norm: false,
+            has_qk_norm,
         };
 
         log::info!(
             "Safetensors config: hidden={}, heads={}, kv_heads={}, head_dim={}, layers={}, vocab={}, ffn={}, rope_theta={}",
             hidden_size, num_heads, kv_num_heads, head_dim, num_layers, vocab_size, intermediate_size, rope_theta,
         );
-
-        // Load safetensors file
-        let graph = crate::loader::safetensors::load_safetensors(path)?;
 
         // Helper: convert weight data to f32 Vec
         let weight_to_f32 = |name: &str| -> Result<Vec<f32>, String> {
@@ -938,6 +957,30 @@ impl NativeModel {
             let down_proj_f32 = weight_to_f32(&format!("model.layers.{i}.mlp.down_proj.weight"))?;
             let down_proj_weight = pipelines.upload_f32(&down_proj_f32);
 
+            // Load attention biases (Qwen2-style)
+            let q_proj_bias = if has_attn_bias {
+                let b = weight_to_f32(&format!("model.layers.{i}.self_attn.q_proj.bias"))?;
+                Some(pipelines.upload_f32(&b))
+            } else { None };
+            let k_proj_bias = if has_attn_bias {
+                let b = weight_to_f32(&format!("model.layers.{i}.self_attn.k_proj.bias"))?;
+                Some(pipelines.upload_f32(&b))
+            } else { None };
+            let v_proj_bias = if has_attn_bias {
+                let b = weight_to_f32(&format!("model.layers.{i}.self_attn.v_proj.bias"))?;
+                Some(pipelines.upload_f32(&b))
+            } else { None };
+
+            // Load QK norm weights (Qwen3-style)
+            let q_norm_w = if has_qk_norm {
+                let w = weight_to_f32(&format!("model.layers.{i}.self_attn.q_norm.weight"))?;
+                Some(pipelines.upload_f32(&w))
+            } else { None };
+            let k_norm_w = if has_qk_norm {
+                let w = weight_to_f32(&format!("model.layers.{i}.self_attn.k_norm.weight"))?;
+                Some(pipelines.upload_f32(&w))
+            } else { None };
+
             // Dummy scales buffer (not used for f32 path)
             let dummy_scales = pipelines.upload_f32(&[0.0]);
 
@@ -981,8 +1024,11 @@ impl NativeModel {
                 v_proj_scales: dummy_scales.clone(),
                 v_proj_quant: QuantFormat::F32,
                 v_n: kv_dim as u32,
-                q_norm_weight: None,
-                k_norm_weight: None,
+                q_proj_bias,
+                k_proj_bias,
+                v_proj_bias,
+                q_norm_weight: q_norm_w,
+                k_norm_weight: k_norm_w,
                 o_proj_packed: o_proj_weight,
                 o_proj_scales: dummy_scales.clone(),
                 o_proj_quant: QuantFormat::F32,
@@ -1003,10 +1049,22 @@ impl NativeModel {
                 params: LayerParamBuffers {
                     input_norm_params,
                     input_norm_wg,
-                    q_norm_params: None,
-                    q_norm_wg: (0, 0, 0),
-                    k_norm_params: None,
-                    k_norm_wg: (0, 0, 0),
+                    q_norm_params: if has_qk_norm {
+                        let (p, _) = precompute_rms_norm(&pipelines, num_heads as u32, hd, rms_norm_eps);
+                        Some(p)
+                    } else { None },
+                    q_norm_wg: if has_qk_norm {
+                        let (_, w) = precompute_rms_norm(&pipelines, num_heads as u32, hd, rms_norm_eps);
+                        w
+                    } else { (0, 0, 0) },
+                    k_norm_params: if has_qk_norm {
+                        let (p, _) = precompute_rms_norm(&pipelines, kv_num_heads as u32, hd, rms_norm_eps);
+                        Some(p)
+                    } else { None },
+                    k_norm_wg: if has_qk_norm {
+                        let (_, w) = precompute_rms_norm(&pipelines, kv_num_heads as u32, hd, rms_norm_eps);
+                        w
+                    } else { (0, 0, 0) },
                     post_norm_params,
                     post_norm_wg,
                     q_matmul_params,
@@ -1681,6 +1739,77 @@ impl NativeModel {
                     .chunks_exact(2)
                     .map(|c| half::f16::from_le_bytes([c[0], c[1]]).to_f32())
                     .collect(),
+                DType::Q8 => {
+                    // Q8_0: blocks of 34 bytes = 2 (f16 scale) + 32 (int8 data), 32 elements each
+                    let block_size = 34;
+                    let mut out = Vec::new();
+                    for block in data.chunks_exact(block_size) {
+                        let scale = half::f16::from_le_bytes([block[0], block[1]]).to_f32();
+                        for &byte in &block[2..34] {
+                            out.push((byte as i8) as f32 * scale);
+                        }
+                    }
+                    out
+                }
+                DType::Q4 | DType::Q4_1 => {
+                    // Q4_0: blocks of 18 bytes = 2 (f16 scale) + 16 (4-bit data), 32 elements each
+                    let block_bytes = if dtype == DType::Q4 { 18 } else { 20 };
+                    let mut out = Vec::new();
+                    for block in data.chunks_exact(block_bytes) {
+                        let scale = half::f16::from_le_bytes([block[0], block[1]]).to_f32();
+                        let data_start = if dtype == DType::Q4 { 2 } else { 4 };
+                        for i in 0..16 {
+                            let byte = block[data_start + i];
+                            let lo = (byte & 0x0F) as i8 - 8;
+                            let hi = ((byte >> 4) & 0x0F) as i8 - 8;
+                            out.push(lo as f32 * scale);
+                            out.push(hi as f32 * scale);
+                        }
+                    }
+                    out
+                }
+                DType::Q4_K | DType::Q6_K | DType::Q2_K | DType::Q3_K | DType::Q5_K | DType::Q4_1 => {
+                    // K-quant types: dequantize to f32 via our Q4 intermediate
+                    log::debug!("Dequantizing {:?} to f32 ({} bytes)", dtype, data.len());
+                    // Compute num_elements from data size + block format
+                    let (super_block_bytes, elements_per_sb) = match dtype {
+                        DType::Q6_K => (210, 256),
+                        DType::Q4_K => (144, 256),
+                        DType::Q5_K => (176, 256),
+                        DType::Q3_K => (110, 256),
+                        DType::Q2_K => (84, 256),
+                        DType::Q4_1 => (20, 32),  // not a K-quant but handled here
+                        _ => (1, 1),
+                    };
+                    let num_elements = (data.len() / super_block_bytes) * elements_per_sb;
+                    let inferred_shape = vec![num_elements];
+                    let (packed, scales) = match dtype {
+                        DType::Q4_K => convert_gguf_q4k(data, &inferred_shape),
+                        DType::Q6_K => convert_gguf_q6k(data, &inferred_shape),
+                        DType::Q2_K => convert_gguf_q2k(data, &inferred_shape),
+                        DType::Q3_K => convert_gguf_q3k(data, &inferred_shape),
+                        DType::Q5_K => convert_gguf_q5k(data, &inferred_shape),
+                        _ => (Vec::new(), Vec::new()),
+                    };
+                    // Dequant Q4 packed → f32: each scale covers 32 elements
+                    let block_size = 32usize;
+                    let mut out = Vec::with_capacity(scales.len() * block_size);
+                    for (bi, &scale) in scales.iter().enumerate() {
+                        // Each block: 32 elements packed as 16 bytes = 4 u32s
+                        let u32_start = bi * (block_size / 2) / 4;
+                        for j in 0..block_size {
+                            let u32_idx = u32_start + j / 8;
+                            let nibble_idx = j % 8;
+                            if u32_idx < packed.len() {
+                                let nibble = ((packed[u32_idx] >> (nibble_idx * 4)) & 0xF) as i8 - 8;
+                                out.push(nibble as f32 * scale);
+                            } else {
+                                out.push(0.0);
+                            }
+                        }
+                    }
+                    out
+                }
                 _ => {
                     log::warn!("Unexpected dtype {:?} for f32 conversion", dtype);
                     data.chunks_exact(4)
@@ -1828,6 +1957,9 @@ impl NativeModel {
                 v_proj_scales,
                 v_proj_quant: quant_format,
                 v_n: kv_dim as u32,
+                q_proj_bias: None,
+                k_proj_bias: None,
+                v_proj_bias: None,
                 q_norm_weight: None,
                 k_norm_weight: None,
                 o_proj_packed,
@@ -2002,26 +2134,43 @@ impl NativeModel {
                 );
                 all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: norm_bg, wg: norm_wg });
 
-                let (q_buf, q_bg, q_wg, q_shader) = dispatch::prepare_matmul_for_quant(
+                let (mut q_buf, q_bg, q_wg, q_shader) = dispatch::prepare_matmul_for_quant(
                     &p, &normed, &self.layers[i].q_proj_packed, &self.layers[i].q_proj_scales,
                     &lp.q_matmul_params, self.layers[i].q_n, lp.q_matmul_wg,
                     quant_fmt_to_dispatch(quant_fmt),
                 );
                 all_dispatches.push(DispatchCmd { shader: q_shader, bg: q_bg, wg: q_wg });
 
-                let (k_buf, k_bg, k_wg, k_shader) = dispatch::prepare_matmul_for_quant(
+                let (mut k_buf, k_bg, k_wg, k_shader) = dispatch::prepare_matmul_for_quant(
                     &p, &normed, &self.layers[i].k_proj_packed, &self.layers[i].k_proj_scales,
                     &lp.k_matmul_params, self.layers[i].k_n, lp.k_matmul_wg,
                     quant_fmt_to_dispatch(quant_fmt),
                 );
                 all_dispatches.push(DispatchCmd { shader: k_shader, bg: k_bg, wg: k_wg });
 
-                let (v_buf, v_bg, v_wg, v_shader) = dispatch::prepare_matmul_for_quant(
+                let (mut v_buf, v_bg, v_wg, v_shader) = dispatch::prepare_matmul_for_quant(
                     &p, &normed, &self.layers[i].v_proj_packed, &self.layers[i].v_proj_scales,
                     &lp.v_matmul_params, self.layers[i].v_n, lp.v_matmul_wg,
                     quant_fmt_to_dispatch(quant_fmt),
                 );
                 all_dispatches.push(DispatchCmd { shader: v_shader, bg: v_bg, wg: v_wg });
+
+                // Add attention biases (Qwen2-style)
+                if let Some(ref bias) = self.layers[i].q_proj_bias {
+                    let (qb, qb_bg, qb_wg) = dispatch::add_prepare(&p, &q_buf, bias, self.layers[i].q_n);
+                    all_dispatches.push(DispatchCmd { shader: &p.add, bg: qb_bg, wg: qb_wg });
+                    q_buf = qb;
+                }
+                if let Some(ref bias) = self.layers[i].k_proj_bias {
+                    let (kb, kb_bg, kb_wg) = dispatch::add_prepare(&p, &k_buf, bias, self.layers[i].k_n);
+                    all_dispatches.push(DispatchCmd { shader: &p.add, bg: kb_bg, wg: kb_wg });
+                    k_buf = kb;
+                }
+                if let Some(ref bias) = self.layers[i].v_proj_bias {
+                    let (vb, vb_bg, vb_wg) = dispatch::add_prepare(&p, &v_buf, bias, self.layers[i].v_n);
+                    all_dispatches.push(DispatchCmd { shader: &p.add, bg: vb_bg, wg: vb_wg });
+                    v_buf = vb;
+                }
 
                 // Q/K norm (optional)
                 let q_for_rope;
@@ -2220,9 +2369,19 @@ impl NativeModel {
 
             for s in 0..seq_len {
                 let normed_slice = slice_buffer(&p, &mut enc, &normed, s * self.config.hidden_size, self.config.hidden_size);
-                let q_pos = dispatch_matmul_enc(&p, &mut enc, quant_fmt, &normed_slice, &self.layers[i].q_proj_packed, &self.layers[i].q_proj_scales, layer_q_n, hidden_size, block_size);
-                let k_pos = dispatch_matmul_enc(&p, &mut enc, quant_fmt, &normed_slice, &self.layers[i].k_proj_packed, &self.layers[i].k_proj_scales, layer_k_n, hidden_size, block_size);
-                let v_pos = dispatch_matmul_enc(&p, &mut enc, quant_fmt, &normed_slice, &self.layers[i].v_proj_packed, &self.layers[i].v_proj_scales, layer_v_n, hidden_size, block_size);
+                let mut q_pos = dispatch_matmul_enc(&p, &mut enc, quant_fmt, &normed_slice, &self.layers[i].q_proj_packed, &self.layers[i].q_proj_scales, layer_q_n, hidden_size, block_size);
+                let mut k_pos = dispatch_matmul_enc(&p, &mut enc, quant_fmt, &normed_slice, &self.layers[i].k_proj_packed, &self.layers[i].k_proj_scales, layer_k_n, hidden_size, block_size);
+                let mut v_pos = dispatch_matmul_enc(&p, &mut enc, quant_fmt, &normed_slice, &self.layers[i].v_proj_packed, &self.layers[i].v_proj_scales, layer_v_n, hidden_size, block_size);
+                // Add attention biases
+                if let Some(ref bias) = self.layers[i].q_proj_bias {
+                    q_pos = dispatch::add(&p, &mut enc, &q_pos, bias, layer_q_n);
+                }
+                if let Some(ref bias) = self.layers[i].k_proj_bias {
+                    k_pos = dispatch::add(&p, &mut enc, &k_pos, bias, layer_k_n);
+                }
+                if let Some(ref bias) = self.layers[i].v_proj_bias {
+                    v_pos = dispatch::add(&p, &mut enc, &v_pos, bias, layer_v_n);
+                }
                 copy_into(&mut enc, &q_pos, &q_combined, s * layer_q_n as usize, layer_q_n as usize);
                 copy_into(&mut enc, &k_pos, &k_combined, s * layer_k_n as usize, layer_k_n as usize);
                 copy_into(&mut enc, &v_pos, &v_combined, s * layer_v_n as usize, layer_v_n as usize);

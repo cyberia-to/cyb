@@ -211,6 +211,19 @@ impl GraphExecutor {
         output_tensor_name: &str,
         output_size: usize,
     ) -> Vec<f32> {
+        self.execute_encode_with_seq_len(graph, input_bufs, weights, output_tensor_name, output_size, 1)
+    }
+
+    /// Execute encoder with explicit sequence length (for multi-token BERT inputs).
+    pub fn execute_encode_with_seq_len(
+        &self,
+        graph: &Graph,
+        input_bufs: HashMap<String, wgpu::Buffer>,
+        weights: &HashMap<String, GpuWeight>,
+        output_tensor_name: &str,
+        output_size: usize,
+        seq_len: usize,
+    ) -> Vec<f32> {
         let p = &self.pipelines;
         p.begin_frame();
 
@@ -233,9 +246,9 @@ impl GraphExecutor {
                 &mut all_dispatches,
                 &mut kv_cache,
                 &mut layer_idx,
-                0,     // past_seq_len
-                1,     // total_seq (not meaningful for encoder)
-                1,     // seq_len
+                0,              // past_seq_len
+                seq_len,        // total_seq
+                seq_len,        // seq_len
                 &dummy_cos,
                 &dummy_sin,
             );
@@ -286,6 +299,17 @@ impl GraphExecutor {
         let p = &self.pipelines;
         let cfg = &self.config;
 
+        // Skip nodes whose inputs aren't available yet.
+        // This happens when running a partial graph (e.g., encoder-only from
+        // an encoder-decoder graph — decoder nodes have no inputs available).
+        for input_id in &node.inputs {
+            if !buffers.contains_key(input_id) && !weights.contains_key(input_id) {
+                log::debug!("Skipping node {} ({}): input '{}' not available",
+                    node.id, node.op.name(), input_id);
+                return;
+            }
+        }
+
         match &node.op {
             // ============================================================
             // Token embedding
@@ -312,14 +336,35 @@ impl GraphExecutor {
                         return;
                     }
                 } else {
-                    // Single input "input_ids" — need embed table from weights
-                    let embed_table = weights
-                        .get("model.embed_tokens.weight")
-                        .expect("Missing model.embed_tokens.weight");
-                    (
-                        embed_table.buffer(),
-                        buffers.get(ids_id).unwrap() as &wgpu::Buffer,
-                    )
+                    // Single input "input_ids" — find embed table from weights
+                    // Try attr "embed_weight" first, then common names
+                    let embed_name = node.attrs.get("embed_weight")
+                        .and_then(|v| match v {
+                            AttrValue::String(s) => Some(s.as_str()),
+                            _ => None,
+                        });
+
+                    let embed_table = if let Some(name) = embed_name {
+                        weights.get(name)
+                    } else {
+                        None
+                    }
+                    .or_else(|| weights.get("model.embed_tokens.weight"))
+                    .or_else(|| weights.get("decoder.token_embedding.weight"))
+                    .or_else(|| weights.get("embeddings.word_embeddings.weight"))
+                    .or_else(|| weights.get("transformer.wte.weight"))
+                    .or_else(|| weights.get("embed_tokens.weight"))
+                    .or_else(|| weights.get("wte.weight"));
+
+                    if let (Some(table), Some(ids_buf)) = (embed_table, buffers.get(ids_id)) {
+                        (
+                            table.buffer(),
+                            ids_buf as &wgpu::Buffer,
+                        )
+                    } else {
+                        log::debug!("TokenEmbed: skipping node {} (missing weight or input)", node.id);
+                        return;
+                    }
                 };
 
                 let (out, bg, wg) =
@@ -472,34 +517,52 @@ impl GraphExecutor {
                 num_heads,
                 kv_heads,
                 head_dim: hd,
-                ..
+                causal,
             } => {
-                // inputs[0] = q_roped (or rope_out), inputs[1] = kv_cached (or k)
+                // inputs[0] = q, inputs[1] = k
                 let q_buf = resolve_buf(&node.inputs[0], buffers, weights);
+                let kv_id = &node.inputs[1];
 
-                // For decode: we need the k and v from KV cache + current step
-                // The template wires rope_out -> sdpa, kv_cached -> sdpa
-                // In the hardcoded path, the k/v are already in the KV cache.
-                // Here, we need to handle KV append ourselves for the current
-                // layer, then do attention.
+                // ---- Encoder attention (no KV cache, full sequence) ----
+                if !causal && kv_cache.is_empty() {
+                    let k_buf = resolve_buf(kv_id, buffers, weights);
+                    let empty_buf = p.alloc(4);
+                    let v_buf_id = node.attrs.get("v_tensor")
+                        .and_then(|v| match v {
+                            AttrValue::String(s) => Some(s.clone()),
+                            _ => None,
+                        });
+                    let v_buf = if let Some(ref vid) = v_buf_id {
+                        resolve_buf(vid, buffers, weights)
+                    } else {
+                        &empty_buf
+                    };
 
+                    let enc_seq = attr_u32(node, "positions")
+                        .or_else(|| attr_u32(node, "seq_len"))
+                        .unwrap_or_else(|| {
+                            // Infer from Q buffer: Q = [num_heads * seq * head_dim]
+                            let buf_size = q_buf.size() as u32;
+                            buf_size / (4 * *num_heads * *hd)
+                        });
+
+                    let scale = 1.0 / (*hd as f32).sqrt();
+                    let (attn_out, attn_bg, attn_wg) = dispatch::attention_encode_prepare(
+                        p, q_buf, k_buf, v_buf, *num_heads, *hd, enc_seq, scale,
+                    );
+                    dispatches.push(DispatchCmd {
+                        shader: &p.attention_encode,
+                        bg: attn_bg,
+                        wg: attn_wg,
+                    });
+                    buffers.insert(node.outputs[0].clone(), attn_out);
+                    *layer_idx += 1;
+                    return;
+                }
+
+                // ---- Decoder attention (with KV cache) ----
                 let li = *layer_idx;
 
-                // Get k and v buffers. Look for them in the buffer map
-                // using the node's second input (kv_cached).
-                let kv_id = &node.inputs[1];
-                let _kv_buf = buffers.get(kv_id);
-
-                // For the simple case: k_roped and v_buf are separate tensors
-                // in the buffer map. The template names them:
-                // "{prefix}.rope_out" for q+k combined after rope
-                // "{prefix}.kv_cached" for kv cache output
-                //
-                // In practice for the executor, we need to handle the k and v
-                // append into the KV cache. The q is already ready from rope.
-                // We need the k and v from the layer's matmul outputs.
-
-                // Use the stored k/v from the layer's KV cache
                 let empty_buf = p.alloc(4);
                 let past_k_ref = kv_cache[li]
                     .key
@@ -625,7 +688,11 @@ impl GraphExecutor {
             Op::Add => {
                 let a = resolve_buf(&node.inputs[0], buffers, weights);
                 let b = resolve_buf(&node.inputs[1], buffers, weights);
-                let n = attr_u32(node, "n").unwrap_or(cfg.hidden_size);
+                // Infer element count from buffer sizes (handles multi-token sequences)
+                let n_from_buf = (a.size().min(b.size()) / 4) as u32;
+                let n = if n_from_buf > 0 && seq_len > 1 { n_from_buf } else {
+                    attr_u32(node, "n").unwrap_or(cfg.hidden_size)
+                };
 
                 let (out, bg, wg) = dispatch::add_prepare(p, a, b, n);
                 buffers.insert(node.outputs[0].clone(), out);
@@ -642,10 +709,12 @@ impl GraphExecutor {
             Op::Mul => {
                 let a = resolve_buf(&node.inputs[0], buffers, weights);
                 let b = resolve_buf(&node.inputs[1], buffers, weights);
-                let n = attr_u32(node, "n").unwrap_or(cfg.hidden_size);
+                let n_from_buf = (a.size().min(b.size()) / 4) as u32;
+                let n = if n_from_buf > 0 && seq_len > 1 { n_from_buf } else {
+                    attr_u32(node, "n").unwrap_or(cfg.hidden_size)
+                };
 
                 let (out, bg, wg) = dispatch::add_prepare(p, a, b, n);
-                // Reuse add_prepare shape but use mul shader
                 let out2 = p.alloc((n as u64) * 4);
                 let bg2 = p.create_bind_group(
                     &p.mul,
@@ -670,11 +739,8 @@ impl GraphExecutor {
             // SiLU activation
             // ============================================================
             Op::Silu => {
-                // SiLU is typically followed by Mul in SwiGLU pattern.
-                // We use the fused silu_mul shader when possible.
-                // As a standalone, use silu_mul with the same input twice.
                 let input = resolve_buf(&node.inputs[0], buffers, weights);
-                let n = attr_u32(node, "n").unwrap_or(cfg.hidden_size);
+                let n = infer_n(node, input, seq_len, cfg.hidden_size);
 
                 // Standalone SiLU — use silu_mul with gate=input, up=ones
                 // For SwiGLU pattern, the template should use SwiGlu op or
@@ -694,7 +760,7 @@ impl GraphExecutor {
             Op::SwiGlu => {
                 let gate = resolve_buf(&node.inputs[0], buffers, weights);
                 let up = resolve_buf(&node.inputs[1], buffers, weights);
-                let n = attr_u32(node, "n").unwrap_or(cfg.hidden_size);
+                let n = infer_n(node, resolve_buf(&node.inputs[0], buffers, weights), seq_len, cfg.hidden_size);
 
                 let (out, bg, wg) = dispatch::silu_mul_prepare(p, gate, up, n);
                 buffers.insert(node.outputs[0].clone(), out);
@@ -710,7 +776,7 @@ impl GraphExecutor {
             // ============================================================
             Op::Gelu { .. } => {
                 let input = resolve_buf(&node.inputs[0], buffers, weights);
-                let n = attr_u32(node, "n").unwrap_or(cfg.hidden_size);
+                let n = infer_n(node, resolve_buf(&node.inputs[0], buffers, weights), seq_len, cfg.hidden_size);
                 let out = p.alloc((n as u64) * 4);
                 let bg = p.create_bind_group(
                     &p.gelu,
@@ -813,7 +879,7 @@ impl GraphExecutor {
             Op::Sub => {
                 let a = resolve_buf(&node.inputs[0], buffers, weights);
                 let b = resolve_buf(&node.inputs[1], buffers, weights);
-                let n = attr_u32(node, "n").unwrap_or(cfg.hidden_size);
+                let n = infer_n(node, resolve_buf(&node.inputs[0], buffers, weights), seq_len, cfg.hidden_size);
                 let out = p.alloc((n as u64) * 4);
                 let bg = p.create_bind_group(
                     &p.sub,
@@ -834,7 +900,7 @@ impl GraphExecutor {
 
             Op::Relu => {
                 let input = resolve_buf(&node.inputs[0], buffers, weights);
-                let n = attr_u32(node, "n").unwrap_or(cfg.hidden_size);
+                let n = infer_n(node, resolve_buf(&node.inputs[0], buffers, weights), seq_len, cfg.hidden_size);
                 let out = p.alloc((n as u64) * 4);
                 let bg = p.create_bind_group(
                     &p.relu,
@@ -851,7 +917,7 @@ impl GraphExecutor {
 
             Op::Sigmoid => {
                 let input = resolve_buf(&node.inputs[0], buffers, weights);
-                let n = attr_u32(node, "n").unwrap_or(cfg.hidden_size);
+                let n = infer_n(node, resolve_buf(&node.inputs[0], buffers, weights), seq_len, cfg.hidden_size);
                 let out = p.alloc((n as u64) * 4);
                 let bg = p.create_bind_group(
                     &p.sigmoid,
@@ -868,7 +934,7 @@ impl GraphExecutor {
 
             Op::Tanh => {
                 let input = resolve_buf(&node.inputs[0], buffers, weights);
-                let n = attr_u32(node, "n").unwrap_or(cfg.hidden_size);
+                let n = infer_n(node, resolve_buf(&node.inputs[0], buffers, weights), seq_len, cfg.hidden_size);
                 let out = p.alloc((n as u64) * 4);
                 let bg = p.create_bind_group(
                     &p.tanh_act,
@@ -940,7 +1006,7 @@ impl GraphExecutor {
             Op::GeGlu => {
                 let gate = resolve_buf(&node.inputs[0], buffers, weights);
                 let up = resolve_buf(&node.inputs[1], buffers, weights);
-                let n = attr_u32(node, "n").unwrap_or(cfg.hidden_size);
+                let n = infer_n(node, resolve_buf(&node.inputs[0], buffers, weights), seq_len, cfg.hidden_size);
                 let out = p.alloc((n as u64) * 4);
                 let bg = p.create_bind_group(
                     &p.geglu,
@@ -1002,6 +1068,55 @@ impl GraphExecutor {
             }
 
             // ============================================================
+            // Conv1d — 1D convolution (Whisper audio encoder, TTS)
+            // ============================================================
+            Op::Conv1d {
+                kernel,
+                stride,
+                padding,
+                groups,
+            } => {
+                // inputs[0] = input, inputs[1] = weight, inputs[2] = bias
+                let input = resolve_buf(&node.inputs[0], buffers, weights);
+                let weight_buf = resolve_buf(&node.inputs[1], buffers, weights);
+                let bias_buf = if node.inputs.len() > 2 {
+                    resolve_buf(&node.inputs[2], buffers, weights)
+                } else {
+                    &p.alloc(4) // dummy zero bias
+                };
+
+                let in_channels = attr_u32(node, "in_channels").unwrap_or(cfg.hidden_size);
+                let out_channels = attr_u32(node, "out_channels").unwrap_or(cfg.hidden_size);
+                let in_length = attr_u32(node, "in_length").unwrap_or_else(|| {
+                    // Infer from input buffer size: buffer_bytes / (4 * in_channels)
+                    let buf_size = input.size() as u32;
+                    buf_size / (4 * in_channels)
+                });
+                let batch_size = attr_u32(node, "batch_size").unwrap_or(1);
+
+                let (out, bg, wg) = dispatch::conv1d_prepare(
+                    p,
+                    input,
+                    weight_buf,
+                    bias_buf,
+                    batch_size,
+                    in_channels,
+                    out_channels,
+                    in_length,
+                    *kernel,
+                    *stride,
+                    *padding,
+                    *groups,
+                );
+                buffers.insert(node.outputs[0].clone(), out);
+                dispatches.push(DispatchCmd {
+                    shader: &p.conv1d,
+                    bg,
+                    wg,
+                });
+            }
+
+            // ============================================================
             // Unhandled ops — log warning
             // ============================================================
             _ => {
@@ -1053,6 +1168,17 @@ fn resolve_buf<'a>(
          Check that the graph is topologically sorted and all weights are loaded.",
         id
     );
+}
+
+/// Infer element count `n` for an elementwise op from input buffer sizes.
+/// For multi-token encoder passes (seq_len > 1), the buffer may be larger
+/// than the template's `n` attr (which assumes single-token).
+fn infer_n(node: &Node, buf: &wgpu::Buffer, seq_len: usize, default: u32) -> u32 {
+    if seq_len > 1 {
+        let buf_n = (buf.size() / 4) as u32;
+        if buf_n > 0 { return buf_n; }
+    }
+    attr_u32(node, "n").unwrap_or(default)
 }
 
 /// Get a u32 attribute from a node

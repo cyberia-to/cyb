@@ -41,8 +41,8 @@ impl WgpuBackend {
         log::info!("GPU: {}", adapter.get_info().name);
 
         let mut limits = wgpu::Limits::default();
-        limits.max_buffer_size = 1 << 30; // 1GB
-        limits.max_storage_buffer_binding_size = 1 << 30;
+        limits.max_buffer_size = 4u64 << 30; // 4GB
+        limits.max_storage_buffer_binding_size = u32::MAX; // ~4GB
 
         let mut features = wgpu::Features::empty();
         if adapter.features().contains(wgpu::Features::SUBGROUP) {

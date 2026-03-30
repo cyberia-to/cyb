@@ -7,7 +7,6 @@
 //! [tokenizer vocab: n_vocab entries]
 //! [tensor data: n_dims + name_len + type + dims[] + name + aligned data]
 
-use std::collections::HashMap;
 use std::io::{Cursor, Read, Seek, SeekFrom};
 use std::path::Path;
 
@@ -16,7 +15,7 @@ use crate::ir::{DType, Graph, TensorMeta, WeightData};
 const GGML_MAGIC: u32 = 0x67676d6c;
 
 /// Whisper model hyperparameters
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct WhisperHparams {
     pub n_vocab: u32,
     pub n_audio_ctx: u32,
@@ -29,6 +28,25 @@ pub struct WhisperHparams {
     pub n_text_layer: u32,
     pub n_mels: u32,
     pub ftype: u32,
+}
+
+/// Mel filterbank extracted from the GGML file
+#[derive(Debug, Clone)]
+pub struct MelFilters {
+    /// Number of mel bins (typically 80)
+    pub n_mel: usize,
+    /// Number of FFT bins (typically 201 = n_fft/2 + 1)
+    pub n_fft: usize,
+    /// Filter coefficients: [n_mel * n_fft] row-major
+    pub data: Vec<f32>,
+}
+
+/// Full result of loading a GGML whisper model
+pub struct GgmlWhisperData {
+    pub graph: Graph,
+    pub hparams: WhisperHparams,
+    pub mel_filters: MelFilters,
+    pub vocab: Vec<String>,
 }
 
 fn read_u32(cursor: &mut Cursor<&[u8]>) -> Result<u32, String> {
@@ -57,6 +75,8 @@ fn ggml_type_to_dtype(ttype: u32) -> DType {
     }
 }
 
+/// Byte size per block for each GGML type
+#[allow(dead_code)]
 fn ggml_type_element_size(ttype: u32) -> usize {
     match ttype {
         0 => 4,   // f32
@@ -68,6 +88,8 @@ fn ggml_type_element_size(ttype: u32) -> usize {
     }
 }
 
+/// Number of elements per quantization block
+#[allow(dead_code)]
 fn ggml_type_block_size(ttype: u32) -> usize {
     match ttype {
         0 | 1 => 1,    // f32, f16: 1 element per "block"
@@ -76,7 +98,14 @@ fn ggml_type_block_size(ttype: u32) -> usize {
     }
 }
 
+/// Load a GGML whisper model, returning only the Graph (backward compat)
 pub fn load_ggml(path: &Path) -> Result<Graph, String> {
+    let data = load_ggml_full(path)?;
+    Ok(data.graph)
+}
+
+/// Load a GGML whisper model with all data: graph, hparams, mel filters, vocab
+pub fn load_ggml_full(path: &Path) -> Result<GgmlWhisperData, String> {
     let file_data = std::fs::read(path)
         .map_err(|e| format!("Cannot read {}: {e}", path.display()))?;
 
@@ -110,22 +139,33 @@ pub fn load_ggml(path: &Path) -> Result<Graph, String> {
     // Mel filters: n_mel x n_fft
     let filters_n_mel = read_u32(&mut cursor)? as usize;
     let filters_n_fft = read_u32(&mut cursor)? as usize;
-    let mel_bytes = filters_n_mel * filters_n_fft * 4;
-    cursor.seek(SeekFrom::Current(mel_bytes as i64))
-        .map_err(|e| format!("Skip mel filters: {e}"))?;
-    log::info!("Skipped mel filters: {filters_n_mel}x{filters_n_fft}");
+    let n_filter_values = filters_n_mel * filters_n_fft;
+    let mut mel_data = Vec::with_capacity(n_filter_values);
+    for _ in 0..n_filter_values {
+        mel_data.push(read_f32(&mut cursor)?);
+    }
+    log::info!("Loaded mel filters: {filters_n_mel}x{filters_n_fft}");
 
-    // Tokenizer vocab — has its own count (may differ from model n_vocab)
+    let mel_filters = MelFilters {
+        n_mel: filters_n_mel,
+        n_fft: filters_n_fft,
+        data: mel_data,
+    };
+
+    // Tokenizer vocab
     let n_vocab_tokenizer = read_u32(&mut cursor)? as usize;
+    let mut vocab = Vec::with_capacity(n_vocab_tokenizer);
     for _ in 0..n_vocab_tokenizer {
         let word_len = read_u32(&mut cursor)? as usize;
         if word_len > 1024 * 1024 {
             return Err(format!("Vocab word too long: {word_len}"));
         }
-        cursor.seek(SeekFrom::Current(word_len as i64))
-            .map_err(|e| format!("Skip vocab word: {e}"))?;
+        let mut word_buf = vec![0u8; word_len];
+        cursor.read_exact(&mut word_buf)
+            .map_err(|e| format!("Read vocab word: {e}"))?;
+        vocab.push(String::from_utf8_lossy(&word_buf).to_string());
     }
-    log::info!("Skipped {n_vocab_tokenizer} tokenizer vocab entries (model vocab={0})", hparams.n_vocab);
+    log::info!("Loaded {n_vocab_tokenizer} tokenizer vocab entries (model vocab={})", hparams.n_vocab);
 
     // Tensors
     let mut graph = Graph::new();
@@ -192,5 +232,10 @@ pub fn load_ggml(path: &Path) -> Result<Graph, String> {
 
     log::info!("GGML loaded: {tensor_count} tensors from {}", path.display());
 
-    Ok(graph)
+    Ok(GgmlWhisperData {
+        graph,
+        hparams,
+        mel_filters,
+        vocab,
+    })
 }

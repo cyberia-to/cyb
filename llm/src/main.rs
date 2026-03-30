@@ -55,10 +55,14 @@ enum Commands {
         text: String,
     },
 
-    /// Encode audio with a Whisper model (encoder only, outputs embeddings)
-    Encode {
+    /// Transcribe audio with a Whisper model (audio -> text)
+    Transcribe {
         /// Path to GGML whisper model (.bin)
         model: String,
+
+        /// Path to input audio file (16-bit PCM WAV)
+        #[arg(short, long)]
+        audio: String,
     },
 }
 
@@ -273,15 +277,15 @@ fn main() {
             run_embed(&model, &text);
         }
 
-        Commands::Encode { model } => {
-            run_encode(&model);
+        Commands::Transcribe { model, audio } => {
+            run_transcribe(&model, &audio);
         }
     }
 }
 
 /// Run BERT embedding via GraphModel
 fn run_embed(model_path: &str, text: &str) {
-    use cyb_llm::ir::templates::{bert_encoder, BertConfig};
+    use cyb_llm::ir::templates::{bert_encoder, modernbert_encoder, BertConfig};
     use cyb_llm::backend::wgpu_backend::graph_model::{GraphModel, GraphModelConfig, Architecture};
 
     let path = std::path::Path::new(model_path);
@@ -292,6 +296,15 @@ fn run_embed(model_path: &str, text: &str) {
     let bert_config = if config_path.exists() {
         let config_str = std::fs::read_to_string(&config_path).expect("Cannot read config.json");
         let config_json: serde_json::Value = serde_json::from_str(&config_str).expect("Invalid config.json");
+
+        // Auto-detect weight prefix from model_type
+        let model_type = config_json["model_type"].as_str().unwrap_or("");
+        let weight_prefix = match model_type {
+            "roberta" | "xlm-roberta" => "roberta".to_string(),
+            "deberta" | "deberta-v2" => "deberta".to_string(),
+            "bert" => "bert".to_string(),
+            _ => String::new(),  // ModernBERT and others: try no prefix
+        };
 
         BertConfig {
             hidden_size: config_json["hidden_size"].as_u64().unwrap_or(768) as usize,
@@ -304,6 +317,7 @@ fn run_embed(model_path: &str, text: &str) {
             max_position_embeddings: config_json["max_position_embeddings"].as_u64().unwrap_or(512) as usize,
             type_vocab_size: config_json["type_vocab_size"].as_u64().unwrap_or(2) as usize,
             eps: config_json["layer_norm_eps"].as_f64().unwrap_or(1e-12) as f32,
+            weight_prefix,
         }
     } else {
         println!("No config.json found, using BERT-base defaults");
@@ -315,10 +329,146 @@ fn run_embed(model_path: &str, text: &str) {
 
     // Load weights
     println!("Loading weights from {}...", path.display());
-    let graph_with_weights = cyb_llm::loader::load_model(path).expect("Failed to load model");
+    let mut graph_with_weights = cyb_llm::loader::load_model(path).expect("Failed to load model");
+
+    // Detect model type for template selection
+    let model_type = if config_path.exists() {
+        let s = std::fs::read_to_string(&config_path).unwrap_or_default();
+        let j: serde_json::Value = serde_json::from_str(&s).unwrap_or_default();
+        j["model_type"].as_str().unwrap_or("").to_string()
+    } else {
+        String::new()
+    };
+
+    let is_modernbert = model_type == "modernbert";
+
+    // For ModernBERT: split fused QKV and Wi weights into separate Q/K/V and gate/up
+    if is_modernbert {
+        use cyb_llm::ir::{DType, WeightData};
+        let hidden = bert_config.hidden_size;
+        let inter = bert_config.intermediate_size;
+        let keys: Vec<String> = graph_with_weights.weights.keys().cloned().collect();
+        let qkv_keys: Vec<String> = keys.iter().filter(|k| k.ends_with(".attn.Wqkv.weight")).cloned().collect();
+        let wi_keys: Vec<String> = keys.iter().filter(|k| k.ends_with(".mlp.Wi.weight")).cloned().collect();
+
+        for key in qkv_keys {
+            if let Some(w) = graph_with_weights.weights.remove(&key) {
+                let elem_size = w.dtype.element_size();
+                let row_bytes = hidden * elem_size;
+                let prefix = key.strip_suffix(".Wqkv.weight").unwrap().to_string();
+                for (idx, name) in ["q", "k", "v"].iter().enumerate() {
+                    let start = idx * hidden * row_bytes;
+                    let end = start + hidden * row_bytes;
+                    if end <= w.data.len() {
+                        graph_with_weights.weights.insert(
+                            format!("{prefix}.{name}.weight"),
+                            WeightData { data: w.data[start..end].to_vec(), shape: vec![hidden, hidden], dtype: w.dtype },
+                        );
+                    }
+                }
+            }
+        }
+        for key in wi_keys {
+            if let Some(w) = graph_with_weights.weights.remove(&key) {
+                let elem_size = w.dtype.element_size();
+                let row_bytes = hidden * elem_size;
+                let prefix = key.strip_suffix(".Wi.weight").unwrap().to_string();
+                let half = inter * row_bytes;
+                if half * 2 <= w.data.len() {
+                    graph_with_weights.weights.insert(
+                        format!("{prefix}.Wi_gate.weight"),
+                        WeightData { data: w.data[..half].to_vec(), shape: vec![inter, hidden], dtype: w.dtype },
+                    );
+                    graph_with_weights.weights.insert(
+                        format!("{prefix}.Wi_up.weight"),
+                        WeightData { data: w.data[half..half*2].to_vec(), shape: vec![inter, hidden], dtype: w.dtype },
+                    );
+                }
+            }
+        }
+        // ModernBERT: add missing norm weights (ones) and biases (zeros)
+        for i in 0..bert_config.num_layers {
+            for suffix in &["attn_norm.weight", "mlp_norm.weight"] {
+                let name = format!("model.layers.{i}.{suffix}");
+                if !graph_with_weights.weights.contains_key(&name) {
+                    // Identity LayerNorm: weight = all ones
+                    let ones: Vec<u8> = (0..hidden).flat_map(|_| 1.0f32.to_le_bytes()).collect();
+                    graph_with_weights.weights.insert(name, WeightData {
+                        data: ones,
+                        shape: vec![hidden],
+                        dtype: DType::F32,
+                    });
+                }
+            }
+            for suffix in &["attn_norm.bias", "mlp_norm.bias"] {
+                let name = format!("model.layers.{i}.{suffix}");
+                if !graph_with_weights.weights.contains_key(&name) {
+                    graph_with_weights.weights.insert(name, WeightData {
+                        data: vec![0u8; hidden * 4],
+                        shape: vec![hidden],
+                        dtype: DType::F32,
+                    });
+                }
+            }
+        }
+        // Embed norm bias
+        if !graph_with_weights.weights.contains_key("model.embeddings.norm.bias") {
+            graph_with_weights.weights.insert("model.embeddings.norm.bias".to_string(), WeightData {
+                data: vec![0u8; hidden * 4],
+                shape: vec![hidden],
+                dtype: DType::F32,
+            });
+        }
+    }
+
+    // For DeBERTa: rename *_proj.weight → *.weight to match BERT template
+    let is_deberta = model_type.starts_with("deberta");
+    if is_deberta {
+        let rename_keys: Vec<String> = graph_with_weights.weights.keys()
+            .filter(|k| k.contains("_proj.weight") || k.contains("_proj.bias"))
+            .cloned().collect();
+        for key in rename_keys {
+            let new_key = key.replace("query_proj", "query")
+                .replace("key_proj", "key")
+                .replace("value_proj", "value");
+            if new_key != key {
+                if let Some(w) = graph_with_weights.weights.remove(&key) {
+                    graph_with_weights.weights.insert(new_key, w);
+                }
+            }
+        }
+    }
+
+    // For DeBERTa: add zero position and token_type embeddings (DeBERTa uses relative position embeddings instead)
+    if is_deberta {
+        use cyb_llm::ir::{DType, WeightData};
+        let hidden = bert_config.hidden_size;
+        let max_pos = bert_config.max_position_embeddings;
+        let wp = format!("{}.", bert_config.weight_prefix);
+        let pos_name = format!("{wp}embeddings.position_embeddings.weight");
+        if !graph_with_weights.weights.contains_key(&pos_name) {
+            graph_with_weights.weights.insert(pos_name, WeightData {
+                data: vec![0u8; max_pos * hidden * 2],  // F16 zeros
+                shape: vec![max_pos, hidden],
+                dtype: DType::F16,
+            });
+        }
+        let type_name = format!("{wp}embeddings.token_type_embeddings.weight");
+        if !graph_with_weights.weights.contains_key(&type_name) {
+            graph_with_weights.weights.insert(type_name, WeightData {
+                data: vec![0u8; 2 * hidden * 2],  // F16 zeros, 2 types
+                shape: vec![2, hidden],
+                dtype: DType::F16,
+            });
+        }
+    }
 
     // Build graph from template
-    let graph = bert_encoder(&bert_config);
+    let graph = if is_modernbert {
+        modernbert_encoder(&bert_config)
+    } else {
+        bert_encoder(&bert_config)
+    };
     println!("Graph template: {} nodes", graph.len());
 
     // Find tokenizer
@@ -366,10 +516,26 @@ fn run_embed(model_path: &str, text: &str) {
     ).expect("Failed to create GraphModel");
     println!("Model loaded in {:.1}s", load_start.elapsed().as_secs_f64());
 
-    // Run embedding
+    // Run embedding — pick output tensor based on model type
+    let wp_str = if bert_config.weight_prefix.is_empty() { String::new() } else { format!("{}.", bert_config.weight_prefix) };
+    let has_pooler = graph_with_weights.weights.contains_key(&format!("{wp_str}pooler.dense.weight"));
+    let (output_name, output_size) = if is_modernbert {
+        let out = format!("layer_{}.residual2", bert_config.num_layers - 1);
+        println!("ModernBERT: using last residual: {}", out);
+        (out.leak() as &str, bert_config.hidden_size * input_ids.len())
+    } else if has_pooler {
+        ("pooler_output", bert_config.hidden_size)
+    } else {
+        let last_layer = format!("layer_{}.output_ln", bert_config.num_layers - 1);
+        println!("No pooler weights, using last hidden state: {}", last_layer);
+        (last_layer.leak() as &str, bert_config.hidden_size * input_ids.len())
+    };
+
     let embed_start = std::time::Instant::now();
-    let output = model.encode(&input_ids, "pooler_output", bert_config.hidden_size)
+    let output_raw = model.encode(&input_ids, output_name, output_size)
         .expect("Encoding failed");
+    // Extract [CLS] token embedding (first hidden_size values)
+    let output: Vec<f32> = output_raw[..bert_config.hidden_size.min(output_raw.len())].to_vec();
     let elapsed = embed_start.elapsed().as_secs_f64();
 
     println!("---");
@@ -380,111 +546,54 @@ fn run_embed(model_path: &str, text: &str) {
         if output.len() > 10 { ", ..." } else { "" });
 }
 
-/// Run Whisper encoder via GraphModel (outputs encoder embeddings)
-fn run_encode(model_path: &str) {
-    use cyb_llm::ir::templates::{whisper_encoder_decoder, WhisperConfig};
-    use cyb_llm::backend::wgpu_backend::graph_model::{GraphModel, GraphModelConfig, Architecture};
+/// Run Whisper transcription: audio -> mel -> encoder -> decoder -> text
+fn run_transcribe(model_path: &str, audio_path: &str) {
+    use cyb_llm::transcribe::Transcriber;
 
     let path = std::path::Path::new(model_path);
+    let audio = std::path::Path::new(audio_path);
 
-    // Detect format
-    let is_ggml = model_path.ends_with(".bin");
-    if !is_ggml {
-        eprintln!("Whisper encode currently only supports GGML (.bin) format");
+    // Validate inputs
+    if !model_path.ends_with(".bin") {
+        eprintln!("Whisper transcription requires GGML (.bin) model format");
         return;
     }
-
-    // Load GGML model (reads hparams + weights)
-    println!("Loading Whisper GGML model from {}...", path.display());
-    let graph_with_weights = cyb_llm::loader::ggml::load_ggml(path).expect("Failed to load GGML model");
-
-    // Extract hparams from weight shapes to build config
-    // The GGML loader puts hparams in the log, but we can detect from weights
-    let audio_state = graph_with_weights.weights.get("encoder.conv1.bias")
-        .map(|w| w.shape[0])
-        .unwrap_or(768);
-    let n_audio_head = if audio_state == 1280 { 20 } else if audio_state == 1024 { 16 } else if audio_state == 512 { 8 } else { 12 };
-    let n_text_state = graph_with_weights.weights.get("decoder.ln.weight")
-        .map(|w| w.shape[0])
-        .unwrap_or(audio_state);
-    let n_text_head = if n_text_state == 1280 { 20 } else if n_text_state == 1024 { 16 } else if n_text_state == 512 { 8 } else { 12 };
-    let n_vocab = graph_with_weights.weights.get("decoder.token_embedding.weight")
-        .map(|w| w.shape[0])
-        .unwrap_or(51865);
-    let n_audio_ctx = graph_with_weights.weights.get("encoder.positional_embedding")
-        .map(|w| w.shape[0])
-        .unwrap_or(1500);
-    let n_mels = graph_with_weights.weights.get("encoder.conv1.weight")
-        .map(|w| w.shape[1])
-        .unwrap_or(80);
-
-    // Count encoder layers
-    let n_audio_layer = (0..100)
-        .take_while(|i| graph_with_weights.weights.contains_key(&format!("encoder.blocks.{i}.attn_ln.weight")))
-        .count();
-    let n_text_layer = (0..100)
-        .take_while(|i| graph_with_weights.weights.contains_key(&format!("decoder.blocks.{i}.attn_ln.weight")))
-        .count();
-    let n_text_ctx = graph_with_weights.weights.get("decoder.positional_embedding")
-        .map(|w| if w.shape.len() >= 2 { w.shape[1] } else { w.shape[0] })
-        .unwrap_or(448);
-
-    let whisper_config = WhisperConfig {
-        n_audio_state: audio_state,
-        n_audio_head,
-        n_audio_layer,
-        n_audio_ctx,
-        n_text_state,
-        n_text_head,
-        n_text_layer,
-        n_text_ctx,
-        n_vocab,
-        n_mels,
-        eps: 1e-5,
-    };
-
-    println!("Whisper config: audio_state={}, audio_layers={}, text_state={}, text_layers={}, vocab={}",
-        whisper_config.n_audio_state, whisper_config.n_audio_layer,
-        whisper_config.n_text_state, whisper_config.n_text_layer, whisper_config.n_vocab);
-
-    // Build graph from template
-    let graph = whisper_encoder_decoder(&whisper_config);
-    println!("Graph template: {} nodes", graph.len());
+    if !audio.exists() {
+        eprintln!("Audio file not found: {}", audio.display());
+        return;
+    }
 
     // Initialize GPU
     let backend = cyb_llm::backend::create_wgpu_backend();
     let pipelines = backend.pipelines;
 
-    let gm_config = GraphModelConfig {
-        hidden_size: whisper_config.n_audio_state as u32,
-        num_heads: whisper_config.n_audio_head as u32,
-        kv_num_heads: whisper_config.n_audio_head as u32,
-        head_dim: (whisper_config.n_audio_state / whisper_config.n_audio_head) as u32,
-        vocab_size: whisper_config.n_vocab as u32,
-        num_layers: whisper_config.n_text_layer as u32, // decoder layers for KV cache
-        block_size: 32,
-        rope_theta: 0.0,  // Whisper uses sinusoidal positional embeddings, not RoPE
-        max_seq_len: whisper_config.n_text_ctx as u32,
-        has_qk_norm: false,
-    };
-
+    // Load model
+    println!("Loading Whisper model from {}...", path.display());
     let load_start = std::time::Instant::now();
-    let _model = GraphModel::new(
-        graph,
-        &graph_with_weights.weights,
-        pipelines,
-        Architecture::EncoderDecoder,
-        gm_config,
-    ).expect("Failed to create GraphModel");
-    println!("Model loaded in {:.1}s ({} weights on GPU)",
-        load_start.elapsed().as_secs_f64(),
-        graph_with_weights.weights.len());
+    let mut transcriber = match Transcriber::new(path, pipelines) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Model load failed: {e}");
+            return;
+        }
+    };
+    println!("Model loaded in {:.1}s", load_start.elapsed().as_secs_f64());
 
-    println!("---");
-    println!("Whisper model ready. Encoder has {} layers, decoder has {} layers.",
-        whisper_config.n_audio_layer, whisper_config.n_text_layer);
-    println!("To run actual transcription, audio preprocessing (mel spectrogram) is needed.");
-    println!("GraphModel loaded successfully — encoder/decoder architecture wired to executor.");
+    // Transcribe
+    println!("Transcribing {}...", audio.display());
+    let transcribe_start = std::time::Instant::now();
+    match transcriber.transcribe(audio) {
+        Ok(text) => {
+            let elapsed = transcribe_start.elapsed().as_secs_f64();
+            println!("---");
+            println!("{}", text);
+            println!("---");
+            println!("Transcribed in {:.1}s", elapsed);
+        }
+        Err(e) => {
+            eprintln!("Transcription failed: {e}");
+        }
+    }
 }
 
 /// Resolve model path — keep symlink parent (don't canonicalize to blobs/)

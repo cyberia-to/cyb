@@ -158,6 +158,36 @@ impl GraphModel {
         let type_buf = p.upload_f32(&type_ids);
         input_bufs.insert("token_type_ids".to_string(), type_buf);
 
+        let result = self.executor.execute_encode_with_seq_len(
+            &self.graph,
+            input_bufs,
+            &self.weights,
+            output_name,
+            output_size,
+            seq_len,
+        );
+
+        Ok(result)
+    }
+
+    /// Run encoder forward pass with raw f32 input (Whisper mel spectrogram).
+    ///
+    /// Unlike `encode()` which expects integer token IDs (BERT),
+    /// this takes a named f32 tensor as input and runs the encoder graph.
+    pub fn encode_audio(
+        &self,
+        input_name: &str,
+        input_data: &[f32],
+        output_name: &str,
+        output_size: usize,
+    ) -> Result<Vec<f32>, String> {
+        let p = &self.pipelines;
+
+        let input_buf = p.upload_f32(input_data);
+
+        let mut input_bufs = HashMap::new();
+        input_bufs.insert(input_name.to_string(), input_buf);
+
         let result = self.executor.execute_encode(
             &self.graph,
             input_bufs,

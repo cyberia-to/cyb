@@ -20,8 +20,61 @@ struct TensorDescriptor {
     data_offsets: [u64; 2],
 }
 
-/// Load a safetensors file into Graph IR
+/// Load a safetensors file (or multi-shard) into Graph IR
 pub fn load_safetensors(path: &Path) -> Result<Graph, String> {
+    // Check for multi-shard: if model.safetensors.index.json exists, load all shards
+    if let Some(dir) = path.parent() {
+        let index_path = dir.join("model.safetensors.index.json");
+        if index_path.exists() {
+            return load_safetensors_sharded(dir, &index_path);
+        }
+    }
+
+    load_safetensors_single(path)
+}
+
+/// Load all shards from a safetensors index
+fn load_safetensors_sharded(dir: &Path, index_path: &Path) -> Result<Graph, String> {
+    let index_str = std::fs::read_to_string(index_path)
+        .map_err(|e| format!("Cannot read index: {e}"))?;
+    let index: serde_json::Value = serde_json::from_str(&index_str)
+        .map_err(|e| format!("Invalid index JSON: {e}"))?;
+
+    let weight_map = index.get("weight_map")
+        .and_then(|v| v.as_object())
+        .ok_or("No weight_map in index")?;
+
+    // Collect unique shard files
+    let mut shard_files: Vec<String> = weight_map.values()
+        .filter_map(|v| v.as_str().map(String::from))
+        .collect::<std::collections::HashSet<_>>()
+        .into_iter().collect();
+    shard_files.sort();
+
+    let mut graph = Graph::new();
+    for shard_file in &shard_files {
+        let shard_path = dir.join(shard_file);
+        if !shard_path.exists() {
+            log::warn!("Shard {} not found, skipping", shard_file);
+            continue;
+        }
+        let shard_graph = load_safetensors_single(&shard_path)?;
+        // Merge weights
+        for (name, weight) in shard_graph.weights {
+            graph.add_weight(name.clone(), weight);
+            if let Some(meta) = shard_graph.tensors.get(&name) {
+                graph.add_tensor(name, meta.clone());
+            }
+        }
+    }
+
+    log::info!("Safetensors sharded: {} weights from {} shards in {}",
+        graph.weights.len(), shard_files.len(), dir.display());
+    Ok(graph)
+}
+
+/// Load a single safetensors file into Graph IR
+fn load_safetensors_single(path: &Path) -> Result<Graph, String> {
     let file = std::fs::File::open(path)
         .map_err(|e| format!("Cannot open {}: {e}", path.display()))?;
     let mmap = unsafe {

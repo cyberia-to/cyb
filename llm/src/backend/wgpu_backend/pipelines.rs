@@ -20,6 +20,7 @@ pub struct Pipelines {
     pub layernorm: ComputeShader,
     pub rope: ComputeShader,
     pub attention: ComputeShader,
+    pub attention_encode: ComputeShader,
     pub add: ComputeShader,
     pub mul: ComputeShader,
     pub silu_mul: ComputeShader,
@@ -130,6 +131,12 @@ impl Pipelines {
             &device,
             include_str!("shaders/attention.wgsl"),
             "main",
+            &[storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform()],
+        );
+        let attention_encode = create_pipeline(
+            &device,
+            include_str!("shaders/attention.wgsl"),
+            "attention_encode",
             &[storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform()],
         );
         let add = create_pipeline(
@@ -452,6 +459,7 @@ impl Pipelines {
             layernorm,
             rope,
             attention,
+            attention_encode,
             add,
             mul,
             silu_mul,
