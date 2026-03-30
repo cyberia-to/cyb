@@ -427,13 +427,13 @@ the scheduler is a policy function over atoms — it decides WHERE, not WHAT. ch
 
 format is just storage — parse once, run on any backend.
 
-| format | what stores it | loader |
-|--------|---------------|--------|
-| .safetensors | HuggingFace models | parse header → mmap tensors |
-| .gguf | llama.cpp quantized | parse metadata → extract Q4/Q8 tensors |
-| .onnx | ONNX exported models | parse protobuf → build graph IR |
-| .bin | fasttext, custom | format-specific parser |
-| .mlx | Apple MLX format | numpy-compatible loader |
+| format | what stores it | loader | security |
+|--------|---------------|--------|----------|
+| .safetensors | HuggingFace models | parse header → mmap tensors | safe (no code execution) |
+| .gguf | llama.cpp quantized | parse metadata → extract Q4/Q8 tensors | safe |
+| .onnx | ONNX exported models | parse protobuf → build graph IR | safe |
+| .pt / .pth | PyTorch models (YOLO, etc.) | parse ZIP → skip pickle → extract raw tensor data | unsafe (pickle) — validate before loading |
+| .bin | fasttext, custom | format-specific parser | safe |
 
 key: all formats converge to the same in-memory representation — graph IR + typed tensor store. the runtime doesn't care where the weights came from.
 
