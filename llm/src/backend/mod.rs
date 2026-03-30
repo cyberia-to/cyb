@@ -7,6 +7,12 @@ pub mod wgpu_backend;
 #[cfg(target_os = "macos")]
 pub mod metal;
 
+#[cfg(target_os = "macos")]
+pub mod ane;
+
+#[cfg(target_os = "macos")]
+pub mod cpu;
+
 use std::collections::HashMap;
 
 use crate::ir::Graph;
