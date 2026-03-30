@@ -322,37 +322,25 @@ impl MetalModel {
                     matvec_q4(batch, &self.scratch.hidden2, &layer.k_proj, &self.scratch.k, (c.kv_num_heads * c.head_dim) as u32, c.hidden_size as u32);
                     matvec_q4(batch, &self.scratch.hidden2, &layer.v_proj, &self.scratch.v, (c.kv_num_heads * c.head_dim) as u32, c.hidden_size as u32);
 
-                    // ── RoPE (per-head rotation) ──
-                    let rope_params_q = [half_dim as u32, c.head_dim as u32, c.num_heads as u32];
-                    batch.set_pipeline(&p.rope);
+                    // ── Fused RoPE Q+K (1 dispatch instead of 2) ──
+                    let rope_params = [half_dim as u32, c.head_dim as u32, c.num_heads as u32, c.kv_num_heads as u32];
+                    let total_rope = half_dim * (c.num_heads + c.kv_num_heads);
+                    batch.set_pipeline(&p.fused_rope_qk);
                     batch.set_buffer(&self.scratch.q, 0, 0);
-                    batch.set_buffer(&self.cos_cache, pos * half_dim * 2, 1);
-                    batch.set_buffer(&self.sin_cache, pos * half_dim * 2, 2);
-                    batch.set_buffer(&self.scratch.q, 0, 3); // in-place
-                    batch.set_bytes(bytemuck::cast_slice(&rope_params_q), 4);
-                    batch.dispatch_threadgroups((div_ceil(half_dim * c.num_heads, 256), 1, 1), (256, 1, 1));
+                    batch.set_buffer(&self.scratch.k, 0, 1);
+                    batch.set_buffer(&self.cos_cache, pos * half_dim * 2, 2);
+                    batch.set_buffer(&self.sin_cache, pos * half_dim * 2, 3);
+                    batch.set_bytes(bytemuck::cast_slice(&rope_params), 4);
+                    batch.dispatch_threadgroups((div_ceil(total_rope, 256), 1, 1), (256, 1, 1));
 
-                    let rope_params_k = [half_dim as u32, c.head_dim as u32, c.kv_num_heads as u32];
-                    batch.set_pipeline(&p.rope);
-                    batch.set_buffer(&self.scratch.k, 0, 0);
-                    batch.set_buffer(&self.cos_cache, pos * half_dim * 2, 1);
-                    batch.set_buffer(&self.sin_cache, pos * half_dim * 2, 2);
-                    batch.set_buffer(&self.scratch.k, 0, 3);
-                    batch.set_bytes(bytemuck::cast_slice(&rope_params_k), 4);
-                    batch.dispatch_threadgroups((div_ceil(half_dim * c.kv_num_heads, 256), 1, 1), (256, 1, 1));
-
-                    // ── KV cache append ──
+                    // ── Fused KV cache append K+V (1 dispatch instead of 2) ──
                     let append_params = [c.head_dim as u32, c.kv_num_heads as u32, pos as u32, MAX_SEQ as u32];
-                    batch.set_pipeline(&p.kv_append);
+                    batch.set_pipeline(&p.fused_kv_append);
                     batch.set_buffer(&self.scratch.k, 0, 0);
-                    batch.set_buffer(&kv.k, 0, 1);
-                    batch.set_bytes(bytemuck::cast_slice(&append_params), 2);
-                    batch.dispatch_threadgroups((div_ceil(c.kv_num_heads * c.head_dim, 256), 1, 1), (256, 1, 1));
-
-                    batch.set_pipeline(&p.kv_append);
-                    batch.set_buffer(&self.scratch.v, 0, 0);
-                    batch.set_buffer(&kv.v, 0, 1);
-                    batch.set_bytes(bytemuck::cast_slice(&append_params), 2);
+                    batch.set_buffer(&self.scratch.v, 0, 1);
+                    batch.set_buffer(&kv.k, 0, 2);
+                    batch.set_buffer(&kv.v, 0, 3);
+                    batch.set_bytes(bytemuck::cast_slice(&append_params), 4);
                     batch.dispatch_threadgroups((div_ceil(c.kv_num_heads * c.head_dim, 256), 1, 1), (256, 1, 1));
 
                     // ── Attention decode (GQA-aware, KV cache stride = MAX_SEQ) ──
@@ -368,21 +356,14 @@ impl MetalModel {
                     // ── O projection (input = attention output) ──
                     matvec_q4(batch, &self.scratch.attn_out, &layer.o_proj, &self.scratch.down, c.hidden_size as u32, (c.num_heads * c.head_dim) as u32);
 
-                    // ── Residual add ──
-                    let add_params = [c.hidden_size as u32];
-                    batch.set_pipeline(&p.add_f16);
-                    batch.set_buffer(&self.scratch.hidden, 0, 0);
-                    batch.set_buffer(&self.scratch.down, 0, 1);
-                    batch.set_buffer(&self.scratch.hidden, 0, 2); // in-place
-                    batch.set_bytes(bytemuck::cast_slice(&add_params), 3);
-                    batch.dispatch_threadgroups((div_ceil(c.hidden_size, 256), 1, 1), (256, 1, 1));
-
-                    // ── Post RMS Norm ──
-                    batch.set_pipeline(&p.rms_norm);
-                    batch.set_buffer(&self.scratch.hidden, 0, 0);
-                    batch.set_buffer(&layer.post_norm_weight, 0, 1);
-                    batch.set_buffer(&self.scratch.hidden2, 0, 2);
-                    batch.set_bytes(&norm_params_bytes, 3);
+                    // ── Fused residual add + post RMS norm (1 dispatch instead of 2) ──
+                    batch.set_pipeline(&p.fused_add_norm);
+                    batch.set_buffer(&self.scratch.hidden, 0, 0);  // residual
+                    batch.set_buffer(&self.scratch.down, 0, 1);    // O-proj output
+                    batch.set_buffer(&self.scratch.hidden, 0, 2);  // out_residual (in-place)
+                    batch.set_buffer(&layer.post_norm_weight, 0, 3);
+                    batch.set_buffer(&self.scratch.hidden2, 0, 4); // normed output
+                    batch.set_bytes(&norm_params_bytes, 5);
                     batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
 
                     // ── Gate/Up projections (input = post-normed hidden2) ──
@@ -401,22 +382,24 @@ impl MetalModel {
                     // ── Down projection (input = SwiGLU output in gate scratch) ──
                     matvec_q4(batch, &self.scratch.gate, &layer.down_proj, &self.scratch.down, c.hidden_size as u32, c.intermediate_size as u32);
 
-                    // ── Residual add ──
+                    // ── FFN Residual add ──
+                    let ffn_add_params = [c.hidden_size as u32];
                     batch.set_pipeline(&p.add_f16);
                     batch.set_buffer(&self.scratch.hidden, 0, 0);
                     batch.set_buffer(&self.scratch.down, 0, 1);
                     batch.set_buffer(&self.scratch.hidden, 0, 2);
-                    batch.set_bytes(bytemuck::cast_slice(&add_params), 3);
+                    batch.set_bytes(bytemuck::cast_slice(&ffn_add_params), 3);
                     batch.dispatch_threadgroups((div_ceil(c.hidden_size, 256), 1, 1), (256, 1, 1));
                 }
 
-                // ── Final RMS Norm ──
+                // ── Final RMS Norm (hidden already has final residual) ──
                 batch.set_pipeline(&p.rms_norm);
                 batch.set_buffer(&self.scratch.hidden, 0, 0);
                 batch.set_buffer(&self.final_norm_weight, 0, 1);
                 batch.set_buffer(&self.scratch.hidden2, 0, 2);
                 batch.set_bytes(&norm_params_bytes, 3);
                 batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
+                // TODO: fuse this add+norm too once we restructure the loop
 
                 // ── LM Head (Q4 fast matvec — vocab=151k, biggest single op) ──
                 let lm_params = [c.vocab_size as u32, c.hidden_size as u32];

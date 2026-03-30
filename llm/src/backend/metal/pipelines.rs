@@ -26,8 +26,11 @@ pub struct MetalPipelines {
     pub matvec_q4_batch: MtlComputePipeline,
     pub matvec_ternary_batch: MtlComputePipeline,
 
-    // Optimized matvec (simd cooperative)
+    // Optimized / fused kernels
     pub matvec_q4_fast: MtlComputePipeline,
+    pub fused_rope_qk: MtlComputePipeline,
+    pub fused_kv_append: MtlComputePipeline,
+    pub fused_add_norm: MtlComputePipeline,
 
     // Transformer ops (all fp16)
     pub embed: MtlComputePipeline,
@@ -78,8 +81,11 @@ impl MetalPipelines {
         let matvec_ternary_batch =
             compile(&batch_src(kernels::MATVEC_TERNARY_BATCH), "matvec_ternary_batch")?;
 
-        // Optimized matvec
+        // Optimized / fused kernels
         let matvec_q4_fast = compile(kernels::MATVEC_Q4_FAST, "matvec_q4_fast")?;
+        let fused_rope_qk = compile(kernels::FUSED_ROPE, "fused_rope_qk")?;
+        let fused_kv_append = compile(kernels::FUSED_KV_APPEND, "fused_kv_append")?;
+        let fused_add_norm = compile(kernels::FUSED_ADD_NORM, "fused_add_norm_f16")?;
 
         // Transformer ops
         let embed = compile(kernels::EMBED, "embed_f16")?;
@@ -103,6 +109,9 @@ impl MetalPipelines {
             matmul_q4,
             matvec_q4,
             matvec_q4_fast,
+            fused_rope_qk,
+            fused_kv_append,
+            fused_add_norm,
             matvec_ternary,
             matvec_q4k,
             matvec_q4_batch,
