@@ -203,7 +203,7 @@ only genuinely specialized models or native 1-bit architecture. no general-purpo
 | model | params | RAM | runtime | tasks |
 |-------|--------|-----|---------|-------|
 | [bitnet-b1.58-2B-4T](https://huggingface.co/microsoft/bitnet-b1.58-2B-4T) | 2.4B | <1GB | bitnet.cpp / MLX | general workhorse: summarization, translation, task decomposition, command parsing, search query gen, alert composition. native 1.58-bit — no quantization needed. trained on 4T tokens. GSM8K/MMLU close to 7-13B FP16. 10-20+ tok/s on M1 Air |
-| [qwen3.5-4b-abliterated](https://huggingface.co/huihui-ai/Qwen3.5-4B-abliterated) | 4B | ~2.5GB | ONNX | report formatting, schedule optimization, sensor interpretation, complex translation. when bitnet-2B insufficient — step up without loading tier 2 |
+| [qwen3.5-4b-abliterated](https://huggingface.co/huihui-ai/Huihui-Qwen3.5-4B-abliterated) | 4B | ~2.5GB | ONNX | report formatting, schedule optimization, sensor interpretation, complex translation. when bitnet-2B insufficient — step up without loading tier 2 |
 | [nuextract-1.5](https://huggingface.co/numind/NuExtract-1.5) | 3.8B | ~2.3GB | ONNX | entity extraction, inventory parsing, financial parsing, structured JSON from any text. fine-tuned specialist — beats GPT-4o on extraction benchmarks |
 | [qwen2.5-coder-1.5b-abliterated](https://huggingface.co/huihui-ai/Qwen2.5-Coder-1.5B-Instruct-abliterated) | 1.5B | ~1GB | ONNX | code review, diff generation, static analysis. fine-tuned on code, abliterated |
 
@@ -213,9 +213,9 @@ bitnet-2B at <1GB can stay always-loaded alongside tier 0 (~2.5GB total substrat
 
 | model | params | RAM | runtime | tasks |
 |-------|--------|-----|---------|-------|
-| [qwen3.5-9b-abliterated](https://huggingface.co/huihui-ai/Qwen3.5-9B-abliterated) | 9B | ~5.5GB | ONNX | general reasoning, research, planning, social dynamics, legal, creative, biology, finance. outperforms GPT-OSS-120B on MMLU-Pro (82.5) |
+| [qwen3.5-9b-abliterated](https://huggingface.co/huihui-ai/Huihui-Qwen3.5-9B-abliterated) | 9B | ~5.5GB | ONNX | general reasoning, research, planning, social dynamics, legal, creative, biology, finance. outperforms GPT-OSS-120B on MMLU-Pro (82.5) |
 | [qwen2.5-coder-14b-abliterated](https://huggingface.co/huihui-ai/Qwen2.5-Coder-14B-Instruct-abliterated) | 14B | ~8.5GB | ONNX | code generation, SQL, infrastructure ops. fine-tuned code specialist, abliterated |
-| [mimo-7b-rl-abliterated](https://huggingface.co/huihui-ai/MiMo-7B-RL-0530-abliterated) | 7B | ~5GB | ONNX | deep reasoning, mathematics. AIME 2025 = 55.4 (beats o1-mini). MIT license, Xiaomi |
+| [mimo-7b-rl](https://huggingface.co/XiaomiMiMo/MiMo-7B-RL) | 7B | ~5GB | ONNX | deep reasoning, mathematics. AIME 2025 = 55.4 (beats o1-mini). MIT license, Xiaomi. no abliterated variant exists — abliterate in-house or use as-is |
 | [deepseek-r1-qwen3-8b-abliterated](https://huggingface.co/huihui-ai/DeepSeek-R1-0528-Qwen3-8B-abliterated) | 8B | ~5GB | ONNX | deep reasoning, strategic analysis. chain-of-thought, abliterated. benchmark against mimo |
 | [qwen2.5-vl-7b-abliterated](https://huggingface.co/huihui-ai/Qwen2.5-VL-7B-Instruct-abliterated) | 7B | ~7GB | GGUF/MLX | vision + video understanding, OCR, charts. abliterated — no refusals on any image. crushes llava 1.6 on all benchmarks |
 
