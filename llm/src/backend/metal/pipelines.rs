@@ -25,6 +25,18 @@ pub struct MetalPipelines {
     // Decode batched (dequant-once-dot-many)
     pub matvec_q4_batch: MtlComputePipeline,
     pub matvec_ternary_batch: MtlComputePipeline,
+
+    // Transformer ops (all fp16)
+    pub embed: MtlComputePipeline,
+    pub rms_norm: MtlComputePipeline,
+    pub rope: MtlComputePipeline,
+    pub add_f16: MtlComputePipeline,
+    pub silu_mul_f16: MtlComputePipeline,
+    pub attention_decode: MtlComputePipeline,
+    pub kv_append: MtlComputePipeline,
+    pub kv_expand: MtlComputePipeline,
+    pub f16_matvec: MtlComputePipeline,
+    pub argmax: MtlComputePipeline,
 }
 
 impl MetalPipelines {
@@ -63,7 +75,19 @@ impl MetalPipelines {
         let matvec_ternary_batch =
             compile(&batch_src(kernels::MATVEC_TERNARY_BATCH), "matvec_ternary_batch")?;
 
-        log::info!("Metal: all 7 MSL kernels compiled");
+        // Transformer ops
+        let embed = compile(kernels::EMBED, "embed_f16")?;
+        let rms_norm = compile(kernels::RMS_NORM, "rms_norm_f16")?;
+        let rope = compile(kernels::ROPE, "rope_f16")?;
+        let add_f16 = compile(kernels::ELEMENTWISE, "add_f16")?;
+        let silu_mul_f16 = compile(kernels::ELEMENTWISE, "silu_mul_f16")?;
+        let attention_decode = compile(kernels::ATTENTION, "attention_decode_f16")?;
+        let kv_append = compile(kernels::KV_CACHE, "kv_append_f16")?;
+        let kv_expand = compile(kernels::KV_CACHE, "kv_expand_f16")?;
+        let f16_matvec = compile(kernels::F16_MATVEC, "f16_matvec")?;
+        let argmax = compile(kernels::ARGMAX, "argmax_f16")?;
+
+        log::info!("Metal: all 17 MSL kernels compiled");
 
         Ok(MetalPipelines {
             device,
@@ -76,6 +100,16 @@ impl MetalPipelines {
             matvec_q4k,
             matvec_q4_batch,
             matvec_ternary_batch,
+            embed,
+            rms_norm,
+            rope,
+            add_f16,
+            silu_mul_f16,
+            attention_decode,
+            kv_append,
+            kv_expand,
+            f16_matvec,
+            argmax,
         })
     }
 

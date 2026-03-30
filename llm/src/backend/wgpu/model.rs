@@ -236,7 +236,7 @@ fn raw_to_f32(raw: &[u8], data_type: i32) -> Vec<f32> {
 }
 
 /// Convert safetensors weight bytes to f32, based on DType from IR
-fn safetensors_to_f32(data: &[u8], dtype: crate::ir::DType) -> Vec<f32> {
+pub fn safetensors_to_f32(data: &[u8], dtype: crate::ir::DType) -> Vec<f32> {
     use crate::ir::DType;
     match dtype {
         DType::F32 => data

@@ -24,9 +24,21 @@ pub mod kernels {
     // Matvec batched (decode batch>1, dequant-once-dot-many)
     pub const MATVEC_Q4_BATCH: &str = include_str!("kernels/matvec_q4_batch.metal");
     pub const MATVEC_TERNARY_BATCH: &str = include_str!("kernels/matvec_ternary_batch.metal");
+
+    // Transformer ops (all fp16)
+    pub const EMBED: &str = include_str!("kernels/embed.metal");
+    pub const RMS_NORM: &str = include_str!("kernels/rms_norm.metal");
+    pub const ROPE: &str = include_str!("kernels/rope.metal");
+    pub const ELEMENTWISE: &str = include_str!("kernels/elementwise.metal");
+    pub const ATTENTION: &str = include_str!("kernels/attention.metal");
+    pub const KV_CACHE: &str = include_str!("kernels/kv_cache.metal");
+    pub const F16_MATVEC: &str = include_str!("kernels/f16_matvec.metal");
+    pub const ARGMAX: &str = include_str!("kernels/argmax.metal");
 }
 
 pub mod pipelines;
 pub mod dispatch;
+pub mod model;
 
 pub use pipelines::MetalPipelines;
+pub use model::MetalModel;
