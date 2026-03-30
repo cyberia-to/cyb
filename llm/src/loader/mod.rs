@@ -3,6 +3,7 @@
 pub mod onnx;
 pub mod safetensors;
 pub mod gguf;
+pub mod ggml;
 pub mod bin;
 pub mod mlx;
 
@@ -16,6 +17,7 @@ pub enum ModelFormat {
     Onnx,
     Safetensors,
     Gguf,
+    Ggml,
     Bin,
     Npz,
 }
@@ -30,8 +32,8 @@ pub fn detect_format(path: &Path) -> Result<ModelFormat, String> {
         "onnx" => return Ok(ModelFormat::Onnx),
         "safetensors" => return Ok(ModelFormat::Safetensors),
         "gguf" => return Ok(ModelFormat::Gguf),
-        "bin" => return Ok(ModelFormat::Bin),
         "npz" => return Ok(ModelFormat::Npz),
+        // .bin is ambiguous — could be GGML, fasttext, or raw. Check magic first.
         _ => {}
     }
 
@@ -48,6 +50,11 @@ pub fn detect_format(path: &Path) -> Result<ModelFormat, String> {
         // GGUF magic
         if &magic[0..4] == b"GGUF" {
             return Ok(ModelFormat::Gguf);
+        }
+
+        // GGML magic (0x67676d6c = "ggml" little-endian)
+        if magic[0..4] == [0x6c, 0x6d, 0x67, 0x67] {
+            return Ok(ModelFormat::Ggml);
         }
 
         // ZIP magic (PK\x03\x04) — NPZ files are ZIP archives
@@ -89,6 +96,7 @@ pub fn load_model(path: &Path) -> Result<Graph, String> {
         ModelFormat::Onnx => onnx::load_onnx(path),
         ModelFormat::Safetensors => safetensors::load_safetensors(path),
         ModelFormat::Gguf => gguf::load_gguf(path),
+        ModelFormat::Ggml => ggml::load_ggml(path),
         ModelFormat::Bin => bin::load_bin(path),
         ModelFormat::Npz => mlx::load_npz(path),
     }
