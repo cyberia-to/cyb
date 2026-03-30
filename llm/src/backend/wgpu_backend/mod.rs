@@ -7,6 +7,7 @@ pub mod pipelines;
 pub mod alloc;
 pub mod dispatch;
 pub mod model;
+pub mod graph_model;
 
 use std::collections::HashMap;
 use std::sync::Arc;

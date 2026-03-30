@@ -1642,6 +1642,948 @@ pub fn moe_decoder(config: &MoeDecoderConfig) -> Graph {
     g
 }
 
+// ========================================================================
+// Whisper encoder-decoder template (GGML weight names)
+// ========================================================================
+
+/// Configuration for Whisper models
+#[derive(Clone, Debug)]
+pub struct WhisperConfig {
+    pub n_audio_state: usize,
+    pub n_audio_head: usize,
+    pub n_audio_layer: usize,
+    pub n_audio_ctx: usize,
+    pub n_text_state: usize,
+    pub n_text_head: usize,
+    pub n_text_layer: usize,
+    pub n_text_ctx: usize,
+    pub n_vocab: usize,
+    pub n_mels: usize,
+    pub eps: f32,
+}
+
+impl Default for WhisperConfig {
+    fn default() -> Self {
+        Self {
+            n_audio_state: 768,
+            n_audio_head: 12,
+            n_audio_layer: 12,
+            n_audio_ctx: 1500,
+            n_text_state: 768,
+            n_text_head: 12,
+            n_text_layer: 12,
+            n_text_ctx: 448,
+            n_vocab: 51865,
+            n_mels: 80,
+            eps: 1e-5,
+        }
+    }
+}
+
+/// Build a Whisper encoder-decoder graph with GGML weight names.
+///
+/// Encoder: conv1 -> conv2 -> positional_embedding + add -> encoder blocks -> ln_post
+/// Each encoder block: attn_ln -> self_attention(Q,K,V,out) -> add -> mlp_ln -> mlp(0,2) -> add
+///
+/// Decoder: token_embedding + positional_embedding -> decoder blocks -> ln -> lm_head
+/// Each decoder block: attn_ln -> self_attn -> add -> cross_attn_ln -> cross_attn -> add -> mlp_ln -> mlp -> add
+pub fn whisper_encoder_decoder(config: &WhisperConfig) -> Graph {
+    let mut g = Graph::new();
+
+    let audio_state = config.n_audio_state;
+    let audio_head_dim = audio_state / config.n_audio_head;
+    let text_state = config.n_text_state;
+    let text_head_dim = text_state / config.n_text_head;
+
+    // ====================================================================
+    // Encoder
+    // ====================================================================
+
+    // Conv1: [n_mels, 3] -> [audio_state]
+    let conv1_out = "enc.conv1_out".to_string();
+    g.add_node_with_attrs(
+        Op::Conv1d { kernel: 3, stride: 1, padding: 1, groups: 1 },
+        vec!["audio_input".to_string(), "encoder.conv1.weight".to_string(), "encoder.conv1.bias".to_string()],
+        vec![conv1_out.clone()],
+        make_attrs(&[("in_channels", config.n_mels as i64), ("out_channels", audio_state as i64)]),
+        None,
+    );
+    g.add_tensor("audio_input".to_string(), TensorMeta {
+        shape: vec![Dim::Fixed(config.n_mels), Dim::Dynamic("audio_len".to_string())],
+        dtype: DType::F32,
+        residency: Residency::Streamed,
+    });
+
+    // GELU after conv1
+    let conv1_act = "enc.conv1_act".to_string();
+    g.add_node_with_attrs(
+        Op::Gelu { approximate: false },
+        vec![conv1_out],
+        vec![conv1_act.clone()],
+        make_attrs(&[("n", (audio_state * config.n_audio_ctx) as i64)]),
+        None,
+    );
+
+    // Conv2: stride 2 downsampling
+    let conv2_out = "enc.conv2_out".to_string();
+    g.add_node_with_attrs(
+        Op::Conv1d { kernel: 3, stride: 2, padding: 1, groups: 1 },
+        vec![conv1_act, "encoder.conv2.weight".to_string(), "encoder.conv2.bias".to_string()],
+        vec![conv2_out.clone()],
+        make_attrs(&[("in_channels", audio_state as i64), ("out_channels", audio_state as i64)]),
+        None,
+    );
+
+    // GELU after conv2
+    let conv2_act = "enc.conv2_act".to_string();
+    g.add_node_with_attrs(
+        Op::Gelu { approximate: false },
+        vec![conv2_out],
+        vec![conv2_act.clone()],
+        make_attrs(&[("n", (audio_state * config.n_audio_ctx) as i64)]),
+        None,
+    );
+
+    // Add positional embedding
+    let pos_add = "enc.pos_add".to_string();
+    g.add_node_with_attrs(
+        Op::Add,
+        vec![conv2_act, "encoder.positional_embedding".to_string()],
+        vec![pos_add.clone()],
+        make_attrs(&[("n", (audio_state * config.n_audio_ctx) as i64)]),
+        None,
+    );
+
+    let mut enc_hidden = pos_add;
+
+    for i in 0..config.n_audio_layer {
+        let prefix = format!("enc.block_{i}");
+        let w = format!("encoder.blocks.{i}");
+
+        // attn_ln
+        let norm1_out = format!("{prefix}.attn_ln_out");
+        g.add_node_with_attrs(
+            Op::LayerNorm { eps: config.eps },
+            vec![enc_hidden.clone(), format!("{w}.attn_ln.weight"), format!("{w}.attn_ln.bias")],
+            vec![norm1_out.clone()],
+            make_attrs(&[("hidden", audio_state as i64), ("positions", config.n_audio_ctx as i64)]),
+            None,
+        );
+
+        // Q projection
+        let q_out = format!("{prefix}.q_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![norm1_out.clone(), format!("{w}.attn.query.weight")],
+            vec![q_out.clone()],
+            make_attrs(&[("n", audio_state as i64), ("k", audio_state as i64)]),
+            None,
+        );
+        // Q bias
+        let q_biased = format!("{prefix}.q_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![q_out, format!("{w}.attn.query.bias")],
+            vec![q_biased.clone()],
+            make_attrs(&[("n", audio_state as i64)]),
+            None,
+        );
+
+        // K projection (no bias in whisper)
+        let k_out = format!("{prefix}.k_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![norm1_out.clone(), format!("{w}.attn.key.weight")],
+            vec![k_out.clone()],
+            make_attrs(&[("n", audio_state as i64), ("k", audio_state as i64)]),
+            None,
+        );
+
+        // V projection
+        let v_out = format!("{prefix}.v_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![norm1_out, format!("{w}.attn.value.weight")],
+            vec![v_out.clone()],
+            make_attrs(&[("n", audio_state as i64), ("k", audio_state as i64)]),
+            None,
+        );
+        let v_biased = format!("{prefix}.v_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![v_out, format!("{w}.attn.value.bias")],
+            vec![v_biased.clone()],
+            make_attrs(&[("n", audio_state as i64)]),
+            None,
+        );
+
+        // Bidirectional attention (no causal mask, no KV cache for encoder)
+        let attn_out = format!("{prefix}.attn_out");
+        let mut sdpa_attrs = make_attrs(&[("hidden", audio_state as i64)]);
+        sdpa_attrs.insert("v_tensor".to_string(), AttrValue::String(v_biased.clone()));
+        g.add_node_with_attrs(
+            Op::Sdpa {
+                num_heads: config.n_audio_head as u32,
+                kv_heads: config.n_audio_head as u32,
+                head_dim: audio_head_dim as u32,
+                causal: false,
+            },
+            vec![q_biased, k_out],
+            vec![attn_out.clone()],
+            sdpa_attrs,
+            None,
+        );
+
+        // Output projection
+        let o_out = format!("{prefix}.o_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![attn_out, format!("{w}.attn.out.weight")],
+            vec![o_out.clone()],
+            make_attrs(&[("n", audio_state as i64), ("k", audio_state as i64)]),
+            None,
+        );
+        let o_biased = format!("{prefix}.o_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![o_out, format!("{w}.attn.out.bias")],
+            vec![o_biased.clone()],
+            make_attrs(&[("n", audio_state as i64)]),
+            None,
+        );
+
+        // Residual add
+        let residual1 = format!("{prefix}.residual1");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![enc_hidden.clone(), o_biased],
+            vec![residual1.clone()],
+            make_attrs(&[("n", audio_state as i64)]),
+            None,
+        );
+
+        // mlp_ln
+        let norm2_out = format!("{prefix}.mlp_ln_out");
+        g.add_node_with_attrs(
+            Op::LayerNorm { eps: config.eps },
+            vec![residual1.clone(), format!("{w}.mlp_ln.weight"), format!("{w}.mlp_ln.bias")],
+            vec![norm2_out.clone()],
+            make_attrs(&[("hidden", audio_state as i64), ("positions", config.n_audio_ctx as i64)]),
+            None,
+        );
+
+        // MLP: mlp.0 (up) -> gelu -> mlp.2 (down)
+        let mlp_up = format!("{prefix}.mlp_up");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![norm2_out, format!("{w}.mlp.0.weight")],
+            vec![mlp_up.clone()],
+            make_attrs(&[("n", (audio_state * 4) as i64), ("k", audio_state as i64)]),
+            None,
+        );
+        let mlp_up_biased = format!("{prefix}.mlp_up_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![mlp_up, format!("{w}.mlp.0.bias")],
+            vec![mlp_up_biased.clone()],
+            make_attrs(&[("n", (audio_state * 4) as i64)]),
+            None,
+        );
+
+        let mlp_act = format!("{prefix}.mlp_act");
+        g.add_node_with_attrs(
+            Op::Gelu { approximate: false },
+            vec![mlp_up_biased],
+            vec![mlp_act.clone()],
+            make_attrs(&[("n", (audio_state * 4) as i64)]),
+            None,
+        );
+
+        let mlp_down = format!("{prefix}.mlp_down");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![mlp_act, format!("{w}.mlp.2.weight")],
+            vec![mlp_down.clone()],
+            make_attrs(&[("n", audio_state as i64), ("k", (audio_state * 4) as i64)]),
+            None,
+        );
+        let mlp_down_biased = format!("{prefix}.mlp_down_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![mlp_down, format!("{w}.mlp.2.bias")],
+            vec![mlp_down_biased.clone()],
+            make_attrs(&[("n", audio_state as i64)]),
+            None,
+        );
+
+        // Residual add
+        let residual2 = format!("{prefix}.residual2");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![residual1, mlp_down_biased],
+            vec![residual2.clone()],
+            make_attrs(&[("n", audio_state as i64)]),
+            None,
+        );
+
+        enc_hidden = residual2;
+    }
+
+    // ln_post
+    let enc_output = "enc.output".to_string();
+    g.add_node_with_attrs(
+        Op::LayerNorm { eps: config.eps },
+        vec![enc_hidden, "encoder.ln_post.weight".to_string(), "encoder.ln_post.bias".to_string()],
+        vec![enc_output.clone()],
+        make_attrs(&[("hidden", audio_state as i64), ("positions", config.n_audio_ctx as i64)]),
+        None,
+    );
+
+    // ====================================================================
+    // Decoder
+    // ====================================================================
+
+    // Token embedding
+    let token_embed = "dec.token_embed".to_string();
+    g.add_node_with_attrs(
+        Op::TokenEmbed,
+        vec!["decoder_input_ids".to_string()],
+        vec![token_embed.clone()],
+        make_attrs(&[("hidden", text_state as i64)]),
+        None,
+    );
+    g.add_tensor("decoder_input_ids".to_string(), TensorMeta {
+        shape: vec![Dim::Dynamic("dec_seq".to_string())],
+        dtype: DType::U8,
+        residency: Residency::Streamed,
+    });
+
+    // Positional embedding + add
+    let dec_pos_add = "dec.pos_add".to_string();
+    g.add_node_with_attrs(
+        Op::Add,
+        vec![token_embed, "decoder.positional_embedding".to_string()],
+        vec![dec_pos_add.clone()],
+        make_attrs(&[("n", text_state as i64)]),
+        None,
+    );
+
+    let mut dec_hidden = dec_pos_add;
+
+    for i in 0..config.n_text_layer {
+        let prefix = format!("dec.block_{i}");
+        let w = format!("decoder.blocks.{i}");
+
+        // Self-attention: attn_ln -> Q,K,V -> causal SDPA -> out -> residual
+        let norm1_out = format!("{prefix}.attn_ln_out");
+        g.add_node_with_attrs(
+            Op::LayerNorm { eps: config.eps },
+            vec![dec_hidden.clone(), format!("{w}.attn_ln.weight"), format!("{w}.attn_ln.bias")],
+            vec![norm1_out.clone()],
+            make_attrs(&[("hidden", text_state as i64), ("positions", 1)]),
+            None,
+        );
+
+        let q_out = format!("{prefix}.q_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![norm1_out.clone(), format!("{w}.attn.query.weight")],
+            vec![q_out.clone()],
+            make_attrs(&[("n", text_state as i64), ("k", text_state as i64)]),
+            None,
+        );
+        let q_biased = format!("{prefix}.q_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![q_out, format!("{w}.attn.query.bias")],
+            vec![q_biased.clone()],
+            make_attrs(&[("n", text_state as i64)]),
+            None,
+        );
+
+        let k_out = format!("{prefix}.k_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![norm1_out.clone(), format!("{w}.attn.key.weight")],
+            vec![k_out.clone()],
+            make_attrs(&[("n", text_state as i64), ("k", text_state as i64)]),
+            None,
+        );
+
+        let v_out = format!("{prefix}.v_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![norm1_out, format!("{w}.attn.value.weight")],
+            vec![v_out.clone()],
+            make_attrs(&[("n", text_state as i64), ("k", text_state as i64)]),
+            None,
+        );
+        let v_biased = format!("{prefix}.v_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![v_out, format!("{w}.attn.value.bias")],
+            vec![v_biased.clone()],
+            make_attrs(&[("n", text_state as i64)]),
+            None,
+        );
+
+        // KV cache for decoder self-attention
+        let kv_out = format!("{prefix}.kv_cached");
+        g.add_node(Op::KvCache, vec![k_out.clone()], vec![kv_out.clone()]);
+        g.add_tensor(kv_out.clone(), TensorMeta {
+            shape: vec![Dim::Dynamic("total_seq".to_string()), Dim::Fixed(text_state)],
+            dtype: DType::F32,
+            residency: Residency::Cached,
+        });
+
+        // Causal self-attention
+        let self_attn_out = format!("{prefix}.self_attn_out");
+        let mut sdpa_attrs = make_attrs(&[("hidden", text_state as i64)]);
+        sdpa_attrs.insert("v_tensor".to_string(), AttrValue::String(v_biased));
+        g.add_node_with_attrs(
+            Op::Sdpa {
+                num_heads: config.n_text_head as u32,
+                kv_heads: config.n_text_head as u32,
+                head_dim: text_head_dim as u32,
+                causal: true,
+            },
+            vec![q_biased, kv_out],
+            vec![self_attn_out.clone()],
+            sdpa_attrs,
+            None,
+        );
+
+        // Output projection
+        let o_out = format!("{prefix}.o_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![self_attn_out, format!("{w}.attn.out.weight")],
+            vec![o_out.clone()],
+            make_attrs(&[("n", text_state as i64), ("k", text_state as i64)]),
+            None,
+        );
+        let o_biased = format!("{prefix}.o_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![o_out, format!("{w}.attn.out.bias")],
+            vec![o_biased.clone()],
+            make_attrs(&[("n", text_state as i64)]),
+            None,
+        );
+
+        let residual1 = format!("{prefix}.residual1");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![dec_hidden.clone(), o_biased],
+            vec![residual1.clone()],
+            make_attrs(&[("n", text_state as i64)]),
+            None,
+        );
+
+        // Cross-attention: cross_attn_ln -> Q from decoder, K/V from encoder
+        let cross_norm_out = format!("{prefix}.cross_attn_ln_out");
+        g.add_node_with_attrs(
+            Op::LayerNorm { eps: config.eps },
+            vec![residual1.clone(), format!("{w}.cross_attn_ln.weight"), format!("{w}.cross_attn_ln.bias")],
+            vec![cross_norm_out.clone()],
+            make_attrs(&[("hidden", text_state as i64), ("positions", 1)]),
+            None,
+        );
+
+        let cross_q = format!("{prefix}.cross_q");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![cross_norm_out, format!("{w}.cross_attn.query.weight")],
+            vec![cross_q.clone()],
+            make_attrs(&[("n", text_state as i64), ("k", text_state as i64)]),
+            None,
+        );
+        let cross_q_biased = format!("{prefix}.cross_q_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![cross_q, format!("{w}.cross_attn.query.bias")],
+            vec![cross_q_biased.clone()],
+            make_attrs(&[("n", text_state as i64)]),
+            None,
+        );
+
+        let cross_attn_out = format!("{prefix}.cross_attn_out");
+        g.add_node_with_attrs(
+            Op::SdpaCross {
+                num_heads: config.n_text_head as u32,
+                head_dim: text_head_dim as u32,
+            },
+            vec![cross_q_biased, enc_output.clone()],
+            vec![cross_attn_out.clone()],
+            make_attrs(&[("hidden", text_state as i64)]),
+            None,
+        );
+
+        let cross_o = format!("{prefix}.cross_o");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![cross_attn_out, format!("{w}.cross_attn.out.weight")],
+            vec![cross_o.clone()],
+            make_attrs(&[("n", text_state as i64), ("k", text_state as i64)]),
+            None,
+        );
+        let cross_o_biased = format!("{prefix}.cross_o_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![cross_o, format!("{w}.cross_attn.out.bias")],
+            vec![cross_o_biased.clone()],
+            make_attrs(&[("n", text_state as i64)]),
+            None,
+        );
+
+        let residual2 = format!("{prefix}.residual2");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![residual1, cross_o_biased],
+            vec![residual2.clone()],
+            make_attrs(&[("n", text_state as i64)]),
+            None,
+        );
+
+        // MLP: mlp_ln -> mlp.0 -> gelu -> mlp.2 -> residual
+        let mlp_norm_out = format!("{prefix}.mlp_ln_out");
+        g.add_node_with_attrs(
+            Op::LayerNorm { eps: config.eps },
+            vec![residual2.clone(), format!("{w}.mlp_ln.weight"), format!("{w}.mlp_ln.bias")],
+            vec![mlp_norm_out.clone()],
+            make_attrs(&[("hidden", text_state as i64), ("positions", 1)]),
+            None,
+        );
+
+        let mlp_up = format!("{prefix}.mlp_up");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![mlp_norm_out, format!("{w}.mlp.0.weight")],
+            vec![mlp_up.clone()],
+            make_attrs(&[("n", (text_state * 4) as i64), ("k", text_state as i64)]),
+            None,
+        );
+        let mlp_up_biased = format!("{prefix}.mlp_up_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![mlp_up, format!("{w}.mlp.0.bias")],
+            vec![mlp_up_biased.clone()],
+            make_attrs(&[("n", (text_state * 4) as i64)]),
+            None,
+        );
+
+        let mlp_act = format!("{prefix}.mlp_act");
+        g.add_node_with_attrs(
+            Op::Gelu { approximate: false },
+            vec![mlp_up_biased],
+            vec![mlp_act.clone()],
+            make_attrs(&[("n", (text_state * 4) as i64)]),
+            None,
+        );
+
+        let mlp_down = format!("{prefix}.mlp_down");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![mlp_act, format!("{w}.mlp.2.weight")],
+            vec![mlp_down.clone()],
+            make_attrs(&[("n", text_state as i64), ("k", (text_state * 4) as i64)]),
+            None,
+        );
+        let mlp_down_biased = format!("{prefix}.mlp_down_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![mlp_down, format!("{w}.mlp.2.bias")],
+            vec![mlp_down_biased.clone()],
+            make_attrs(&[("n", text_state as i64)]),
+            None,
+        );
+
+        let residual3 = format!("{prefix}.residual3");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![residual2, mlp_down_biased],
+            vec![residual3.clone()],
+            make_attrs(&[("n", text_state as i64)]),
+            None,
+        );
+
+        dec_hidden = residual3;
+    }
+
+    // Final decoder layer norm
+    let dec_norm_out = "dec.norm_out".to_string();
+    g.add_node_with_attrs(
+        Op::LayerNorm { eps: config.eps },
+        vec![dec_hidden, "decoder.ln.weight".to_string(), "decoder.ln.bias".to_string()],
+        vec![dec_norm_out.clone()],
+        make_attrs(&[("hidden", text_state as i64), ("positions", 1)]),
+        None,
+    );
+
+    // LM head: tied to token_embedding (transpose)
+    g.add_node_with_attrs(
+        Op::Matmul,
+        vec![dec_norm_out, "decoder.token_embedding.weight".to_string()],
+        vec!["logits".to_string()],
+        make_attrs(&[("n", config.n_vocab as i64), ("k", text_state as i64)]),
+        None,
+    );
+
+    g.add_tensor("logits".to_string(), TensorMeta {
+        shape: vec![Dim::Dynamic("dec_seq".to_string()), Dim::Fixed(config.n_vocab)],
+        dtype: DType::F32,
+        residency: Residency::Streamed,
+    });
+
+    log::info!(
+        "whisper_encoder_decoder template: enc {} layers + dec {} layers, {} nodes, GGML weight names",
+        config.n_audio_layer,
+        config.n_text_layer,
+        g.len()
+    );
+
+    g
+}
+
+// ========================================================================
+// BERT encoder template (safetensors weight names)
+// ========================================================================
+
+/// Configuration for BERT models
+#[derive(Clone, Debug)]
+pub struct BertConfig {
+    pub hidden_size: usize,
+    pub num_heads: usize,
+    pub head_dim: usize,
+    pub num_layers: usize,
+    pub intermediate_size: usize,
+    pub vocab_size: usize,
+    pub max_position_embeddings: usize,
+    pub type_vocab_size: usize,
+    pub eps: f32,
+}
+
+impl Default for BertConfig {
+    fn default() -> Self {
+        Self {
+            hidden_size: 768,
+            num_heads: 12,
+            head_dim: 64,
+            num_layers: 12,
+            intermediate_size: 3072,
+            vocab_size: 30522,
+            max_position_embeddings: 512,
+            type_vocab_size: 2,
+            eps: 1e-12,
+        }
+    }
+}
+
+/// Build a BERT encoder graph with safetensors weight names.
+///
+/// Structure:
+///   word_embeddings + position_embeddings + token_type_embeddings -> LayerNorm ->
+///   encoder blocks (attn_ln -> self_attn(Q,K,V,out) -> add -> ln -> mlp(intermediate,output) -> add -> ln) ->
+///   pooler
+pub fn bert_encoder(config: &BertConfig) -> Graph {
+    let mut g = Graph::new();
+
+    let hidden = config.hidden_size;
+    let inter = config.intermediate_size;
+
+    // Embedding: word + position + token_type
+    let word_embed = "word_embed".to_string();
+    g.add_node_with_attrs(
+        Op::TokenEmbed,
+        vec!["input_ids".to_string()],
+        vec![word_embed.clone()],
+        make_attrs(&[("hidden", hidden as i64)]),
+        None,
+    );
+    g.add_tensor("input_ids".to_string(), TensorMeta {
+        shape: vec![Dim::Dynamic("seq_len".to_string())],
+        dtype: DType::U8,
+        residency: Residency::Streamed,
+    });
+
+    // Position embedding lookup
+    let pos_embed = "pos_embed".to_string();
+    g.add_node_with_attrs(
+        Op::PosEmbed,
+        vec!["position_ids".to_string()],
+        vec![pos_embed.clone()],
+        make_attrs(&[("hidden", hidden as i64)]),
+        None,
+    );
+
+    // Token type embedding (segment IDs)
+    let type_embed = "type_embed".to_string();
+    g.add_node_with_attrs(
+        Op::TokenEmbed,
+        vec!["token_type_ids".to_string()],
+        vec![type_embed.clone()],
+        make_attrs(&[("hidden", hidden as i64)]),
+        None,
+    );
+
+    // Sum embeddings
+    let embed_sum1 = "embed_sum1".to_string();
+    g.add_node_with_attrs(
+        Op::Add,
+        vec![word_embed, pos_embed],
+        vec![embed_sum1.clone()],
+        make_attrs(&[("n", hidden as i64)]),
+        None,
+    );
+    let embed_sum2 = "embed_sum2".to_string();
+    g.add_node_with_attrs(
+        Op::Add,
+        vec![embed_sum1, type_embed],
+        vec![embed_sum2.clone()],
+        make_attrs(&[("n", hidden as i64)]),
+        None,
+    );
+
+    // Embedding LayerNorm
+    let embed_norm = "embed_norm".to_string();
+    g.add_node_with_attrs(
+        Op::LayerNorm { eps: config.eps },
+        vec![embed_sum2, "embeddings.LayerNorm.weight".to_string(), "embeddings.LayerNorm.bias".to_string()],
+        vec![embed_norm.clone()],
+        make_attrs(&[("hidden", hidden as i64)]),
+        None,
+    );
+
+    let mut prev_hidden = embed_norm;
+
+    for i in 0..config.num_layers {
+        let prefix = format!("layer_{i}");
+        let w = format!("encoder.layer.{i}");
+
+        // Self-attention: Q, K, V projections
+        let q_out = format!("{prefix}.q_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![prev_hidden.clone(), format!("{w}.attention.self.query.weight")],
+            vec![q_out.clone()],
+            make_attrs(&[("n", hidden as i64), ("k", hidden as i64)]),
+            None,
+        );
+        let q_biased = format!("{prefix}.q_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![q_out, format!("{w}.attention.self.query.bias")],
+            vec![q_biased.clone()],
+            make_attrs(&[("n", hidden as i64)]),
+            None,
+        );
+
+        let k_out = format!("{prefix}.k_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![prev_hidden.clone(), format!("{w}.attention.self.key.weight")],
+            vec![k_out.clone()],
+            make_attrs(&[("n", hidden as i64), ("k", hidden as i64)]),
+            None,
+        );
+        let k_biased = format!("{prefix}.k_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![k_out, format!("{w}.attention.self.key.bias")],
+            vec![k_biased.clone()],
+            make_attrs(&[("n", hidden as i64)]),
+            None,
+        );
+
+        let v_out = format!("{prefix}.v_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![prev_hidden.clone(), format!("{w}.attention.self.value.weight")],
+            vec![v_out.clone()],
+            make_attrs(&[("n", hidden as i64), ("k", hidden as i64)]),
+            None,
+        );
+        let v_biased = format!("{prefix}.v_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![v_out, format!("{w}.attention.self.value.bias")],
+            vec![v_biased.clone()],
+            make_attrs(&[("n", hidden as i64)]),
+            None,
+        );
+
+        // Bidirectional attention (no causal mask, no KV cache)
+        let attn_out = format!("{prefix}.attn_out");
+        let mut sdpa_attrs = make_attrs(&[("hidden", hidden as i64)]);
+        sdpa_attrs.insert("v_tensor".to_string(), AttrValue::String(v_biased.clone()));
+        g.add_node_with_attrs(
+            Op::Sdpa {
+                num_heads: config.num_heads as u32,
+                kv_heads: config.num_heads as u32,
+                head_dim: config.head_dim as u32,
+                causal: false,
+            },
+            vec![q_biased, k_biased],
+            vec![attn_out.clone()],
+            sdpa_attrs,
+            None,
+        );
+
+        // Attention output dense + residual + LayerNorm
+        let attn_dense = format!("{prefix}.attn_dense");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![attn_out, format!("{w}.attention.output.dense.weight")],
+            vec![attn_dense.clone()],
+            make_attrs(&[("n", hidden as i64), ("k", hidden as i64)]),
+            None,
+        );
+        let attn_dense_biased = format!("{prefix}.attn_dense_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![attn_dense, format!("{w}.attention.output.dense.bias")],
+            vec![attn_dense_biased.clone()],
+            make_attrs(&[("n", hidden as i64)]),
+            None,
+        );
+
+        let residual1 = format!("{prefix}.residual1");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![prev_hidden.clone(), attn_dense_biased],
+            vec![residual1.clone()],
+            make_attrs(&[("n", hidden as i64)]),
+            None,
+        );
+
+        let attn_ln = format!("{prefix}.attn_ln");
+        g.add_node_with_attrs(
+            Op::LayerNorm { eps: config.eps },
+            vec![residual1, format!("{w}.attention.output.LayerNorm.weight"), format!("{w}.attention.output.LayerNorm.bias")],
+            vec![attn_ln.clone()],
+            make_attrs(&[("hidden", hidden as i64)]),
+            None,
+        );
+
+        // Intermediate dense (up projection)
+        let inter_out = format!("{prefix}.inter_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![attn_ln.clone(), format!("{w}.intermediate.dense.weight")],
+            vec![inter_out.clone()],
+            make_attrs(&[("n", inter as i64), ("k", hidden as i64)]),
+            None,
+        );
+        let inter_biased = format!("{prefix}.inter_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![inter_out, format!("{w}.intermediate.dense.bias")],
+            vec![inter_biased.clone()],
+            make_attrs(&[("n", inter as i64)]),
+            None,
+        );
+
+        // GELU
+        let inter_act = format!("{prefix}.inter_act");
+        g.add_node_with_attrs(
+            Op::Gelu { approximate: false },
+            vec![inter_biased],
+            vec![inter_act.clone()],
+            make_attrs(&[("n", inter as i64)]),
+            None,
+        );
+
+        // Output dense (down projection)
+        let output_dense = format!("{prefix}.output_dense");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![inter_act, format!("{w}.output.dense.weight")],
+            vec![output_dense.clone()],
+            make_attrs(&[("n", hidden as i64), ("k", inter as i64)]),
+            None,
+        );
+        let output_biased = format!("{prefix}.output_biased");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![output_dense, format!("{w}.output.dense.bias")],
+            vec![output_biased.clone()],
+            make_attrs(&[("n", hidden as i64)]),
+            None,
+        );
+
+        // Residual + LayerNorm
+        let residual2 = format!("{prefix}.residual2");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![attn_ln, output_biased],
+            vec![residual2.clone()],
+            make_attrs(&[("n", hidden as i64)]),
+            None,
+        );
+
+        let output_ln = format!("{prefix}.output_ln");
+        g.add_node_with_attrs(
+            Op::LayerNorm { eps: config.eps },
+            vec![residual2, format!("{w}.output.LayerNorm.weight"), format!("{w}.output.LayerNorm.bias")],
+            vec![output_ln.clone()],
+            make_attrs(&[("hidden", hidden as i64)]),
+            None,
+        );
+
+        prev_hidden = output_ln;
+    }
+
+    // Pooler: take [CLS] token, dense + tanh
+    let pooler_dense = "pooler_dense".to_string();
+    g.add_node_with_attrs(
+        Op::Matmul,
+        vec![prev_hidden.clone(), "pooler.dense.weight".to_string()],
+        vec![pooler_dense.clone()],
+        make_attrs(&[("n", hidden as i64), ("k", hidden as i64)]),
+        None,
+    );
+    let pooler_biased = "pooler_biased".to_string();
+    g.add_node_with_attrs(
+        Op::Add,
+        vec![pooler_dense, "pooler.dense.bias".to_string()],
+        vec![pooler_biased.clone()],
+        make_attrs(&[("n", hidden as i64)]),
+        None,
+    );
+    let pooler_out = "pooler_output".to_string();
+    g.add_node_with_attrs(
+        Op::Tanh,
+        vec![pooler_biased],
+        vec![pooler_out.clone()],
+        make_attrs(&[("n", hidden as i64)]),
+        None,
+    );
+
+    // Final output: encoder_output = last hidden state, pooler_output = [CLS] pooled
+    g.add_tensor("encoder_output".to_string(), TensorMeta {
+        shape: vec![Dim::Dynamic("seq_len".to_string()), Dim::Fixed(hidden)],
+        dtype: DType::F32,
+        residency: Residency::Streamed,
+    });
+
+    // Rename prev_hidden to encoder_output for the output
+    // (The last layer output IS the encoder output — prev_hidden already is)
+    // We just mark pooler_output as the final output tensor
+    g.add_tensor(pooler_out, TensorMeta {
+        shape: vec![Dim::Fixed(hidden)],
+        dtype: DType::F32,
+        residency: Residency::Streamed,
+    });
+
+    log::info!(
+        "bert_encoder template: {} layers, {} nodes, safetensors weight names",
+        config.num_layers,
+        g.len()
+    );
+
+    g
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1761,5 +2703,95 @@ mod tests {
 
         let g = transformer_decoder(&config);
         assert!(g.len() > 0, "Original template should still work");
+    }
+
+    #[test]
+    fn test_whisper_encoder_decoder_template() {
+        let config = WhisperConfig {
+            n_audio_state: 256,
+            n_audio_head: 4,
+            n_audio_layer: 2,
+            n_audio_ctx: 100,
+            n_text_state: 256,
+            n_text_head: 4,
+            n_text_layer: 2,
+            n_text_ctx: 50,
+            n_vocab: 1000,
+            n_mels: 80,
+            eps: 1e-5,
+        };
+
+        let g = whisper_encoder_decoder(&config);
+        assert!(g.len() > 0, "Whisper template should have nodes");
+
+        // Check GGML weight names are present
+        let all_inputs: Vec<&str> = g.nodes.iter()
+            .flat_map(|n| n.inputs.iter().map(|s| s.as_str()))
+            .collect();
+
+        assert!(all_inputs.contains(&"encoder.conv1.weight"), "Should have encoder conv1 weight");
+        assert!(all_inputs.contains(&"encoder.conv1.bias"), "Should have encoder conv1 bias");
+        assert!(all_inputs.contains(&"encoder.blocks.0.attn_ln.weight"), "Should have encoder block attn_ln");
+        assert!(all_inputs.contains(&"encoder.blocks.0.attn.query.weight"), "Should have encoder Q weight");
+        assert!(all_inputs.contains(&"encoder.blocks.0.attn.key.weight"), "Should have encoder K weight");
+        assert!(all_inputs.contains(&"encoder.blocks.0.mlp.0.weight"), "Should have encoder MLP up weight");
+        assert!(all_inputs.contains(&"encoder.blocks.0.mlp.2.weight"), "Should have encoder MLP down weight");
+        assert!(all_inputs.contains(&"encoder.ln_post.weight"), "Should have encoder ln_post");
+        assert!(all_inputs.contains(&"decoder.blocks.0.attn.query.weight"), "Should have decoder Q weight");
+        assert!(all_inputs.contains(&"decoder.blocks.0.cross_attn.query.weight"), "Should have decoder cross-attn Q");
+        assert!(all_inputs.contains(&"decoder.ln.weight"), "Should have decoder final LN");
+        assert!(all_inputs.contains(&"decoder.token_embedding.weight"), "Should have decoder token embedding");
+
+        let all_outputs: Vec<&str> = g.nodes.iter()
+            .flat_map(|n| n.outputs.iter().map(|s| s.as_str()))
+            .collect();
+        assert!(all_outputs.contains(&"logits"), "Should produce logits");
+        assert!(all_outputs.contains(&"enc.output"), "Should produce encoder output");
+    }
+
+    #[test]
+    fn test_bert_encoder_template() {
+        let config = BertConfig {
+            hidden_size: 256,
+            num_heads: 4,
+            head_dim: 64,
+            num_layers: 2,
+            intermediate_size: 512,
+            vocab_size: 1000,
+            max_position_embeddings: 128,
+            type_vocab_size: 2,
+            eps: 1e-12,
+        };
+
+        let g = bert_encoder(&config);
+        assert!(g.len() > 0, "BERT template should have nodes");
+
+        // Check safetensors weight names
+        let all_inputs: Vec<&str> = g.nodes.iter()
+            .flat_map(|n| n.inputs.iter().map(|s| s.as_str()))
+            .collect();
+
+        assert!(all_inputs.contains(&"embeddings.LayerNorm.weight"), "Should have embedding LN");
+        assert!(all_inputs.contains(&"encoder.layer.0.attention.self.query.weight"), "Should have BERT Q weight");
+        assert!(all_inputs.contains(&"encoder.layer.0.attention.self.key.weight"), "Should have BERT K weight");
+        assert!(all_inputs.contains(&"encoder.layer.0.attention.self.value.weight"), "Should have BERT V weight");
+        assert!(all_inputs.contains(&"encoder.layer.0.attention.output.dense.weight"), "Should have BERT attn output");
+        assert!(all_inputs.contains(&"encoder.layer.0.attention.output.LayerNorm.weight"), "Should have BERT attn LN");
+        assert!(all_inputs.contains(&"encoder.layer.0.intermediate.dense.weight"), "Should have BERT intermediate");
+        assert!(all_inputs.contains(&"encoder.layer.0.output.dense.weight"), "Should have BERT output dense");
+        assert!(all_inputs.contains(&"encoder.layer.0.output.LayerNorm.weight"), "Should have BERT output LN");
+        assert!(all_inputs.contains(&"pooler.dense.weight"), "Should have pooler");
+
+        let all_outputs: Vec<&str> = g.nodes.iter()
+            .flat_map(|n| n.outputs.iter().map(|s| s.as_str()))
+            .collect();
+        assert!(all_outputs.contains(&"pooler_output"), "Should produce pooler_output");
+
+        // All SDPA nodes should be non-causal
+        for node in &g.nodes {
+            if let Op::Sdpa { causal, .. } = &node.op {
+                assert!(!causal, "BERT attention should be non-causal (bidirectional)");
+            }
+        }
     }
 }

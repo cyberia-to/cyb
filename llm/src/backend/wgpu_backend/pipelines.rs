@@ -521,6 +521,16 @@ impl Pipelines {
             })
     }
 
+    /// Upload raw bytes as a storage buffer
+    pub fn upload_bytes(&self, data: &[u8]) -> wgpu::Buffer {
+        self.device
+            .create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                label: None,
+                contents: data,
+                usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC,
+            })
+    }
+
     /// Create a GPU buffer from u32 data
     pub fn upload_u32(&self, data: &[u32]) -> wgpu::Buffer {
         self.device

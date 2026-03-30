@@ -195,6 +195,73 @@ impl GraphExecutor {
         p.read_f32(logits_buf, cfg.vocab_size as usize)
     }
 
+    /// Execute an encoder forward pass (BERT, Whisper encoder).
+    ///
+    /// No KV cache, no RoPE. Processes a full sequence at once.
+    /// Reads output from `output_tensor_name` (e.g. "pooler_output" or "enc.output").
+    ///
+    /// `input_bufs` maps tensor names to pre-uploaded GPU buffers.
+    /// For BERT: "input_ids", "position_ids", "token_type_ids"
+    /// For Whisper encoder: "audio_input"
+    pub fn execute_encode(
+        &self,
+        graph: &Graph,
+        input_bufs: HashMap<String, wgpu::Buffer>,
+        weights: &HashMap<String, GpuWeight>,
+        output_tensor_name: &str,
+        output_size: usize,
+    ) -> Vec<f32> {
+        let p = &self.pipelines;
+        p.begin_frame();
+
+        let mut buffers: HashMap<TensorId, wgpu::Buffer> = input_bufs;
+
+        // Dummy KV cache and RoPE (not used by encoder, but prepare_node expects them)
+        let mut kv_cache: Vec<ExecKVCache> = Vec::new();
+        let mut layer_idx: usize = 0;
+        let dummy_cos = p.alloc(4);
+        let dummy_sin = p.alloc(4);
+
+        let mut all_dispatches: Vec<DispatchCmd> = Vec::with_capacity(graph.nodes.len() * 2);
+
+        for node in &graph.nodes {
+            self.prepare_node(
+                node,
+                graph,
+                weights,
+                &mut buffers,
+                &mut all_dispatches,
+                &mut kv_cache,
+                &mut layer_idx,
+                0,     // past_seq_len
+                1,     // total_seq (not meaningful for encoder)
+                1,     // seq_len
+                &dummy_cos,
+                &dummy_sin,
+            );
+        }
+
+        // Single compute pass
+        let mut enc = p.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = enc.begin_compute_pass(&Default::default());
+            for cmd in &all_dispatches {
+                p.dispatch_in_pass(&mut pass, cmd.shader, &cmd.bg, cmd.wg);
+            }
+        }
+        p.queue.submit(std::iter::once(enc.finish()));
+
+        // Read output
+        let output_buf = buffers
+            .get(output_tensor_name)
+            .unwrap_or_else(|| {
+                // Try "logits" as fallback
+                buffers.get("logits")
+                    .expect(&format!("Output tensor '{}' not found in buffer map", output_tensor_name))
+            });
+        p.read_f32(output_buf, output_size)
+    }
+
     /// Prepare a single node for dispatch.
     ///
     /// Maps each IR op to the concrete wgpu dispatch function,
