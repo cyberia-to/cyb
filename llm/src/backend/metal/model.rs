@@ -318,9 +318,23 @@ impl MetalModel {
                         batch.dispatch_threadgroups((div_ceil(n as usize, 8), 1, 1), (256, 1, 1));
                     };
 
-                    matvec_q4(batch, &self.scratch.hidden2, &layer.q_proj, &self.scratch.q, (c.num_heads * c.head_dim) as u32, c.hidden_size as u32);
-                    matvec_q4(batch, &self.scratch.hidden2, &layer.k_proj, &self.scratch.k, (c.kv_num_heads * c.head_dim) as u32, c.hidden_size as u32);
-                    matvec_q4(batch, &self.scratch.hidden2, &layer.v_proj, &self.scratch.v, (c.kv_num_heads * c.head_dim) as u32, c.hidden_size as u32);
+                    // ── Fused Q+K+V projection (3→1 dispatch) ──
+                    let q_dim = (c.num_heads * c.head_dim) as u32;
+                    let kv_dim = (c.kv_num_heads * c.head_dim) as u32;
+                    let wg_q = div_ceil(q_dim as usize, 8);
+                    let wg_k = div_ceil(kv_dim as usize, 8);
+                    let wg_v = div_ceil(kv_dim as usize, 8);
+                    let qkv_params = [q_dim, kv_dim, kv_dim, c.hidden_size as u32, wg_q as u32, wg_k as u32];
+                    batch.set_pipeline(&p.fused_qkv);
+                    batch.set_buffer(&self.scratch.hidden2, 0, 0);
+                    batch.set_buffer(&layer.q_proj, 0, 1);
+                    batch.set_buffer(&layer.k_proj, 0, 2);
+                    batch.set_buffer(&layer.v_proj, 0, 3);
+                    batch.set_buffer(&self.scratch.q, 0, 4);
+                    batch.set_buffer(&self.scratch.k, 0, 5);
+                    batch.set_buffer(&self.scratch.v, 0, 6);
+                    batch.set_bytes(bytemuck::cast_slice(&qkv_params), 7);
+                    batch.dispatch_threadgroups((wg_q + wg_k + wg_v, 1, 1), (256, 1, 1));
 
                     // ── Fused RoPE Q+K (1 dispatch instead of 2) ──
                     let rope_params = [half_dim as u32, c.head_dim as u32, c.num_heads as u32, c.kv_num_heads as u32];
@@ -366,9 +380,18 @@ impl MetalModel {
                     batch.set_bytes(&norm_params_bytes, 5);
                     batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
 
-                    // ── Gate/Up projections (input = post-normed hidden2) ──
-                    matvec_q4(batch, &self.scratch.hidden2, &layer.gate_proj, &self.scratch.gate, c.intermediate_size as u32, c.hidden_size as u32);
-                    matvec_q4(batch, &self.scratch.hidden2, &layer.up_proj, &self.scratch.up, c.intermediate_size as u32, c.hidden_size as u32);
+                    // ── Fused gate+up projection (2→1 dispatch) ──
+                    let inter = c.intermediate_size as u32;
+                    let wg_gate = div_ceil(inter as usize, 8);
+                    let gate_up_params = [inter, c.hidden_size as u32, wg_gate as u32];
+                    batch.set_pipeline(&p.fused_gate_up);
+                    batch.set_buffer(&self.scratch.hidden2, 0, 0);
+                    batch.set_buffer(&layer.gate_proj, 0, 1);
+                    batch.set_buffer(&layer.up_proj, 0, 2);
+                    batch.set_buffer(&self.scratch.gate, 0, 3);
+                    batch.set_buffer(&self.scratch.up, 0, 4);
+                    batch.set_bytes(bytemuck::cast_slice(&gate_up_params), 5);
+                    batch.dispatch_threadgroups((wg_gate * 2, 1, 1), (256, 1, 1));
 
                     // ── SwiGLU ──
                     let silu_params = [c.intermediate_size as u32];
