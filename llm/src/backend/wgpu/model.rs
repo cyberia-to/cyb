@@ -1168,7 +1168,7 @@ impl NativeModel {
             precompute_f32_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
         let (argmax_params, argmax_wg) = precompute_argmax(&pipelines, vocab_size as u32);
 
-        log::info!("Safetensors model loaded successfully (f32 projections)");
+        log::info!("Safetensors model loaded successfully (Q4 quantize-on-load)");
 
         Ok(Self {
             config,
@@ -1182,7 +1182,7 @@ impl NativeModel {
             kv_cache,
             past_seq_len: 0,
             greedy_mode: false,
-            quant_format: QuantFormat::F32,
+            quant_format: QuantFormat::Q4,
             model_params: ModelParamBuffers {
                 final_norm_params,
                 final_norm_wg,
