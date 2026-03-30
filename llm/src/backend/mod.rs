@@ -1,8 +1,11 @@
 //! Backend trait + detection
 //!
-//! Pluggable compute backends. Currently only wgpu.
+//! Pluggable compute backends: wgpu (cross-platform) + metal (Apple Silicon).
 
 pub mod wgpu_backend;
+
+#[cfg(target_os = "macos")]
+pub mod metal;
 
 use std::collections::HashMap;
 
