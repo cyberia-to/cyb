@@ -4,6 +4,7 @@ pub mod onnx;
 pub mod safetensors;
 pub mod gguf;
 pub mod ggml;
+pub mod pytorch;
 pub mod bin;
 pub mod mlx;
 
@@ -18,6 +19,7 @@ pub enum ModelFormat {
     Safetensors,
     Gguf,
     Ggml,
+    Pytorch,
     Bin,
     Npz,
 }
@@ -32,6 +34,7 @@ pub fn detect_format(path: &Path) -> Result<ModelFormat, String> {
         "onnx" => return Ok(ModelFormat::Onnx),
         "safetensors" => return Ok(ModelFormat::Safetensors),
         "gguf" => return Ok(ModelFormat::Gguf),
+        "pt" | "pth" => return Ok(ModelFormat::Pytorch),
         "npz" => return Ok(ModelFormat::Npz),
         // .bin is ambiguous — could be GGML, fasttext, or raw. Check magic first.
         _ => {}
@@ -57,9 +60,15 @@ pub fn detect_format(path: &Path) -> Result<ModelFormat, String> {
             return Ok(ModelFormat::Ggml);
         }
 
-        // ZIP magic (PK\x03\x04) — NPZ files are ZIP archives
+        // ZIP magic (PK\x03\x04) — could be NPZ or PyTorch .pt
         if &magic[0..4] == b"PK\x03\x04" {
-            return Ok(ModelFormat::Npz);
+            // PyTorch .pt files are ZIP with archive/data.pkl
+            // NPZ files are ZIP with .npy entries
+            // Distinguish by extension or default to PyTorch
+            if ext == "npz" || ext == "npy" {
+                return Ok(ModelFormat::Npz);
+            }
+            return Ok(ModelFormat::Pytorch);
         }
 
         // NPY magic (\x93NUMPY) — single array file, treat as bin
@@ -97,6 +106,7 @@ pub fn load_model(path: &Path) -> Result<Graph, String> {
         ModelFormat::Safetensors => safetensors::load_safetensors(path),
         ModelFormat::Gguf => gguf::load_gguf(path),
         ModelFormat::Ggml => ggml::load_ggml(path),
+        ModelFormat::Pytorch => pytorch::load_pytorch(path),
         ModelFormat::Bin => bin::load_bin(path),
         ModelFormat::Npz => mlx::load_npz(path),
     }
