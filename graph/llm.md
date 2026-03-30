@@ -437,6 +437,71 @@ format is just storage — parse once, run on any backend.
 
 key: all formats converge to the same in-memory representation — graph IR + typed tensor store. the runtime doesn't care where the weights came from.
 
+## model import — post-download cleanup
+
+HuggingFace repos contain massive duplication: same weights in multiple formats (safetensors + pytorch_model.bin), multiple quantizations (14 GGUF variants), training artifacts, images, old versions. a naive `snapshot_download` wastes 2-5x disk.
+
+### canonical layout
+
+after download, each model directory must contain exactly:
+
+```
+model_name/
+├── config.json              # architecture (required)
+├── tokenizer.json           # tokenizer (required for LLMs)
+├── tokenizer_config.json    # chat template (required for LLMs)
+├── weights.*                # ONE of:
+│   ├── model.safetensors    #   preferred: safe, zero-copy mmap
+│   ├── model.gguf           #   for pre-quantized (one quantization only)
+│   ├── model.onnx + .data   #   for encoder/classifier models
+│   └── model.bin            #   for fasttext/special formats
+└── generation_config.json   # optional: default sampling params
+```
+
+everything else is waste.
+
+### cleanup rules
+
+after downloading a HuggingFace repo, apply in order:
+
+```
+1. format priority: keep safetensors. delete pytorch_model.bin (identical weights, unsafe format)
+2. quantization: keep ONE quantization level (Q4_K_M for GGUF, model_q4 for ONNX). delete all others
+3. duplicates: if both safetensors AND onnx exist, keep the one matching your runtime backend
+4. old versions: model_v1.bin, model_v2.bin → delete. model.bin or latest version only
+5. training artifacts: runs/, trainer_state.json, training_args.bin, eval_results.json → delete
+6. images: *.png, *.jpg → delete (repo documentation, not model data)
+7. multi-shard: model-00001-of-00004.safetensors → keep all shards (they are NOT duplicates)
+8. HF cache: after download completes, delete ~/.cache/huggingface/hub (full duplicate of local_dir)
+```
+
+### `soma-runtime import` command
+
+```
+soma-runtime import <hf_repo_or_path> --target ~/llm/<tier>/<name>
+```
+
+automates: download → detect format → keep best weights → delete waste → verify config.json exists → report final size.
+
+```
+$ soma-runtime import huihui-ai/Qwen3-0.6B-abliterated --target ~/llm/tier0/router
+  downloading... 1.1GB
+  cleanup: removed pytorch_model.bin (521MB, duplicate of safetensors)
+  cleanup: removed TestPassed-abliterated.jsonl (test artifact)
+  result: ~/llm/tier0/router — 583MB (saved 47%)
+```
+
+### waste observed in practice
+
+| repo | raw download | after cleanup | waste |
+|------|-------------|---------------|-------|
+| jina-embeddings-v5-nano (14 GGUFs + 5 ONNX) | 3.8GB | 280MB | 93% |
+| glotlid (4 model versions) | 6.0GB | 1.6GB | 73% |
+| ModernBERT-base (8 ONNX + safetensors + pytorch) | 2.9GB | 210MB | 93% |
+| SmolLM2-360M (safetensors + full ONNX suite) | 4.7GB | 700MB | 85% |
+
+average HuggingFace repo wastes 70-93% of disk on duplicates and variants. the import command eliminates this.
+
 ## quantization as a first-class concept
 
 quantization is per-tensor, not per-model. a single model can have:
