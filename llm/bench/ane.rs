@@ -1,10 +1,10 @@
 //! ANE kernel benchmark — measure compilation time and throughput
-//! cargo run --release --example bench
+//! cargo run --release -p cyb-llm --bin bench-ane
 
-use ane::config;
-use ane::mil::{self, ffn, projection, sdpa};
-use ane::surface::{f32_to_fp16, AneSurface};
-use ane::{AneModel, MilProgram};
+use cyb_llm::config;
+use cyb_llm::backend::ane::mil::{ffn, projection, sdpa};
+use rane::mil;
+use rane::{f32_to_fp16, AneSurface, AneModel, MilProgram};
 use std::time::Instant;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

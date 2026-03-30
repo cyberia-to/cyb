@@ -8,8 +8,12 @@ name = "cyb-llm"
 path = "src/main.rs"
 
 [[bin]]
-name = "cyb-bench"
-path = "src/bench.rs"
+name = "bench-metal"
+path = "bench/metal.rs"
+
+[[bin]]
+name = "bench-ane"
+path = "bench/ane.rs"
 
 [dependencies]
 # GPU compute

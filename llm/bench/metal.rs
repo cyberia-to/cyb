@@ -4,8 +4,8 @@
 //! Reports speedup and estimated tok/s for decode.
 //!
 //! Usage:
-//!   cargo run --release -p cyb-llm --bin cyb-bench
-//!   cargo run --release -p cyb-llm --bin cyb-bench -- --iters 200
+//!   cargo run --release -p cyb-llm --bin bench-metal
+//!   cargo run --release -p cyb-llm --bin bench-metal -- --iters 200
 
 use std::time::Instant;
 
