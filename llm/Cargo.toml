@@ -7,9 +7,9 @@ edition = "2024"
 name = "cyb-llm"
 path = "src/main.rs"
 
-[[example]]
-name = "bench"
-path = "examples/bench.rs"
+[[bin]]
+name = "cyb-bench"
+path = "src/bench.rs"
 
 [dependencies]
 # GPU compute
