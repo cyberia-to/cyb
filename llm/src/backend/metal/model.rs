@@ -448,6 +448,16 @@ impl MetalModel {
         })
     }
 
+    /// Get vocab size (for external callers)
+    pub fn vocab_size(&self) -> usize {
+        self.config.vocab_size
+    }
+
+    /// Read the full logits buffer as f32 (for speculative verification)
+    pub fn read_logits(&self) -> Vec<f32> {
+        self.debug_read_logits(self.config.vocab_size)
+    }
+
     /// Read logits as f32 (debug) — first `count` elements
     pub fn debug_read_logits(&self, count: usize) -> Vec<f32> {
         self.scratch.logits.with_data(|d| {

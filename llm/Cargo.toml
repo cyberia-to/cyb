@@ -31,6 +31,10 @@ path = "bench/ane_infer.rs"
 name = "bench-ane-train"
 path = "bench/ane_train.rs"
 
+[[bin]]
+name = "bench-speculative"
+path = "bench/speculative.rs"
+
 [dependencies]
 # GPU compute
 wgpu = { version = "24", features = ["wgsl"] }
