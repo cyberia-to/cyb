@@ -60,8 +60,9 @@ pub struct MetalModel {
     pipelines: MetalPipelines,
     config: MetalModelConfig,
     embed_table: MtlBuffer,
-    lm_head: Option<MtlBuffer>,
+    lm_head_q4: MtlBuffer,    // Q4 quantized LM head (or embed_table quantized)
     final_norm_weight: MtlBuffer,
+    token_buf: MtlBuffer,      // pre-allocated, rewritten each step
     layers: Vec<MetalLayerWeights>,
     cos_cache: MtlBuffer,
     sin_cache: MtlBuffer,
@@ -107,6 +108,12 @@ impl MetalModel {
 
         log::info!("Metal model: hidden={hidden_size}, heads={num_heads}, kv_heads={kv_num_heads}, layers={num_layers}, vocab={vocab_size}");
 
+        // Helper: load weight as f32
+        let weight_to_f32 = |name: &str| -> Result<Vec<f32>, String> {
+            let w = graph.get_weight(name).ok_or_else(|| format!("Missing: {name}"))?;
+            Ok(crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype))
+        };
+
         // Helper: load weight as f32 then convert to fp16
         let weight_to_f16 = |name: &str| -> Result<Vec<u16>, String> {
             let w = graph.get_weight(name).ok_or_else(|| format!("Missing: {name}"))?;
@@ -118,13 +125,24 @@ impl MetalModel {
         let embed_f16 = weight_to_f16("model.embed_tokens.weight")?;
         let embed_table = pipelines.upload_f16(&embed_f16).map_err(|e| format!("{e}"))?;
 
-        let lm_head = if !tie_word_embeddings {
+        // LM head — Q4 quantized for speed (vocab is huge, memory-bound)
+        let lm_head_q4 = if !tie_word_embeddings {
             if let Some(w) = graph.get_weight("lm_head.weight") {
                 let f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
-                let f16s: Vec<u16> = f32s.iter().map(|&v| aruminium::f32_to_fp16(v)).collect();
-                Some(pipelines.upload_f16(&f16s).map_err(|e| format!("{e}"))?)
-            } else { None }
-        } else { None };
+                let packed = quantize_f32_to_block_q4_0(&f32s, vocab_size, hidden_size);
+                pipelines.upload_bytes(&packed).map_err(|e| format!("{e}"))?
+            } else {
+                // Fallback: quantize embed_table
+                let embed_f32 = weight_to_f32("model.embed_tokens.weight")?;
+                let packed = quantize_f32_to_block_q4_0(&embed_f32, vocab_size, hidden_size);
+                pipelines.upload_bytes(&packed).map_err(|e| format!("{e}"))?
+            }
+        } else {
+            // Tied weights — quantize embed_table for LM head
+            let embed_f32 = weight_to_f32("model.embed_tokens.weight")?;
+            let packed = quantize_f32_to_block_q4_0(&embed_f32, vocab_size, hidden_size);
+            pipelines.upload_bytes(&packed).map_err(|e| format!("{e}"))?
+        };
 
         // Final norm
         let final_norm_f16 = weight_to_f16("model.norm.weight")?;
@@ -233,9 +251,12 @@ impl MetalModel {
 
         log::info!("Metal model loaded: {} layers, Q4 weights, fp16 activations", num_layers);
 
+        // Pre-allocate token buffer (rewritten each step, avoids allocation)
+        let token_buf = pipelines.alloc(4).map_err(|e| format!("{e}"))?;
+
         Ok(MetalModel {
-            pipelines, config, embed_table, lm_head, final_norm_weight,
-            layers, cos_cache, sin_cache, kv_cache, past_seq_len: 0, scratch,
+            pipelines, config, embed_table, lm_head_q4, final_norm_weight,
+            token_buf, layers, cos_cache, sin_cache, kv_cache, past_seq_len: 0, scratch,
         })
     }
 
@@ -249,16 +270,18 @@ impl MetalModel {
         let half_dim = c.head_dim / 2;
         let scale = 1.0 / (c.head_dim as f32).sqrt();
 
-        // Token ID as u32 buffer
-        let token_buf = p.device.new_buffer_with_data(bytemuck::bytes_of(&token_id)).unwrap();
+        // Write token ID to pre-allocated buffer (no allocation)
+        self.token_buf.with_data_mut(|d| {
+            d[..4].copy_from_slice(&token_id.to_le_bytes());
+        });
 
-        unsafe {
-            p.dispatcher.dispatch_batch(|batch| {
+        unsafe { aruminium::autorelease_pool(|| {
+            p.dispatcher.dispatch_batch_raw(|batch| {
                 // ── Embed ──
                 let embed_params = [c.hidden_size as u32];
                 batch.set_pipeline(&p.embed);
                 batch.set_buffer(&self.embed_table, 0, 0);
-                batch.set_buffer(&token_buf, 0, 1);
+                batch.set_buffer(&self.token_buf, 0, 1);
                 batch.set_buffer(&self.scratch.hidden, 0, 2);
                 batch.set_bytes(bytemuck::cast_slice(&embed_params), 3);
                 batch.dispatch_threadgroups((div_ceil(c.hidden_size, 256), 1, 1), (256, 1, 1));
@@ -395,15 +418,14 @@ impl MetalModel {
                 batch.set_bytes(&norm_params_bytes, 3);
                 batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
 
-                // ── LM Head (fp16 matvec) ──
-                let lm_head_buf = self.lm_head.as_ref().unwrap_or(&self.embed_table);
+                // ── LM Head (Q4 matvec — vocab is huge, Q4 saves 4x bandwidth) ──
                 let lm_params = [c.vocab_size as u32, c.hidden_size as u32];
-                batch.set_pipeline(&p.f16_matvec);
+                batch.set_pipeline(&p.matvec_q4);
                 batch.set_buffer(&self.scratch.hidden2, 0, 0);
-                batch.set_buffer(lm_head_buf, 0, 1);
+                batch.set_buffer(&self.lm_head_q4, 0, 1);
                 batch.set_buffer(&self.scratch.logits, 0, 2);
                 batch.set_bytes(bytemuck::cast_slice(&lm_params), 3);
-                batch.dispatch_threadgroups((div_ceil(c.vocab_size, 4), 1, 1), (256, 1, 1));
+                batch.dispatch_threadgroups((div_ceil(c.vocab_size, 256), 1, 1), (256, 1, 1));
 
                 // ── Argmax ──
                 let argmax_params = [c.vocab_size as u32];
@@ -413,14 +435,21 @@ impl MetalModel {
                 batch.set_bytes(bytemuck::cast_slice(&argmax_params), 2);
                 batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
             });
-        }
+        });}
 
         self.past_seq_len = total_seq;
 
-        // Read argmax result from GPU
-        self.scratch.argmax_result.with_data(|d| {
+        // Read argmax result from GPU (this blocks until dispatch_batch completes)
+        let result = self.scratch.argmax_result.with_data(|d| {
             u32::from_le_bytes([d[0], d[1], d[2], d[3]])
-        })
+        });
+
+        // Log timing every 20 steps
+        if pos > 0 && pos % 50 == 0 {
+            log::info!("Metal decode: pos={pos}, tok/s estimate from wall clock");
+        }
+
+        result
     }
 
     pub fn reset_kv_cache(&mut self) {
