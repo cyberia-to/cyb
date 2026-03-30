@@ -29,5 +29,9 @@ env_logger = "0.11"
 clap = { version = "4", features = ["derive"] }
 half = { version = "2", features = ["num-traits"] }
 
+# ANE driver (macOS only)
+[target.'cfg(target_os = "macos")'.dependencies]
+ane = { path = "../../rane" }
+
 [build-dependencies]
 prost-build = "0.13"
