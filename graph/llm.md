@@ -533,61 +533,136 @@ the context window is not ephemeral RAM — significant context persists in [[bb
 
 ephemeral state (KV cache, intermediate tensors) lives in GPU memory only. everything else has a bbg address and can be proven.
 
-## shared GPU infrastructure with [[Trident]]
+## component boundaries
 
-the llm runtime and [[Trident]] share GPU infrastructure. tensor compute (f16) and field arithmetic (F_p) use different shaders but the same dispatch, memory, and scheduling.
+three layers. each layer has one job. violations of these boundaries create confusion.
 
-### workspace crates (in trident repo)
+### layer 1 — hardware drivers (know hardware, know nothing about models)
 
-trident repo converts to a Cargo workspace with shared GPU crates:
+| crate | hardware | job | does NOT do |
+|-------|----------|-----|-------------|
+| [aluminum](https://github.com/cyberia-to/aluminum) | Metal GPU | device, buffer, pipeline, dispatch. one kernel fast | transformer forward pass, layer sequencing, weight management |
+| [rane](https://github.com/cyberia-to/rane) | Apple Neural Engine | MIL compile, IOSurface, model load/run/unload | weight layout, KV cache policy, model config parsing |
+| wgpu | Vulkan/DX12/WebGPU | cross-platform compute dispatch | anything hardware-specific |
+| std::arch | CPU SIMD | NEON/AVX2/AVX512 intrinsics | anything above single op |
 
-```
-trident/
-├── Cargo.toml                    # [workspace]
-├── trident-lang/                 # current src/ → compiler, VM, proofs
-├── cyber-gpu-dispatch/           # Metal/wgpu/CUDA kernel launch, command queues, pipeline cache
-├── cyber-gpu-memory/             # buffer pool, allocation, residency sets, LRU eviction
-├── cyber-gpu-scheduler/          # op → backend routing, auto-tune, dispatch table, profiling
-└── cyber-gpu-shaders/
-    ├── goldilocks/               # F_p field arithmetic (mul, ntt, poseidon) — from current src/gpu/shaders/
-    ├── f16/                      # neural inference (matmul, attention, conv2d, rmsnorm...)
-    └── ternary/                  # BitNet (add/subtract matmul)
-```
+aluminum answers: "dispatch this MSL kernel on these buffers, return result, maximum GFLOPS."
+rane answers: "compile this MIL program, load to ANE, run on this IOSurface, return result."
+they do NOT answer: "run 28 transformer layers in sequence with KV cache."
 
-consumers:
-```
-trident-lang    depends on: cyber-gpu-dispatch, cyber-gpu-memory, cyber-gpu-shaders/goldilocks
-llm runtime     depends on: cyber-gpu-dispatch, cyber-gpu-memory, cyber-gpu-scheduler, cyber-gpu-shaders/f16, cyber-gpu-shaders/ternary
-```
+### layer 2 — jets (know ops, know nothing about models)
 
-### current state (trident src/gpu/)
+lives in `cyb/llm/backend/`. each jet = one op implemented for one backend.
 
 ```
-src/gpu/mod.rs         — 37 lines, try_create_device() only
-src/gpu/shaders.rs     — 3 shader constants
-src/gpu/shaders/
-    goldilocks.wgsl    — 157 lines, F_p arithmetic (canonical form)
-    fixed_point.wgsl   — 52 lines, fixed-point over Goldilocks
-    grammar_mask.wgsl  — 63 lines, beam search mask
+cyb/llm/backend/
+├── metal/     — MSL kernels, dispatch via aluminum
+│   ├── matmul.metal
+│   ├── attention.metal
+│   ├── rmsnorm.metal
+│   └── ... (~48 jets as .metal files)
+├── ane/       — MIL programs, dispatch via rane
+│   ├── matmul.rs    (generates MIL, calls rane::AneModel)
+│   ├── ffn.rs       (generates MIL for fused FFN)
+│   └── sdpa.rs      (generates MIL for attention)
+├── wgpu/      — WGSL shaders (already 20 files, 89 pipelines)
+└── cpu/       — SIMD ops (rmsnorm, rope, attention, sample, embed)
 ```
 
-minimal GPU code — ideal moment for decomposition. no legacy to refactor.
+a jet knows: "matmul(A, B) on Metal = this MSL shader dispatched via aluminum."
+a jet does NOT know: "this matmul is layer 7's Q projection in a Qwen3 model."
 
-### Nox boundary
+### layer 3 — runtime (knows models, knows nothing about hardware)
+
+lives in `cyb/llm/` top level. orchestrates everything.
+
+```
+cyb/llm/
+├── ir/         — graph IR, atoms, jet registry
+├── loader/     — model formats (onnx, gguf, safetensors, ...)
+├── generate/   — prefill→decode loop, sampling
+├── context/    — context management, cybergraph retrieval
+├── schedule/   — op→backend routing, auto-tune
+└── trace/      — STARK provability
+```
+
+the runtime knows: "Qwen3 has 28 layers, each needs rmsnorm→attention→ffn. use Metal for matmul, CPU for rmsnorm, ANE for embedding."
+the runtime does NOT know: how to dispatch a Metal kernel (aluminum does that).
+
+### the test: where does code belong?
+
+```
+"dispatch this compute shader on GPU"           → aluminum
+"compile this MIL and run on ANE"               → rane
+"implement matmul in MSL using aluminum"         → cyb/llm/backend/metal/
+"implement matmul in MIL using rane"             → cyb/llm/backend/ane/
+"implement matmul in WGSL"                       → cyb/llm/backend/wgpu/
+"implement rmsnorm in NEON SIMD"                 → cyb/llm/backend/cpu/
+"run 28 layers of Qwen3 in order"                → cyb/llm/generate/
+"decide matmul goes to Metal not wgpu"           → cyb/llm/schedule/
+"load weights from GGUF"                         → cyb/llm/loader/
+"manage KV cache across tokens"                  → cyb/llm/generate/
+"build context from cybergraph"                  → cyb/llm/context/
+```
+
+### dependencies
+
+```toml
+# cyb/llm/Cargo.toml
+[dependencies]
+aluminum = { path = "../aluminum" }   # layer 1: Metal driver
+rane = { path = "../rane" }           # layer 1: ANE driver
+wgpu = "24"                           # layer 1: cross-platform GPU
+```
+
+aluminum and rane do NOT depend on cyb/llm. cyb/llm depends on them. the arrow points one way.
+
+### what currently violates boundaries
+
+rane currently contains code that belongs in cyb/llm:
+
+| file in rane | should be in | why |
+|---|---|---|
+| ops/rmsnorm.rs | cyb/llm/backend/cpu/ | CPU op implementation, not ANE driver |
+| ops/rope.rs | cyb/llm/backend/cpu/ | CPU op implementation |
+| ops/attention.rs | cyb/llm/backend/cpu/ | CPU op implementation |
+| ops/sample.rs | cyb/llm/backend/cpu/ | sampling logic |
+| ops/embed.rs | cyb/llm/backend/cpu/ | CPU op implementation |
+| ops/activation.rs | cyb/llm/backend/cpu/ | CPU op implementation |
+| ops/loss.rs | cyb/llm/backend/cpu/ | training op |
+| ops/adam.rs | cyb/llm/backend/cpu/ | training op |
+| weights.rs | cyb/llm/loader/ | weight management |
+| config.rs | cyb/llm/ir/ | model architecture config |
+| mil/ffn.rs | cyb/llm/backend/ane/ | ANE jet (uses rane as driver) |
+| mil/projection.rs | cyb/llm/backend/ane/ | ANE jet |
+| mil/sdpa.rs | cyb/llm/backend/ane/ | ANE jet |
+
+rane keeps: ffi.rs, model.rs, surface.rs, staging.rs, accel.rs, mil/mod.rs (generic MIL builder), probe/. pure driver.
+
+### Nox integration
 
 the llm runtime is a host jet called from [[Nox]] reduction:
 
 ```
 Nox (control plane, provable)
     │
-    ├── pure jets → field arithmetic (Trident, proven)
+    ├── pure jets → field arithmetic ([[Trident]], proven)
     │
     └── host jet: infer(model, input)
           │
-          └── llm runtime (data plane, native Rust + GPU)
+          └── cyb/llm (layer 3 — runtime)
                 │
-                └── cyber-gpu-dispatch → Metal/CUDA/wgpu
+                ├── schedule: pick backend
+                │
+                └── cyb/llm/backend/* (layer 2 — jets)
+                      │
+                      ├── aluminum (layer 1 — Metal)
+                      ├── rane (layer 1 — ANE)
+                      ├── wgpu (layer 1 — cross-platform)
+                      └── CPU SIMD (layer 1 — fallback)
 ```
+
+[[Trident]] uses aluminum for GPU field arithmetic through the same layer 1 driver. shared hardware access, different jets.
 
 orchestration decisions (which model, what context, which tool) run ON Nox — provable. tensor computation runs THROUGH Nox as a host jet — fast, native GPU, auditable via STARK trace but not itself a Nox reduction.
 
