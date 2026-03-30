@@ -4,7 +4,9 @@
 //! config comes from config.json (HuggingFace) or GGUF metadata.
 //! template + config = concrete graph.
 
-use super::graph::{Graph, TensorMeta, Dim, Residency};
+use std::collections::HashMap;
+
+use super::graph::{Graph, TensorMeta, Dim, Residency, AttrValue, Attrs};
 use super::ops::{Op, InterpolateMode};
 use super::dtype::DType;
 
@@ -249,6 +251,314 @@ pub fn transformer_decoder(config: &TransformerConfig) -> Graph {
     );
 
     g
+}
+
+/// Build a transformer decoder graph for the Graph IR executor.
+///
+/// Unlike `transformer_decoder`, this generates a graph with:
+/// - **Standard HuggingFace weight names** (`model.layers.{i}.self_attn.q_proj.weight`)
+/// - **Separate Q, K, V projections** (not merged QKV)
+/// - **Attrs on every node** with hidden_size, num_heads, etc. for the executor
+/// - **RoPE applied separately** to Q and K
+///
+/// This graph can be executed by `GraphExecutor::execute_decode`.
+pub fn transformer_decoder_for_exec(config: &TransformerConfig) -> Graph {
+    let mut g = Graph::new();
+
+    let seq_dim = Dim::Dynamic("seq_len".to_string());
+    let hidden = config.hidden_size;
+    let inter = config.intermediate_size;
+    let kv_dim = config.kv_num_heads * config.head_dim;
+    let q_dim = config.num_heads * config.head_dim;
+
+    // Token embedding: input_ids -> hidden
+    let embed_out = "embed_out".to_string();
+    g.add_node_with_attrs(
+        Op::TokenEmbed,
+        vec!["input_ids".to_string()],
+        vec![embed_out.clone()],
+        make_attrs(&[("hidden", hidden as i64)]),
+        None,
+    );
+    g.add_tensor("input_ids".to_string(), TensorMeta {
+        shape: vec![seq_dim.clone()],
+        dtype: DType::U8,
+        residency: Residency::Streamed,
+    });
+    g.add_tensor(embed_out.clone(), TensorMeta {
+        shape: vec![seq_dim.clone(), Dim::Fixed(hidden)],
+        dtype: DType::F32,
+        residency: Residency::Streamed,
+    });
+
+    let mut prev_hidden = embed_out;
+
+    for i in 0..config.num_layers {
+        let prefix = format!("layer_{i}");
+        let hf = format!("model.layers.{i}");
+
+        // Input norm
+        let norm1_out = format!("{prefix}.attn_norm_out");
+        g.add_node_with_attrs(
+            Op::RmsNorm { eps: config.eps },
+            vec![prev_hidden.clone(), format!("{hf}.input_layernorm.weight")],
+            vec![norm1_out.clone()],
+            make_attrs(&[("hidden", hidden as i64), ("positions", 1)]),
+            None,
+        );
+
+        // Q projection
+        let q_out = format!("{prefix}.q_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![norm1_out.clone(), format!("{hf}.self_attn.q_proj.weight")],
+            vec![q_out.clone()],
+            make_attrs(&[("n", q_dim as i64), ("k", hidden as i64)]),
+            None,
+        );
+
+        // K projection
+        let k_out = format!("{prefix}.k_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![norm1_out.clone(), format!("{hf}.self_attn.k_proj.weight")],
+            vec![k_out.clone()],
+            make_attrs(&[("n", kv_dim as i64), ("k", hidden as i64)]),
+            None,
+        );
+
+        // V projection
+        let v_out = format!("{prefix}.v_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![norm1_out, format!("{hf}.self_attn.v_proj.weight")],
+            vec![v_out.clone()],
+            make_attrs(&[("n", kv_dim as i64), ("k", hidden as i64)]),
+            None,
+        );
+
+        // RoPE on Q
+        let q_roped = format!("{prefix}.q_roped");
+        g.add_node_with_attrs(
+            Op::Rope {
+                head_dim: config.head_dim as u32,
+                base: config.rope_theta,
+            },
+            vec![q_out],
+            vec![q_roped.clone()],
+            make_attrs(&[("total_elements", q_dim as i64), ("n", q_dim as i64)]),
+            None,
+        );
+
+        // RoPE on K
+        let k_roped = format!("{prefix}.k_roped");
+        g.add_node_with_attrs(
+            Op::Rope {
+                head_dim: config.head_dim as u32,
+                base: config.rope_theta,
+            },
+            vec![k_out],
+            vec![k_roped.clone()],
+            make_attrs(&[("total_elements", kv_dim as i64), ("n", kv_dim as i64)]),
+            None,
+        );
+
+        // KV cache (passthrough in the graph — actual caching is in executor)
+        let kv_out = format!("{prefix}.kv_cached");
+        g.add_node(
+            Op::KvCache,
+            vec![k_roped.clone()],
+            vec![kv_out.clone()],
+        );
+        g.add_tensor(kv_out.clone(), TensorMeta {
+            shape: vec![
+                Dim::Dynamic("total_seq".to_string()),
+                Dim::Fixed(kv_dim),
+            ],
+            dtype: DType::F32,
+            residency: Residency::Cached,
+        });
+
+        // Scaled dot-product attention
+        // v_tensor attr tells the executor where to find the V buffer
+        let attn_out = format!("{prefix}.attn_out");
+        let mut sdpa_attrs = make_attrs(&[("hidden", hidden as i64)]);
+        sdpa_attrs.insert("v_tensor".to_string(), AttrValue::String(v_out.clone()));
+        g.add_node_with_attrs(
+            Op::Sdpa {
+                num_heads: config.num_heads as u32,
+                kv_heads: config.kv_num_heads as u32,
+                head_dim: config.head_dim as u32,
+                causal: true,
+            },
+            vec![q_roped, kv_out],
+            vec![attn_out.clone()],
+            sdpa_attrs,
+            None,
+        );
+
+        // Output projection
+        let o_proj_out = format!("{prefix}.o_proj_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![attn_out, format!("{hf}.self_attn.o_proj.weight")],
+            vec![o_proj_out.clone()],
+            make_attrs(&[("n", hidden as i64), ("k", q_dim as i64)]),
+            None,
+        );
+
+        // Residual add
+        let residual1 = format!("{prefix}.residual1");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![prev_hidden.clone(), o_proj_out],
+            vec![residual1.clone()],
+            make_attrs(&[("n", hidden as i64)]),
+            None,
+        );
+
+        // FFN norm
+        let norm2_out = format!("{prefix}.ffn_norm_out");
+        g.add_node_with_attrs(
+            Op::RmsNorm { eps: config.eps },
+            vec![residual1.clone(), format!("{hf}.post_attention_layernorm.weight")],
+            vec![norm2_out.clone()],
+            make_attrs(&[("hidden", hidden as i64), ("positions", 1)]),
+            None,
+        );
+
+        // FFN: gate + up projections
+        let gate_out = format!("{prefix}.gate_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![norm2_out.clone(), format!("{hf}.mlp.gate_proj.weight")],
+            vec![gate_out.clone()],
+            make_attrs(&[("n", inter as i64), ("k", hidden as i64)]),
+            None,
+        );
+
+        let up_out = format!("{prefix}.up_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![norm2_out, format!("{hf}.mlp.up_proj.weight")],
+            vec![up_out.clone()],
+            make_attrs(&[("n", inter as i64), ("k", hidden as i64)]),
+            None,
+        );
+
+        // Activation gate
+        let act_out = format!("{prefix}.act_out");
+        match config.activation {
+            Activation::Silu => {
+                // SwiGLU: silu(gate) * up
+                let silu_out = format!("{prefix}.silu_out");
+                g.add_node_with_attrs(
+                    Op::Silu,
+                    vec![gate_out],
+                    vec![silu_out.clone()],
+                    make_attrs(&[("n", inter as i64)]),
+                    None,
+                );
+                g.add_node_with_attrs(
+                    Op::Mul,
+                    vec![silu_out, up_out],
+                    vec![act_out.clone()],
+                    make_attrs(&[("n", inter as i64)]),
+                    None,
+                );
+            }
+            Activation::Gelu => {
+                let gelu_out = format!("{prefix}.gelu_out");
+                g.add_node_with_attrs(
+                    Op::Gelu { approximate: false },
+                    vec![gate_out],
+                    vec![gelu_out.clone()],
+                    make_attrs(&[("n", inter as i64)]),
+                    None,
+                );
+                g.add_node_with_attrs(
+                    Op::Mul,
+                    vec![gelu_out, up_out],
+                    vec![act_out.clone()],
+                    make_attrs(&[("n", inter as i64)]),
+                    None,
+                );
+            }
+            Activation::GeGlu => {
+                g.add_node_with_attrs(
+                    Op::GeGlu,
+                    vec![gate_out, up_out],
+                    vec![act_out.clone()],
+                    make_attrs(&[("n", inter as i64)]),
+                    None,
+                );
+            }
+        }
+
+        // Down projection
+        let down_out = format!("{prefix}.down_out");
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![act_out, format!("{hf}.mlp.down_proj.weight")],
+            vec![down_out.clone()],
+            make_attrs(&[("n", hidden as i64), ("k", inter as i64)]),
+            None,
+        );
+
+        // Residual add
+        let residual2 = format!("{prefix}.residual2");
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![residual1, down_out],
+            vec![residual2.clone()],
+            make_attrs(&[("n", hidden as i64)]),
+            None,
+        );
+
+        prev_hidden = residual2;
+    }
+
+    // Final norm
+    let final_norm = "final_norm_out".to_string();
+    g.add_node_with_attrs(
+        Op::RmsNorm { eps: config.eps },
+        vec![prev_hidden, "model.norm.weight".to_string()],
+        vec![final_norm.clone()],
+        make_attrs(&[("hidden", hidden as i64), ("positions", 1)]),
+        None,
+    );
+
+    // LM head
+    g.add_node_with_attrs(
+        Op::Matmul,
+        vec![final_norm, "lm_head.weight".to_string()],
+        vec!["logits".to_string()],
+        make_attrs(&[("n", config.vocab_size as i64), ("k", hidden as i64)]),
+        None,
+    );
+
+    g.add_tensor("logits".to_string(), TensorMeta {
+        shape: vec![seq_dim, Dim::Fixed(config.vocab_size)],
+        dtype: DType::F32,
+        residency: Residency::Streamed,
+    });
+
+    log::info!(
+        "transformer_decoder_for_exec template: {} layers, {} nodes, weight names = HF convention",
+        config.num_layers,
+        g.len()
+    );
+
+    g
+}
+
+/// Helper: build an Attrs map from a slice of (key, int_value) pairs
+fn make_attrs(pairs: &[(&str, i64)]) -> Attrs {
+    let mut m: Attrs = HashMap::new();
+    for &(k, v) in pairs {
+        m.insert(k.to_string(), AttrValue::Int(v));
+    }
+    m
 }
 
 /// Build a transformer encoder graph (BERT, CLIP text, whisper encoder)
@@ -1330,4 +1640,126 @@ pub fn moe_decoder(config: &MoeDecoderConfig) -> Graph {
     );
 
     g
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_transformer_decoder_for_exec_generates_graph() {
+        let config = TransformerConfig {
+            hidden_size: 256,
+            num_heads: 4,
+            kv_num_heads: 2,
+            head_dim: 64,
+            num_layers: 2,
+            intermediate_size: 512,
+            vocab_size: 1000,
+            eps: 1e-5,
+            rope_theta: 10000.0,
+            max_seq_len: 128,
+            activation: Activation::Silu,
+        };
+
+        let g = transformer_decoder_for_exec(&config);
+
+        // Should have nodes
+        assert!(g.len() > 0, "Graph should have nodes");
+
+        // Check that weight names follow HuggingFace convention
+        let all_inputs: Vec<&str> = g.nodes.iter()
+            .flat_map(|n| n.inputs.iter().map(|s| s.as_str()))
+            .collect();
+
+        assert!(all_inputs.contains(&"model.layers.0.self_attn.q_proj.weight"),
+            "Should have HF-style Q weight name");
+        assert!(all_inputs.contains(&"model.layers.0.self_attn.k_proj.weight"),
+            "Should have HF-style K weight name");
+        assert!(all_inputs.contains(&"model.layers.0.self_attn.v_proj.weight"),
+            "Should have HF-style V weight name");
+        assert!(all_inputs.contains(&"model.layers.0.self_attn.o_proj.weight"),
+            "Should have HF-style O weight name");
+        assert!(all_inputs.contains(&"model.layers.0.mlp.gate_proj.weight"),
+            "Should have HF-style gate weight name");
+        assert!(all_inputs.contains(&"model.layers.0.mlp.up_proj.weight"),
+            "Should have HF-style up weight name");
+        assert!(all_inputs.contains(&"model.layers.0.mlp.down_proj.weight"),
+            "Should have HF-style down weight name");
+        assert!(all_inputs.contains(&"model.layers.0.input_layernorm.weight"),
+            "Should have HF-style input norm weight name");
+        assert!(all_inputs.contains(&"model.layers.0.post_attention_layernorm.weight"),
+            "Should have HF-style post norm weight name");
+        assert!(all_inputs.contains(&"model.norm.weight"),
+            "Should have final norm weight name");
+        assert!(all_inputs.contains(&"lm_head.weight"),
+            "Should have lm_head weight name");
+
+        // Check outputs
+        let all_outputs: Vec<&str> = g.nodes.iter()
+            .flat_map(|n| n.outputs.iter().map(|s| s.as_str()))
+            .collect();
+        assert!(all_outputs.contains(&"logits"), "Should produce logits");
+    }
+
+    #[test]
+    fn test_exec_graph_has_attrs() {
+        let config = TransformerConfig {
+            hidden_size: 128,
+            num_heads: 2,
+            kv_num_heads: 2,
+            head_dim: 64,
+            num_layers: 1,
+            intermediate_size: 256,
+            vocab_size: 100,
+            eps: 1e-5,
+            rope_theta: 10000.0,
+            max_seq_len: 64,
+            activation: Activation::Silu,
+        };
+
+        let g = transformer_decoder_for_exec(&config);
+
+        // Find a Matmul node and check it has n/k attrs
+        let matmul_node = g.nodes.iter().find(|n| matches!(n.op, Op::Matmul)).unwrap();
+        assert!(matmul_node.attrs.contains_key("n"), "Matmul should have 'n' attr");
+        assert!(matmul_node.attrs.contains_key("k"), "Matmul should have 'k' attr");
+
+        // Find a RmsNorm node and check it has hidden attr
+        let norm_node = g.nodes.iter().find(|n| matches!(n.op, Op::RmsNorm { .. })).unwrap();
+        assert!(norm_node.attrs.contains_key("hidden"), "RmsNorm should have 'hidden' attr");
+
+        // Find an Sdpa node and check it has v_tensor attr
+        let sdpa_node = g.nodes.iter().find(|n| matches!(n.op, Op::Sdpa { .. })).unwrap();
+        assert!(sdpa_node.attrs.contains_key("v_tensor"), "Sdpa should have 'v_tensor' attr");
+    }
+
+    #[test]
+    fn test_exec_graph_topological_sort() {
+        let config = TransformerConfig::default();
+        let mut g = transformer_decoder_for_exec(&config);
+        let sorted = g.topological_sort();
+        assert!(sorted, "Graph should be sortable (no cycles)");
+    }
+
+    #[test]
+    fn test_original_transformer_decoder_unchanged() {
+        // Verify the original template still works
+        let config = TransformerConfig {
+            hidden_size: 256,
+            num_heads: 4,
+            kv_num_heads: 2,
+            head_dim: 64,
+            num_layers: 2,
+            intermediate_size: 512,
+            vocab_size: 1000,
+            eps: 1e-5,
+            rope_theta: 10000.0,
+            max_seq_len: 128,
+            activation: Activation::Silu,
+        };
+
+        let g = transformer_decoder(&config);
+        assert!(g.len() > 0, "Original template should still work");
+    }
 }
