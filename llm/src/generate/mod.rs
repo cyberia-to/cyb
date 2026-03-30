@@ -143,13 +143,18 @@ impl TextGenerator {
         use std::io::Write;
         std::io::stdout().flush().ok();
 
-        let gen_start = std::time::Instant::now();
+        let prefill_start = std::time::Instant::now();
 
         // Prefill: process prompt tokens
         let mut logits = Vec::new();
         for t in 0..token_ids.len() {
             logits = self.model.forward(&[token_ids[t]]);
         }
+
+        let prefill_ms = prefill_start.elapsed().as_secs_f64() * 1000.0;
+        log::info!("Prefill: {} tokens in {:.1}ms ({:.1} ms/tok)", token_ids.len(), prefill_ms, prefill_ms / token_ids.len() as f64);
+
+        let decode_start = std::time::Instant::now();
 
         // Autoregressive generation
         let mut generated = String::new();
@@ -177,19 +182,21 @@ impl TextGenerator {
             logits = self.model.forward(&[next_token]);
 
             if step > 0 && step % 20 == 0 {
-                let elapsed = gen_start.elapsed().as_secs_f64();
+                let elapsed = decode_start.elapsed().as_secs_f64();
                 let tps = (step as f64) / elapsed;
                 log::debug!("Step {step}: {tps:.1} tok/s");
             }
         }
 
-        let elapsed = gen_start.elapsed().as_secs_f64();
+        let decode_s = decode_start.elapsed().as_secs_f64();
+        let total_s = prefill_ms / 1000.0 + decode_s;
         let gen_count = token_ids.len() - encoding.get_ids().len();
+        let decode_tps = if decode_s > 0.0 { gen_count as f64 / decode_s } else { 0.0 };
         println!();
         println!("---");
         println!(
-            "Generated {gen_count} tokens in {elapsed:.1}s ({:.1} tok/s)",
-            gen_count as f64 / elapsed
+            "Prefill: {:.0}ms | Decode: {gen_count} tokens in {decode_s:.2}s ({decode_tps:.1} tok/s) | Total: {total_s:.2}s",
+            prefill_ms
         );
 
         Ok(generated)
