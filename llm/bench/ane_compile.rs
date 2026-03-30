@@ -1,16 +1,17 @@
 //! Test: compile all MIL kernels on ANE hardware
-//! cargo run --example compile_kernels
+//! cargo run --release -p cyb-llm --bin bench-ane-compile
 
-use ane::config;
-use ane::mil::{self, ffn, projection, sdpa};
-use ane::AneModel;
+use cyb_llm::config;
+use cyb_llm::backend::ane::mil::{ffn, projection, sdpa};
+use rane::mil;
+use rane::{AneModel, MilProgram};
 use std::time::Instant;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let cfg = config::qwen3_06b();
     println!("Compiling all ANE kernels for {}...\n", cfg.name);
 
-    let kernels: Vec<(&str, Box<dyn Fn() -> ane::MilProgram>, Vec<(&str, Vec<u8>)>)> = vec![
+    let kernels: Vec<(&str, Box<dyn Fn() -> MilProgram>, Vec<(&str, Vec<u8>)>)> = vec![
         (
             "matmul(64,64,64)",
             Box::new(|| mil::matmul(64, 64, 64)),
@@ -41,8 +42,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut ok = 0;
     let mut fail = 0;
 
-    for (name, gen, _weights) in &kernels {
-        let program = gen();
+    for (name, build, _weights) in &kernels {
+        let program = build();
         let (ic, isp) = program.input_shape();
         let (oc, osp) = program.output_shape();
         print!("  {:20} [{},{}] → [{},{}] ... ", name, ic, isp, oc, osp);

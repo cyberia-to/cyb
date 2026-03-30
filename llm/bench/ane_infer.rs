@@ -3,16 +3,15 @@
 //! Prefill: QKV/Wo/FFN on ANE, QK-norm+RoPE+attention on CPU
 //! Decode: all CPU with KV-cache
 //!
-//! Usage: cargo run --example infer -- --ckpt PATH [--temp 0.8] [--topk 40] [--maxlen 200]
+//! Usage: cargo run --release -p cyb-llm --bin bench-ane-infer -- --ckpt PATH [--temp 0.8] [--topk 40] [--maxlen 200]
 //! Send token IDs via stdin (one per line, empty line to start generation)
 
-use ane::config;
-use ane::mil::{ffn, projection};
-use ane::ops::{activation, attention, embed, rmsnorm, rope, sample};
-use ane::staging;
-use ane::surface::AneSurface;
-use ane::weights::{self, KVCache, LayerWeights};
-use ane::AneModel;
+use cyb_llm::config;
+use cyb_llm::backend::ane::mil::{ffn, projection};
+use cyb_llm::backend::cpu::ops::{activation, attention, embed, rmsnorm, rope, sample};
+use cyb_llm::backend::ane::staging;
+use cyb_llm::weights::{self, KVCache, LayerWeights};
+use rane::{AneSurface, AneModel};
 use std::io::BufRead;
 use std::time::Instant;
 
@@ -193,7 +192,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         wo_model.run(&wo_ins[l], &wo_out)?;
         staging::read_surface_f32(&wo_out, &mut o_out, dim * seq);
         unsafe {
-            ane::accel::vDSP_vadd(x_cur.as_ptr(), 1, o_out.as_ptr(), 1, x2.as_mut_ptr(), 1, (seq * dim) as u64);
+            cyb_llm::backend::cpu::accel::vDSP_vadd(x_cur.as_ptr(), 1, o_out.as_ptr(), 1, x2.as_mut_ptr(), 1, (seq * dim) as u64);
         }
         rmsnorm::forward(&mut x2norm, &x2, &layers[l].rms_ffn, dim, seq);
         staging::write_ffn_acts(&ffn_ins[l], &x2norm, &x2, &cfg);
@@ -206,7 +205,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let pos = prompt_len - 1;
     let mut x_col = vec![0.0f32; dim];
     for d in 0..dim { x_col[d] = x_final[d * seq + pos]; }
-    ane::accel::sgemv(false, cfg.vocab, dim, 1.0, &embed_weights, dim, &x_col, 0.0, &mut logits);
+    cyb_llm::backend::cpu::accel::sgemv(false, cfg.vocab, dim, 1.0, &embed_weights, dim, &x_col, 0.0, &mut logits);
     let mut next_token = sample::sample_token(&logits, cfg.vocab, temperature, topk);
 
     let prefill_ms = tpre.elapsed().as_millis();
@@ -288,16 +287,16 @@ fn forward_decode(
         rope_apply_table(&mut buf.q, pos, q_dim, hd, half_hd, rope_cos, rope_sin);
         rope_apply_table(&mut buf.k, pos, kv_dim, hd, half_hd, rope_cos, rope_sin);
         unsafe {
-            ane::accel::cblas_scopy(kv_dim as i32, buf.k.as_ptr(), 1,
+            cyb_llm::backend::cpu::accel::cblas_scopy(kv_dim as i32, buf.k.as_ptr(), 1,
                 kvc[l].k_cache.as_mut_ptr().add(pos), cfg.seq as i32);
-            ane::accel::cblas_scopy(kv_dim as i32, buf.v.as_ptr(), 1,
+            cyb_llm::backend::cpu::accel::cblas_scopy(kv_dim as i32, buf.v.as_ptr(), 1,
                 kvc[l].v_cache.as_mut_ptr().add(pos), cfg.seq as i32);
         }
         attention::cpu_attention_cached(&mut buf.a_out, &buf.q, &kvc[l].k_cache,
             &kvc[l].v_cache, cfg.heads, cfg.kv_heads, hd, pos + 1, cfg.seq);
         matvec(&mut buf.o_out, &layers[l].wo, &buf.a_out, dim, q_dim);
         unsafe {
-            ane::accel::vDSP_vadd(x.as_ptr(), 1, buf.o_out.as_ptr(), 1,
+            cyb_llm::backend::cpu::accel::vDSP_vadd(x.as_ptr(), 1, buf.o_out.as_ptr(), 1,
                 buf.x2.as_mut_ptr(), 1, dim as u64);
         }
         rmsnorm::forward_single(&mut buf.x2norm, &buf.x2, &layers[l].rms_ffn, dim);
@@ -307,26 +306,26 @@ fn forward_decode(
             let h = hidden as u64;
             let n = hidden as i32;
             let neg1 = -1.0f32;
-            ane::accel::vDSP_vsmul(buf.h1.as_ptr(), 1, &neg1, buf.gate.as_mut_ptr(), 1, h);
-            ane::accel::vvexpf(buf.gate.as_mut_ptr(), buf.gate.as_ptr(), &n);
+            cyb_llm::backend::cpu::accel::vDSP_vsmul(buf.h1.as_ptr(), 1, &neg1, buf.gate.as_mut_ptr(), 1, h);
+            cyb_llm::backend::cpu::accel::vvexpf(buf.gate.as_mut_ptr(), buf.gate.as_ptr(), &n);
             let one = 1.0f32;
-            ane::accel::vDSP_vsadd(buf.gate.as_ptr(), 1, &one, buf.gate.as_mut_ptr(), 1, h);
-            extern "C" {
+            cyb_llm::backend::cpu::accel::vDSP_vsadd(buf.gate.as_ptr(), 1, &one, buf.gate.as_mut_ptr(), 1, h);
+            unsafe extern "C" {
                 fn vDSP_vdiv(A: *const f32, IA: i64, B: *const f32, IB: i64,
                     C: *mut f32, IC: i64, N: u64);
             }
-            vDSP_vdiv(buf.gate.as_ptr(), 1, buf.h1.as_ptr(), 1, buf.gate.as_mut_ptr(), 1, h);
-            ane::accel::vDSP_vmul(buf.gate.as_ptr(), 1, buf.h3.as_ptr(), 1,
+            unsafe { vDSP_vdiv(buf.gate.as_ptr(), 1, buf.h1.as_ptr(), 1, buf.gate.as_mut_ptr(), 1, h) };
+            cyb_llm::backend::cpu::accel::vDSP_vmul(buf.gate.as_ptr(), 1, buf.h3.as_ptr(), 1,
                 buf.gate.as_mut_ptr(), 1, h);
         }
         matvec(&mut buf.o_out, &layers[l].w2, &buf.gate, dim, hidden);
         unsafe {
-            ane::accel::vDSP_vadd(buf.x2.as_ptr(), 1, buf.o_out.as_ptr(), 1,
+            cyb_llm::backend::cpu::accel::vDSP_vadd(buf.x2.as_ptr(), 1, buf.o_out.as_ptr(), 1,
                 x.as_mut_ptr(), 1, dim as u64);
         }
     }
     rmsnorm::forward_single(&mut buf.x_final, x, rms_final, dim);
-    ane::accel::sgemv(false, cfg.vocab, dim, 1.0, embed_w, dim, &buf.x_final, 0.0, logits);
+    cyb_llm::backend::cpu::accel::sgemv(false, cfg.vocab, dim, 1.0, embed_w, dim, &buf.x_final, 0.0, logits);
 }
 
 fn rope_apply_table(x: &mut [f32], pos: usize, dim: usize, hd: usize,
@@ -345,5 +344,5 @@ fn rope_apply_table(x: &mut [f32], pos: usize, dim: usize, hd: usize,
 }
 
 fn matvec(out: &mut [f32], w: &[f32], x: &[f32], rows: usize, cols: usize) {
-    ane::accel::sgemv(false, rows, cols, 1.0, w, cols, x, 0.0, out);
+    cyb_llm::backend::cpu::accel::sgemv(false, rows, cols, 1.0, w, cols, x, 0.0, out);
 }

@@ -19,6 +19,18 @@ path = "bench/ane.rs"
 name = "bench-e2e"
 path = "bench/e2e.rs"
 
+[[bin]]
+name = "bench-ane-compile"
+path = "bench/ane_compile.rs"
+
+[[bin]]
+name = "bench-ane-infer"
+path = "bench/ane_infer.rs"
+
+[[bin]]
+name = "bench-ane-train"
+path = "bench/ane_train.rs"
+
 [dependencies]
 # GPU compute
 wgpu = { version = "24", features = ["wgsl"] }

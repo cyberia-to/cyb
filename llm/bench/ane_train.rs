@@ -1,18 +1,18 @@
 //! ANE training — Qwen3-0.6B forward+backward+optimizer
 //!
-//! Usage: cargo run --release --example train -- --ckpt PATH --data PATH [--steps 100] [--lr 3e-4]
+//! Usage: cargo run --release -p cyb-llm --bin bench-ane-train -- --ckpt PATH --data PATH [--steps 100] [--lr 3e-4]
 //!
 //! This implements the full training loop from training_dynamic/train.m:
 //! - Forward: RMSNorm→SDPA(ANE)→Wo(ANE)→RMSNorm→FFN(ANE) per layer
 //! - Backward: FFN bwd→SDPA bwd→projection bwd per layer (ANE+CPU)
 //! - Optimizer: AdamW with cosine LR schedule
 
-use ane::config::{self, ModelConfig};
-use ane::mil::{self, ffn, projection, sdpa};
-use ane::ops::{activation, adam, attention, embed, loss, rmsnorm, rope};
-use ane::surface::{f32_to_fp16, fp16_to_f32, AneSurface};
-use ane::weights::{self, CkptHeader, LayerWeights};
-use ane::{AneModel, MilProgram};
+use cyb_llm::config::{self, ModelConfig};
+use cyb_llm::backend::ane::mil::{ffn, projection, sdpa};
+use cyb_llm::backend::cpu::ops::{activation, adam, attention, embed, loss, rmsnorm, rope};
+use cyb_llm::weights::{self, CkptHeader, LayerWeights};
+use rane::mil;
+use rane::{f32_to_fp16, fp16_to_f32, AneSurface, AneModel, MilProgram};
 use std::time::Instant;
 
 struct TrainKernels {
@@ -385,7 +385,7 @@ fn cpu_forward_loss(
 // CPU matmul via Accelerate BLAS: out[rows, seq] = W[rows, cols] @ x[cols, seq]
 // W: row-major [rows, cols], x: row-major [cols, seq], out: row-major [rows, seq]
 fn cpu_matmul(out: &mut [f32], w: &[f32], x: &[f32], rows: usize, cols: usize, seq: usize) {
-    ane::accel::sgemm(
+    cyb_llm::backend::cpu::accel::sgemm(
         false, false, rows, seq, cols, 1.0, w, cols, x, seq, 0.0, out, seq,
     );
 }
@@ -393,7 +393,7 @@ fn cpu_matmul(out: &mut [f32], w: &[f32], x: &[f32], rows: usize, cols: usize, s
 fn compile_and_load(
     program: &MilProgram,
     weights: &[(&str, &[u8])],
-) -> Result<AneModel, ane::AneError> {
+) -> Result<AneModel, rane::AneError> {
     let mut model = AneModel::compile(program, weights)?;
     model.load()?;
     Ok(model)
