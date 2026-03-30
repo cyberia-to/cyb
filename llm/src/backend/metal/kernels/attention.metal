@@ -1,6 +1,7 @@
-// Attention decode — one workgroup per head, online softmax
+// Attention decode — one workgroup per query head, online softmax
+// Supports GQA: multiple query heads share same KV head
 // Q: [num_heads * head_dim] fp16
-// K, V: [num_heads * total_seq * head_dim] fp16
+// K, V: [kv_num_heads * total_seq * head_dim] fp16 (from KV cache)
 // Output: [num_heads * head_dim] fp16
 
 #include <metal_stdlib>
@@ -8,9 +9,11 @@ using namespace metal;
 
 struct AttnParams {
     uint head_dim;
-    uint total_seq;
+    uint total_seq;   // actual sequence length (past + 1)
     uint num_heads;
     float scale;
+    uint kv_num_heads; // for GQA
+    uint max_seq;      // KV cache stride (pre-allocated size)
 };
 
 kernel void attention_decode_f16(
@@ -30,8 +33,12 @@ kernel void attention_decode_f16(
     uint head = group_id;
     if (head >= p.num_heads) return;
 
+    // GQA: map query head → kv head
+    uint gqa_ratio = p.num_heads / p.kv_num_heads;
+    uint kv_head = head / gqa_ratio;
+
     uint q_base = head * p.head_dim;
-    uint kv_base = head * p.total_seq * p.head_dim;
+    uint kv_base = kv_head * p.max_seq * p.head_dim;
     uint num_sgs = 256u / 32u;
 
     // Step 1: Q·K^T scores

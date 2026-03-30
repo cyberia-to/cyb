@@ -118,6 +118,30 @@ fn main() {
         }
     }
 
+    // ── cyb-llm (Metal backend) ──
+    #[cfg(target_os = "macos")]
+    {
+        println!("\n── cyb-llm (Metal backend) ──\n");
+        for spec in &config.models {
+            let safetensors = spec.local_dir.join("model.safetensors");
+            let tokenizer = spec.local_dir.join("tokenizer.json");
+            if !safetensors.exists() || !tokenizer.exists() { continue; }
+
+            match bench_metal(&spec.name, &safetensors, &tokenizer, config.max_tokens) {
+                Ok(r) => {
+                    println!(
+                        "  {:<20} load={:.1}s  decode={:.1} tok/s  ({} tokens in {:.1}s)",
+                        spec.name, r.load_s, r.tok_s, r.gen_tokens, r.gen_s,
+                    );
+                    results.push(r);
+                }
+                Err(e) => {
+                    println!("  {:<20} ERROR: {}", spec.name, e);
+                }
+            }
+        }
+    }
+
     // ── ollama ──
     println!("\n── ollama ──\n");
 
@@ -291,6 +315,64 @@ fn bench_ollama(
         prefill_ms: 0.0,
         prompt_tokens: 0,
         gen_tokens: eval_count,
+        gen_s,
+        tok_s,
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn bench_metal(
+    name: &str,
+    safetensors: &Path,
+    tokenizer_path: &Path,
+    max_tokens: usize,
+) -> Result<BenchResult, String> {
+    use cyb_llm::backend::metal::MetalModel;
+
+    let load_start = std::time::Instant::now();
+    let mut model = MetalModel::load_from_safetensors(safetensors)?;
+    let load_s = load_start.elapsed().as_secs_f64();
+
+    let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path)
+        .map_err(|e| format!("{e}"))?;
+    let encoding = tokenizer.encode(PROMPT, false).map_err(|e| format!("{e}"))?;
+    let token_ids = encoding.get_ids();
+
+    // EOS tokens
+    let eos: Vec<u32> = vec![
+        151643, 151645, 2, 0, 50256,
+    ];
+
+    // Prefill: feed all prompt tokens, keep last predicted token
+    let prefill_start = std::time::Instant::now();
+    let mut next_token = 0u32;
+    for &tid in token_ids {
+        next_token = model.forward_decode(tid);
+    }
+    let prefill_ms = prefill_start.elapsed().as_secs_f64() * 1000.0;
+    println!("    [metal debug] prefill done, first predicted token: {next_token}");
+
+    // Decode
+    let decode_start = std::time::Instant::now();
+    let mut gen_count = 0;
+    for _ in 0..max_tokens {
+        if eos.contains(&next_token) {
+            println!("    [metal debug] EOS hit: {next_token}");
+            break;
+        }
+        gen_count += 1;
+        next_token = model.forward_decode(next_token);
+    }
+    let gen_s = decode_start.elapsed().as_secs_f64();
+    let tok_s = if gen_s > 0.0 { gen_count as f64 / gen_s } else { 0.0 };
+
+    Ok(BenchResult {
+        model: name.to_string(),
+        backend: "metal".to_string(),
+        load_s,
+        prefill_ms,
+        prompt_tokens: token_ids.len(),
+        gen_tokens: gen_count,
         gen_s,
         tok_s,
     })
