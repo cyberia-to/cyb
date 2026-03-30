@@ -263,6 +263,54 @@ fn safetensors_to_f32(data: &[u8], dtype: crate::ir::DType) -> Vec<f32> {
     }
 }
 
+/// Quantize f32 weight matrix [N, K] to Q4 format (4-bit unsigned, block_size=32).
+/// Returns (packed_u32s, scales) where:
+///   packed: each u32 holds 8 nibbles (8 weights), row-major [N, K/8]
+///   scales: one f32 per block per row, [N, K/block_size]
+fn quantize_f32_to_q4(weights: &[f32], n: usize, k: usize) -> (Vec<u32>, Vec<f32>) {
+    const BLOCK_SIZE: usize = 32;
+    let num_blocks = k / BLOCK_SIZE;
+    let u32s_per_row = k / 8; // 8 nibbles per u32 (4 bits * 8 = 32 bits)
+    let mut packed = vec![0u32; n * u32s_per_row];
+    let mut scales = vec![0.0f32; n * num_blocks];
+
+    for row in 0..n {
+        let row_offset = row * k;
+        for blk in 0..num_blocks {
+            let blk_start = row_offset + blk * BLOCK_SIZE;
+            let block = &weights[blk_start..blk_start + BLOCK_SIZE];
+
+            // Find absmax for symmetric quantization
+            let mut amax = 0.0f32;
+            for &v in block {
+                amax = amax.max(v.abs());
+            }
+
+            // Scale: map [-amax, amax] to [0, 15] with zero_point = 8
+            let scale = if amax > 0.0 { amax / 7.0 } else { 0.0 };
+            scales[row * num_blocks + blk] = scale;
+
+            let inv_scale = if scale > 0.0 { 1.0 / scale } else { 0.0 };
+
+            // Quantize each weight to 4-bit nibble [0, 15]
+            for j in 0..BLOCK_SIZE {
+                let q = ((block[j] * inv_scale).round() as i32 + 8).clamp(0, 15) as u8;
+                let col = blk * BLOCK_SIZE + j;
+                let u32_idx = col / 8;
+                let nibble_pos = col % 8;
+                // Pack: first nibble in low bits of first byte, etc.
+                // Each byte holds 2 nibbles: lo = even, hi = odd
+                let byte_pos = nibble_pos / 2;
+                let is_hi = nibble_pos % 2;
+                let shift = byte_pos * 8 + is_hi * 4;
+                packed[row * u32s_per_row + u32_idx] |= (q as u32) << shift;
+            }
+        }
+    }
+
+    (packed, scales)
+}
+
 /// Pack raw UINT8 bytes into u32
 fn pack_bytes_to_u32(raw: &[u8]) -> Vec<u32> {
     raw.chunks(4)
@@ -933,29 +981,31 @@ impl NativeModel {
             let input_norm_f32 = weight_to_f32(&format!("model.layers.{i}.input_layernorm.weight"))?;
             let input_norm_weight = pipelines.upload_f32(&input_norm_f32);
 
-            let q_proj_f32 = weight_to_f32(&format!("model.layers.{i}.self_attn.q_proj.weight"))?;
-            let q_proj_weight = pipelines.upload_f32(&q_proj_f32);
+            // Quantize projections to Q4 on-the-fly for faster inference
+            let quantize_upload = |name: &str, n: usize, k: usize| -> Result<(wgpu::Buffer, wgpu::Buffer), String> {
+                let f32_data = weight_to_f32(name)?;
+                let (packed, scales) = quantize_f32_to_q4(&f32_data, n, k);
+                Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
+            };
 
-            let k_proj_f32 = weight_to_f32(&format!("model.layers.{i}.self_attn.k_proj.weight"))?;
-            let k_proj_weight = pipelines.upload_f32(&k_proj_f32);
-
-            let v_proj_f32 = weight_to_f32(&format!("model.layers.{i}.self_attn.v_proj.weight"))?;
-            let v_proj_weight = pipelines.upload_f32(&v_proj_f32);
-
-            let o_proj_f32 = weight_to_f32(&format!("model.layers.{i}.self_attn.o_proj.weight"))?;
-            let o_proj_weight = pipelines.upload_f32(&o_proj_f32);
+            let (q_proj_packed, q_proj_scales) = quantize_upload(
+                &format!("model.layers.{i}.self_attn.q_proj.weight"), q_dim, hidden_size)?;
+            let (k_proj_packed, k_proj_scales) = quantize_upload(
+                &format!("model.layers.{i}.self_attn.k_proj.weight"), kv_dim, hidden_size)?;
+            let (v_proj_packed, v_proj_scales) = quantize_upload(
+                &format!("model.layers.{i}.self_attn.v_proj.weight"), kv_dim, hidden_size)?;
+            let (o_proj_packed, o_proj_scales) = quantize_upload(
+                &format!("model.layers.{i}.self_attn.o_proj.weight"), hidden_size, q_dim)?;
 
             let post_norm_f32 = weight_to_f32(&format!("model.layers.{i}.post_attention_layernorm.weight"))?;
             let post_norm_weight = pipelines.upload_f32(&post_norm_f32);
 
-            let gate_proj_f32 = weight_to_f32(&format!("model.layers.{i}.mlp.gate_proj.weight"))?;
-            let gate_proj_weight = pipelines.upload_f32(&gate_proj_f32);
-
-            let up_proj_f32 = weight_to_f32(&format!("model.layers.{i}.mlp.up_proj.weight"))?;
-            let up_proj_weight = pipelines.upload_f32(&up_proj_f32);
-
-            let down_proj_f32 = weight_to_f32(&format!("model.layers.{i}.mlp.down_proj.weight"))?;
-            let down_proj_weight = pipelines.upload_f32(&down_proj_f32);
+            let (gate_proj_packed, gate_proj_scales) = quantize_upload(
+                &format!("model.layers.{i}.mlp.gate_proj.weight"), intermediate_size, hidden_size)?;
+            let (up_proj_packed, up_proj_scales) = quantize_upload(
+                &format!("model.layers.{i}.mlp.up_proj.weight"), intermediate_size, hidden_size)?;
+            let (down_proj_packed, down_proj_scales) = quantize_upload(
+                &format!("model.layers.{i}.mlp.down_proj.weight"), hidden_size, intermediate_size)?;
 
             // Load attention biases (Qwen2-style)
             let q_proj_bias = if has_attn_bias {
@@ -981,70 +1031,68 @@ impl NativeModel {
                 Some(pipelines.upload_f32(&w))
             } else { None };
 
-            // Dummy scales buffer (not used for f32 path)
-            let dummy_scales = pipelines.upload_f32(&[0.0]);
-
-            // Pre-compute param buffers (f32_matmul params, not q4)
+            // Pre-compute param buffers (Q4 matmul + norms)
             let hs = hidden_size as u32;
             let hd = head_dim as u32;
+            let bs = 32u32; // Q4 block size
             let (input_norm_params, input_norm_wg) =
                 precompute_rms_norm(&pipelines, 1, hs, rms_norm_eps);
             let (q_matmul_params, q_matmul_wg) =
-                precompute_f32_matmul(&pipelines, q_dim as u32, hs);
+                precompute_q4_matmul(&pipelines, q_dim as u32, hs, bs);
             let (k_matmul_params, k_matmul_wg) =
-                precompute_f32_matmul(&pipelines, kv_dim as u32, hs);
+                precompute_q4_matmul(&pipelines, kv_dim as u32, hs, bs);
             let (v_matmul_params, v_matmul_wg) =
-                precompute_f32_matmul(&pipelines, kv_dim as u32, hs);
+                precompute_q4_matmul(&pipelines, kv_dim as u32, hs, bs);
             let (q_rope_params, q_rope_wg) =
                 precompute_rope(&pipelines, q_dim as u32, hd, 1);
             let (k_rope_params, k_rope_wg) =
                 precompute_rope(&pipelines, kv_dim as u32, hd, 1);
             let (o_matmul_params, o_matmul_wg) =
-                precompute_f32_matmul(&pipelines, hs, q_dim as u32);
+                precompute_q4_matmul(&pipelines, hs, q_dim as u32, bs);
             let (post_norm_params, post_norm_wg) =
                 precompute_rms_norm(&pipelines, 1, hs, rms_norm_eps);
             let (gate_matmul_params, gate_matmul_wg) =
-                precompute_f32_matmul(&pipelines, intermediate_size as u32, hs);
+                precompute_q4_matmul(&pipelines, intermediate_size as u32, hs, bs);
             let (up_matmul_params, up_matmul_wg) =
-                precompute_f32_matmul(&pipelines, intermediate_size as u32, hs);
+                precompute_q4_matmul(&pipelines, intermediate_size as u32, hs, bs);
             let (down_matmul_params, down_matmul_wg) =
-                precompute_f32_matmul(&pipelines, hs, intermediate_size as u32);
+                precompute_q4_matmul(&pipelines, hs, intermediate_size as u32, bs);
 
             layers.push(LayerWeights {
                 input_norm_weight,
-                q_proj_packed: q_proj_weight,
-                q_proj_scales: dummy_scales.clone(),
-                q_proj_quant: QuantFormat::F32,
+                q_proj_packed,
+                q_proj_scales,
+                q_proj_quant: QuantFormat::Q4,
                 q_n: q_dim as u32,
-                k_proj_packed: k_proj_weight,
-                k_proj_scales: dummy_scales.clone(),
-                k_proj_quant: QuantFormat::F32,
+                k_proj_packed,
+                k_proj_scales,
+                k_proj_quant: QuantFormat::Q4,
                 k_n: kv_dim as u32,
-                v_proj_packed: v_proj_weight,
-                v_proj_scales: dummy_scales.clone(),
-                v_proj_quant: QuantFormat::F32,
+                v_proj_packed,
+                v_proj_scales,
+                v_proj_quant: QuantFormat::Q4,
                 v_n: kv_dim as u32,
                 q_proj_bias,
                 k_proj_bias,
                 v_proj_bias,
                 q_norm_weight: q_norm_w,
                 k_norm_weight: k_norm_w,
-                o_proj_packed: o_proj_weight,
-                o_proj_scales: dummy_scales.clone(),
-                o_proj_quant: QuantFormat::F32,
+                o_proj_packed,
+                o_proj_scales,
+                o_proj_quant: QuantFormat::Q4,
                 o_n: hidden_size as u32,
                 post_norm_weight,
-                gate_proj_packed: gate_proj_weight,
-                gate_proj_scales: dummy_scales.clone(),
-                gate_proj_quant: QuantFormat::F32,
+                gate_proj_packed,
+                gate_proj_scales,
+                gate_proj_quant: QuantFormat::Q4,
                 gate_n: intermediate_size as u32,
-                up_proj_packed: up_proj_weight,
-                up_proj_scales: dummy_scales.clone(),
-                up_proj_quant: QuantFormat::F32,
+                up_proj_packed,
+                up_proj_scales,
+                up_proj_quant: QuantFormat::Q4,
                 up_n: intermediate_size as u32,
-                down_proj_packed: down_proj_weight,
-                down_proj_scales: dummy_scales,
-                down_proj_quant: QuantFormat::F32,
+                down_proj_packed,
+                down_proj_scales,
+                down_proj_quant: QuantFormat::Q4,
                 down_n: hidden_size as u32,
                 params: LayerParamBuffers {
                     input_norm_params,
