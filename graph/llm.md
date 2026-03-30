@@ -423,91 +423,150 @@ memory pressure?
 
 the scheduler is a policy function over atoms — it decides WHERE, not WHAT. changing policy does not change computation results, only speed and power. the policy itself can be profiled and tuned per-device.
 
-## model format loading
+## soma model standard
 
-format is just storage — parse once, run on any backend.
-
-| format | what stores it | loader | security |
-|--------|---------------|--------|----------|
-| .safetensors | HuggingFace models | parse header → mmap tensors | safe (no code execution) |
-| .gguf | llama.cpp quantized | parse metadata → extract Q4/Q8 tensors | safe |
-| .onnx | ONNX exported models | parse protobuf → build graph IR | safe |
-| .pt / .pth | PyTorch models (YOLO, etc.) | parse ZIP → skip pickle → extract raw tensor data | unsafe (pickle) — validate before loading |
-| .bin | fasttext, custom | format-specific parser | safe |
-
-key: all formats converge to the same in-memory representation — graph IR + typed tensor store. the runtime doesn't care where the weights came from.
-
-## model import — post-download cleanup
-
-HuggingFace repos contain massive duplication: same weights in multiple formats (safetensors + pytorch_model.bin), multiple quantizations (14 GGUF variants), training artifacts, images, old versions. a naive `snapshot_download` wastes 2-5x disk.
+one model = one directory with five TOML files + one weights file. no JSON. no duplicates. no waste.
 
 ### canonical layout
 
-after download, each model directory must contain exactly:
-
 ```
 model_name/
-├── config.toml       # architecture (hidden_size, num_layers, heads, rope...)
-├── vocab.toml        # tokenizer vocabulary + merge rules
-├── chat.toml         # chat template + special tokens
-├── sampling.toml     # default inference params (temperature, top_p, stop tokens)
-├── weights.*         # ONE of:
-│   ├── weights.safetensors   # preferred: safe, zero-copy mmap
-│   ├── weights.gguf          # pre-quantized (one quantization only)
-│   ├── weights.onnx + .data  # encoder/classifier models
-│   └── weights.bin           # fasttext/special formats
-└── NOTE.md           # optional: provenance, abliteration status, quirks
+├── config.toml        # architecture
+├── vocab.toml         # tokenizer vocabulary + merge rules
+├── chat.toml          # chat template + special tokens
+├── sampling.toml      # default inference params
+├── weights.*          # one weights file
+└── note.md            # optional: provenance, abliteration status
 ```
 
-all files converted to TOML at import time. no JSON anywhere — HF formats are an import detail, not a runtime dependency. the `tokenizers` crate dependency is replaced by a native TOML vocab loader at runtime.
+### config.toml — architecture
 
-everything else is waste.
-
-### cleanup rules
-
-after downloading a HuggingFace repo, apply in order:
-
-```
-1. format priority: keep safetensors. delete pytorch_model.bin (identical weights, unsafe format)
-2. quantization: keep ONE quantization level (Q4_K_M for GGUF, model_q4 for ONNX). delete all others
-3. duplicates: if both safetensors AND onnx exist, keep the one matching your runtime backend
-4. old versions: model_v1.bin, model_v2.bin → delete. model.bin or latest version only
-5. training artifacts: runs/, trainer_state.json, training_args.bin, eval_results.json → delete
-6. images: *.png, *.jpg → delete (repo documentation, not model data)
-7. multi-shard: model-00001-of-00004.safetensors → keep all shards (they are NOT duplicates)
-8. HF cache: after download completes, delete ~/.cache/huggingface/hub (full duplicate of local_dir)
+```toml
+architecture = "Qwen3ForCausalLM"
+hidden_size = 1024
+num_attention_heads = 16
+num_key_value_heads = 8
+num_hidden_layers = 28
+intermediate_size = 2816
+vocab_size = 151936
+max_position_embeddings = 40960
+rope_theta = 1_000_000.0
+rms_norm_eps = 1e-6
+tie_word_embeddings = true
 ```
 
-### `soma-runtime import` command
+### vocab.toml — tokenizer
+
+```toml
+type = "bpe"                          # bpe | unigram | wordpiece | byte
+# merge rules and vocabulary embedded as TOML arrays
+# converted from HF tokenizer.json at import time
+```
+
+### chat.toml — conversation format
+
+```toml
+template = """
+{%- for message in messages %}
+<|im_start|>{{ message.role }}
+{{ message.content }}<|im_end|>
+{%- endfor %}
+"""
+bos_token = "<|endoftext|>"
+eos_token = "<|im_end|>"
+pad_token = "<|endoftext|>"
+```
+
+### sampling.toml — inference defaults
+
+```toml
+temperature = 0.7
+top_p = 0.9
+top_k = 40
+min_p = 0.05
+repetition_penalty = 1.1
+max_tokens = 2048
+stop = ["<|im_end|>", "<|end|>"]
+```
+
+### weights — one file, one format
+
+| format | extension | when to use | security |
+|--------|-----------|-------------|----------|
+| safetensors | weights.safetensors | preferred — safe, zero-copy mmap | safe |
+| GGUF | weights.gguf | pre-quantized (Q4/Q8) | safe |
+| ONNX | weights.onnx + .data | encoder/classifier models | safe |
+| PyTorch | weights.pt | legacy import only | unsafe (pickle) |
+| binary | weights.bin | fasttext, custom | safe |
+
+priority: safetensors > gguf > onnx > pt > bin. at import, convert to highest-priority available format. never keep two formats of the same weights.
+
+multi-shard models (weights-00001-of-00004.safetensors) keep all shards — they are NOT duplicates.
+
+### import pipeline
 
 ```
-soma-runtime import <hf_repo_or_path> --target ~/llm/<tier>/<name>
+soma-runtime import <source> --target ~/llm/<tier>/<name>
 ```
 
-automates: download → detect format → keep best weights → delete waste → verify config.json exists → report final size.
+```
+source (HF repo, local dir, URL)
+    │
+    ▼
+download (if remote)
+    │
+    ▼
+detect: find weight files, configs, tokenizer
+    │
+    ▼
+select weights: safetensors > gguf > onnx > pt > bin
+    │   if multiple quantizations: keep Q4_K_M, delete rest
+    │   if multiple formats: keep best, delete rest
+    │
+    ▼
+convert configs: JSON → TOML
+    │   config.json       → config.toml
+    │   tokenizer.json    → vocab.toml
+    │   tokenizer_config  → chat.toml
+    │   generation_config → sampling.toml
+    │
+    ▼
+clean: delete everything not in canonical layout
+    │   pytorch_model.bin, training artifacts, images,
+    │   old model versions, HF cache, README, .gitattributes
+    │
+    ▼
+verify: config.toml exists, weights file exists, vocab.toml parseable
+    │
+    ▼
+report: final size, savings percentage
+```
 
 ```
 $ soma-runtime import huihui-ai/Qwen3-0.6B-abliterated --target ~/llm/tier0/router
-  downloading... 1.1GB
-  cleanup: removed pytorch_model.bin (521MB, duplicate of safetensors)
-  cleanup: removed TestPassed-abliterated.jsonl (test artifact)
-  convert: config.json → config.toml
-  convert: tokenizer.json → vocab.toml
-  convert: tokenizer_config.json → chat.toml
-  convert: generation_config.json → sampling.toml
-  result: ~/llm/tier0/router — 583MB (saved 47%)
+  download:  1.1GB from huggingface
+  select:    weights.safetensors (583MB)
+  delete:    pytorch_model.bin (521MB, duplicate)
+  delete:    TestPassed-abliterated.jsonl (test artifact)
+  convert:   config.json → config.toml
+  convert:   tokenizer.json → vocab.toml
+  convert:   tokenizer_config.json → chat.toml
+  convert:   generation_config.json → sampling.toml
+  verify:    config.toml ✓  vocab.toml ✓  weights.safetensors ✓
+  result:    ~/llm/tier0/router — 583MB (saved 47%)
 ```
 
-### waste observed in practice
+### observed waste from naive download
 
-| repo | raw download | after cleanup | waste |
-|------|-------------|---------------|-------|
-| jina-embeddings-v5-nano (14 GGUFs + 5 ONNX) | 3.8GB | 280MB | 93% |
-| glotlid (4 model versions) | 6.0GB | 1.6GB | 73% |
-| ModernBERT-base (8 ONNX + safetensors + pytorch) | 2.9GB | 210MB | 93% |
-| SmolLM2-360M (safetensors + full ONNX suite) | 4.7GB | 700MB | 85% |
+| source repo | raw | after import | waste eliminated |
+|-------------|-----|-------------|-----------------|
+| jina-embeddings-v5-nano | 3.8GB | 280MB | 93% |
+| ModernBERT-base | 2.9GB | 210MB | 93% |
+| SmolLM2-360M | 4.7GB | 700MB | 85% |
+| glotlid | 6.0GB | 1.6GB | 73% |
+| Qwen3-0.6B-abliterated | 1.1GB | 583MB | 47% |
 
-average HuggingFace repo wastes 70-93% of disk on duplicates and variants. the import command eliminates this.
+average HuggingFace repo wastes 70-93% of disk. the import pipeline eliminates this.
 
 ## quantization as a first-class concept
 
