@@ -426,6 +426,24 @@ impl MetalModel {
     pub fn reset_kv_cache(&mut self) {
         self.past_seq_len = 0;
     }
+
+    /// Read scratch.hidden as f32 (debug)
+    pub fn debug_read_hidden(&self) -> Vec<f32> {
+        let n = self.config.hidden_size;
+        self.scratch.hidden.with_data(|d| {
+            let f16s: &[u16] = bytemuck::cast_slice(&d[..n * 2]);
+            f16s.iter().map(|&v| aruminium::fp16_to_f32(v)).collect()
+        })
+    }
+
+    /// Read logits as f32 (debug) — first `count` elements
+    pub fn debug_read_logits(&self, count: usize) -> Vec<f32> {
+        self.scratch.logits.with_data(|d| {
+            let n = count.min(d.len() / 2);
+            let f16s: &[u16] = bytemuck::cast_slice(&d[..n * 2]);
+            f16s.iter().map(|&v| aruminium::fp16_to_f32(v)).collect()
+        })
+    }
 }
 
 /// Quantize f32 weight matrix [N, K] to block_q4_0 format for Metal matvec_q4 kernel.

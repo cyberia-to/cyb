@@ -338,9 +338,10 @@ fn bench_metal(
     let encoding = tokenizer.encode(PROMPT, false).map_err(|e| format!("{e}"))?;
     let token_ids = encoding.get_ids();
 
-    // EOS tokens
+    // EOS tokens (minimal — only clear EOS markers)
     let eos: Vec<u32> = vec![
-        151643, 151645, 2, 0, 50256,
+        151643, 151645, // Qwen3
+        0,              // SmolLM <|endoftext|>
     ];
 
     // Prefill: feed all prompt tokens, keep last predicted token
@@ -350,7 +351,6 @@ fn bench_metal(
         next_token = model.forward_decode(tid);
     }
     let prefill_ms = prefill_start.elapsed().as_secs_f64() * 1000.0;
-    println!("    [metal debug] prefill done, first predicted token: {next_token}");
 
     // Decode
     let decode_start = std::time::Instant::now();
