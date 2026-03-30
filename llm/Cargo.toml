@@ -15,6 +15,10 @@ path = "bench/metal.rs"
 name = "bench-ane"
 path = "bench/ane.rs"
 
+[[bin]]
+name = "bench-e2e"
+path = "bench/e2e.rs"
+
 [dependencies]
 # GPU compute
 wgpu = { version = "24", features = ["wgsl"] }
