@@ -447,18 +447,19 @@ after download, each model directory must contain exactly:
 
 ```
 model_name/
-├── config.toml              # architecture (converted from JSON at import)
-├── tokenizer.json           # tokenizer vocab+merges (kept as JSON — HF tokenizers crate requires it)
-├── tokenizer_config.toml    # chat template + settings (converted from JSON at import)
-├── weights.*                # ONE of:
-│   ├── model.safetensors    #   preferred: safe, zero-copy mmap
-│   ├── model.gguf           #   for pre-quantized (one quantization only)
-│   ├── model.onnx + .data   #   for encoder/classifier models
-│   └── model.bin            #   for fasttext/special formats
-└── generation_config.toml   # optional: default sampling params (converted from JSON)
+├── config.toml       # architecture (hidden_size, num_layers, heads, rope...)
+├── vocab.toml        # tokenizer vocabulary + merge rules
+├── chat.toml         # chat template + special tokens
+├── sampling.toml     # default inference params (temperature, top_p, stop tokens)
+├── weights.*         # ONE of:
+│   ├── weights.safetensors   # preferred: safe, zero-copy mmap
+│   ├── weights.gguf          # pre-quantized (one quantization only)
+│   ├── weights.onnx + .data  # encoder/classifier models
+│   └── weights.bin           # fasttext/special formats
+└── NOTE.md           # optional: provenance, abliteration status, quirks
 ```
 
-all config files converted from JSON to TOML at import time. TOML is human-readable, natively supported in Rust (`toml` crate), and avoids JSON's lack of comments. exception: tokenizer.json stays as JSON because the HF `tokenizers` crate expects this format (vocabulary + merge rules, not configuration).
+all files converted to TOML at import time. no JSON anywhere — HF formats are an import detail, not a runtime dependency. the `tokenizers` crate dependency is replaced by a native TOML vocab loader at runtime.
 
 everything else is waste.
 
@@ -491,7 +492,9 @@ $ soma-runtime import huihui-ai/Qwen3-0.6B-abliterated --target ~/llm/tier0/rout
   cleanup: removed pytorch_model.bin (521MB, duplicate of safetensors)
   cleanup: removed TestPassed-abliterated.jsonl (test artifact)
   convert: config.json → config.toml
-  convert: tokenizer_config.json → tokenizer_config.toml
+  convert: tokenizer.json → vocab.toml
+  convert: tokenizer_config.json → chat.toml
+  convert: generation_config.json → sampling.toml
   result: ~/llm/tier0/router — 583MB (saved 47%)
 ```
 
