@@ -1,0 +1,25 @@
+[package]
+name = "ane-tools"
+description = "CLI tools for ane: checkpoint converter, tokenizer, chat"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "convert_hf"
+path = "convert_hf.rs"
+
+[[bin]]
+name = "tokenize"
+path = "tokenize.rs"
+
+[[bin]]
+name = "chat"
+path = "chat.rs"
+
+[dependencies]
+ane.workspace = true
+safetensors.workspace = true
+ureq.workspace = true
+tokenizers.workspace = true
+zip.workspace = true
