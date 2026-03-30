@@ -26,6 +26,9 @@ pub struct MetalPipelines {
     pub matvec_q4_batch: MtlComputePipeline,
     pub matvec_ternary_batch: MtlComputePipeline,
 
+    // Optimized matvec (simd cooperative)
+    pub matvec_q4_fast: MtlComputePipeline,
+
     // Transformer ops (all fp16)
     pub embed: MtlComputePipeline,
     pub rms_norm: MtlComputePipeline,
@@ -75,6 +78,9 @@ impl MetalPipelines {
         let matvec_ternary_batch =
             compile(&batch_src(kernels::MATVEC_TERNARY_BATCH), "matvec_ternary_batch")?;
 
+        // Optimized matvec
+        let matvec_q4_fast = compile(kernels::MATVEC_Q4_FAST, "matvec_q4_fast")?;
+
         // Transformer ops
         let embed = compile(kernels::EMBED, "embed_f16")?;
         let rms_norm = compile(kernels::RMS_NORM, "rms_norm_f16")?;
@@ -87,7 +93,7 @@ impl MetalPipelines {
         let f16_matvec = compile(kernels::F16_MATVEC, "f16_matvec")?;
         let argmax = compile(kernels::ARGMAX, "argmax_f16")?;
 
-        log::info!("Metal: all 17 MSL kernels compiled");
+        log::info!("Metal: all 18 MSL kernels compiled");
 
         Ok(MetalPipelines {
             device,
@@ -96,6 +102,7 @@ impl MetalPipelines {
             matmul_f16,
             matmul_q4,
             matvec_q4,
+            matvec_q4_fast,
             matvec_ternary,
             matvec_q4k,
             matvec_q4_batch,

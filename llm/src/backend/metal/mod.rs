@@ -25,6 +25,9 @@ pub mod kernels {
     pub const MATVEC_Q4_BATCH: &str = include_str!("kernels/matvec_q4_batch.metal");
     pub const MATVEC_TERNARY_BATCH: &str = include_str!("kernels/matvec_ternary_batch.metal");
 
+    // Optimized matvec
+    pub const MATVEC_Q4_FAST: &str = include_str!("kernels/matvec_q4_fast.metal");
+
     // Transformer ops (all fp16)
     pub const EMBED: &str = include_str!("kernels/embed.metal");
     pub const RMS_NORM: &str = include_str!("kernels/rms_norm.metal");

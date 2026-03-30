@@ -307,15 +307,15 @@ impl MetalModel {
                     batch.set_bytes(&norm_params_bytes, 3);
                     batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
 
-                    // ── Q/K/V projections (matvec_q4) ──
+                    // ── Q/K/V projections (matvec_q4_fast — 8 rows/WG, simd cooperative) ──
                     let matvec_q4 = |batch: &aruminium::BatchEncoder, input: &MtlBuffer, proj: &MtlBuffer, out: &MtlBuffer, n: u32, k: u32| {
                         let params = [n, k];
-                        batch.set_pipeline(&p.matvec_q4);
+                        batch.set_pipeline(&p.matvec_q4_fast);
                         batch.set_buffer(input, 0, 0);
                         batch.set_buffer(proj, 0, 1);
                         batch.set_buffer(out, 0, 2);
                         batch.set_bytes(bytemuck::cast_slice(&params), 3);
-                        batch.dispatch_threadgroups((div_ceil(n as usize, 256), 1, 1), (256, 1, 1));
+                        batch.dispatch_threadgroups((div_ceil(n as usize, 8), 1, 1), (256, 1, 1));
                     };
 
                     matvec_q4(batch, &self.scratch.hidden2, &layer.q_proj, &self.scratch.q, (c.num_heads * c.head_dim) as u32, c.hidden_size as u32);
@@ -418,14 +418,14 @@ impl MetalModel {
                 batch.set_bytes(&norm_params_bytes, 3);
                 batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
 
-                // ── LM Head (Q4 matvec — vocab is huge, Q4 saves 4x bandwidth) ──
+                // ── LM Head (Q4 fast matvec — vocab=151k, biggest single op) ──
                 let lm_params = [c.vocab_size as u32, c.hidden_size as u32];
-                batch.set_pipeline(&p.matvec_q4);
+                batch.set_pipeline(&p.matvec_q4_fast);
                 batch.set_buffer(&self.scratch.hidden2, 0, 0);
                 batch.set_buffer(&self.lm_head_q4, 0, 1);
                 batch.set_buffer(&self.scratch.logits, 0, 2);
                 batch.set_bytes(bytemuck::cast_slice(&lm_params), 3);
-                batch.dispatch_threadgroups((div_ceil(c.vocab_size, 256), 1, 1), (256, 1, 1));
+                batch.dispatch_threadgroups((div_ceil(c.vocab_size, 8), 1, 1), (256, 1, 1));
 
                 // ── Argmax ──
                 let argmax_params = [c.vocab_size as u32];
