@@ -436,7 +436,7 @@ model_name/
 ├── chat.toml          # chat template + special tokens
 ├── sampling.toml      # default inference params
 ├── weights.*          # one weights file
-└── note.md            # optional: provenance, abliteration status
+└── README.md          # source, license, abliteration, benchmarks
 ```
 
 ### config.toml — architecture
