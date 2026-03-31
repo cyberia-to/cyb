@@ -12,6 +12,10 @@ struct Cli {
     #[arg(short, long, default_value = "~/.cyber-sync")]
     dir: String,
 
+    /// QUIC port (fixed for stable address).
+    #[arg(short, long, default_value = "4200")]
+    port: u16,
+
     /// Data shards (k). Any k of n shards reconstruct the file.
     #[arg(short, long, default_value = "2")]
     k: usize,
@@ -88,7 +92,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let dir = expand_tilde(&cli.dir);
-    let node = SyncNode::start(&dir, cli.k, cli.n).await?;
+    let node = SyncNode::start(&dir, cli.k, cli.n, cli.port).await?;
 
     match cli.command {
         Command::Daemon { interval } => {

@@ -236,7 +236,20 @@ fn build_cyb_config(dir: &Path) -> String {
 fn convert_config_json(dir: &Path, result: &mut ImportResult) {
     let src = dir.join("config.json");
     let dst = dir.join("config.toml");
-    if dst.exists() || !src.exists() {
+
+    // Skip only if config.toml exists AND has core fields (hidden_size)
+    if dst.exists() && !src.exists() {
+        return;
+    }
+    if dst.exists() && src.exists() {
+        // Re-generate if config.toml is missing core fields
+        let toml_str = std::fs::read_to_string(&dst).unwrap_or_default();
+        if toml_str.contains("hidden_size") {
+            return; // Already complete
+        }
+        log::info!("config.toml missing hidden_size, re-generating from config.json");
+    }
+    if !src.exists() {
         return;
     }
 

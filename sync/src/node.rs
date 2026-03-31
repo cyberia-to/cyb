@@ -11,6 +11,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use iroh::address_lookup::MdnsAddressLookup;
 use iroh::endpoint::Connection;
 use iroh::{Endpoint, EndpointId, RelayMode, SecretKey};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
@@ -69,7 +70,7 @@ pub struct SyncNode {
 }
 
 impl SyncNode {
-    pub async fn start(data_dir: &Path, k: usize, n: usize) -> Result<Self> {
+    pub async fn start(data_dir: &Path, k: usize, n: usize, port: u16) -> Result<Self> {
         assert!(n.is_power_of_two());
         assert!(k >= 1 && k <= n);
 
@@ -88,10 +89,15 @@ impl SyncNode {
             key
         };
 
-        // Create iroh endpoint.
+        // Create iroh endpoint with mDNS discovery, fixed port, and our ALPN.
+        let bind_addr = std::net::SocketAddrV4::new(std::net::Ipv4Addr::UNSPECIFIED, port);
         let endpoint = Endpoint::builder()
             .relay_mode(RelayMode::Disabled)
             .secret_key(secret_key)
+            .address_lookup(MdnsAddressLookup::builder())
+            .alpns(vec![SYNC_ALPN.to_vec()])
+            .bind_addr(bind_addr)
+            .context("invalid bind addr")?
             .bind()
             .await
             .context("failed to bind iroh endpoint")?;
@@ -133,6 +139,7 @@ impl SyncNode {
 
         println!("node started");
         println!("  id: {}", device_id);
+        println!("  addr: {}", serde_json::to_string(&endpoint.addr()).unwrap_or_default());
         println!("  dir: {}", data_dir.display());
         println!("  erasure: k={}, n={}", k, n);
 
@@ -771,6 +778,7 @@ async fn handle_connection(conn: Connection, state: Arc<RwLock<SharedState>>) ->
         _ => {}
     }
 
+    send.flush().await?;
     send.finish()?;
     Ok(())
 }
@@ -778,8 +786,15 @@ async fn handle_connection(conn: Connection, state: Arc<RwLock<SharedState>>) ->
 // ── Client: fetch from peers ──
 
 async fn connect_peer(ep: &Endpoint, peer: &str) -> Result<Connection> {
-    let node_id: EndpointId = peer.parse().context("invalid node ID")?;
-    ep.connect(node_id, SYNC_ALPN)
+    // Try parsing as EndpointId first, then as EndpointAddr JSON.
+    let endpoint_addr: iroh::EndpointAddr = if let Ok(id) = peer.parse::<EndpointId>() {
+        iroh::EndpointAddr::new(id)
+    } else if let Ok(addr) = serde_json::from_str::<iroh::EndpointAddr>(peer) {
+        addr
+    } else {
+        anyhow::bail!("invalid peer: expected node ID or JSON EndpointAddr")
+    };
+    ep.connect(endpoint_addr, SYNC_ALPN)
         .await
         .context("failed to connect to peer")
 }
@@ -789,7 +804,7 @@ async fn fetch_chunk_from_peer(ep: &Endpoint, peer: &str, hash_hex: &str) -> Res
     let (mut send, mut recv) = conn.open_bi().await?;
     send.write_u8(MSG_GET_CHUNK).await?;
     write_bytes(&mut send, hash_hex.as_bytes()).await?;
-    send.finish()?;
+    send.flush().await?;
     let response = recv.read_u8().await?;
     if response == MSG_CHUNK_DATA {
         read_bytes(&mut recv).await
@@ -802,7 +817,7 @@ async fn fetch_registry_with_proof(ep: &Endpoint, peer: &str) -> Result<Registry
     let conn = connect_peer(ep, peer).await?;
     let (mut send, mut recv) = conn.open_bi().await?;
     send.write_u8(MSG_REGISTRY).await?;
-    send.finish()?;
+    send.flush().await?;
     let response = recv.read_u8().await?;
     if response == MSG_REGISTRY_RESPONSE {
         let data = read_bytes(&mut recv).await?;
@@ -830,7 +845,6 @@ async fn ping_peer(ep: &Endpoint, peer: &str) -> bool {
     };
     let (mut send, mut recv) = bi;
     if send.write_u8(MSG_PING).await.is_err() { return false; }
-    let _ = send.finish();
     matches!(
         tokio::time::timeout(std::time::Duration::from_secs(2), recv.read_u8()).await,
         Ok(Ok(MSG_PONG))
@@ -842,6 +856,7 @@ async fn ping_peer(ep: &Endpoint, peer: &str) -> bool {
 async fn write_bytes(w: &mut (impl AsyncWriteExt + Unpin), data: &[u8]) -> Result<()> {
     w.write_u32(data.len() as u32).await?;
     w.write_all(data).await?;
+    w.flush().await?;
     Ok(())
 }
 
