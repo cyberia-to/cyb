@@ -102,11 +102,18 @@ impl MetalModel {
         let pipelines = MetalPipelines::new().map_err(|e| format!("Metal init: {e}"))?;
 
         let model_dir = path.parent().unwrap_or(Path::new("."));
-        let config_str = std::fs::read_to_string(model_dir.join("config.json"))
-            .map_err(|e| format!("config.json: {e}"))?;
-        let cj_root: serde_json::Value = serde_json::from_str(&config_str)
-            .map_err(|e| format!("config parse: {e}"))?;
-        // VLM models (Qwen3.5-VL etc.) nest LLM config under "text_config"
+        let json_path = model_dir.join("config.json");
+        let toml_path = model_dir.join("config.toml");
+        let cj_root: serde_json::Value = if json_path.exists() {
+            let s = std::fs::read_to_string(&json_path).map_err(|e| format!("config.json: {e}"))?;
+            serde_json::from_str(&s).map_err(|e| format!("config parse: {e}"))?
+        } else if toml_path.exists() {
+            let s = std::fs::read_to_string(&toml_path).map_err(|e| format!("config.toml: {e}"))?;
+            let tv: toml::Value = toml::from_str(&s).map_err(|e| format!("toml parse: {e}"))?;
+            crate::cyb_format::toml_to_json_value(&tv)
+        } else {
+            return Err("No config.json or config.toml found".to_string());
+        };
         let cj = cj_root.get("text_config").unwrap_or(&cj_root);
 
         let hidden_size = cj["hidden_size"].as_u64().ok_or("missing hidden_size")? as usize;
@@ -123,7 +130,7 @@ impl MetalModel {
             .map(|v| (v as usize).min(8192)) // cap at 8192 for memory
             .unwrap_or(DEFAULT_MAX_SEQ);
 
-        let graph = crate::loader::safetensors::load_safetensors(path)?;
+        let graph = crate::loader::load_model(path)?;
         let has_qk_norm = graph.get_weight("model.layers.0.self_attn.q_norm.weight").is_some();
         let has_attn_bias = graph.get_weight("model.layers.0.self_attn.q_proj.bias").is_some();
 

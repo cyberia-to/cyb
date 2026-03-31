@@ -173,14 +173,21 @@ fn main() {
                 } else if cli.backend == "wgpu" {
                     false
                 } else {
-                    // auto: Metal on macOS for safetensors, wgpu otherwise
-                    cfg!(target_os = "macos") && is_safetensors
+                    // auto: Metal on macOS for safetensors or .cyb with GGUF
+                    cfg!(target_os = "macos") && (is_safetensors || is_cyb)
                 };
 
-                if use_metal && is_safetensors {
+                if use_metal && (is_safetensors || is_cyb) {
                     #[cfg(target_os = "macos")]
                     {
-                        run_metal(&model_path, &tokenizer_path, &prompt, max_tokens, temperature, cli.precision == "f16");
+                        // For .cyb, pass weights.gguf path to Metal
+                        let metal_weights = if is_cyb {
+                            let gp = model_dir.join("weights.gguf");
+                            if gp.exists() { gp } else { model_path.clone() }
+                        } else {
+                            model_path.clone()
+                        };
+                        run_metal(&metal_weights, &tokenizer_path, &prompt, max_tokens, temperature, cli.precision == "f16");
                         return;
                     }
                     #[cfg(not(target_os = "macos"))]
