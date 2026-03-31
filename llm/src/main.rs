@@ -173,8 +173,8 @@ fn main() {
                 } else if cli.backend == "wgpu" {
                     false
                 } else {
-                    // auto: Metal on macOS for safetensors or .cyb with GGUF
-                    cfg!(target_os = "macos") && (is_safetensors || is_cyb)
+                    // auto: Metal on macOS for safetensors or .cyb with GGUF (not ONNX)
+                    cfg!(target_os = "macos") && (is_safetensors || (is_cyb && model_dir.join("weights.gguf").exists()))
                 };
 
                 if use_metal && (is_safetensors || is_cyb) {

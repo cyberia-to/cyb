@@ -147,8 +147,15 @@ pub fn read_tensor_raw(
         }
 
         let data_path = model_dir.join(&location);
-        let file = std::fs::File::open(&data_path)
-            .map_err(|e| format!("Cannot open external data {}: {e}", data_path.display()))?;
+        // Try original path, then fallback to weights.onnx_data (converter renames)
+        let actual_path = if data_path.exists() {
+            data_path.clone()
+        } else {
+            let alt = model_dir.join("weights.onnx_data");
+            if alt.exists() { alt } else { data_path.clone() }
+        };
+        let file = std::fs::File::open(&actual_path)
+            .map_err(|e| format!("Cannot open external data {}: {e}", actual_path.display()))?;
         let mmap = unsafe {
             memmap2::Mmap::map(&file)
                 .map_err(|e| format!("Cannot mmap {}: {e}", data_path.display()))?
@@ -167,8 +174,25 @@ pub fn read_tensor_raw(
         Ok(tp.raw_data.clone())
     } else if !tp.float_data.is_empty() {
         Ok(bytemuck::cast_slice(&tp.float_data).to_vec())
+    } else if !tp.int32_data.is_empty() {
+        Ok(bytemuck::cast_slice(&tp.int32_data).to_vec())
     } else {
-        Err(format!("Tensor {} has no data", tp.name))
+        // Empty tensor — common for zero_point in symmetric quantization
+        // Return zeros based on dims
+        let num_elements: usize = tp.dims.iter().map(|&d| d as usize).product();
+        let elem_size = match tp.data_type {
+            1 => 4, // FLOAT
+            6 => 4, // INT32
+            7 => 8, // INT64
+            _ => 1, // UINT8, INT8, etc
+        };
+        if num_elements > 0 {
+            log::debug!("Tensor {} has no data, returning {} zero bytes", tp.name, num_elements * elem_size);
+            Ok(vec![0u8; num_elements * elem_size])
+        } else {
+            // Scalar zero
+            Ok(vec![0u8; elem_size])
+        }
     }
 }
 

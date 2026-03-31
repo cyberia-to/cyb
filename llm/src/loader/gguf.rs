@@ -320,7 +320,7 @@ fn build_graph_from_gguf(
     }
 
     // Debug: log weight shapes for layer 0
-    for suffix in ["q_proj.weight", "k_proj.weight", "v_proj.weight", "o_proj.weight", "mlp.gate_proj.weight", "mlp.up_proj.weight", "mlp.down_proj.weight"] {
+    for suffix in ["q_proj.weight", "k_proj.weight", "v_proj.weight", "qkv_proj.weight", "o_proj.weight", "mlp.gate_proj.weight", "mlp.up_proj.weight", "mlp.gate_up_proj.weight", "mlp.down_proj.weight"] {
         let name = format!("model.layers.0.self_attn.{suffix}");
         let name2 = format!("model.layers.0.{suffix}");
         let key = if graph.weights.contains_key(&name) { &name } else { &name2 };

@@ -370,7 +370,12 @@ fn upload_single_weight(
             for b in 0..num_blocks {
                 let block_start = b * 34;
                 if block_start + 34 > w.data.len() {
-                    return Err(format!("Q8 weight data too short for {} blocks", num_blocks));
+                    // Data doesn't match GGUF Q8_0 format — treat as raw int8/f32 fallback
+                    log::warn!("Q8 format mismatch (expected {} bytes, got {}), using f32 fallback",
+                        num_blocks * 34, w.data.len());
+                    let f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
+                    let buf = p.upload_f32(&f32s);
+                    return Ok((buf, None, GpuQuantFormat::F32));
                 }
 
                 let scale = f32::from(half::f16::from_le_bytes([
