@@ -54,6 +54,54 @@ measured with GPU timestamps (MTLCommandBuffer.GPUStartTime/EndTime).
 - BK=64 (occupancy loss)
 - pad+0/+0 4 TG/core (bank conflicts > occupancy gain)
 
+## end-to-end inference (2026-03-31)
+
+M1 Pro, Q4 quantize-on-load from safetensors, greedy decode.
+
+| model | params | cyb metal | ollama | gap |
+|-------|--------|-----------|--------|-----|
+| smollm2-360m | 360M | 318 tok/s | 271 | +17% |
+| qwen3-0.6b | 620M | 242 tok/s | 214 | +13% |
+| qwen2.5-0.5b | 494M | 306 tok/s | 208 | +47% |
+| qwen2.5-coder-1.5b | 1.5B | 142 tok/s | 122 | +17% |
+| bitnet-2b | 2B | 85 tok/s | — | — |
+| deepseek-r1-8b | 8B | 19 tok/s | — | — |
+
+### forward decode profile (qwen3-0.6b, 50 tokens)
+
+| phase | time | % |
+|-------|------|---|
+| layers (28×) | 3.12ms | 78% |
+| lm_head (151k vocab) | 0.66ms | 16% |
+| argmax | 0.21ms | 5% |
+| **total** | **3.99ms** | **~242 tok/s** |
+
+### what works (E2E optimization)
+- parallel argmax (64 WGs instead of 1): 0.43ms → 0.21ms = +7.5% overall
+- fused QKV (3→1 dispatch): -56 dispatches
+- fused gate+up (2→1 dispatch): -28 dispatches
+- fused rope Q+K: -28 dispatches
+- fused kv_append K+V: -28 dispatches
+- fused add+norm (residual + next layer norm): -56 dispatches
+- total: 424 → 283 dispatches per forward
+
+### what doesn't work (E2E optimization)
+- fused silu+down_proj: O(N×K) exp() calls instead of O(K) — 10x slower
+- fused gate_up+silu (mixed weights in 1 WG): cache locality regression
+- threadgroup memory for activation: L1 cache already optimal (1.8KB fits)
+
+### theoretical ceiling
+- weight data: 305MB per forward (28 layers + LM head)
+- bandwidth: 200 GB/s → 1.53ms minimum
+- current: 3.99ms → **2.6× from ceiling**
+- gap: dispatch overhead (~0.85ms) + kernel inefficiency (~1.6ms)
+
+### roadmap to 500+ tok/s
+1. matmul prefill (enable speculative + fast prompt)
+2. tiny draft model for speculative decoding (need 10× faster than target)
+3. ANE+GPU pipeline (hide attention latency)
+4. persistent threads / mega-kernel (kill dispatch overhead)
+
 ## hardware facts
 - fp16 = fp32 throughput on M1+ (Apple doubled fp32 pipelines)
 - simdgroup_matrix = 79.5% of ALU peak (hardware limit)
