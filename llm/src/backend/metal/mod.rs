@@ -33,6 +33,7 @@ pub mod kernels {
     pub const MATVEC_Q4_FAST_BATCH: &str = include_str!("kernels/matvec_q4_fast_batch.metal");
     pub const FUSED_QKV: &str = include_str!("kernels/fused_qkv.metal");
     pub const FUSED_GATE_UP: &str = include_str!("kernels/fused_gate_up.metal");
+    pub const FUSED_SILU_DOWN: &str = include_str!("kernels/fused_silu_down.metal");
 
     // Transformer ops (all fp16)
     pub const EMBED: &str = include_str!("kernels/embed.metal");

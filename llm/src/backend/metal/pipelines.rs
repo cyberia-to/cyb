@@ -34,6 +34,7 @@ pub struct MetalPipelines {
     pub matvec_q4_fast_batch4: MtlComputePipeline,
     pub fused_qkv: MtlComputePipeline,
     pub fused_gate_up: MtlComputePipeline,
+    pub fused_silu_down: MtlComputePipeline,
 
     // Transformer ops (all fp16)
     pub embed: MtlComputePipeline,
@@ -93,6 +94,7 @@ impl MetalPipelines {
         let matvec_q4_fast_batch4 = compile(&batch_src(kernels::MATVEC_Q4_FAST_BATCH, 4), "matvec_q4_fast_batch")?;
         let fused_qkv = compile(kernels::FUSED_QKV, "fused_qkv_q4")?;
         let fused_gate_up = compile(kernels::FUSED_GATE_UP, "fused_gate_up_q4")?;
+        let fused_silu_down = compile(kernels::FUSED_SILU_DOWN, "fused_silu_down_q4")?;
 
         // Transformer ops
         let embed = compile(kernels::EMBED, "embed_f16")?;
@@ -122,6 +124,7 @@ impl MetalPipelines {
             matvec_q4_fast_batch4,
             fused_qkv,
             fused_gate_up,
+            fused_silu_down,
             matvec_ternary,
             matvec_q4k,
             matvec_q4_batch,

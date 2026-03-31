@@ -57,7 +57,7 @@ impl TextGenerator {
         // EOS tokens for common models
         let mut eos_tokens = vec![
             2,      // Llama </s>
-            0,      // SmolLM <|endoftext|> (id 0)
+            // SmolLM <|endoftext|> (id 0) detected via tokenizer lookup below
             50256,  // GPT-2 <|endoftext|>
         ];
         if let Some(id) = tokenizer.token_to_id("<|endoftext|>") {
@@ -97,7 +97,7 @@ impl TextGenerator {
         // EOS tokens for common models
         let mut eos_tokens = vec![
             2,      // Llama </s>
-            0,      // SmolLM <|endoftext|> (id 0)
+            // SmolLM <|endoftext|> (id 0) detected via tokenizer lookup below
             50256,  // GPT-2 <|endoftext|>
         ];
         // Try to detect EOS from tokenizer special tokens

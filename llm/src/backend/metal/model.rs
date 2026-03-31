@@ -154,7 +154,16 @@ impl MetalModel {
         // Quantize projection weights to block_q4_0 and upload
         let quantize_upload = |name: &str, n: usize, k: usize| -> Result<MtlBuffer, String> {
             let w = graph.get_weight(name).ok_or_else(|| format!("Missing: {name}"))?;
-            let f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
+            let mut f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
+            // Apply weight_scale if present (BitNet ternary models)
+            let scale_name = format!("{name}_scale");
+            if let Some(sw) = graph.get_weight(&scale_name) {
+                let scale_f32 = crate::backend::wgpu::model::safetensors_to_f32(&sw.data, sw.dtype);
+                if !scale_f32.is_empty() {
+                    let s = scale_f32[0];
+                    for v in &mut f32s { *v *= s; }
+                }
+            }
             let packed = quantize_f32_to_block_q4_0(&f32s, n, k);
             pipelines.upload_bytes(&packed).map_err(|e| format!("{e}"))
         };
@@ -295,17 +304,18 @@ impl MetalModel {
                     b
                 };
 
+                // ── Layer 0 input norm (subsequent layers get norm from fused_add_norm) ──
+                batch.set_pipeline(&p.rms_norm);
+                batch.set_buffer(&self.scratch.hidden, 0, 0);
+                batch.set_buffer(&self.layers[0].input_norm_weight, 0, 1);
+                batch.set_buffer(&self.scratch.hidden2, 0, 2);
+                batch.set_bytes(&norm_params_bytes, 3);
+                batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
+
                 for i in 0..c.num_layers {
                     let layer = &self.layers[i];
                     let kv = &self.kv_cache[i];
-
-                    // ── Input RMS Norm ──
-                    batch.set_pipeline(&p.rms_norm);
-                    batch.set_buffer(&self.scratch.hidden, 0, 0);
-                    batch.set_buffer(&layer.input_norm_weight, 0, 1);
-                    batch.set_buffer(&self.scratch.hidden2, 0, 2);
-                    batch.set_bytes(&norm_params_bytes, 3);
-                    batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
+                    // hidden2 is already normed (from prev layer's fused_add_norm or initial norm)
 
                     // ── Q/K/V projections (matvec_q4_fast — 8 rows/WG, simd cooperative) ──
                     let matvec_q4 = |batch: &aruminium::BatchEncoder, input: &MtlBuffer, proj: &MtlBuffer, out: &MtlBuffer, n: u32, k: u32| {
@@ -398,31 +408,30 @@ impl MetalModel {
                     batch.set_pipeline(&p.silu_mul_f16);
                     batch.set_buffer(&self.scratch.gate, 0, 0);
                     batch.set_buffer(&self.scratch.up, 0, 1);
-                    batch.set_buffer(&self.scratch.gate, 0, 2); // reuse gate as output
+                    batch.set_buffer(&self.scratch.gate, 0, 2);
                     batch.set_bytes(bytemuck::cast_slice(&silu_params), 3);
                     batch.dispatch_threadgroups((div_ceil(c.intermediate_size, 256), 1, 1), (256, 1, 1));
 
-                    // ── Down projection (input = SwiGLU output in gate scratch) ──
+                    // ── Down projection ──
                     matvec_q4(batch, &self.scratch.gate, &layer.down_proj, &self.scratch.down, c.hidden_size as u32, c.intermediate_size as u32);
 
-                    // ── FFN Residual add ──
-                    let ffn_add_params = [c.hidden_size as u32];
-                    batch.set_pipeline(&p.add_f16);
+                    // ── FFN residual add + next layer input norm (fused) ──
+                    let next_norm_weight = if i + 1 < c.num_layers {
+                        &self.layers[i + 1].input_norm_weight
+                    } else {
+                        &self.final_norm_weight
+                    };
+                    batch.set_pipeline(&p.fused_add_norm);
                     batch.set_buffer(&self.scratch.hidden, 0, 0);
                     batch.set_buffer(&self.scratch.down, 0, 1);
                     batch.set_buffer(&self.scratch.hidden, 0, 2);
-                    batch.set_bytes(bytemuck::cast_slice(&ffn_add_params), 3);
-                    batch.dispatch_threadgroups((div_ceil(c.hidden_size, 256), 1, 1), (256, 1, 1));
+                    batch.set_buffer(next_norm_weight, 0, 3);
+                    batch.set_buffer(&self.scratch.hidden2, 0, 4);
+                    batch.set_bytes(&norm_params_bytes, 5);
+                    batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
                 }
 
-                // ── Final RMS Norm (hidden already has final residual) ──
-                batch.set_pipeline(&p.rms_norm);
-                batch.set_buffer(&self.scratch.hidden, 0, 0);
-                batch.set_buffer(&self.final_norm_weight, 0, 1);
-                batch.set_buffer(&self.scratch.hidden2, 0, 2);
-                batch.set_bytes(&norm_params_bytes, 3);
-                batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
-                // TODO: fuse this add+norm too once we restructure the loop
+                // hidden2 now contains final normed hidden (from last layer's fused_add_norm)
 
                 // ── LM Head (Q4 fast matvec — vocab=151k, biggest single op) ──
                 let lm_params = [c.vocab_size as u32, c.hidden_size as u32];

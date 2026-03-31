@@ -254,6 +254,20 @@ pub fn safetensors_to_f32(data: &[u8], dtype: crate::ir::DType) -> Vec<f32> {
             .chunks_exact(2)
             .map(|c| half::f16::from_le_bytes([c[0], c[1]]).to_f32())
             .collect(),
+        DType::U8 | DType::Ternary => {
+            // Ternary weights: 4 values packed per byte (2 bits each)
+            // Encoding: 0b00 = -1, 0b01 = 0, 0b10 = +1
+            data.iter().flat_map(|&byte| {
+                (0..4).map(move |i| {
+                    match (byte >> (i * 2)) & 0x3 {
+                        0 => -1.0f32,
+                        1 =>  0.0f32,
+                        2 =>  1.0f32,
+                        _ =>  0.0f32,
+                    }
+                })
+            }).collect()
+        }
         _ => {
             log::warn!("Unsupported safetensors dtype {:?}, treating as f32", dtype);
             data.chunks_exact(4)
@@ -983,7 +997,15 @@ impl NativeModel {
 
             // Quantize projections to Q4 on-the-fly for faster inference
             let quantize_upload = |name: &str, n: usize, k: usize| -> Result<(wgpu::Buffer, wgpu::Buffer), String> {
-                let f32_data = weight_to_f32(name)?;
+                let mut f32_data = weight_to_f32(name)?;
+                // Apply weight_scale if present (BitNet ternary models)
+                let scale_name = format!("{name}_scale");
+                if let Ok(scale_data) = weight_to_f32(&scale_name) {
+                    if !scale_data.is_empty() {
+                        let s = scale_data[0];
+                        for v in &mut f32_data { *v *= s; }
+                    }
+                }
                 let (packed, scales) = quantize_f32_to_q4(&f32_data, n, k);
                 Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
             };

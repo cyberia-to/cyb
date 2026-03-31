@@ -8,6 +8,7 @@
 //!   cargo run --release -p cyb-llm --bin bench-e2e -- --tokens 64
 //!   cargo run --release -p cyb-llm --bin bench-e2e -- --models qwen3-0.6b-abl,smollm2-360m
 
+use std::panic;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::Instant;
@@ -69,6 +70,46 @@ fn main() {
             local_dir: llm_dir.join("qwen2.5-0.5b-abl"),
             ollama_name: None,
         },
+        ModelSpec {
+            name: "qwen2.5-coder-1.5b".into(),
+            local_dir: llm_dir.join("qwen2.5-coder-1.5b-abl"),
+            ollama_name: None,
+        },
+        ModelSpec {
+            name: "bitnet-2b".into(),
+            local_dir: llm_dir.join("bitnet-2b"),
+            ollama_name: None,
+        },
+        ModelSpec {
+            name: "nuextract-1.5".into(),
+            local_dir: llm_dir.join("nuextract-1.5"),
+            ollama_name: None,
+        },
+        ModelSpec {
+            name: "deepseek-r1-8b".into(),
+            local_dir: llm_dir.join("deepseek-r1-8b-abl"),
+            ollama_name: None,
+        },
+        ModelSpec {
+            name: "qwen2.5-coder-14b".into(),
+            local_dir: llm_dir.join("qwen2.5-coder-14b-abl"),
+            ollama_name: None,
+        },
+        ModelSpec {
+            name: "qwen3.5-9b".into(),
+            local_dir: llm_dir.join("qwen3.5-9b-abl"),
+            ollama_name: None,
+        },
+        ModelSpec {
+            name: "llama3.2-1b".into(),
+            local_dir: llm_dir.join("llama3.2-1b"),
+            ollama_name: Some("llama3.2:1b".into()),
+        },
+        ModelSpec {
+            name: "bostrom".into(),
+            local_dir: llm_dir.join("bostrom"),
+            ollama_name: Some("bostrom:latest".into()),
+        },
     ];
 
     let models: Vec<ModelSpec> = if let Some(filter) = model_filter {
@@ -93,28 +134,31 @@ fn main() {
 
     for spec in &config.models {
         let safetensors = spec.local_dir.join("model.safetensors");
+        let index_json = spec.local_dir.join("model.safetensors.index.json");
         let tokenizer = spec.local_dir.join("tokenizer.json");
 
-        if !safetensors.exists() {
-            println!("  {} — SKIP (no model.safetensors)", spec.name);
-            continue;
+        // Support both single-shard and multi-shard
+        if !safetensors.exists() && !index_json.exists() {
+            continue; // silently skip non-LLM dirs
         }
         if !tokenizer.exists() {
-            println!("  {} — SKIP (no tokenizer.json)", spec.name);
             continue;
         }
 
-        match bench_cyb(&spec.name, &safetensors, &tokenizer, config.max_tokens) {
-            Ok(r) => {
+        let name = spec.name.clone();
+        let st = safetensors.clone();
+        let tok = tokenizer.clone();
+        let mt = config.max_tokens;
+        match panic::catch_unwind(panic::AssertUnwindSafe(|| bench_cyb(&name, &st, &tok, mt))) {
+            Ok(Ok(r)) => {
                 println!(
                     "  {:<20} load={:.1}s  prefill={:.0}ms  decode={:.1} tok/s  ({} tokens in {:.1}s)",
                     spec.name, r.load_s, r.prefill_ms, r.tok_s, r.gen_tokens, r.gen_s,
                 );
                 results.push(r);
             }
-            Err(e) => {
-                println!("  {:<20} ERROR: {}", spec.name, e);
-            }
+            Ok(Err(e)) => println!("  {:<20} ERROR: {}", spec.name, e),
+            Err(_) => println!("  {:<20} PANIC (skipped)", spec.name),
         }
     }
 
@@ -124,20 +168,24 @@ fn main() {
         println!("\n── cyb-llm (Metal backend) ──\n");
         for spec in &config.models {
             let safetensors = spec.local_dir.join("model.safetensors");
+            let index_json = spec.local_dir.join("model.safetensors.index.json");
             let tokenizer = spec.local_dir.join("tokenizer.json");
-            if !safetensors.exists() || !tokenizer.exists() { continue; }
+            if (!safetensors.exists() && !index_json.exists()) || !tokenizer.exists() { continue; }
 
-            match bench_metal(&spec.name, &safetensors, &tokenizer, config.max_tokens) {
-                Ok(r) => {
+            let name = spec.name.clone();
+            let st = safetensors.clone();
+            let tok = tokenizer.clone();
+            let mt = config.max_tokens;
+            match panic::catch_unwind(panic::AssertUnwindSafe(|| bench_metal(&name, &st, &tok, mt))) {
+                Ok(Ok(r)) => {
                     println!(
                         "  {:<20} load={:.1}s  decode={:.1} tok/s  ({} tokens in {:.1}s)",
                         spec.name, r.load_s, r.tok_s, r.gen_tokens, r.gen_s,
                     );
                     results.push(r);
                 }
-                Err(e) => {
-                    println!("  {:<20} ERROR: {}", spec.name, e);
-                }
+                Ok(Err(e)) => println!("  {:<20} ERROR: {}", spec.name, e),
+                Err(_) => println!("  {:<20} PANIC (skipped)", spec.name),
             }
         }
     }
@@ -162,40 +210,43 @@ fn main() {
         }
     }
 
-    // ── Summary ──
-    println!("\n── Summary ──\n");
-    println!(
-        "{:<20} {:<12} {:>10} {:>10} {:>10}",
-        "Model", "Backend", "tok/s", "tokens", "time"
-    );
-    println!("{}", "-".repeat(64));
+    // ── Summary table ──
+    println!("\n{:<20} {:>10} {:>10} {:>10} {:>12}", "Model", "Metal", "wgpu", "Ollama", "Gap");
+    println!("{}", "─".repeat(66));
 
     for spec in &config.models {
-        let cyb = results.iter().find(|r| r.model == spec.name && r.backend == "cyb-llm");
+        let metal = results.iter().find(|r| r.model == spec.name && r.backend == "metal");
+        let wgpu = results.iter().find(|r| r.model == spec.name && r.backend == "cyb-llm");
         let oll = results.iter().find(|r| r.model == spec.name && r.backend == "ollama");
 
-        if let Some(c) = cyb {
-            println!(
-                "{:<20} {:<12} {:>10.1} {:>10} {:>10.1}s",
-                c.model, "cyb-llm", c.tok_s, c.gen_tokens, c.gen_s
-            );
-        }
-        if let Some(o) = oll {
-            println!(
-                "{:<20} {:<12} {:>10.1} {:>10} {:>10.1}s",
-                o.model, "ollama", o.tok_s, o.gen_tokens, o.gen_s
-            );
-        }
-        if let (Some(c), Some(o)) = (cyb, oll) {
-            let speedup = c.tok_s / o.tok_s;
-            println!(
-                "{:<20} {:<12} {:>10}",
-                "",
-                if speedup >= 1.0 { "cyb wins" } else { "ollama wins" },
-                format!("{:.2}x", speedup)
-            );
-        }
-        println!();
+        let fmt = |r: Option<&BenchResult>| -> String {
+            match r {
+                Some(r) => format!("{:.1}", r.tok_s),
+                None => "–".to_string(),
+            }
+        };
+
+        // Gap = best cyb vs ollama
+        let best_cyb = [metal, wgpu].iter()
+            .filter_map(|r| *r)
+            .max_by(|a, b| a.tok_s.partial_cmp(&b.tok_s).unwrap());
+
+        let gap = match (best_cyb, oll) {
+            (Some(c), Some(o)) => {
+                let pct = ((c.tok_s / o.tok_s) - 1.0) * 100.0;
+                if pct >= 0.0 {
+                    format!("+{:.0}% ✓", pct)
+                } else {
+                    format!("{:.0}%", pct)
+                }
+            }
+            _ => "–".to_string(),
+        };
+
+        println!(
+            "{:<20} {:>10} {:>10} {:>10} {:>12}",
+            spec.name, fmt(metal), fmt(wgpu), fmt(oll), gap
+        );
     }
 }
 
@@ -338,11 +389,18 @@ fn bench_metal(
     let encoding = tokenizer.encode(PROMPT, false).map_err(|e| format!("{e}"))?;
     let token_ids = encoding.get_ids();
 
-    // EOS tokens (minimal — only clear EOS markers)
-    let eos: Vec<u32> = vec![
+    // EOS tokens — detect from tokenizer, plus known IDs
+    let mut eos: Vec<u32> = vec![
         151643, 151645, // Qwen3
-        0,              // SmolLM <|endoftext|>
+        2,              // Llama </s>
     ];
+    for special in &["<|endoftext|>", "</s>", "<|end_of_text|>", "<|eot_id|>"] {
+        if let Some(id) = tokenizer.token_to_id(special) {
+            if !eos.contains(&id) {
+                eos.push(id);
+            }
+        }
+    }
 
     // Prefill: feed all prompt tokens, keep last predicted token
     let prefill_start = std::time::Instant::now();
