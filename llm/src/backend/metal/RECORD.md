@@ -64,8 +64,15 @@ M1 Pro, Q4 quantize-on-load from safetensors, greedy decode.
 | qwen3-0.6b | 620M | 242 tok/s | 214 | +13% |
 | qwen2.5-0.5b | 494M | 306 tok/s | 208 | +47% |
 | qwen2.5-coder-1.5b | 1.5B | 142 tok/s | 122 | +17% |
-| bitnet-2b | 2B | 85 tok/s | — | — |
+| bitnet-2b | 2B | 102 tok/s | — | native ternary |
 | deepseek-r1-8b | 8B | 19 tok/s | — | — |
+
+f16 path (no quantization, guaranteed correct):
+
+| model | f16 tok/s | Q4 tok/s | note |
+|-------|-----------|----------|------|
+| smollm2-360m | 188 | 309 | 1.6x slower, better quality |
+| qwen3-0.6b | 155 | 228 | 1.5x slower, correct output |
 
 ### forward decode profile (qwen3-0.6b, 50 tokens)
 
@@ -95,6 +102,25 @@ M1 Pro, Q4 quantize-on-load from safetensors, greedy decode.
 - bandwidth: 200 GB/s → 1.53ms minimum
 - current: 3.99ms → **2.6× from ceiling**
 - gap: dispatch overhead (~0.85ms) + kernel inefficiency (~1.6ms)
+
+### correctness fixes (2026-03-31)
+- QK-norm for Qwen3 (root cause of garbage output on Q4)
+- BOS token insertion (fixes smollm2 0-token generation)
+- EOS detection from generation_config.json + tokenizer
+- Chat template (ChatML) for instruction-tuned models
+- VLM config nesting (text_config fallback)
+- BitNet relu2 activation + attn/ffn sub_norms
+- Dynamic MAX_SEQ from max_position_embeddings
+- Padding strip for encoder (attention_mask filtering)
+- f16 Metal path (--precision f16)
+
+### GraphExecutor encoder (in progress)
+- batch f32_matmul shader (P dimension for seq_len > 1)
+- broadcast Add (bias [N] + activation [P*N])
+- classifier head template (BertConfig.num_labels)
+- PosEmbed actual embedding lookup
+- layer 0-7 correct, NaN at layer 8 fixed (output buffer sizing)
+- blocked: model files being converted to new format
 
 ### roadmap to 500+ tok/s
 1. matmul prefill (enable speculative + fast prompt)
