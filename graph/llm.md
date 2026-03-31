@@ -589,19 +589,41 @@ max_tokens = 2048
 stop = ["<|im_end|>", "<|end|>"]
 ```
 
-### weights — one file, one format
+### .cyb — the target format
 
-| format | extension | when to use | security |
-|--------|-----------|-------------|----------|
-| safetensors | weights.safetensors | preferred — safe, zero-copy mmap | safe |
-| GGUF | weights.gguf | pre-quantized (Q4/Q8) | safe |
-| ONNX | weights.onnx + .data | encoder/classifier models | safe |
-| PyTorch | weights.pt | legacy import only | unsafe (pickle) |
-| binary | weights.bin | fasttext, custom | safe |
+after import, every model is packed into a single `.cyb` file. this is the native format for cyb-llm.
 
-priority: safetensors > gguf > onnx > pt > bin. at import, convert to highest-priority available format. never keep two formats of the same weights.
+```
+model_name.cyb
+├── [header]         magic CYB\x01, version, flags, section table
+├── [config]         embedded TOML (architecture + tokenizer + chat + sampling)
+├── [graph]          serialized Graph IR nodes (optional, for ONNX-origin models)
+├── [tensor index]   per-tensor: name, shape, dtype, offset
+└── [tensor data]    raw weight bytes, 64-byte aligned for mmap/GPU
+```
 
-multi-shard models (weights-00001-of-00004.safetensors) keep all shards — they are NOT duplicates.
+one file. zero external dependencies. runtime does `mmap → read header → done`.
+
+the pipeline: HuggingFace repo → canonicalize (TOML configs) → pack → `.cyb`
+
+```
+cyb-llm import <name>     # download + canonicalize
+cyb-llm pack <name>       # weights + config → .cyb
+```
+
+### intermediate weight formats (before .cyb packing)
+
+during import, weights are stored in the best available format before packing:
+
+| format | extension | when used | notes |
+|--------|-----------|-----------|-------|
+| GGUF | weights.gguf | quantized LLMs (Q4/Q8) | block quantization, native loader |
+| safetensors | weights.safetensors | native formats (bitnet) | safe, zero-copy mmap |
+| ONNX | weights.onnx | encoder/classifier models | graph embedded in protobuf |
+| PyTorch | weights.pt | external models (YOLO, BEATs) | legacy, packed into .cyb |
+| binary | weights.bin | fasttext, GGML whisper | custom binary formats |
+
+after `cyb-llm pack`, all formats converge into `.cyb`. the intermediate format is an implementation detail of the import pipeline.
 
 ### import pipeline
 
