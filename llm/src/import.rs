@@ -1154,7 +1154,10 @@ fn convert_onnx_to_gguf(onnx_path: &Path, gguf_path: &Path) -> Result<(), String
             || name.contains("gate_proj") || name.contains("up_proj") || name.contains("down_proj")
             || name.contains("dense.weight") || name.contains("lm_head")
             || name.contains("Wqkv.weight") || name.contains("Wi.weight") || name.contains("Wo.weight");
-        let shape: Vec<usize> = if w.shape.len() == 2 && is_projection {
+        let elem_sz = w.dtype.element_size();
+        let expected = if w.shape.len() >= 2 { w.shape.iter().product::<usize>() * elem_sz } else { 0 };
+        let can_transpose = w.shape.len() == 2 && is_projection && expected == w.data.len();
+        let shape: Vec<usize> = if can_transpose {
             vec![w.shape[1], w.shape[0]]
         } else {
             w.shape.clone()
@@ -1199,10 +1202,11 @@ fn convert_onnx_to_gguf(onnx_path: &Path, gguf_path: &Path) -> Result<(), String
             || name.contains("gate_proj") || name.contains("up_proj") || name.contains("down_proj")
             || name.contains("dense.weight") || name.contains("lm_head")
             || name.contains("Wqkv.weight") || name.contains("Wi.weight") || name.contains("Wo.weight");
-        if w.shape.len() == 2 && is_proj_data {
+        let elem_size = w.dtype.element_size();
+        let expected_bytes = if w.shape.len() >= 2 { w.shape.iter().product::<usize>() * elem_size } else { 0 };
+        if w.shape.len() == 2 && is_proj_data && expected_bytes == w.data.len() {
             // Transpose data from ONNX [K, N] to HF [N, K]
-            let (rows, cols) = (w.shape[0], w.shape[1]); // ONNX: rows=K, cols=N
-            let elem_size = w.dtype.element_size();
+            let (rows, cols) = (w.shape[0], w.shape[1]);
             let mut transposed = vec![0u8; w.data.len()];
             for r in 0..rows {
                 for c in 0..cols {

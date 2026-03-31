@@ -505,13 +505,19 @@ fn run_embed(model_path: &str, text: &str) {
                 let elem_size = w.dtype.element_size();
                 let row_bytes = hidden * elem_size;
                 let prefix = key.strip_suffix(".Wqkv.weight").unwrap().to_string();
+                // Dequant to f32 if needed, then split
+                let f32_data = cyb_llm::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
+                let total_out = f32_data.len() / hidden; // total output neurons
+                let per_split = total_out / 3;
+                let f32_row_bytes = hidden * 4; // f32
                 for (idx, name) in ["q", "k", "v"].iter().enumerate() {
-                    let start = idx * hidden * row_bytes;
-                    let end = start + hidden * row_bytes;
-                    if end <= w.data.len() {
+                    let start = idx * per_split * hidden;
+                    let end = start + per_split * hidden;
+                    if end <= f32_data.len() {
+                        let split_bytes: Vec<u8> = bytemuck::cast_slice(&f32_data[start..end]).to_vec();
                         graph_with_weights.weights.insert(
                             format!("{prefix}.{name}.weight"),
-                            WeightData { data: w.data[start..end].to_vec(), shape: vec![hidden, hidden], dtype: w.dtype, needs_transpose: false },
+                            WeightData { data: split_bytes, shape: vec![per_split, hidden], dtype: DType::F32, needs_transpose: false },
                         );
                     }
                 }
@@ -519,18 +525,19 @@ fn run_embed(model_path: &str, text: &str) {
         }
         for key in wi_keys {
             if let Some(w) = graph_with_weights.weights.remove(&key) {
-                let elem_size = w.dtype.element_size();
-                let row_bytes = hidden * elem_size;
                 let prefix = key.strip_suffix(".Wi.weight").unwrap().to_string();
-                let half = inter * row_bytes;
-                if half * 2 <= w.data.len() {
+                let f32_data = cyb_llm::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
+                let total_out = f32_data.len() / hidden;
+                let half_n = total_out / 2;
+                let half = half_n * hidden;
+                if half * 2 <= f32_data.len() {
                     graph_with_weights.weights.insert(
                         format!("{prefix}.Wi_gate.weight"),
-                        WeightData { data: w.data[..half].to_vec(), shape: vec![inter, hidden], dtype: w.dtype, needs_transpose: false },
+                        WeightData { data: bytemuck::cast_slice(&f32_data[..half]).to_vec(), shape: vec![half_n, hidden], dtype: DType::F32, needs_transpose: false },
                     );
                     graph_with_weights.weights.insert(
                         format!("{prefix}.Wi_up.weight"),
-                        WeightData { data: w.data[half..half*2].to_vec(), shape: vec![inter, hidden], dtype: w.dtype, needs_transpose: false },
+                        WeightData { data: bytemuck::cast_slice(&f32_data[half..half*2]).to_vec(), shape: vec![half_n, hidden], dtype: DType::F32, needs_transpose: false },
                     );
                 }
             }
