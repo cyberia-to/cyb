@@ -796,6 +796,27 @@ fn clean_junk(dir: &Path, result: &mut ImportResult) {
             result.files_deleted += 1;
         }
     }
+
+    // Clean junk inside onnx/ and onnx_q8/ dirs — keep only .onnx + .onnx_data
+    for onnx_dir_name in &["onnx", "onnx_q8"] {
+        let onnx_dir = dir.join(onnx_dir_name);
+        if !onnx_dir.is_dir() {
+            continue;
+        }
+        if let Ok(entries) = std::fs::read_dir(&onnx_dir) {
+            for entry in entries.flatten() {
+                let name = entry.file_name();
+                let name = name.to_str().unwrap_or("");
+                let is_weight = name.ends_with(".onnx")
+                    || name.ends_with(".onnx_data");
+                if !is_weight && entry.metadata().map(|m| m.is_file()).unwrap_or(false) {
+                    if std::fs::remove_file(entry.path()).is_ok() {
+                        result.files_deleted += 1;
+                    }
+                }
+            }
+        }
+    }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
