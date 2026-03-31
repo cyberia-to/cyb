@@ -30,8 +30,12 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Command {
-    /// Start the sync daemon.
-    Daemon,
+    /// Start the sync daemon with background auto-sync.
+    Daemon {
+        /// Auto-sync interval in seconds (0 = disabled).
+        #[arg(short, long, default_value = "30")]
+        interval: u64,
+    },
 
     /// Store a file.
     Put {
@@ -57,10 +61,13 @@ enum Command {
     /// Show status.
     Status,
 
-    /// Add a peer (host:port).
+    /// Add a peer (host:port) with optional capacity.
     AddPeer {
-        /// Peer address.
+        /// Peer address (host:port).
         addr: String,
+        /// Peer storage capacity (e.g. 50GB, 100MB). 0 = unlimited.
+        #[arg(short, long, default_value = "0")]
+        capacity: String,
     },
 
     /// Sync with all peers (or a specific one).
@@ -79,8 +86,8 @@ async fn main() -> Result<()> {
     let node = SyncNode::start(&dir, cli.port, cli.k, cli.n).await?;
 
     match cli.command {
-        Command::Daemon => {
-            node.run_daemon().await?;
+        Command::Daemon { interval } => {
+            node.run_daemon(interval).await?;
         }
         Command::Put { file, name } => {
             let data = std::fs::read(&file)?;
@@ -120,25 +127,15 @@ async fn main() -> Result<()> {
             println!("chunks: {}", chunks);
             println!("erasure: k={}, n={}", cli.k, cli.n);
         }
-        Command::AddPeer { addr } => {
-            node.add_peer(&addr).await?;
+        Command::AddPeer { addr, capacity } => {
+            let cap = parse_capacity(&capacity)?;
+            node.add_peer(&addr, cap).await?;
         }
         Command::Sync { peer } => {
             if let Some(p) = peer {
                 node.sync_with(&p).await?;
             } else {
-                let (_, peers_count, _, _) = node.status().await;
-                if peers_count == 0 {
-                    println!("no peers configured. use 'add-peer' first.");
-                } else {
-                    let state = node.list_files().await;
-                    drop(state);
-                    // Read peers from state
-                    println!("syncing with all peers...");
-                    // For now, sync with each peer sequentially
-                    // This is a placeholder — full impl would read peers list
-                    println!("use 'sync <host:port>' to sync with a specific peer");
-                }
+                node.sync_all().await?;
             }
         }
     }
@@ -154,4 +151,24 @@ fn expand_tilde(path: &str) -> PathBuf {
         }
     }
     PathBuf::from(path)
+}
+
+fn parse_capacity(s: &str) -> Result<u64> {
+    let s = s.trim().to_uppercase();
+    if s == "0" || s.is_empty() {
+        return Ok(0);
+    }
+    let (num_str, multiplier) = if let Some(n) = s.strip_suffix("GB") {
+        (n, 1_000_000_000u64)
+    } else if let Some(n) = s.strip_suffix("MB") {
+        (n, 1_000_000u64)
+    } else if let Some(n) = s.strip_suffix("KB") {
+        (n, 1_000u64)
+    } else if let Some(n) = s.strip_suffix('B') {
+        (n, 1u64)
+    } else {
+        (s.as_str(), 1u64)
+    };
+    let num: f64 = num_str.trim().parse()?;
+    Ok((num * multiplier as f64) as u64)
 }

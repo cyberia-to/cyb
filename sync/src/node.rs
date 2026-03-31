@@ -32,6 +32,8 @@ pub struct SharedState {
     pub k: usize,
     pub n: usize,
     pub peers: Vec<String>,
+    /// Per-peer capacity allocation in bytes (mirrors peers vec by index).
+    pub peer_capacities: Vec<u64>,
 }
 
 /// A sync node running on one device.
@@ -67,12 +69,22 @@ impl SyncNode {
             Vec::new()
         };
 
+        // Load peer capacities.
+        let caps_path = data_dir.join("capacities.json");
+        let peer_capacities: Vec<u64> = if caps_path.exists() {
+            let data = std::fs::read_to_string(&caps_path)?;
+            serde_json::from_str(&data).unwrap_or_default()
+        } else {
+            vec![0; peers.len()]
+        };
+
         let state = Arc::new(RwLock::new(SharedState {
             registry,
             data_dir: data_dir.to_path_buf(),
             k,
             n,
             peers,
+            peer_capacities,
         }));
 
         println!("node started on port {}", port);
@@ -82,11 +94,12 @@ impl SyncNode {
         Ok(Self { state, port })
     }
 
-    /// Run the daemon: listen for connections + serve chunks.
-    pub async fn run_daemon(&self) -> Result<()> {
+    /// Run the daemon: listen for connections + background auto-sync.
+    pub async fn run_daemon(&self, sync_interval_secs: u64) -> Result<()> {
         let listener = TcpListener::bind(("0.0.0.0", self.port)).await?;
         println!("listening on 0.0.0.0:{}", self.port);
 
+        // Spawn TCP listener.
         let state = self.state.clone();
         tokio::spawn(async move {
             loop {
@@ -104,6 +117,23 @@ impl SyncNode {
             }
         });
 
+        // Spawn background auto-sync.
+        if sync_interval_secs > 0 {
+            let state = self.state.clone();
+            println!("auto-sync every {}s", sync_interval_secs);
+            tokio::spawn(async move {
+                let mut interval =
+                    tokio::time::interval(std::time::Duration::from_secs(sync_interval_secs));
+                interval.tick().await; // skip first immediate tick
+                loop {
+                    interval.tick().await;
+                    if let Err(e) = background_sync(&state).await {
+                        eprintln!("auto-sync error: {}", e);
+                    }
+                }
+            });
+        }
+
         println!("running... press ctrl-c to stop");
         tokio::signal::ctrl_c().await?;
         println!("\nshutting down...");
@@ -111,7 +141,7 @@ impl SyncNode {
         Ok(())
     }
 
-    /// Add a file: erasure encode and store chunks.
+    /// Add a file: erasure encode and store chunks with capacity-weighted placement.
     pub async fn put_file(&self, name: &str, data: &[u8]) -> Result<()> {
         let mut state = self.state.write().await;
         let shards = erasure::encode(data, state.k, state.n);
@@ -119,12 +149,25 @@ impl SyncNode {
         let chunks_dir = state.data_dir.join("chunks");
         let mut shard_hashes = Vec::with_capacity(state.n);
 
+        // Compute placement: which shards go to which device.
+        let placement = capacity_weighted_placement(
+            state.n,
+            &state.peer_capacities,
+        );
+
         for shard in &shards {
             let bytes = shard_to_bytes(shard);
             let hash = cyber_hemera::hash(&bytes);
             let hex = hash.to_hex();
-            let path = chunks_dir.join(&hex);
-            std::fs::write(&path, &bytes)?;
+
+            // Always store locally (this device is implicit peer 0).
+            // Placement tells us which additional shards to keep vs skip.
+            let keep_local = placement.get(shard.index).copied().unwrap_or(0) == 0;
+            if keep_local || state.peers.is_empty() {
+                let path = chunks_dir.join(&hex);
+                std::fs::write(&path, &bytes)?;
+            }
+
             shard_hashes.push(hex);
         }
 
@@ -139,7 +182,14 @@ impl SyncNode {
         state.registry.insert(entry);
         self.save_registry(&state)?;
 
-        println!("stored '{}' ({} bytes, {} shards)", name, data.len(), state.n);
+        let local_count = placement.iter().filter(|&&d| d == 0).count();
+        println!(
+            "stored '{}' ({} bytes, {} shards, {} local)",
+            name,
+            data.len(),
+            state.n,
+            local_count
+        );
         Ok(())
     }
 
@@ -250,17 +300,35 @@ impl SyncNode {
         Ok(())
     }
 
-    /// Add a peer address (host:port).
-    pub async fn add_peer(&self, addr: &str) -> Result<()> {
+    /// Add a peer address (host:port) with optional capacity in bytes.
+    pub async fn add_peer(&self, addr: &str, capacity: u64) -> Result<()> {
         let mut state = self.state.write().await;
         if !state.peers.contains(&addr.to_string()) {
             state.peers.push(addr.to_string());
-            let path = state.data_dir.join("peers.json");
-            let json = serde_json::to_string_pretty(&state.peers)?;
-            std::fs::write(path, json)?;
-            println!("added peer: {}", addr);
+            state.peer_capacities.push(capacity);
+            save_peers(&state)?;
+            println!("added peer: {} (capacity: {})", addr, format_bytes(capacity));
         } else {
             println!("peer already known: {}", addr);
+        }
+        Ok(())
+    }
+
+    /// Sync with all known peers.
+    pub async fn sync_all(&self) -> Result<()> {
+        let state = self.state.read().await;
+        let peers = state.peers.clone();
+        drop(state);
+
+        if peers.is_empty() {
+            println!("no peers configured. use 'add-peer' first.");
+            return Ok(());
+        }
+
+        for peer in &peers {
+            if let Err(e) = self.sync_with(peer).await {
+                eprintln!("sync with {} failed: {}", peer, e);
+            }
         }
         Ok(())
     }
@@ -295,6 +363,158 @@ impl SyncNode {
     }
 }
 
+// ── Background auto-sync ──
+
+async fn background_sync(state: &Arc<RwLock<SharedState>>) -> Result<()> {
+    // Reload registry from disk first (CLI may have updated it).
+    {
+        let mut s = state.write().await;
+        let path = s.data_dir.join("registry.json");
+        if path.exists() {
+            let data = std::fs::read_to_string(&path)?;
+            if let Ok(disk_reg) = serde_json::from_str::<GSet>(&data) {
+                s.registry.merge(&disk_reg);
+            }
+        }
+    }
+
+    let s = state.read().await;
+    let peers = s.peers.clone();
+    let chunks_dir = s.data_dir.join("chunks");
+    drop(s);
+
+    if peers.is_empty() {
+        return Ok(());
+    }
+
+    let mut total_new_files = 0;
+    let mut total_fetched = 0;
+
+    for peer in &peers {
+        let remote_registry = match fetch_registry(peer).await {
+            Ok(r) => r,
+            Err(_) => continue,
+        };
+
+        let mut s = state.write().await;
+        let before = s.registry.len();
+        s.registry.merge(&remote_registry);
+        let after = s.registry.len();
+        total_new_files += after - before;
+
+        if after > before {
+            let path = s.data_dir.join("registry.json");
+            let json = serde_json::to_string_pretty(&s.registry)?;
+            std::fs::write(path, json)?;
+        }
+
+        for entry in s.registry.files.values() {
+            for hash_hex in &entry.shard_hashes {
+                let path = chunks_dir.join(hash_hex);
+                if !path.exists() {
+                    if let Ok(bytes) = fetch_chunk_from_peer(peer, hash_hex).await {
+                        std::fs::write(&path, &bytes)?;
+                        total_fetched += 1;
+                    }
+                }
+            }
+        }
+    }
+
+    if total_new_files > 0 || total_fetched > 0 {
+        println!(
+            "[auto-sync] {} new files, {} chunks fetched",
+            total_new_files, total_fetched
+        );
+    }
+    Ok(())
+}
+
+// ── Capacity-weighted placement ──
+
+/// Assign each shard to a device index (0 = local, 1..n = peers).
+/// Devices with more capacity get more shards.
+///
+/// If no capacities are set (all zeros or empty), falls back to round-robin.
+fn capacity_weighted_placement(n_shards: usize, peer_capacities: &[u64]) -> Vec<usize> {
+    let n_devices = peer_capacities.len() + 1; // +1 for local device (index 0)
+    if n_devices == 0 || n_shards == 0 {
+        return vec![0; n_shards];
+    }
+
+    // Build capacity list with local device at index 0.
+    // Local device has "infinite" capacity (u64::MAX) if no explicit cap.
+    let mut caps: Vec<u64> = Vec::with_capacity(n_devices);
+    caps.push(u64::MAX); // local always accepts
+    caps.extend_from_slice(peer_capacities);
+
+    let total_cap: u128 = caps.iter().map(|&c| c.max(1) as u128).sum();
+
+    if total_cap == 0 {
+        // Fallback: round-robin.
+        return (0..n_shards).map(|i| i % n_devices).collect();
+    }
+
+    // Proportional allocation: device d gets floor(n_shards * cap_d / total_cap) shards.
+    let mut alloc = vec![0usize; n_devices];
+    let mut assigned = 0;
+    for d in 0..n_devices {
+        let share = (n_shards as u128 * caps[d].max(1) as u128 / total_cap) as usize;
+        alloc[d] = share;
+        assigned += share;
+    }
+
+    // Distribute remainder to largest-capacity devices.
+    let mut remainder = n_shards.saturating_sub(assigned);
+    let mut order: Vec<usize> = (0..n_devices).collect();
+    order.sort_by(|&a, &b| caps[b].cmp(&caps[a]));
+    for &d in &order {
+        if remainder == 0 {
+            break;
+        }
+        alloc[d] += 1;
+        remainder -= 1;
+    }
+
+    // Build placement vector: shard i → device index.
+    let mut placement = Vec::with_capacity(n_shards);
+    for (device_idx, &count) in alloc.iter().enumerate() {
+        for _ in 0..count {
+            placement.push(device_idx);
+        }
+    }
+    placement.truncate(n_shards);
+    placement
+}
+
+fn save_peers(state: &SharedState) -> Result<()> {
+    let path = state.data_dir.join("peers.json");
+    let json = serde_json::to_string_pretty(&state.peers)?;
+    std::fs::write(&path, json)?;
+    let caps_path = state.data_dir.join("capacities.json");
+    let json = serde_json::to_string_pretty(&state.peer_capacities)?;
+    std::fs::write(caps_path, json)?;
+    Ok(())
+}
+
+fn format_bytes(bytes: u64) -> String {
+    if bytes == 0 {
+        return "unlimited".to_string();
+    }
+    const GB: u64 = 1_000_000_000;
+    const MB: u64 = 1_000_000;
+    const KB: u64 = 1_000;
+    if bytes >= GB {
+        format!("{:.1} GB", bytes as f64 / GB as f64)
+    } else if bytes >= MB {
+        format!("{:.1} MB", bytes as f64 / MB as f64)
+    } else if bytes >= KB {
+        format!("{:.1} KB", bytes as f64 / KB as f64)
+    } else {
+        format!("{} B", bytes)
+    }
+}
+
 // ── Server: handle incoming connections ──
 
 async fn handle_connection(mut stream: TcpStream, state: Arc<RwLock<SharedState>>) -> Result<()> {
@@ -323,8 +543,14 @@ async fn handle_connection(mut stream: TcpStream, state: Arc<RwLock<SharedState>
             }
         }
         MSG_REGISTRY => {
+            // Always serve from disk — CLI processes may have updated it.
             let state = state.read().await;
-            let json = serde_json::to_string(&state.registry)?;
+            let path = state.data_dir.join("registry.json");
+            let json = if path.exists() {
+                std::fs::read_to_string(&path)?
+            } else {
+                serde_json::to_string(&state.registry)?
+            };
             stream.write_u8(MSG_FILE_LIST).await?;
             write_bytes(&mut stream, json.as_bytes()).await?;
         }
