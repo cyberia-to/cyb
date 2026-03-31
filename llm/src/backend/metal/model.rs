@@ -7,7 +7,7 @@ use std::path::Path;
 use aruminium::MtlBuffer;
 use super::pipelines::MetalPipelines;
 
-const MAX_SEQ: usize = 2048;
+const DEFAULT_MAX_SEQ: usize = 2048;
 
 pub struct MetalModelConfig {
     pub hidden_size: usize,
@@ -19,6 +19,7 @@ pub struct MetalModelConfig {
     pub intermediate_size: usize,
     pub has_qk_norm: bool,
     pub is_ternary: bool,
+    pub max_seq: usize,
 }
 
 struct MetalLayerWeights {
@@ -107,6 +108,9 @@ impl MetalModel {
         let rope_theta = cj["rope_theta"].as_f64().unwrap_or(10000.0) as f32;
         let rms_norm_eps = cj["rms_norm_eps"].as_f64().unwrap_or(1e-6) as f32;
         let tie_word_embeddings = cj["tie_word_embeddings"].as_bool().unwrap_or(true);
+        let max_seq = cj["max_position_embeddings"].as_u64()
+            .map(|v| (v as usize).min(8192)) // cap at 8192 for memory
+            .unwrap_or(DEFAULT_MAX_SEQ);
 
         let graph = crate::loader::safetensors::load_safetensors(path)?;
         let has_qk_norm = graph.get_weight("model.layers.0.self_attn.q_norm.weight").is_some();
@@ -119,7 +123,7 @@ impl MetalModel {
 
         let config = MetalModelConfig {
             hidden_size, num_heads, kv_num_heads, head_dim,
-            num_layers, vocab_size, intermediate_size, has_qk_norm, is_ternary,
+            num_layers, vocab_size, intermediate_size, has_qk_norm, is_ternary, max_seq,
         };
 
         log::info!("Metal model: hidden={hidden_size}, heads={num_heads}, kv_heads={kv_num_heads}, layers={num_layers}, vocab={vocab_size}");
@@ -270,9 +274,9 @@ impl MetalModel {
 
         // RoPE cache (fp16)
         let half_dim = head_dim / 2;
-        let mut cos_f16 = vec![0u16; MAX_SEQ * half_dim];
-        let mut sin_f16 = vec![0u16; MAX_SEQ * half_dim];
-        for pos in 0..MAX_SEQ {
+        let mut cos_f16 = vec![0u16; max_seq * half_dim];
+        let mut sin_f16 = vec![0u16; max_seq * half_dim];
+        for pos in 0..max_seq {
             for i in 0..half_dim {
                 let freq = 1.0 / rope_theta.powf(2.0 * i as f32 / head_dim as f32);
                 let angle = pos as f32 * freq;
@@ -284,7 +288,7 @@ impl MetalModel {
         let sin_cache = pipelines.upload_f16(&sin_f16).map_err(|e| format!("{e}"))?;
 
         // KV cache (pre-allocated to MAX_SEQ)
-        let kv_buf_size = kv_num_heads * MAX_SEQ * head_dim * 2; // fp16
+        let kv_buf_size = kv_num_heads * max_seq * head_dim * 2; // fp16
         let mut kv_cache = Vec::with_capacity(num_layers);
         for _ in 0..num_layers {
             kv_cache.push(MetalKVCache {
@@ -451,7 +455,7 @@ impl MetalModel {
                     batch.dispatch_threadgroups((div_ceil(total_rope, 256), 1, 1), (256, 1, 1));
 
                     // ── Fused KV cache append K+V (1 dispatch instead of 2) ──
-                    let append_params = [c.head_dim as u32, c.kv_num_heads as u32, pos as u32, MAX_SEQ as u32];
+                    let append_params = [c.head_dim as u32, c.kv_num_heads as u32, pos as u32, c.max_seq as u32];
                     batch.set_pipeline(&p.fused_kv_append);
                     batch.set_buffer(&self.scratch.k, 0, 0);
                     batch.set_buffer(&self.scratch.v, 0, 1);
@@ -461,7 +465,7 @@ impl MetalModel {
                     batch.dispatch_threadgroups((div_ceil(c.kv_num_heads * c.head_dim, 256), 1, 1), (256, 1, 1));
 
                     // ── Attention decode (GQA-aware, KV cache stride = MAX_SEQ) ──
-                    let attn_params = [c.head_dim as u32, total_seq as u32, c.num_heads as u32, scale.to_bits(), c.kv_num_heads as u32, MAX_SEQ as u32];
+                    let attn_params = [c.head_dim as u32, total_seq as u32, c.num_heads as u32, scale.to_bits(), c.kv_num_heads as u32, c.max_seq as u32];
                     batch.set_pipeline(&p.attention_decode);
                     batch.set_buffer(&self.scratch.q, 0, 0);
                     batch.set_buffer(&kv.k, 0, 1);
@@ -728,7 +732,7 @@ impl MetalModel {
                     batch.set_bytes(bytemuck::cast_slice(&rope_params), 4);
                     batch.dispatch_threadgroups((div_ceil(total_rope, 256), 1, 1), (256, 1, 1));
 
-                    let append_params = [c.head_dim as u32, c.kv_num_heads as u32, pos as u32, MAX_SEQ as u32];
+                    let append_params = [c.head_dim as u32, c.kv_num_heads as u32, pos as u32, c.max_seq as u32];
                     batch.set_pipeline(&p.fused_kv_append);
                     batch.set_buffer(&self.scratch.k, 0, 0);
                     batch.set_buffer(&self.scratch.v, 0, 1);
@@ -737,7 +741,7 @@ impl MetalModel {
                     batch.set_bytes(bytemuck::cast_slice(&append_params), 4);
                     batch.dispatch_threadgroups((div_ceil(c.kv_num_heads * c.head_dim, 256), 1, 1), (256, 1, 1));
 
-                    let attn_params = [c.head_dim as u32, total_seq as u32, c.num_heads as u32, scale.to_bits(), c.kv_num_heads as u32, MAX_SEQ as u32];
+                    let attn_params = [c.head_dim as u32, total_seq as u32, c.num_heads as u32, scale.to_bits(), c.kv_num_heads as u32, c.max_seq as u32];
                     batch.set_pipeline(&p.attention_decode);
                     batch.set_buffer(&self.scratch.q, 0, 0);
                     batch.set_buffer(&kv.k, 0, 1);
