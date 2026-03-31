@@ -862,16 +862,17 @@ fn flatten_onnx_dir(dir: &Path, result: &mut ImportResult) -> bool {
         return true;
     }
 
-    // Prefer quantized dir, fall back to regular
-    let source_dir = if dir.join("onnx_q8").is_dir() {
-        dir.join("onnx_q8")
-    } else if dir.join("onnx").is_dir() {
+    // Prefer UNQUANTIZED dir (onnx/) — our ONNX→GGUF converter handles F16/F32 well,
+    // but quantized ONNX (Q8) causes GPU panics due to format mismatch
+    let source_dir = if dir.join("onnx").is_dir() {
         dir.join("onnx")
+    } else if dir.join("onnx_q8").is_dir() {
+        dir.join("onnx_q8")
     } else {
         return false;
     };
 
-    // Find the best .onnx file (prefer quantized/q4/q8 variants)
+    // Find the best .onnx file (prefer UNquantized — F16/F32)
     let mut best_onnx: Option<std::path::PathBuf> = None;
     let mut best_data: Option<std::path::PathBuf> = None;
 
@@ -882,14 +883,14 @@ fn flatten_onnx_dir(dir: &Path, result: &mut ImportResult) -> bool {
             if name.ends_with(".onnx_data") {
                 best_data = Some(entry.path());
             } else if name.ends_with(".onnx") {
-                // Prefer quantized variants
-                let dominated = best_onnx.as_ref().map(|prev| {
-                    let prev_name = prev.file_name().unwrap_or_default().to_str().unwrap_or("");
-                    // If current is quantized and prev isn't, current wins
-                    (name.contains("q4") || name.contains("q8") || name.contains("quantized"))
-                        && !prev_name.contains("q4") && !prev_name.contains("q8") && !prev_name.contains("quantized")
+                // Prefer unquantized variants (model.onnx over model_q8.onnx)
+                let is_quant = name.contains("q4") || name.contains("q8") || name.contains("quantized");
+                let prev_is_quant = best_onnx.as_ref().map(|p| {
+                    let pn = p.file_name().unwrap_or_default().to_str().unwrap_or("");
+                    pn.contains("q4") || pn.contains("q8") || pn.contains("quantized")
                 }).unwrap_or(true);
-                if dominated {
+                // Current wins if: no best yet, or current is unquantized and prev is quantized
+                if best_onnx.is_none() || (!is_quant && prev_is_quant) {
                     best_onnx = Some(entry.path());
                 }
             }
