@@ -964,10 +964,39 @@ impl GraphExecutor {
             // Position embedding
             // ============================================================
             Op::PosEmbed => {
-                // Similar to TokenEmbed but for position IDs
-                // For transformer decoders with RoPE this is not used
-                if let Some(buf) = buffers.get(&node.inputs[0]) {
-                    buffers.insert(node.outputs[0].clone(), buf.clone());
+                // Position embedding lookup — same as TokenEmbed but for position IDs
+                let pos_ids = buffers.get(&node.inputs[0]);
+
+                // Find position embedding weight table
+                let embed_name = node.attrs.get("embed_weight")
+                    .and_then(|v| match v {
+                        AttrValue::String(s) => Some(s.as_str()),
+                        _ => None,
+                    });
+                let pos_table = if let Some(name) = embed_name {
+                    weights.get(name)
+                } else {
+                    None
+                }
+                .or_else(|| weights.get("embeddings.position_embeddings.weight"))
+                .or_else(|| weights.get("roberta.embeddings.position_embeddings.weight"))
+                .or_else(|| weights.get("deberta.embeddings.position_embeddings.weight"));
+
+                if let (Some(table), Some(ids)) = (pos_table, pos_ids) {
+                    let (out, bg, wg) =
+                        dispatch::embed_prepare(p, table.buffer(), ids, cfg.hidden_size, seq_len as u32);
+                    buffers.insert(node.outputs[0].clone(), out);
+                    dispatches.push(DispatchCmd {
+                        shader: &p.embed,
+                        bg,
+                        wg,
+                    });
+                } else {
+                    // No position embeddings (some models use RoPE or sinusoidal)
+                    // Pass through position_ids as-is
+                    if let Some(buf) = buffers.get(&node.inputs[0]) {
+                        buffers.insert(node.outputs[0].clone(), buf.clone());
+                    }
                 }
             }
 

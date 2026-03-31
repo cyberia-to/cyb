@@ -579,11 +579,21 @@ pub fn transformer_encoder(config: &TransformerConfig) -> Graph {
         vec!["input_ids".to_string()],
         vec!["token_embed".to_string()],
     );
-    g.add_node(
-        Op::PosEmbed,
-        vec!["position_ids".to_string()],
-        vec!["pos_embed".to_string()],
-    );
+    {
+        let mut pos_node = crate::ir::graph::Node {
+            id: 0,
+            op: Op::PosEmbed,
+            inputs: vec!["position_ids".to_string()],
+            outputs: vec!["pos_embed".to_string()],
+            attrs: HashMap::new(),
+            backend_hint: None,
+        };
+        pos_node.attrs.insert(
+            "embed_weight".to_string(),
+            AttrValue::String("embeddings.position_embeddings.weight".to_string()),
+        );
+        g.nodes.push(pos_node);
+    }
     g.add_node(
         Op::Add,
         vec!["token_embed".to_string(), "pos_embed".to_string()],
