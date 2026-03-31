@@ -137,7 +137,8 @@ fn pack_raw_weights(dir: &Path) -> Result<crate::ir::Graph, String> {
             weights.insert(name, WeightData {
                 data,
                 shape: vec![size],
-                dtype: DType::U8, // raw bytes
+                dtype: DType::U8,
+                needs_transpose: false,
             });
         }
     }

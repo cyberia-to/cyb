@@ -144,8 +144,7 @@ fn load_safetensors_single(path: &Path) -> Result<Graph, String> {
             WeightData {
                 data: raw_data,
                 shape: desc.shape,
-                dtype,
-            },
+                dtype, needs_transpose: false },
         );
 
         loaded += 1;

@@ -3279,6 +3279,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tokenizers",
+ "toml 0.8.2",
  "wgpu 24.0.5",
 ]
 

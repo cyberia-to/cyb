@@ -34,8 +34,7 @@ pub fn load_onnx(path: &Path) -> Result<Graph, String> {
             WeightData {
                 data: raw_data,
                 shape: shape.clone(),
-                dtype,
-            },
+                dtype, needs_transpose: false },
         );
         graph.add_tensor(
             init.name.clone(),

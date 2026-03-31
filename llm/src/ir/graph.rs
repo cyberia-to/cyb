@@ -105,6 +105,8 @@ pub struct WeightData {
     pub data: Vec<u8>,
     pub shape: Vec<usize>,
     pub dtype: DType,
+    /// GGUF stores 2D tensors with ne[0] as fast dim (column-major from HF perspective)
+    pub needs_transpose: bool,
 }
 
 impl TensorMeta {

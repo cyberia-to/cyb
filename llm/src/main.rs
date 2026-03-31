@@ -516,7 +516,7 @@ fn run_embed(model_path: &str, text: &str) {
                     if end <= w.data.len() {
                         graph_with_weights.weights.insert(
                             format!("{prefix}.{name}.weight"),
-                            WeightData { data: w.data[start..end].to_vec(), shape: vec![hidden, hidden], dtype: w.dtype },
+                            WeightData { data: w.data[start..end].to_vec(), shape: vec![hidden, hidden], dtype: w.dtype, needs_transpose: false },
                         );
                     }
                 }
@@ -531,11 +531,11 @@ fn run_embed(model_path: &str, text: &str) {
                 if half * 2 <= w.data.len() {
                     graph_with_weights.weights.insert(
                         format!("{prefix}.Wi_gate.weight"),
-                        WeightData { data: w.data[..half].to_vec(), shape: vec![inter, hidden], dtype: w.dtype },
+                        WeightData { data: w.data[..half].to_vec(), shape: vec![inter, hidden], dtype: w.dtype, needs_transpose: false },
                     );
                     graph_with_weights.weights.insert(
                         format!("{prefix}.Wi_up.weight"),
-                        WeightData { data: w.data[half..half*2].to_vec(), shape: vec![inter, hidden], dtype: w.dtype },
+                        WeightData { data: w.data[half..half*2].to_vec(), shape: vec![inter, hidden], dtype: w.dtype, needs_transpose: false },
                     );
                 }
             }
@@ -550,7 +550,7 @@ fn run_embed(model_path: &str, text: &str) {
                     graph_with_weights.weights.insert(name, WeightData {
                         data: ones,
                         shape: vec![hidden],
-                        dtype: DType::F32,
+                        dtype: DType::F32, needs_transpose: false,
                     });
                 }
             }
@@ -560,7 +560,7 @@ fn run_embed(model_path: &str, text: &str) {
                     graph_with_weights.weights.insert(name, WeightData {
                         data: vec![0u8; hidden * 4],
                         shape: vec![hidden],
-                        dtype: DType::F32,
+                        dtype: DType::F32, needs_transpose: false,
                     });
                 }
             }
@@ -570,7 +570,7 @@ fn run_embed(model_path: &str, text: &str) {
             graph_with_weights.weights.insert("model.embeddings.norm.bias".to_string(), WeightData {
                 data: vec![0u8; hidden * 4],
                 shape: vec![hidden],
-                dtype: DType::F32,
+                dtype: DType::F32, needs_transpose: false,
             });
         }
     }
@@ -604,7 +604,7 @@ fn run_embed(model_path: &str, text: &str) {
             graph_with_weights.weights.insert(pos_name, WeightData {
                 data: vec![0u8; max_pos * hidden * 2],  // F16 zeros
                 shape: vec![max_pos, hidden],
-                dtype: DType::F16,
+                dtype: DType::F16, needs_transpose: false,
             });
         }
         let type_name = format!("{wp}embeddings.token_type_embeddings.weight");
@@ -612,7 +612,7 @@ fn run_embed(model_path: &str, text: &str) {
             graph_with_weights.weights.insert(type_name, WeightData {
                 data: vec![0u8; 2 * hidden * 2],  // F16 zeros, 2 types
                 shape: vec![2, hidden],
-                dtype: DType::F16,
+                dtype: DType::F16, needs_transpose: false,
             });
         }
     }

@@ -354,8 +354,7 @@ pub fn constant_fold(graph: &mut Graph) -> usize {
             graph.weights.insert(name.clone(), super::graph::WeightData {
                 data,
                 shape: vec![size],
-                dtype: DType::F32,
-            });
+                dtype: DType::F32, needs_transpose: false });
         }
 
         // Remove nodes whose outputs were all folded

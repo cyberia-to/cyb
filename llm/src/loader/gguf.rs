@@ -311,6 +311,7 @@ fn build_graph_from_gguf(
             info.name.clone(),
             WeightData {
                 data: raw_data,
+                needs_transpose: shape.len() == 2, // GGUF 2D tensors are column-major
                 shape,
                 dtype,
             },

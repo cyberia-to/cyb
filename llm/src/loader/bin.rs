@@ -85,8 +85,7 @@ pub fn load_bin(path: &Path) -> Result<Graph, String> {
                 WeightData {
                     data,
                     shape,
-                    dtype: DType::F32,
-                },
+                    dtype: DType::F32, needs_transpose: false },
             );
             return Ok(graph);
         }
@@ -115,8 +114,7 @@ pub fn load_bin(path: &Path) -> Result<Graph, String> {
         WeightData {
             data: raw_data,
             shape,
-            dtype: DType::F32,
-        },
+            dtype: DType::F32, needs_transpose: false },
     );
 
     log::info!(

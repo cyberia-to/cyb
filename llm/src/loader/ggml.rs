@@ -226,7 +226,7 @@ pub fn load_ggml_full(path: &Path) -> Result<GgmlWhisperData, String> {
             name.clone(),
             TensorMeta::weight(dims.clone(), dtype),
         );
-        graph.add_weight(name, WeightData { data: raw_data, shape: dims, dtype });
+        graph.add_weight(name, WeightData { data: raw_data, shape: dims, dtype, needs_transpose: false });
         tensor_count += 1;
     }
 

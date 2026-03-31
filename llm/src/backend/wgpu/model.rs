@@ -238,6 +238,17 @@ fn raw_to_f32(raw: &[u8], data_type: i32) -> Vec<f32> {
 }
 
 /// Convert safetensors weight bytes to f32, based on DType from IR
+/// Transpose a 2D f32 matrix from [rows, cols] to [cols, rows]
+pub fn transpose_f32(data: &[f32], rows: usize, cols: usize) -> Vec<f32> {
+    let mut out = vec![0.0f32; rows * cols];
+    for r in 0..rows {
+        for c in 0..cols {
+            out[c * rows + r] = data[r * cols + c];
+        }
+    }
+    out
+}
+
 pub fn safetensors_to_f32(data: &[u8], dtype: crate::ir::DType) -> Vec<f32> {
     use crate::ir::DType;
     match dtype {
@@ -1054,7 +1065,11 @@ impl NativeModel {
         let weight_to_f32 = |name: &str| -> Result<Vec<f32>, String> {
             let w = graph.get_weight(name)
                 .ok_or_else(|| format!("Missing weight: {name}"))?;
-            Ok(safetensors_to_f32(&w.data, w.dtype))
+            let mut f32s = safetensors_to_f32(&w.data, w.dtype);
+            if w.needs_transpose && w.shape.len() == 2 {
+                f32s = transpose_f32(&f32s, w.shape[0], w.shape[1]);
+            }
+            Ok(f32s)
         };
 
         // Load embedding table

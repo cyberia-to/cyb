@@ -749,6 +749,7 @@ fn deserialize_weights(index: &[u8], data: &[u8]) -> io::Result<HashMap<String, 
             data: weight_data.to_vec(),
             shape,
             dtype,
+            needs_transpose: false,
         });
     }
     Ok(weights)

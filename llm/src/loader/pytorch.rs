@@ -224,8 +224,7 @@ pub fn load_pytorch(path: &Path) -> Result<Graph, String> {
                 graph.add_weight(info.name.clone(), WeightData {
                     data: tensor_data,
                     shape: info.shape.clone(),
-                    dtype: info.dtype,
-                });
+                    dtype: info.dtype, needs_transpose: false });
             }
         }
     }
@@ -250,8 +249,7 @@ pub fn load_pytorch(path: &Path) -> Result<Graph, String> {
                     graph.add_weight(name, WeightData {
                         data: raw.to_vec(),
                         shape,
-                        dtype: DType::F32,
-                    });
+                        dtype: DType::F32, needs_transpose: false });
                 }
             }
         }

@@ -46,8 +46,7 @@ pub fn load_npz(path: &Path) -> Result<Graph, String> {
                     WeightData {
                         data: raw_data,
                         shape,
-                        dtype,
-                    },
+                        dtype, needs_transpose: false },
                 );
             }
             Err(e) => {
