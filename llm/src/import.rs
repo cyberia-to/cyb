@@ -800,7 +800,23 @@ fn select_weights(dir: &Path, result: &mut ImportResult) {
             e.path().extension().map(|x| x == "onnx").unwrap_or(false)
         });
         if has_onnx {
-            result.weights_format = "onnx".into();
+            // Try to convert ONNX → GGUF for runtime compatibility
+            let onnx_path = dir.join("weights.onnx");
+            let gguf_path = dir.join("weights.gguf");
+            if onnx_path.exists() && !gguf_path.exists() {
+                match convert_onnx_to_gguf(&onnx_path, &gguf_path) {
+                    Ok(()) => {
+                        log::info!("Converted ONNX → GGUF: {}", gguf_path.display());
+                        result.weights_format = "gguf".into();
+                    }
+                    Err(e) => {
+                        log::warn!("ONNX→GGUF conversion failed: {e}");
+                        result.weights_format = "onnx".into();
+                    }
+                }
+            } else {
+                result.weights_format = "onnx".into();
+            }
         }
         // PT/PTH → rename single .pt to weights.pt
         let pt_files: Vec<_> = entries.iter().filter(|e| {
@@ -1088,4 +1104,125 @@ fn dir_size(path: &Path) -> u64 {
         }
     }
     total
+}
+
+/// Convert ONNX model weights to GGUF format with HF-style tensor names.
+/// Extracts initializer tensors, renames onnx::MatMul_* to HF names,
+/// and writes GGUF v3 with F16/F32 weights.
+fn convert_onnx_to_gguf(onnx_path: &Path, gguf_path: &Path) -> Result<(), String> {
+    use crate::loader::onnx::load_onnx;
+
+    // Load ONNX via our loader (which renames weights)
+    let mut graph = load_onnx(onnx_path)?;
+
+    if graph.weights.is_empty() {
+        return Err("No weights found in ONNX model".into());
+    }
+
+    // Write GGUF v3
+    use std::io::Write;
+    let mut f = std::io::BufWriter::new(
+        std::fs::File::create(gguf_path).map_err(|e| format!("create GGUF: {e}"))?
+    );
+
+    let weights: Vec<(&String, &crate::ir::WeightData)> = graph.weights.iter().collect();
+    let tensor_count = weights.len() as u64;
+
+    // Header
+    f.write_all(b"GGUF").map_err(|e| format!("{e}"))?;                    // magic
+    f.write_all(&3u32.to_le_bytes()).map_err(|e| format!("{e}"))?;        // version
+    f.write_all(&tensor_count.to_le_bytes()).map_err(|e| format!("{e}"))?; // tensor_count
+    f.write_all(&0u64.to_le_bytes()).map_err(|e| format!("{e}"))?;        // metadata_count = 0
+
+    // Tensor info section
+    let mut data_offset: u64 = 0;
+    let alignment = 32u64;
+
+    for (name, w) in &weights {
+        // Name: u64 length + bytes
+        let name_bytes = name.as_bytes();
+        f.write_all(&(name_bytes.len() as u64).to_le_bytes()).map_err(|e| format!("{e}"))?;
+        f.write_all(name_bytes).map_err(|e| format!("{e}"))?;
+
+        // n_dims
+        let n_dims = w.shape.len() as u32;
+        f.write_all(&n_dims.to_le_bytes()).map_err(|e| format!("{e}"))?;
+
+        // dims — ONNX matmul weights are [K, N], reverse to HF [N, K]
+        // But embeddings and other non-matmul 2D tensors keep their shape
+        let is_projection = name.contains("proj.weight") || name.contains("_proj.weight")
+            || name.contains("gate_proj") || name.contains("up_proj") || name.contains("down_proj")
+            || name.contains("dense.weight") || name.contains("lm_head");
+        let shape: Vec<usize> = if w.shape.len() == 2 && is_projection {
+            vec![w.shape[1], w.shape[0]]
+        } else {
+            w.shape.clone()
+        };
+        for &d in &shape {
+            f.write_all(&(d as u64).to_le_bytes()).map_err(|e| format!("{e}"))?;
+        }
+
+        // type
+        let gguf_type: u32 = match w.dtype {
+            crate::ir::DType::F32 => 0,
+            crate::ir::DType::F16 => 1,
+            crate::ir::DType::Q4 => 2,
+            crate::ir::DType::Q8 => 8,
+            _ => 0, // default to F32
+        };
+        f.write_all(&gguf_type.to_le_bytes()).map_err(|e| format!("{e}"))?;
+
+        // offset (aligned)
+        f.write_all(&data_offset.to_le_bytes()).map_err(|e| format!("{e}"))?;
+
+        // Advance offset
+        let data_len = w.data.len() as u64;
+        data_offset += data_len;
+        // Align next tensor
+        data_offset = (data_offset + alignment - 1) / alignment * alignment;
+    }
+
+    // Pad header to alignment
+    let header_end = f.get_ref().metadata().map(|m| m.len()).unwrap_or(0);
+    // Can't get position from BufWriter easily, flush and check
+    f.flush().map_err(|e| format!("{e}"))?;
+    let pos = std::fs::metadata(gguf_path).map(|m| m.len()).unwrap_or(0);
+    let pad = ((pos + alignment - 1) / alignment * alignment - pos) as usize;
+    if pad > 0 {
+        f.write_all(&vec![0u8; pad]).map_err(|e| format!("{e}"))?;
+    }
+
+    // Tensor data (aligned, transpose projection weights for HF row-major order)
+    for (name, w) in &weights {
+        let is_projection = name.contains("proj.weight") || name.contains("_proj.weight")
+            || name.contains("gate_proj") || name.contains("up_proj") || name.contains("down_proj")
+            || name.contains("dense.weight") || name.contains("lm_head");
+        if w.shape.len() == 2 && is_projection {
+            // Transpose data from ONNX [K, N] to HF [N, K]
+            let (rows, cols) = (w.shape[0], w.shape[1]); // ONNX: rows=K, cols=N
+            let elem_size = w.dtype.element_size();
+            let mut transposed = vec![0u8; w.data.len()];
+            for r in 0..rows {
+                for c in 0..cols {
+                    let src = (r * cols + c) * elem_size;
+                    let dst = (c * rows + r) * elem_size;
+                    if src + elem_size <= w.data.len() && dst + elem_size <= transposed.len() {
+                        transposed[dst..dst+elem_size].copy_from_slice(&w.data[src..src+elem_size]);
+                    }
+                }
+            }
+            f.write_all(&transposed).map_err(|e| format!("{e}"))?;
+        } else {
+            f.write_all(&w.data).map_err(|e| format!("{e}"))?;
+        }
+        // Pad to alignment
+        let rem = w.data.len() % alignment as usize;
+        if rem > 0 {
+            f.write_all(&vec![0u8; alignment as usize - rem]).map_err(|e| format!("{e}"))?;
+        }
+    }
+
+    f.flush().map_err(|e| format!("{e}"))?;
+    log::info!("ONNX→GGUF: {} tensors written to {}", tensor_count, gguf_path.display());
+    Ok(())
 }

@@ -1045,7 +1045,7 @@ impl NativeModel {
             .unwrap_or(true);
 
         // Load weights first (needed for head_dim auto-detection)
-        let graph = crate::loader::load_model(path)?;
+        let mut graph = crate::loader::load_model(path)?;
 
         // head_dim: from config, or auto-detect from q_proj weight shape
         let head_dim = config_json.get("head_dim")
