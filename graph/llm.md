@@ -506,7 +506,7 @@ multi-shard models (weights-00001-of-00004.safetensors) keep all shards — they
 ### import pipeline
 
 ```
-soma-runtime import <source> --target ~/llm/<tier>/<name>
+cyb-llm import <source> [--name <name>]
 ```
 
 ```
@@ -543,7 +543,7 @@ report: final size, savings percentage
 ```
 
 ```
-$ soma-runtime import huihui-ai/Qwen3-0.6B-abliterated --target ~/llm/tier0/router
+$ cyb-llm import huihui-ai/Qwen3-0.6B-abliterated --name qwen3-0.6b-abl
   download:  1.1GB from huggingface
   select:    weights.safetensors (583MB)
   delete:    pytorch_model.bin (521MB, duplicate)
@@ -553,7 +553,7 @@ $ soma-runtime import huihui-ai/Qwen3-0.6B-abliterated --target ~/llm/tier0/rout
   convert:   tokenizer_config.json → chat.toml
   convert:   generation_config.json → sampling.toml
   verify:    config.toml ✓  vocab.toml ✓  weights.safetensors ✓
-  result:    ~/llm/tier0/router — 583MB (saved 47%)
+  result:    ~/llm/qwen3-0.6b-abl — 583MB (saved 47%)
 ```
 
 ### observed waste from naive download
