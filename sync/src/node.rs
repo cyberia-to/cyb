@@ -13,6 +13,7 @@ use std::sync::Arc;
 use anyhow::{Context, Result};
 use iroh::address_lookup::MdnsAddressLookup;
 use iroh::endpoint::Connection;
+use iroh::protocol::{AcceptError, ProtocolHandler, Router};
 use iroh::{Endpoint, EndpointId, RelayMode, SecretKey};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::sync::RwLock;
@@ -41,6 +42,7 @@ struct RegistryResponse {
 }
 
 /// Peer liveness state.
+#[derive(Debug)]
 struct PeerHealth {
     last_seen: u64,
     consecutive_failures: u32,
@@ -49,6 +51,7 @@ struct PeerHealth {
 /// Threshold: peer is dead after this many consecutive heartbeat failures.
 const DEAD_AFTER_FAILURES: u32 = 3;
 
+#[derive(Debug)]
 pub struct SharedState {
     pub registry: GSet,
     pub data_dir: PathBuf,
@@ -64,9 +67,25 @@ pub struct SharedState {
 /// ALPN protocol identifier for cyber-sync.
 const SYNC_ALPN: &[u8] = b"cyber-sync/0";
 
+/// ProtocolHandler for our sync protocol — dispatched by Router via ALPN.
+#[derive(Debug, Clone)]
+struct SyncProtocol {
+    state: Arc<RwLock<SharedState>>,
+}
+
+impl ProtocolHandler for SyncProtocol {
+    async fn accept(&self, conn: Connection) -> Result<(), AcceptError> {
+        if let Err(e) = handle_connection(conn, self.state.clone()).await {
+            eprintln!("sync protocol error: {}", e);
+        }
+        Ok(())
+    }
+}
+
 pub struct SyncNode {
     state: Arc<RwLock<SharedState>>,
     endpoint: Endpoint,
+    _router: Router,
 }
 
 impl SyncNode {
@@ -89,13 +108,12 @@ impl SyncNode {
             key
         };
 
-        // Create iroh endpoint with mDNS discovery, fixed port, and our ALPN.
+        // Create iroh endpoint with mDNS discovery and fixed port.
         let bind_addr = std::net::SocketAddrV4::new(std::net::Ipv4Addr::UNSPECIFIED, port);
         let endpoint = Endpoint::builder()
             .relay_mode(RelayMode::Disabled)
             .secret_key(secret_key)
             .address_lookup(MdnsAddressLookup::builder())
-            .alpns(vec![SYNC_ALPN.to_vec()])
             .bind_addr(bind_addr)
             .context("invalid bind addr")?
             .bind()
@@ -137,37 +155,23 @@ impl SyncNode {
             last_sync_ts: HashMap::new(),
         }));
 
+        // Router dispatches incoming connections by ALPN.
+        let proto = SyncProtocol { state: state.clone() };
+        let router = Router::builder(endpoint.clone())
+            .accept(SYNC_ALPN, proto)
+            .spawn();
+
         println!("node started");
         println!("  id: {}", device_id);
         println!("  addr: {}", serde_json::to_string(&endpoint.addr()).unwrap_or_default());
         println!("  dir: {}", data_dir.display());
         println!("  erasure: k={}, n={}", k, n);
 
-        Ok(Self { state, endpoint })
+        Ok(Self { state, endpoint, _router: router })
     }
 
     pub async fn run_daemon(&self, sync_interval_secs: u64) -> Result<()> {
-        println!("listening via iroh QUIC + mDNS");
-
-        let ep = self.endpoint.clone();
-        let state = self.state.clone();
-        tokio::spawn(async move {
-            while let Some(incoming) = ep.accept().await {
-                let state = state.clone();
-                tokio::spawn(async move {
-                    let conn = match incoming.accept() {
-                        Ok(c) => match c.await {
-                            Ok(c) => c,
-                            Err(e) => { eprintln!("connect error: {}", e); return; }
-                        },
-                        Err(e) => { eprintln!("accept error: {}", e); return; }
-                    };
-                    if let Err(e) = handle_connection(conn, state).await {
-                        eprintln!("connection error: {}", e);
-                    }
-                });
-            }
-        });
+        println!("listening via iroh QUIC + mDNS (Router handles connections)");
 
         if sync_interval_secs > 0 {
             let state = self.state.clone();
@@ -780,6 +784,9 @@ async fn handle_connection(conn: Connection, state: Arc<RwLock<SharedState>>) ->
 
     send.flush().await?;
     send.finish()?;
+    // Wait for the peer to close the connection — keeps it alive
+    // until the client has read our response.
+    conn.closed().await;
     Ok(())
 }
 
