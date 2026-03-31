@@ -36,6 +36,28 @@ pub struct FileEntry {
     pub das_root: String,
 }
 
+/// Maximum allowed clock drift from local time (1 hour in ms).
+/// Entries with timestamps beyond now + MAX_CLOCK_DRIFT are rejected.
+pub const MAX_CLOCK_DRIFT_MS: u64 = 3_600_000;
+
+/// Maximum entries per registry to prevent bloat attacks.
+pub const MAX_REGISTRY_ENTRIES: usize = 100_000;
+
+/// Validation errors for incoming entries.
+#[derive(Debug, PartialEq)]
+pub enum ValidationError {
+    /// entry_hash does not match recomputed hash.
+    HashMismatch,
+    /// Timestamp is too far in the future.
+    TimestampFuture,
+    /// Entry name is empty.
+    EmptyName,
+    /// Shard hashes list is empty.
+    NoShards,
+    /// Registry is full.
+    RegistryFull,
+}
+
 impl FileEntry {
     /// Compute the entry hash deterministically.
     pub fn compute_hash(
@@ -54,6 +76,36 @@ impl FileEntry {
         data.extend_from_slice(prev_hash.as_bytes());
         data.extend_from_slice(device_id.as_bytes());
         cyber_hemera::hash(&data).to_hex()
+    }
+
+    /// Verify this entry's entry_hash matches its contents.
+    pub fn verify_hash(&self) -> bool {
+        let expected = Self::compute_hash(
+            &self.name,
+            &self.shard_hashes,
+            self.timestamp,
+            &self.prev_hash,
+            &self.device_id,
+        );
+        self.entry_hash == expected
+    }
+
+    /// Validate an entry from an untrusted source.
+    pub fn validate(&self) -> Result<(), ValidationError> {
+        if self.name.is_empty() {
+            return Err(ValidationError::EmptyName);
+        }
+        if self.shard_hashes.is_empty() {
+            return Err(ValidationError::NoShards);
+        }
+        if !self.verify_hash() {
+            return Err(ValidationError::HashMismatch);
+        }
+        let now = now_ms();
+        if self.timestamp > now + MAX_CLOCK_DRIFT_MS {
+            return Err(ValidationError::TimestampFuture);
+        }
+        Ok(())
     }
 }
 
@@ -141,11 +193,47 @@ impl GSet {
         }
     }
 
-    /// Insert an entry. If name already exists, keep the one with higher timestamp.
+    /// Insert an entry (trusted — from local put_file). No validation.
     pub fn insert(&mut self, entry: FileEntry) {
+        self.lww_insert(entry);
+    }
+
+    /// Insert an entry from an untrusted source with full validation.
+    /// Returns Err if entry is invalid (forged hash, future timestamp, etc).
+    pub fn validated_insert(&mut self, entry: FileEntry) -> Result<(), ValidationError> {
+        entry.validate()?;
+        if self.files.len() >= MAX_REGISTRY_ENTRIES && !self.files.contains_key(&entry.name) {
+            return Err(ValidationError::RegistryFull);
+        }
+        self.lww_insert(entry);
+        Ok(())
+    }
+
+    /// Merge with another set from an untrusted source.
+    /// Validates every entry. Returns count of (accepted, rejected).
+    pub fn validated_merge(&mut self, other: &GSet) -> (usize, usize) {
+        let mut accepted = 0;
+        let mut rejected = 0;
+        for entry in other.files.values() {
+            match self.validated_insert(entry.clone()) {
+                Ok(()) => accepted += 1,
+                Err(_) => rejected += 1,
+            }
+        }
+        (accepted, rejected)
+    }
+
+    /// Merge with trusted source (same device, from disk). No validation.
+    pub fn merge(&mut self, other: &GSet) {
+        for entry in other.files.values() {
+            self.lww_insert(entry.clone());
+        }
+    }
+
+    /// LWW insert logic: higher timestamp wins, tie-break by entry_hash.
+    fn lww_insert(&mut self, entry: FileEntry) {
         match self.files.get(&entry.name) {
             Some(existing) => {
-                // LWW: higher timestamp wins. Tie-break by entry_hash.
                 if entry.timestamp > existing.timestamp
                     || (entry.timestamp == existing.timestamp
                         && entry.entry_hash > existing.entry_hash)
@@ -156,13 +244,6 @@ impl GSet {
             None => {
                 self.files.insert(entry.name.clone(), entry);
             }
-        }
-    }
-
-    /// Merge with another set (LWW per key).
-    pub fn merge(&mut self, other: &GSet) {
-        for (_name, entry) in &other.files {
-            self.insert(entry.clone());
         }
     }
 

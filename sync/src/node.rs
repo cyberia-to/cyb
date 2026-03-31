@@ -325,19 +325,27 @@ impl SyncNode {
             );
         }
 
-        // Layer 5: CRDT merge.
+        // Layer 5: validated CRDT merge — verify every entry from peer.
         let mut state = self.state.write().await;
         let before = state.registry.len();
-        state.registry.merge(&response.registry);
+        let (_accepted, merge_rejected) = state.registry.validated_merge(&response.registry);
         let after = state.registry.len();
         self.save_registry(&state)?;
 
+        if merge_rejected > 0 {
+            eprintln!(
+                "warning: rejected {} invalid entries from {} (forged hash, future timestamp, etc)",
+                merge_rejected, peer
+            );
+        }
+
         println!(
-            "registry: {} local + {} remote → {} merged ({} new)",
+            "registry: {} local + {} remote → {} merged ({} new, {} rejected)",
             before,
             remote_count,
             after,
-            after - before
+            after - before,
+            merge_rejected
         );
 
         // Layer 1: fetch missing chunks with hash verification.
@@ -475,7 +483,7 @@ async fn background_sync(state: &Arc<RwLock<SharedState>>) -> Result<()> {
 
         let mut s = state.write().await;
         let before = s.registry.len();
-        s.registry.merge(&response.registry);
+        let (_accepted, _rejected) = s.registry.validated_merge(&response.registry);
         let after = s.registry.len();
         total_new_files += after - before;
 
