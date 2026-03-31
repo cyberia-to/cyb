@@ -482,6 +482,35 @@ impl MetalModel {
                         batch.dispatch_threadgroups((wg_q + wg_k + wg_v, 1, 1), (256, 1, 1));
                     }
 
+                    // ── Attention biases (Qwen2: add bias to Q, K, V) ──
+                    if let Some(ref qb) = layer.q_proj_bias {
+                        let n = q_dim_val;
+                        batch.set_pipeline(&p.add_f16);
+                        batch.set_buffer(&self.scratch.q, 0, 0);
+                        batch.set_buffer(qb, 0, 1);
+                        batch.set_buffer(&self.scratch.q, 0, 2);
+                        batch.set_bytes(bytemuck::cast_slice(&[n]), 3);
+                        batch.dispatch_threadgroups((div_ceil(n as usize, 256), 1, 1), (256, 1, 1));
+                    }
+                    if let Some(ref kb) = layer.k_proj_bias {
+                        let n = kv_dim_val;
+                        batch.set_pipeline(&p.add_f16);
+                        batch.set_buffer(&self.scratch.k, 0, 0);
+                        batch.set_buffer(kb, 0, 1);
+                        batch.set_buffer(&self.scratch.k, 0, 2);
+                        batch.set_bytes(bytemuck::cast_slice(&[n]), 3);
+                        batch.dispatch_threadgroups((div_ceil(n as usize, 256), 1, 1), (256, 1, 1));
+                    }
+                    if let Some(ref vb) = layer.v_proj_bias {
+                        let n = kv_dim_val;
+                        batch.set_pipeline(&p.add_f16);
+                        batch.set_buffer(&self.scratch.v, 0, 0);
+                        batch.set_buffer(vb, 0, 1);
+                        batch.set_buffer(&self.scratch.v, 0, 2);
+                        batch.set_bytes(bytemuck::cast_slice(&[n]), 3);
+                        batch.dispatch_threadgroups((div_ceil(n as usize, 256), 1, 1), (256, 1, 1));
+                    }
+
                     // ── QK-norm (Qwen3: per-head RMSNorm on Q and K) ──
                     // Uses rms_norm with head_dim, dispatches num_heads workgroups per call
                     if c.has_qk_norm {
