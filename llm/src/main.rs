@@ -211,14 +211,9 @@ fn main() {
                     let weights_path = if gguf_path.exists() { gguf_path }
                         else if onnx_path.exists() { onnx_path }
                         else { eprintln!("No weights.gguf or weights.onnx alongside .cyb"); return; };
-                    // Route by weight format: GGUF (HF names) → safetensors path, ONNX → ONNX path
-                    let is_weights_onnx = weights_path.extension().map(|e| e == "onnx").unwrap_or(false);
-                    let gen_result = if is_weights_onnx {
-                        cyb_llm::generate::TextGenerator::new(&weights_path, &tokenizer_path, pipelines)
-                    } else {
-                        // GGUF with HF-style weight names → use safetensors loading path
-                        cyb_llm::generate::TextGenerator::new_safetensors(&weights_path, &tokenizer_path, pipelines)
-                    };
+                    // All .cyb weights use HF-style names (GGUF natively, ONNX after rename)
+                    let gen_result = cyb_llm::generate::TextGenerator::new_safetensors(
+                        &weights_path, &tokenizer_path, pipelines);
                     match gen_result {
                         Ok(g) => g,
                         Err(e) => { eprintln!("Model load failed: {e}"); return; }

@@ -65,6 +65,46 @@ pub fn load_onnx(path: &Path) -> Result<Graph, String> {
         }
     }
 
+    // Rename onnx::MatMul_* weights by tracing graph edges
+    // ONNX nodes have output names like "/model/layers.0/self_attn/q_proj/MatMul_output_0"
+    // Their weight input is "onnx::MatMul_XXXX" — rename to match output path
+    let rename_map: Vec<(String, String)> = onnx_graph.node.iter()
+        .filter(|n| n.op_type == "MatMul" || n.op_type == "MatMulNBits")
+        .filter_map(|n| {
+            // Find the weight input (starts with "onnx::")
+            let weight_input = n.input.iter().find(|i| i.starts_with("onnx::"))?;
+            // Extract layer path from output name
+            let out = n.output.first()?;
+            // Convert "/model/layers.0/self_attn/q_proj/MatMul_output_0" → "model.layers.0.self_attn.q_proj.weight"
+            let path = out.trim_start_matches('/')
+                .replace("/MatMul_output_0", "")
+                .replace("/Gemm_output_0", "")
+                .replace('/', ".");
+            let new_name = format!("{path}.weight");
+            Some((weight_input.clone(), new_name))
+        })
+        .collect();
+
+    let renamed = rename_map.len();
+    for (old, new) in rename_map {
+        if let Some(w) = graph.weights.remove(&old) {
+            graph.weights.insert(new, w);
+        }
+    }
+    // Also normalize .attn. → .self_attn. for compatibility with HF naming
+    let attn_keys: Vec<String> = graph.weights.keys()
+        .filter(|k| k.contains(".attn.") && !k.contains(".self_attn."))
+        .cloned().collect();
+    for key in &attn_keys {
+        if let Some(w) = graph.weights.remove(key) {
+            graph.weights.insert(key.replace(".attn.", ".self_attn."), w);
+        }
+    }
+
+    // Log a sample of renamed weights
+    let sample: Vec<&String> = graph.weights.keys().filter(|k| k.contains("layers.0")).take(5).collect();
+    log::info!("ONNX: renamed {} MatMul + {} attn. Sample layer 0: {:?}", renamed, attn_keys.len(), sample);
+
     log::info!(
         "ONNX graph loaded: {} nodes, {} weights",
         graph.len(),

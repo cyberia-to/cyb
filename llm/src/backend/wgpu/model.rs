@@ -576,6 +576,33 @@ impl NativeModel {
             tensors.insert(init.name.clone(), init);
         }
 
+        // Rename onnx::MatMul_* weights to HF-style names by tracing graph nodes
+        for node in &graph.node {
+            if node.op_type == "MatMul" || node.op_type == "Gemm" {
+                if let (Some(weight_input), Some(out)) = (
+                    node.input.iter().find(|i| i.starts_with("onnx::")),
+                    node.output.first(),
+                ) {
+                    let path = out.trim_start_matches('/')
+                        .replace("/MatMul_output_0", "").replace("/Gemm_output_0", "")
+                        .replace('/', ".");
+                    let new_name = format!("{path}.weight");
+                    if let Some(tp) = tensors.remove(weight_input.as_str()) {
+                        tensors.insert(new_name, tp);
+                    }
+                }
+            }
+        }
+        // Also normalize .attn. → .self_attn.
+        let attn_keys: Vec<String> = tensors.keys()
+            .filter(|k| k.contains(".attn.") && !k.contains(".self_attn."))
+            .cloned().collect();
+        for key in &attn_keys {
+            if let Some(tp) = tensors.remove(key.as_str()) {
+                tensors.insert(key.replace(".attn.", ".self_attn."), tp);
+            }
+        }
+
         // Detect model config from known weight shapes
         let embed_tp = tensors
             .get("model.embed_tokens.weight")
