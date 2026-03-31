@@ -101,6 +101,12 @@ enum Commands {
         cleanup: bool,
     },
 
+    /// Import: canonicalize model directory (JSON→TOML, rename weights, clean junk)
+    Import {
+        /// Model name or "all"
+        name: String,
+    },
+
     /// Fetch missing or incomplete models from HuggingFace
     Fetch {
         /// Only fetch this model (by name)
@@ -366,6 +372,10 @@ fn main() {
             run_fetch(name, tier);
         }
 
+        Commands::Import { name } => {
+            run_import(&name);
+        }
+
         Commands::Convert {
             name,
             quant,
@@ -578,9 +588,13 @@ fn run_embed(model_path: &str, text: &str) {
     let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path)
         .expect("Failed to load tokenizer");
 
-    // Tokenize input
+    // Tokenize input (strip padding — encoder runs variable length, no attention mask needed)
     let encoding = tokenizer.encode(text, true).expect("Tokenization failed");
-    let input_ids: Vec<u32> = encoding.get_ids().to_vec();
+    let attention_mask = encoding.get_attention_mask();
+    let input_ids: Vec<u32> = encoding.get_ids().iter().zip(attention_mask.iter())
+        .filter(|&(_, &mask)| mask == 1)
+        .map(|(&id, _)| id)
+        .collect();
     println!("Input tokens ({} tokens): {:?}", input_ids.len(), input_ids);
 
     // Initialize GPU
@@ -1106,6 +1120,67 @@ fn run_fetch(name_filter: Option<String>, tier_filter: Option<String>) {
             }
         }
     }
+}
+
+fn run_import(name: &str) {
+    use cyb_llm::manifest::{self, format_size, MANIFEST};
+    use cyb_llm::import;
+
+    let base = manifest::models_dir();
+
+    let targets: Vec<&manifest::ModelSpec> = if name == "all" {
+        MANIFEST.iter().filter(|s| {
+            let dir = base.join(s.name);
+            dir.exists()
+        }).collect()
+    } else {
+        MANIFEST.iter().filter(|s| s.name.contains(name)).collect()
+    };
+
+    if targets.is_empty() {
+        eprintln!("No models matched '{name}'");
+        return;
+    }
+
+    let mut total_deleted = 0usize;
+    let mut total_converted = 0usize;
+
+    for spec in &targets {
+        let model_dir = base.join(spec.name);
+        if !model_dir.exists() {
+            println!("SKIP {} — not downloaded", spec.name);
+            continue;
+        }
+
+        let before = import::dir_size_pub(&model_dir);
+        let result = import::canonicalize(&model_dir);
+        let after = result.final_bytes;
+
+        total_deleted += result.files_deleted;
+        total_converted += result.configs_converted;
+
+        let saved = if before > after { before - after } else { 0 };
+        let status = if result.errors.is_empty() { "ok" } else { "WARN" };
+
+        println!(
+            "{:<4} {:<28} {} → {} (−{}, {}cfg, −{}files, weights: {})",
+            status,
+            spec.name,
+            format_size(before),
+            format_size(after),
+            format_size(saved),
+            result.configs_converted,
+            result.files_deleted,
+            result.weights_format,
+        );
+
+        for err in &result.errors {
+            eprintln!("       {err}");
+        }
+    }
+
+    println!("\nImported {} models. Converted {} configs, deleted {} junk files.",
+        targets.len(), total_converted, total_deleted);
 }
 
 fn run_convert(name: &str, quant_override: Option<&str>, execute: bool, cleanup: bool) {

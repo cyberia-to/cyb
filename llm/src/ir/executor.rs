@@ -272,16 +272,20 @@ impl GraphExecutor {
         }
         p.queue.submit(std::iter::once(enc.finish()));
 
-        // Debug: dump intermediate buffer stats
-        {
-            for i in 0..12 {
-                let name = format!("layer_{i}.output_ln");
-                if let Some(buf) = buffers.get(&name) {
-                    let vals = p.read_f32(buf, 8.min(output_size));
-                    let has_nan = vals.iter().any(|v| v.is_nan());
-                    eprintln!("  {name} = [{:.4}, {:.4}, {:.4}, {:.4}...] nan={has_nan}",
-                        vals.get(0).unwrap_or(&0.0), vals.get(1).unwrap_or(&0.0),
-                        vals.get(2).unwrap_or(&0.0), vals.get(3).unwrap_or(&0.0));
+        // Debug: find first NaN layer
+        if std::env::var("CYB_DEBUG_ENCODER").is_ok() {
+            for i in 0..64 {
+                for suffix in &["q_out", "q_biased", "k_biased", "v_biased", "attn_out", "attn_dense", "attn_dense_biased", "residual1", "attn_ln", "inter_out", "inter_biased", "inter_act", "output_dense", "output_biased", "residual2", "output_ln"] {
+                    let name = format!("layer_{i}.{suffix}");
+                    if let Some(buf) = buffers.get(&name) {
+                        let vals = p.read_f32(buf, 8.min(output_size));
+                        let has_nan = vals.iter().any(|v| v.is_nan());
+                        if has_nan || *suffix == "output_ln" || i == 8 {
+                            eprintln!("  {name} = [{:.4}, {:.4}...] nan={has_nan}",
+                                vals.get(0).unwrap_or(&0.0), vals.get(1).unwrap_or(&0.0));
+                        }
+                        if has_nan { break; } // stop at first NaN
+                    }
                 }
             }
         }
