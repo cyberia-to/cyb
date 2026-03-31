@@ -245,12 +245,23 @@ impl VDiskManager {
         }
 
         // Register file in G-Set.
+        let timestamp = store::now_ms();
+        let device_id = "vdisk".to_string();
+        let prev_hash = self.registry.latest_hash(&device_id);
+        let entry_hash = FileEntry::compute_hash(
+            file_name, &shard_hashes, timestamp, &prev_hash, &device_id,
+        );
         let entry = FileEntry {
             name: file_name.to_string(),
             original_len: data.len(),
             k,
             n: n_ntt,
             shard_hashes,
+            timestamp,
+            prev_hash,
+            entry_hash,
+            device_id,
+            das_root: format!("{:?}", commitment.root),
         };
         self.registry.insert(entry);
 
@@ -458,6 +469,11 @@ mod tests {
             k: 1,
             n: 2,
             shard_hashes: vec![],
+            timestamp: store::now_ms(),
+            prev_hash: "0".repeat(64),
+            entry_hash: "a".repeat(64),
+            device_id: "other".into(),
+            das_root: "0".repeat(64),
         });
 
         mgr.merge_registry(&other);

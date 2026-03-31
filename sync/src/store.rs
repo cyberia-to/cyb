@@ -1,8 +1,8 @@
-//! Content-addressed chunk store with G-Set CRDT merge.
+//! Content-addressed chunk store with CRDT merge.
 //!
-//! Chunks are stored by their Hemera hash. The chunk index tracks which
-//! chunks are local. The G-Set (grow-only set) CRDT provides deterministic
-//! merge for file metadata across devices.
+//! Layer 2: FileEntry carries timestamp + hash chain for causal ordering.
+//! Layer 3: Registry has a Hemera Merkle root for completeness verification.
+//! Layer 5: LWW-Element-Set — last-writer-wins by timestamp, deterministic merge.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -13,33 +13,59 @@ use serde::{Deserialize, Serialize};
 use crate::erasure::Shard;
 
 /// A file tracked by the system.
+///
+/// Layer 2: each entry carries ordering metadata (timestamp, prev_hash, device_id).
+/// Layer 4: das_root commits to the erasure-coded shard set.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FileEntry {
-    /// Human-readable name / path.
     pub name: String,
-    /// Original file size in bytes.
     pub original_len: usize,
-    /// Erasure coding parameters.
     pub k: usize,
     pub n: usize,
     /// Hemera hash of each shard (indexed by shard index).
     pub shard_hashes: Vec<String>,
+    /// Unix timestamp in milliseconds when this entry was created.
+    pub timestamp: u64,
+    /// Hash of the previous entry from this device (hash chain for causal order).
+    pub prev_hash: String,
+    /// Hash of this entry itself (H(name || shard_hashes || timestamp || prev_hash)).
+    pub entry_hash: String,
+    /// Device that created this entry.
+    pub device_id: String,
+    /// DAS commitment root over erasure-coded shards (layer 4).
+    pub das_root: String,
+}
+
+impl FileEntry {
+    /// Compute the entry hash deterministically.
+    pub fn compute_hash(
+        name: &str,
+        shard_hashes: &[String],
+        timestamp: u64,
+        prev_hash: &str,
+        device_id: &str,
+    ) -> String {
+        let mut data = Vec::new();
+        data.extend_from_slice(name.as_bytes());
+        for h in shard_hashes {
+            data.extend_from_slice(h.as_bytes());
+        }
+        data.extend_from_slice(&timestamp.to_le_bytes());
+        data.extend_from_slice(prev_hash.as_bytes());
+        data.extend_from_slice(device_id.as_bytes());
+        cyber_hemera::hash(&data).to_hex()
+    }
 }
 
 /// Content-addressed chunk store backed by a directory.
 pub struct ChunkStore {
-    /// Root directory for chunk storage.
     root: PathBuf,
-    /// In-memory index: hash hex → shard index for each file.
     index: HashMap<String, Vec<u8>>,
-    /// Capacity limit in bytes (0 = unlimited).
     capacity: u64,
-    /// Current usage in bytes.
     used: u64,
 }
 
 impl ChunkStore {
-    /// Create a new chunk store at the given directory.
     pub fn new(root: &Path, capacity: u64) -> std::io::Result<Self> {
         std::fs::create_dir_all(root)?;
         Ok(Self {
@@ -50,7 +76,6 @@ impl ChunkStore {
         })
     }
 
-    /// Store a shard's data, indexed by its Hemera hash.
     pub fn put(&mut self, shard: &Shard) -> std::io::Result<Hash> {
         let bytes = shard_to_bytes(shard);
         let hash = cyber_hemera::hash(&bytes);
@@ -73,44 +98,39 @@ impl ChunkStore {
         Ok(hash)
     }
 
-    /// Retrieve a shard's data by its hash.
     pub fn get(&self, hash: &Hash) -> std::io::Result<Vec<u8>> {
         let hex = hash.to_hex();
-
-        // Try in-memory first.
         if let Some(data) = self.index.get(&hex) {
             return Ok(data.clone());
         }
-
-        // Try on disk.
         let path = self.root.join(&hex);
         std::fs::read(&path)
     }
 
-    /// Check if a chunk exists locally.
     pub fn has(&self, hash: &Hash) -> bool {
         let hex = hash.to_hex();
         self.index.contains_key(&hex) || self.root.join(&hex).exists()
     }
 
-    /// Current usage in bytes.
     pub fn used(&self) -> u64 {
         self.used
     }
 
-    /// Capacity in bytes.
     pub fn capacity(&self) -> u64 {
         self.capacity
     }
 }
 
-/// G-Set CRDT: grow-only set of file entries.
+/// LWW-Element-Set: last-writer-wins by timestamp.
 ///
-/// Merge is union — commutative, associative, idempotent.
-/// This is the simplest CRDT for an append-only file registry.
+/// Layer 5 (merge): commutative, associative, idempotent.
+/// For same-name conflicts, highest timestamp wins.
+/// Ties broken by entry_hash (deterministic).
+///
+/// Layer 3 (completeness): registry_root is the Hemera Merkle root
+/// over sorted entries. Peers verify this root on sync.
 #[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct GSet {
-    /// Files indexed by name.
     pub files: HashMap<String, FileEntry>,
 }
 
@@ -121,39 +141,99 @@ impl GSet {
         }
     }
 
-    /// Add a file entry.
+    /// Insert an entry. If name already exists, keep the one with higher timestamp.
     pub fn insert(&mut self, entry: FileEntry) {
-        self.files.insert(entry.name.clone(), entry);
-    }
-
-    /// Merge with another G-Set (union).
-    pub fn merge(&mut self, other: &GSet) {
-        for (name, entry) in &other.files {
-            if !self.files.contains_key(name) {
-                self.files.insert(name.clone(), entry.clone());
+        match self.files.get(&entry.name) {
+            Some(existing) => {
+                // LWW: higher timestamp wins. Tie-break by entry_hash.
+                if entry.timestamp > existing.timestamp
+                    || (entry.timestamp == existing.timestamp
+                        && entry.entry_hash > existing.entry_hash)
+                {
+                    self.files.insert(entry.name.clone(), entry);
+                }
+            }
+            None => {
+                self.files.insert(entry.name.clone(), entry);
             }
         }
     }
 
-    /// List all file names.
+    /// Merge with another set (LWW per key).
+    pub fn merge(&mut self, other: &GSet) {
+        for (_name, entry) in &other.files {
+            self.insert(entry.clone());
+        }
+    }
+
+    /// Compute Merkle root over sorted entries (layer 3: completeness).
+    ///
+    /// Root = H(sorted entry hashes concatenated).
+    /// Two registries with the same entries produce the same root.
+    pub fn merkle_root(&self) -> String {
+        let mut hashes: Vec<&str> = self.files.values().map(|e| e.entry_hash.as_str()).collect();
+        hashes.sort();
+        let mut data = Vec::new();
+        for h in &hashes {
+            data.extend_from_slice(h.as_bytes());
+        }
+        if data.is_empty() {
+            return "0".repeat(64);
+        }
+        cyber_hemera::hash(&data).to_hex()
+    }
+
     pub fn list(&self) -> Vec<&str> {
         let mut names: Vec<&str> = self.files.keys().map(|s| s.as_str()).collect();
         names.sort();
         names
     }
 
-    /// Get file entry by name.
     pub fn get(&self, name: &str) -> Option<&FileEntry> {
         self.files.get(name)
     }
 
-    /// Number of files.
     pub fn len(&self) -> usize {
         self.files.len()
     }
 
     pub fn is_empty(&self) -> bool {
         self.files.is_empty()
+    }
+
+    /// Get the latest entry_hash from this device's chain (for prev_hash linking).
+    pub fn latest_hash(&self, device_id: &str) -> String {
+        let mut latest: Option<&FileEntry> = None;
+        for entry in self.files.values() {
+            if entry.device_id == device_id {
+                match latest {
+                    None => latest = Some(entry),
+                    Some(l) if entry.timestamp > l.timestamp => latest = Some(entry),
+                    _ => {}
+                }
+            }
+        }
+        latest
+            .map(|e| e.entry_hash.clone())
+            .unwrap_or_else(|| "0".repeat(64))
+    }
+
+    /// Detect equivocation: two entries from same device with same prev_hash.
+    pub fn detect_equivocation(&self) -> Vec<(&FileEntry, &FileEntry)> {
+        let mut by_prev: HashMap<(&str, &str), Vec<&FileEntry>> = HashMap::new();
+        for entry in self.files.values() {
+            by_prev
+                .entry((&entry.device_id, &entry.prev_hash))
+                .or_default()
+                .push(entry);
+        }
+        let mut forks = Vec::new();
+        for entries in by_prev.values() {
+            if entries.len() > 1 {
+                forks.push((entries[0], entries[1]));
+            }
+        }
+        forks
     }
 }
 
@@ -178,22 +258,51 @@ pub fn bytes_to_shard(index: usize, bytes: &[u8]) -> Shard {
     Shard { index, data }
 }
 
+/// Verify chunk bytes against expected Hemera hash.
+pub fn verify_chunk(bytes: &[u8], expected_hash_hex: &str) -> bool {
+    let computed = cyber_hemera::hash(bytes);
+    computed.to_hex() == expected_hash_hex
+}
+
+/// Current time in milliseconds.
+pub fn now_ms() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis() as u64
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::erasure;
 
+    fn make_entry(name: &str, ts: u64) -> FileEntry {
+        let shard_hashes = vec!["aaa".into(), "bbb".into()];
+        let entry_hash =
+            FileEntry::compute_hash(name, &shard_hashes, ts, "0", "dev1");
+        FileEntry {
+            name: name.into(),
+            original_len: 100,
+            k: 2,
+            n: 4,
+            shard_hashes,
+            timestamp: ts,
+            prev_hash: "0".repeat(64),
+            entry_hash,
+            device_id: "dev1".into(),
+            das_root: "0".repeat(64),
+        }
+    }
+
     #[test]
     fn store_and_retrieve() {
         let dir = tempfile::tempdir().unwrap();
         let mut store = ChunkStore::new(dir.path(), 0).unwrap();
-
         let data = b"chunk store test data";
         let shards = erasure::encode(data, 2, 4);
-
         let hash = store.put(&shards[0]).unwrap();
         assert!(store.has(&hash));
-
         let retrieved = store.get(&hash).unwrap();
         let expected = shard_to_bytes(&shards[0]);
         assert_eq!(retrieved, expected);
@@ -202,43 +311,41 @@ mod tests {
     #[test]
     fn capacity_limit() {
         let dir = tempfile::tempdir().unwrap();
-        let mut store = ChunkStore::new(dir.path(), 10).unwrap(); // 10 bytes limit
-
+        let mut store = ChunkStore::new(dir.path(), 10).unwrap();
         let data = b"this data is definitely more than 10 bytes when encoded";
         let shards = erasure::encode(data, 2, 4);
-
-        let result = store.put(&shards[0]);
-        assert!(result.is_err());
+        assert!(store.put(&shards[0]).is_err());
     }
 
     #[test]
-    fn gset_merge() {
+    fn lww_merge_higher_timestamp_wins() {
         let mut a = GSet::new();
         let mut b = GSet::new();
 
-        a.insert(FileEntry {
-            name: "file1.txt".into(),
-            original_len: 100,
-            k: 2,
-            n: 4,
-            shard_hashes: vec![],
-        });
+        a.insert(make_entry("file.txt", 100));
+        b.insert(make_entry("file.txt", 200));
 
-        b.insert(FileEntry {
-            name: "file2.txt".into(),
-            original_len: 200,
-            k: 2,
-            n: 4,
-            shard_hashes: vec![],
-        });
+        a.merge(&b);
+        assert_eq!(a.get("file.txt").unwrap().timestamp, 200);
 
+        // Reverse: b merges a, same result.
+        b.merge(&GSet {
+            files: [("file.txt".into(), make_entry("file.txt", 100))]
+                .into_iter()
+                .collect(),
+        });
+        assert_eq!(b.get("file.txt").unwrap().timestamp, 200);
+    }
+
+    #[test]
+    fn gset_merge_union() {
+        let mut a = GSet::new();
+        let mut b = GSet::new();
+        a.insert(make_entry("x", 1));
+        b.insert(make_entry("y", 2));
         a.merge(&b);
         assert_eq!(a.len(), 2);
-        assert!(a.get("file1.txt").is_some());
-        assert!(a.get("file2.txt").is_some());
-
-        // Idempotent: merge again changes nothing.
-        a.merge(&b);
+        a.merge(&b); // idempotent
         assert_eq!(a.len(), 2);
     }
 
@@ -246,28 +353,56 @@ mod tests {
     fn gset_commutativity() {
         let mut a = GSet::new();
         let mut b = GSet::new();
-
-        a.insert(FileEntry {
-            name: "x".into(),
-            original_len: 1,
-            k: 1,
-            n: 2,
-            shard_hashes: vec![],
-        });
-        b.insert(FileEntry {
-            name: "y".into(),
-            original_len: 2,
-            k: 1,
-            n: 2,
-            shard_hashes: vec![],
-        });
-
+        a.insert(make_entry("x", 1));
+        b.insert(make_entry("y", 2));
         let mut ab = a.clone();
         ab.merge(&b);
-
         let mut ba = b.clone();
         ba.merge(&a);
-
         assert_eq!(ab.list(), ba.list());
+    }
+
+    #[test]
+    fn merkle_root_deterministic() {
+        let mut a = GSet::new();
+        let mut b = GSet::new();
+        let e1 = make_entry("x", 1);
+        let e2 = make_entry("y", 2);
+        // Insert in different order.
+        a.insert(e1.clone());
+        a.insert(e2.clone());
+        b.insert(e2);
+        b.insert(e1);
+        assert_eq!(a.merkle_root(), b.merkle_root());
+    }
+
+    #[test]
+    fn merkle_root_changes_on_insert() {
+        let mut g = GSet::new();
+        let r1 = g.merkle_root();
+        g.insert(make_entry("x", 1));
+        let r2 = g.merkle_root();
+        assert_ne!(r1, r2);
+    }
+
+    #[test]
+    fn hash_chain_latest() {
+        let mut g = GSet::new();
+        assert_eq!(g.latest_hash("dev1"), "0".repeat(64));
+        g.insert(make_entry("a", 100));
+        let h = g.latest_hash("dev1");
+        assert_ne!(h, "0".repeat(64));
+    }
+
+    #[test]
+    fn verify_chunk_works() {
+        let data = b"test chunk verification";
+        let shards = erasure::encode(data, 2, 4);
+        let bytes = shard_to_bytes(&shards[0]);
+        let hash = cyber_hemera::hash(&bytes).to_hex();
+        assert!(verify_chunk(&bytes, &hash));
+        let mut bad = bytes.clone();
+        bad[0] ^= 0xFF;
+        assert!(!verify_chunk(&bad, &hash));
     }
 }
