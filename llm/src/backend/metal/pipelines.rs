@@ -42,6 +42,7 @@ pub struct MetalPipelines {
     pub rope: MtlComputePipeline,
     pub add_f16: MtlComputePipeline,
     pub silu_mul_f16: MtlComputePipeline,
+    pub relu2_mul_f16: MtlComputePipeline,
     pub attention_decode: MtlComputePipeline,
     pub kv_append: MtlComputePipeline,
     pub kv_expand: MtlComputePipeline,
@@ -102,6 +103,7 @@ impl MetalPipelines {
         let rope = compile(kernels::ROPE, "rope_f16")?;
         let add_f16 = compile(kernels::ELEMENTWISE, "add_f16")?;
         let silu_mul_f16 = compile(kernels::ELEMENTWISE, "silu_mul_f16")?;
+        let relu2_mul_f16 = compile(kernels::ELEMENTWISE, "relu2_mul_f16")?;
         let attention_decode = compile(kernels::ATTENTION, "attention_decode_f16")?;
         let kv_append = compile(kernels::KV_CACHE, "kv_append_f16")?;
         let kv_expand = compile(kernels::KV_CACHE, "kv_expand_f16")?;
@@ -134,6 +136,7 @@ impl MetalPipelines {
             rope,
             add_f16,
             silu_mul_f16,
+            relu2_mul_f16,
             attention_decode,
             kv_append,
             kv_expand,

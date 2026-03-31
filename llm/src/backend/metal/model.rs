@@ -38,6 +38,9 @@ struct MetalLayerWeights {
     down_proj: MtlBuffer,
     // Ternary weight scales (BitNet)
     weight_scales: Option<[f32; 7]>, // q,k,v,o,gate,up,down
+    // Sub-layer norms (BitNet)
+    attn_sub_norm: Option<MtlBuffer>,
+    ffn_sub_norm: Option<MtlBuffer>,
 }
 
 struct MetalKVCache {
@@ -246,12 +249,22 @@ impl MetalModel {
                 &weight_to_f16(&format!("model.layers.{i}.post_attention_layernorm.weight"))?
             ).map_err(|e| format!("{e}"))?;
 
+            // Sub-layer norms (BitNet)
+            let attn_sub_norm = if is_ternary {
+                weight_to_f16(&format!("model.layers.{i}.self_attn.attn_sub_norm.weight")).ok()
+                    .and_then(|d| pipelines.upload_f16(&d).ok())
+            } else { None };
+            let ffn_sub_norm = if is_ternary {
+                weight_to_f16(&format!("model.layers.{i}.mlp.ffn_sub_norm.weight")).ok()
+                    .and_then(|d| pipelines.upload_f16(&d).ok())
+            } else { None };
+
             layers.push(MetalLayerWeights {
                 input_norm_weight, q_proj, k_proj, v_proj, o_proj,
                 q_proj_bias, k_proj_bias, v_proj_bias,
                 q_norm_weight, k_norm_weight,
                 post_norm_weight, gate_proj, up_proj, down_proj,
-                weight_scales,
+                weight_scales, attn_sub_norm, ffn_sub_norm,
             });
         }
 
@@ -457,6 +470,22 @@ impl MetalModel {
                     batch.set_bytes(bytemuck::cast_slice(&attn_params), 4);
                     batch.dispatch_threadgroups((c.num_heads, 1, 1), (256, 1, 1));
 
+                    // ── Attention sub-norm (BitNet: RMSNorm before O_proj) ──
+                    if let Some(ref asn) = layer.attn_sub_norm {
+                        let sub_norm_params = {
+                            let p = [(c.num_heads * c.head_dim) as u32, 0u32];
+                            let mut b = bytemuck::bytes_of(&p).to_vec();
+                            b[4..8].copy_from_slice(&1e-5f32.to_le_bytes());
+                            b
+                        };
+                        batch.set_pipeline(&p.rms_norm);
+                        batch.set_buffer(&self.scratch.attn_out, 0, 0);
+                        batch.set_buffer(asn, 0, 1);
+                        batch.set_buffer(&self.scratch.attn_out, 0, 2);
+                        batch.set_bytes(&sub_norm_params, 3);
+                        batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
+                    }
+
                     // ── O projection ──
                     if c.is_ternary {
                         let ws = layer.weight_scales.unwrap_or([1.0; 7]);
@@ -520,14 +549,34 @@ impl MetalModel {
                         batch.dispatch_threadgroups((wg_gate * 2, 1, 1), (256, 1, 1));
                     }
 
-                    // ── SwiGLU (bitnet uses relu2 but silu for throughput bench) ──
-                    let silu_params = [c.intermediate_size as u32];
-                    batch.set_pipeline(&p.silu_mul_f16);
+                    // ── Activation: SiLU (default) or ReLU² (BitNet) ──
+                    let act_params = [c.intermediate_size as u32];
+                    if c.is_ternary {
+                        batch.set_pipeline(&p.relu2_mul_f16);
+                    } else {
+                        batch.set_pipeline(&p.silu_mul_f16);
+                    }
                     batch.set_buffer(&self.scratch.gate, 0, 0);
                     batch.set_buffer(&self.scratch.up, 0, 1);
                     batch.set_buffer(&self.scratch.gate, 0, 2);
-                    batch.set_bytes(bytemuck::cast_slice(&silu_params), 3);
+                    batch.set_bytes(bytemuck::cast_slice(&act_params), 3);
                     batch.dispatch_threadgroups((div_ceil(c.intermediate_size, 256), 1, 1), (256, 1, 1));
+
+                    // ── FFN sub-norm (BitNet: RMSNorm before down_proj) ──
+                    if let Some(ref fsn) = layer.ffn_sub_norm {
+                        let sub_norm_params = {
+                            let p = [c.intermediate_size as u32, 0u32];
+                            let mut b = bytemuck::bytes_of(&p).to_vec();
+                            b[4..8].copy_from_slice(&1e-5f32.to_le_bytes());
+                            b
+                        };
+                        batch.set_pipeline(&p.rms_norm);
+                        batch.set_buffer(&self.scratch.gate, 0, 0);
+                        batch.set_buffer(fsn, 0, 1);
+                        batch.set_buffer(&self.scratch.gate, 0, 2);
+                        batch.set_bytes(&sub_norm_params, 3);
+                        batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
+                    }
 
                     // ── Down projection ──
                     if c.is_ternary {
