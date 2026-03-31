@@ -11,6 +11,24 @@ fn add_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
     add_out[idx] = add_a[idx] + add_b[idx];
 }
 
+// === ADD with broadcast (bias [N] + activation [P*N]) ===
+struct AddBcastParams {
+    total: u32,
+    stride: u32,  // N — bias repeats every stride elements
+}
+
+@group(0) @binding(0) var<storage, read> bcast_a: array<f32>;
+@group(0) @binding(1) var<storage, read> bcast_b: array<f32>;
+@group(0) @binding(2) var<storage, read_write> bcast_out: array<f32>;
+@group(0) @binding(3) var<uniform> bcast_params: AddBcastParams;
+
+@compute @workgroup_size(256)
+fn add_broadcast_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
+    let idx = gid.x;
+    if (idx >= bcast_params.total) { return; }
+    bcast_out[idx] = bcast_a[idx] + bcast_b[idx % bcast_params.stride];
+}
+
 // === MUL ===
 @group(0) @binding(0) var<storage, read> mul_a: array<f32>;
 @group(0) @binding(1) var<storage, read> mul_b: array<f32>;

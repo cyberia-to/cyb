@@ -2277,6 +2277,8 @@ pub struct BertConfig {
     pub eps: f32,
     /// Weight name prefix (e.g., "roberta", "deberta", "" for plain BERT)
     pub weight_prefix: String,
+    /// Number of classification labels (0 = no classifier head, >0 = add classifier)
+    pub num_labels: usize,
 }
 
 impl Default for BertConfig {
@@ -2292,6 +2294,7 @@ impl Default for BertConfig {
             type_vocab_size: 2,
             eps: 1e-12,
             weight_prefix: String::new(),
+            num_labels: 0,
         }
     }
 }
@@ -2589,16 +2592,64 @@ pub fn bert_encoder(config: &BertConfig) -> Graph {
         None,
     );
 
-    // Final output: encoder_output = last hidden state, pooler_output = [CLS] pooled
+    // Final output tensors
     g.add_tensor("encoder_output".to_string(), TensorMeta {
         shape: vec![Dim::Dynamic("seq_len".to_string()), Dim::Fixed(hidden)],
         dtype: DType::F32,
         residency: Residency::Streamed,
     });
 
-    // Rename prev_hidden to encoder_output for the output
-    // (The last layer output IS the encoder output — prev_hidden already is)
-    // We just mark pooler_output as the final output tensor
+    // Classifier head (optional — for sequence classification models)
+    if config.num_labels > 0 {
+        // classifier.dense: pooler_output → hidden → tanh
+        let cls_dense = "cls_dense".to_string();
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![pooler_out.clone(), "classifier.dense.weight".to_string()],
+            vec![cls_dense.clone()],
+            make_attrs(&[("n", hidden as i64), ("k", hidden as i64)]),
+            None,
+        );
+        let cls_dense_biased = "cls_dense_biased".to_string();
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![cls_dense, "classifier.dense.bias".to_string()],
+            vec![cls_dense_biased.clone()],
+            make_attrs(&[("n", hidden as i64)]),
+            None,
+        );
+        let cls_tanh = "cls_tanh".to_string();
+        g.add_node_with_attrs(
+            Op::Tanh,
+            vec![cls_dense_biased],
+            vec![cls_tanh.clone()],
+            make_attrs(&[("n", hidden as i64)]),
+            None,
+        );
+        // classifier.out_proj: hidden → num_labels
+        let cls_out = "cls_out".to_string();
+        g.add_node_with_attrs(
+            Op::Matmul,
+            vec![cls_tanh, "classifier.out_proj.weight".to_string()],
+            vec![cls_out.clone()],
+            make_attrs(&[("n", config.num_labels as i64), ("k", hidden as i64)]),
+            None,
+        );
+        let logits = "logits".to_string();
+        g.add_node_with_attrs(
+            Op::Add,
+            vec![cls_out, "classifier.out_proj.bias".to_string()],
+            vec![logits.clone()],
+            make_attrs(&[("n", config.num_labels as i64)]),
+            None,
+        );
+        g.add_tensor(logits, TensorMeta {
+            shape: vec![Dim::Fixed(config.num_labels)],
+            dtype: DType::F32,
+            residency: Residency::Streamed,
+        });
+    }
+
     g.add_tensor(pooler_out, TensorMeta {
         shape: vec![Dim::Fixed(hidden)],
         dtype: DType::F32,
@@ -3008,6 +3059,7 @@ mod tests {
             type_vocab_size: 2,
             eps: 1e-12,
             weight_prefix: String::new(),
+            num_labels: 0,
         };
 
         let g = bert_encoder(&config);

@@ -722,22 +722,42 @@ impl GraphExecutor {
                 let a = resolve_buf(&node.inputs[0], buffers, weights);
                 let b = resolve_buf(&node.inputs[1], buffers, weights);
 
-                let a_size = (a.size() / 4) as u32;
-                let b_size = (b.size() / 4) as u32;
-                let n = a_size.max(b_size).max(attr_u32(node, "n").unwrap_or(0));
-                let n = if n > 0 { n } else { cfg.hidden_size };
+                let a_elems = (a.size() / 4) as u32;
+                let b_elems = (b.size() / 4) as u32;
 
-                // Handle bias broadcasting: if one buffer is smaller (bias [N]),
-                // the add shader reads b[idx % b_size] which doesn't work.
-                // For now, if sizes match, use normal add. If not, skip the smaller
-                // one's overflow (GPU reads 0 from buffer padding — close enough for f32).
-                let (out, bg, wg) = dispatch::add_prepare(p, a, b, n);
-                buffers.insert(node.outputs[0].clone(), out);
-                dispatches.push(DispatchCmd {
-                    shader: &p.add,
-                    bg,
-                    wg,
-                });
+                if a_elems != b_elems && a_elems > 0 && b_elems > 0 {
+                    // Broadcast add: larger + smaller[i % stride]
+                    let (big, small, stride) = if a_elems > b_elems {
+                        (a, b, b_elems)
+                    } else {
+                        (b, a, a_elems)
+                    };
+                    let total = a_elems.max(b_elems);
+                    let out = p.alloc((total as u64) * 4);
+
+                    #[repr(C)]
+                    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+                    struct BcastParams { total: u32, stride: u32 }
+                    let params_buf = p.upload_uniform(bytemuck::bytes_of(&BcastParams { total, stride }));
+
+                    let bg = p.create_bind_group(&p.add_broadcast, &[
+                        big.as_entire_binding(),
+                        small.as_entire_binding(),
+                        out.as_entire_binding(),
+                        params_buf.as_entire_binding(),
+                    ]);
+                    buffers.insert(node.outputs[0].clone(), out);
+                    dispatches.push(DispatchCmd {
+                        shader: &p.add_broadcast,
+                        bg,
+                        wg: ((total + 255) / 256, 1, 1),
+                    });
+                } else {
+                    let n = a_elems.max(attr_u32(node, "n").unwrap_or(cfg.hidden_size));
+                    let (out, bg, wg) = dispatch::add_prepare(p, a, b, n);
+                    buffers.insert(node.outputs[0].clone(), out);
+                    dispatches.push(DispatchCmd { shader: &p.add, bg, wg });
+                }
             }
 
             // ============================================================

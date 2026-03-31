@@ -107,6 +107,12 @@ enum Commands {
         name: String,
     },
 
+    /// Pack model into .cyb format (config + weights + optional graph in one file)
+    Pack {
+        /// Model name or "all"
+        name: String,
+    },
+
     /// Fetch missing or incomplete models from HuggingFace
     Fetch {
         /// Only fetch this model (by name)
@@ -384,6 +390,10 @@ fn main() {
         } => {
             run_convert(&name, quant.as_deref(), execute, cleanup);
         }
+
+        Commands::Pack { name } => {
+            run_pack(&name);
+        }
     }
 }
 
@@ -422,6 +432,7 @@ fn run_embed(model_path: &str, text: &str) {
             type_vocab_size: config_json["type_vocab_size"].as_u64().unwrap_or(2) as usize,
             eps: config_json["layer_norm_eps"].as_f64().unwrap_or(1e-12) as f32,
             weight_prefix,
+            num_labels: config_json.get("num_labels").and_then(|v| v.as_u64()).unwrap_or(0) as usize,
         }
     } else {
         println!("No config.json found, using BERT-base defaults");
@@ -627,7 +638,10 @@ fn run_embed(model_path: &str, text: &str) {
     // Run embedding — pick output tensor based on model type
     let wp_str = if bert_config.weight_prefix.is_empty() { String::new() } else { format!("{}.", bert_config.weight_prefix) };
     let has_pooler = graph_with_weights.weights.contains_key(&format!("{wp_str}pooler.dense.weight"));
-    let (output_name, output_size) = if is_modernbert {
+    let (output_name, output_size) = if bert_config.num_labels > 0 {
+        println!("Classifier: {} labels", bert_config.num_labels);
+        ("logits", bert_config.num_labels)
+    } else if is_modernbert {
         let out = format!("layer_{}.residual2", bert_config.num_layers - 1);
         println!("ModernBERT: using last residual: {}", out);
         (out.leak() as &str, bert_config.hidden_size * input_ids.len())
@@ -642,16 +656,31 @@ fn run_embed(model_path: &str, text: &str) {
     let embed_start = std::time::Instant::now();
     let output_raw = model.encode(&input_ids, output_name, output_size)
         .expect("Encoding failed");
-    // Extract [CLS] token embedding (first hidden_size values)
-    let output: Vec<f32> = output_raw[..bert_config.hidden_size.min(output_raw.len())].to_vec();
     let elapsed = embed_start.elapsed().as_secs_f64();
 
-    println!("---");
-    println!("Pooler output ({} dims), computed in {:.3}s:", output.len(), elapsed);
-    // Print first 10 values
-    let preview: Vec<String> = output.iter().take(10).map(|v| format!("{:.4}", v)).collect();
-    println!("  [{}{}]", preview.join(", "),
-        if output.len() > 10 { ", ..." } else { "" });
+    if bert_config.num_labels > 0 {
+        // Classifier output: logits → softmax → label
+        println!("---");
+        println!("Classification ({} labels), computed in {:.3}s:", bert_config.num_labels, elapsed);
+        // Softmax
+        let max_val = output_raw.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+        let exps: Vec<f32> = output_raw.iter().map(|v| (v - max_val).exp()).collect();
+        let sum: f32 = exps.iter().sum();
+        let probs: Vec<f32> = exps.iter().map(|v| v / sum).collect();
+        for (i, prob) in probs.iter().enumerate() {
+            println!("  label {}: {:.4} ({:.1}%)", i, output_raw[i], prob * 100.0);
+        }
+        let predicted = probs.iter().enumerate().max_by(|a, b| a.1.partial_cmp(b.1).unwrap()).unwrap().0;
+        println!("  → predicted: label {} ({:.1}%)", predicted, probs[predicted] * 100.0);
+    } else {
+        // Embedding output
+        let output: Vec<f32> = output_raw[..bert_config.hidden_size.min(output_raw.len())].to_vec();
+        println!("---");
+        println!("Pooler output ({} dims), computed in {:.3}s:", output.len(), elapsed);
+        let preview: Vec<String> = output.iter().take(10).map(|v| format!("{:.4}", v)).collect();
+        println!("  [{}{}]", preview.join(", "),
+            if output.len() > 10 { ", ..." } else { "" });
+    }
 }
 
 /// Run Whisper transcription: audio -> mel -> encoder -> decoder -> text
@@ -706,7 +735,7 @@ fn run_transcribe(model_path: &str, audio_path: &str) {
 
 /// Run inference on Metal backend (macOS)
 #[cfg(target_os = "macos")]
-fn run_metal(model_path: &std::path::Path, tokenizer_path: &std::path::Path, prompt: &str, max_tokens: usize, temperature: f32, use_f16: bool) {
+fn run_metal(model_path: &std::path::Path, tokenizer_path: &std::path::Path, prompt: &str, max_tokens: usize, _temperature: f32, use_f16: bool) {
     use cyb_llm::backend::metal::MetalModel;
 
     let load_start = std::time::Instant::now();
@@ -814,7 +843,7 @@ fn run_audit() {
         };
 
         // Detect current format
-        let fmt = if s.has_onnx && s.has_safetensors {
+        let _fmt = if s.has_onnx && s.has_safetensors {
             "st+onnx"
         } else if s.has_onnx {
             "onnx"
@@ -1119,6 +1148,83 @@ fn run_fetch(name_filter: Option<String>, tier_filter: Option<String>) {
                 eprintln!("  FAIL listing {}: {e}", spec.hf_repo);
             }
         }
+    }
+}
+
+fn run_pack(name: &str) {
+    use cyb_llm::manifest::{self, format_size, MANIFEST};
+    use cyb_llm::import;
+
+    let base = manifest::models_dir();
+
+    let targets: Vec<&manifest::ModelSpec> = if name == "all" {
+        MANIFEST
+            .iter()
+            .filter(|s| base.join(s.name).exists())
+            .collect()
+    } else {
+        MANIFEST.iter().filter(|s| s.name.contains(name)).collect()
+    };
+
+    if targets.is_empty() {
+        eprintln!("No models matched '{name}'");
+        return;
+    }
+
+    let mut total_in = 0u64;
+    let mut total_out = 0u64;
+    let mut packed = 0usize;
+
+    for spec in &targets {
+        let model_dir = base.join(spec.name);
+
+        // Check if .cyb already exists
+        let cyb_path = model_dir.join(format!("{}.cyb", spec.name));
+        if cyb_path.exists() {
+            let size = cyb_path.metadata().map(|m| m.len()).unwrap_or(0);
+            println!("SKIP {:<28} already packed ({})", spec.name, format_size(size));
+            continue;
+        }
+
+        let start = std::time::Instant::now();
+        match import::convert_to_cyb(&model_dir) {
+            Ok((path, in_size, out_size)) => {
+                let elapsed = start.elapsed().as_secs_f64();
+                let ratio = if out_size > 0 {
+                    in_size as f64 / out_size as f64
+                } else {
+                    0.0
+                };
+                println!(
+                    "PACK {:<28} {} → {} ({:.1}x, {:.1}s) → {}",
+                    spec.name,
+                    format_size(in_size),
+                    format_size(out_size),
+                    ratio,
+                    elapsed,
+                    path.file_name().unwrap_or_default().to_string_lossy(),
+                );
+                total_in += in_size;
+                total_out += out_size;
+                packed += 1;
+            }
+            Err(e) => {
+                eprintln!("FAIL {:<28} {e}", spec.name);
+            }
+        }
+    }
+
+    if packed > 0 {
+        println!(
+            "\nPacked {packed} models. Total: {} → {} ({:.1}x)",
+            format_size(total_in),
+            format_size(total_out),
+            if total_out > 0 {
+                total_in as f64 / total_out as f64
+            } else {
+                0.0
+            },
+        );
     }
 }
 

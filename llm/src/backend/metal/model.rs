@@ -117,7 +117,7 @@ impl MetalModel {
         let head_dim = cj["head_dim"].as_u64().map(|v| v as usize).unwrap_or(hidden_size / num_heads);
         let intermediate_size = cj["intermediate_size"].as_u64().unwrap_or((hidden_size * 4) as u64) as usize;
         let rope_theta = cj["rope_theta"].as_f64().unwrap_or(10000.0) as f32;
-        let rms_norm_eps = cj["rms_norm_eps"].as_f64().unwrap_or(1e-6) as f32;
+        let _rms_norm_eps = cj["rms_norm_eps"].as_f64().unwrap_or(1e-6) as f32;
         let tie_word_embeddings = cj["tie_word_embeddings"].as_bool().unwrap_or(true);
         let max_seq = cj["max_position_embeddings"].as_u64()
             .map(|v| (v as usize).min(8192)) // cap at 8192 for memory
@@ -759,7 +759,7 @@ impl MetalModel {
     }
 
     /// Profile forward pass — split into 3 phases, measure each
-    pub fn forward_decode_profile(&mut self, token_id: u32, warmup: bool) -> (u32, f64, f64, f64) {
+    pub fn forward_decode_profile(&mut self, token_id: u32, _warmup: bool) -> (u32, f64, f64, f64) {
         use std::time::Instant;
         let p = &self.pipelines;
         let c = &self.config;

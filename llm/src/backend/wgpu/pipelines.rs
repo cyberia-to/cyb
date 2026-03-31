@@ -22,6 +22,7 @@ pub struct Pipelines {
     pub attention: ComputeShader,
     pub attention_encode: ComputeShader,
     pub add: ComputeShader,
+    pub add_broadcast: ComputeShader,
     pub mul: ComputeShader,
     pub silu_mul: ComputeShader,
     pub gelu: ComputeShader,
@@ -144,6 +145,12 @@ impl Pipelines {
             include_str!("shaders/elementwise.wgsl"),
             "add_kernel",
             &[storage_ro(), storage_ro(), storage_rw()],
+        );
+        let add_broadcast = create_pipeline(
+            &device,
+            include_str!("shaders/elementwise.wgsl"),
+            "add_broadcast_kernel",
+            &[storage_ro(), storage_ro(), storage_rw(), uniform()],
         );
         let mul = create_pipeline(
             &device,
@@ -461,6 +468,7 @@ impl Pipelines {
             attention,
             attention_encode,
             add,
+            add_broadcast,
             mul,
             silu_mul,
             gelu,
