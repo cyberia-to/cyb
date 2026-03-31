@@ -861,6 +861,85 @@ trait MemoryBackend {
 
 runtime auto-detects Apple Silicon and uses unimem when available. mmap fallback for other platforms. same .cyb file, same inference code, different memory backend.
 
+### write-new-only — the memory model
+
+every write in the inference pipeline goes to a NEW physical address. never overwrite, never update in place. this is the same principle as [[cyberlinks]] (append-only), [[bbg]] (append-only blocks), and STARK traces (append-only log).
+
+why:
+
+| property | write-new-only | update-in-place |
+|----------|---------------|-----------------|
+| synchronization | none — no reader/writer conflict | fences, barriers, locks |
+| hardware coherency | free — cache lines stay Shared | invalidation storms between units |
+| provability | every intermediate hashable — full STARK trace | input destroyed on overwrite |
+| pipeline parallelism | layer N+1 reads while N+2 loads — no stalls | must wait for write to complete |
+| garbage collection | arena.reset() = O(1) | free each allocation individually |
+| debugging | full history visible — time travel | state lost on overwrite |
+
+the arena cursor IS the state of computation. at any point, everything before cursor = valid data, everything after = free space. rewinding the cursor = undoing computation. this is deterministic replay for free.
+
+### orchestration — dataflow execution
+
+with write-new-only, orchestration is pure dataflow. the Graph IR is already a DAG — each Node declares inputs and outputs. an op executes when all its inputs exist. "exist" means the producer wrote to that address and signaled completion.
+
+```
+scheduler loop:
+    for each node in topological order:
+        wait(all input DmaTokens)
+        output_pa = arena.alloc(output_size)
+        token = backend.submit(input_pas, output_pa, node.op)
+        register(node.outputs, token)
+```
+
+no locks. no shared mutable state. no condition variables. the DmaToken IS the synchronization primitive — it represents "this physical address now contains valid data."
+
+hardware units discover their turn through the dataflow graph:
+
+```
+NVMe: "weights at pa₀ ready" → token₀ complete
+  │
+  ▼
+AMX/Metal: "matmul(pa₀, activation) → pa₁" → token₁ complete
+  │                                              │
+  ▼                                              ▼
+Metal: "attention(pa₁, kv_cache) → pa₂"    ANE: "norm(pa₁) → pa₃"
+  │                                              │
+  ▼                                              ▼
+        "add(pa₂, pa₃) → pa₄" → token₄ complete
+```
+
+multiple hardware units run concurrently on different physical addresses. NVMe loads layer N+1 weights while Metal computes layer N attention while ANE runs layer N normalization. all reading/writing different addresses — zero contention.
+
+### arena lifecycle during inference
+
+```
+one forward pass (e.g. 28 layers of qwen3-0.6b):
+
+cursor: 0                                              cursor: 47MB
+  │                                                        │
+  ▼                                                        ▼
+  ┌────┬────┬────┬────┬─── ... ───┬────┬────┬────┬────┐
+  │ Q₀ │ K₀ │ V₀ │att₀│          │Q₂₇│K₂₇│V₂₇│out │
+  └────┴────┴────┴────┴─── ... ───┴────┴────┴────┴────┘
+
+  all 28 layers computed, result at end of arena.
+
+  next token: arena.reset() → cursor back to 0
+  pages stay pinned. no deallocation. ~0ns.
+  weights are in separate PhysPages — untouched.
+```
+
+KV cache lives in Pool slots (not Arena) because it persists across tokens:
+
+```
+Pool slots:          Arena (reset per token):
+┌────┬────┬────┐    ┌────────────────────────┐
+│KV₀ │KV₁ │KV₂ │    │ activations, temporary │
+│perm│perm│perm│    │ reset after each token │
+└────┴────┴────┘    └────────────────────────┘
+  grows with context    fixed budget per pass
+```
+
 ## integration with [[Nox]]
 
 the llm runtime is not a standalone system — it is a [[Nox]] execution engine. every inference maps to cyber primitives:
