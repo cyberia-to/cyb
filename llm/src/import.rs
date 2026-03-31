@@ -597,12 +597,12 @@ fn select_weights(dir: &Path, result: &mut ImportResult) {
         delete_onnx_dirs(dir, &entries, result);
         result.weights_format = "gguf".into();
     }
-    // Pure ONNX models (no safetensors, no GGUF)
+    // Pure ONNX models (no safetensors, no GGUF) → flatten onnx/ dir
     else {
-        let has_onnx = entries.iter().any(|e| {
+        // Flatten: move best .onnx from onnx/ or onnx_q8/ → weights.onnx in root
+        let flattened = flatten_onnx_dir(dir, result);
+        let has_onnx = flattened || entries.iter().any(|e| {
             e.path().extension().map(|x| x == "onnx").unwrap_or(false)
-                || (e.file_type().map(|t| t.is_dir()).unwrap_or(false)
-                    && e.file_name().to_str().unwrap_or("").starts_with("onnx"))
         });
         if has_onnx {
             result.weights_format = "onnx".into();
@@ -640,6 +640,80 @@ fn select_weights(dir: &Path, result: &mut ImportResult) {
             result.weights_format = "bin".into();
         }
     }
+}
+
+/// Flatten onnx/ or onnx_q8/ dir: move .onnx + .onnx_data to root as weights.onnx,
+/// then delete the now-empty directory. Prefers onnx_q8/ (quantized) over onnx/.
+/// Returns true if flattening happened.
+fn flatten_onnx_dir(dir: &Path, result: &mut ImportResult) -> bool {
+    // Already have weights.onnx at root? Skip
+    if dir.join("weights.onnx").exists() {
+        return true;
+    }
+
+    // Prefer quantized dir, fall back to regular
+    let source_dir = if dir.join("onnx_q8").is_dir() {
+        dir.join("onnx_q8")
+    } else if dir.join("onnx").is_dir() {
+        dir.join("onnx")
+    } else {
+        return false;
+    };
+
+    // Find the best .onnx file (prefer quantized/q4/q8 variants)
+    let mut best_onnx: Option<std::path::PathBuf> = None;
+    let mut best_data: Option<std::path::PathBuf> = None;
+
+    if let Ok(entries) = std::fs::read_dir(&source_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_str().unwrap_or("");
+            if name.ends_with(".onnx_data") {
+                best_data = Some(entry.path());
+            } else if name.ends_with(".onnx") {
+                // Prefer quantized variants
+                let dominated = best_onnx.as_ref().map(|prev| {
+                    let prev_name = prev.file_name().unwrap_or_default().to_str().unwrap_or("");
+                    // If current is quantized and prev isn't, current wins
+                    (name.contains("q4") || name.contains("q8") || name.contains("quantized"))
+                        && !prev_name.contains("q4") && !prev_name.contains("q8") && !prev_name.contains("quantized")
+                }).unwrap_or(true);
+                if dominated {
+                    best_onnx = Some(entry.path());
+                }
+            }
+        }
+    }
+
+    let onnx_src = match best_onnx {
+        Some(p) => p,
+        None => return false,
+    };
+
+    // Move to root as weights.onnx
+    let dst = dir.join("weights.onnx");
+    if let Err(e) = std::fs::rename(&onnx_src, &dst) {
+        result.errors.push(format!("flatten onnx: {e}"));
+        return false;
+    }
+
+    // Move .onnx_data if exists
+    if let Some(data_src) = best_data {
+        let data_dst = dir.join("weights.onnx_data");
+        let _ = std::fs::rename(&data_src, &data_dst);
+    }
+
+    // Delete the now-empty onnx dirs
+    for d in &["onnx", "onnx_q8"] {
+        let p = dir.join(d);
+        if p.is_dir() {
+            if std::fs::remove_dir_all(&p).is_ok() {
+                result.files_deleted += 1;
+            }
+        }
+    }
+
+    true
 }
 
 /// Delete ONNX directories when a higher-priority format (GGUF/safetensors) exists
@@ -797,26 +871,6 @@ fn clean_junk(dir: &Path, result: &mut ImportResult) {
         }
     }
 
-    // Clean junk inside onnx/ and onnx_q8/ dirs — keep only .onnx + .onnx_data
-    for onnx_dir_name in &["onnx", "onnx_q8"] {
-        let onnx_dir = dir.join(onnx_dir_name);
-        if !onnx_dir.is_dir() {
-            continue;
-        }
-        if let Ok(entries) = std::fs::read_dir(&onnx_dir) {
-            for entry in entries.flatten() {
-                let name = entry.file_name();
-                let name = name.to_str().unwrap_or("");
-                let is_weight = name.ends_with(".onnx")
-                    || name.ends_with(".onnx_data");
-                if !is_weight && entry.metadata().map(|m| m.is_file()).unwrap_or(false) {
-                    if std::fs::remove_file(entry.path()).is_ok() {
-                        result.files_deleted += 1;
-                    }
-                }
-            }
-        }
-    }
 }
 
 // ── Helpers ──────────────────────────────────────────────────────
