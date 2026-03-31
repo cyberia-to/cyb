@@ -91,19 +91,10 @@ pub fn load_onnx(path: &Path) -> Result<Graph, String> {
             graph.weights.insert(new, w);
         }
     }
-    // Also normalize .attn. → .self_attn. for compatibility with HF naming
-    let attn_keys: Vec<String> = graph.weights.keys()
-        .filter(|k| k.contains(".attn.") && !k.contains(".self_attn."))
-        .cloned().collect();
-    for key in &attn_keys {
-        if let Some(w) = graph.weights.remove(key) {
-            graph.weights.insert(key.replace(".attn.", ".self_attn."), w);
-        }
+    if renamed > 0 {
+        let sample: Vec<&String> = graph.weights.keys().filter(|k| k.contains("layers.0")).take(5).collect();
+        log::info!("ONNX: renamed {renamed} MatMul weights. Sample layer 0: {:?}", sample);
     }
-
-    // Log a sample of renamed weights
-    let sample: Vec<&String> = graph.weights.keys().filter(|k| k.contains("layers.0")).take(5).collect();
-    log::info!("ONNX: renamed {} MatMul + {} attn. Sample layer 0: {:?}", renamed, attn_keys.len(), sample);
 
     log::info!(
         "ONNX graph loaded: {} nodes, {} weights",

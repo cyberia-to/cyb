@@ -1061,6 +1061,16 @@ impl NativeModel {
                 }
             });
 
+        // Normalize .attn. → .self_attn. for ONNX weights in decoder models
+        let attn_renames: Vec<String> = graph.weights.keys()
+            .filter(|k| k.contains(".attn.") && !k.contains(".self_attn.") && k.contains("layers."))
+            .cloned().collect();
+        for key in attn_renames {
+            if let Some(w) = graph.weights.remove(&key) {
+                graph.weights.insert(key.replace(".attn.", ".self_attn."), w);
+            }
+        }
+
         // Detect QK norm from weight names
         let has_qk_norm = graph.get_weight("model.layers.0.self_attn.q_norm.weight").is_some();
 

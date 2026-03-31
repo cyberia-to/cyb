@@ -497,7 +497,7 @@ fn run_embed(model_path: &str, text: &str) {
         let hidden = bert_config.hidden_size;
         let inter = bert_config.intermediate_size;
         let keys: Vec<String> = graph_with_weights.weights.keys().cloned().collect();
-        let qkv_keys: Vec<String> = keys.iter().filter(|k| k.ends_with(".attn.Wqkv.weight")).cloned().collect();
+        let qkv_keys: Vec<String> = keys.iter().filter(|k| k.ends_with(".Wqkv.weight") || k.ends_with(".attn.Wqkv.weight")).cloned().collect();
         let wi_keys: Vec<String> = keys.iter().filter(|k| k.ends_with(".mlp.Wi.weight")).cloned().collect();
 
         for key in qkv_keys {
