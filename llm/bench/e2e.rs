@@ -68,12 +68,12 @@ fn main() {
         ModelSpec {
             name: "qwen2.5-0.5b".into(),
             local_dir: llm_dir.join("qwen2.5-0.5b-abl"),
-            ollama_name: None,
+            ollama_name: Some("qwen2.5:0.5b".into()),
         },
         ModelSpec {
             name: "qwen2.5-coder-1.5b".into(),
             local_dir: llm_dir.join("qwen2.5-coder-1.5b-abl"),
-            ollama_name: None,
+            ollama_name: Some("qwen2.5-coder:1.5b".into()),
         },
         ModelSpec {
             name: "bitnet-2b".into(),
@@ -88,7 +88,7 @@ fn main() {
         ModelSpec {
             name: "deepseek-r1-8b".into(),
             local_dir: llm_dir.join("deepseek-r1-8b-abl"),
-            ollama_name: None,
+            ollama_name: Some("deepseek-r1:8b".into()),
         },
         ModelSpec {
             name: "qwen2.5-coder-14b".into(),
@@ -409,6 +409,34 @@ fn bench_metal(
         next_token = model.forward_decode(tid);
     }
     let prefill_ms = prefill_start.elapsed().as_secs_f64() * 1000.0;
+
+    // Profile first 10 decode steps
+    {
+        let mut layers_sum = 0.0;
+        let mut lm_sum = 0.0;
+        let mut argmax_sum = 0.0;
+        let profile_steps = 10.min(max_tokens);
+        let mut tok = next_token;
+        for _ in 0..profile_steps {
+            let (nt, l, lm, a) = model.forward_decode_profile(tok, false);
+            layers_sum += l;
+            lm_sum += lm;
+            argmax_sum += a;
+            tok = nt;
+        }
+        let total = layers_sum + lm_sum + argmax_sum;
+        println!("    [profile] {profile_steps} steps: layers={:.2}ms ({:.0}%) lm_head={:.2}ms ({:.0}%) argmax={:.2}ms ({:.0}%) total={:.2}ms",
+            layers_sum / profile_steps as f64, layers_sum / total * 100.0,
+            lm_sum / profile_steps as f64, lm_sum / total * 100.0,
+            argmax_sum / profile_steps as f64, argmax_sum / total * 100.0,
+            total / profile_steps as f64,
+        );
+        model.reset_kv_cache();
+        // Re-prefill after profile
+        for &tid in token_ids {
+            next_token = model.forward_decode(tid);
+        }
+    }
 
     // Decode
     let decode_start = std::time::Instant::now();
