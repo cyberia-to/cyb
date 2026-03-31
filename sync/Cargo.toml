@@ -9,11 +9,19 @@ version = "0.1.0"
 edition = "2024"
 description = "Local device data availability — erasure-coded virtual filesystem"
 
+[[bin]]
+name = "cyber-sync"
+path = "src/bin/main.rs"
+
 [dependencies]
 nebu = { path = "../../nebu/rs" }
 cyber-hemera = { path = "../../hemera/rs" }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tokio = { version = "1", features = ["full"] }
+anyhow = "1"
+clap = { version = "4", features = ["derive"] }
+tracing-subscriber = "0.3"
 
 [dev-dependencies]
 proptest = "1"

@@ -3332,12 +3332,16 @@ version = "0.2.0"
 name = "cyber-sync"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
+ "clap",
  "cyber-hemera",
  "nebu",
  "proptest",
  "serde",
  "serde_json",
  "tempfile",
+ "tokio",
+ "tracing-subscriber",
 ]
 
 [[package]]
