@@ -72,6 +72,27 @@ enum Commands {
         #[arg(short, long)]
         audio: String,
     },
+
+    /// Audit local models against soma manifest
+    Audit,
+
+    /// Clean junk files, duplicates, incomplete downloads
+    Clean {
+        /// Actually delete (default: dry run)
+        #[arg(long)]
+        execute: bool,
+    },
+
+    /// Fetch missing or incomplete models from HuggingFace
+    Fetch {
+        /// Only fetch this model (by name)
+        #[arg(short, long)]
+        name: Option<String>,
+
+        /// Only fetch models in this tier (tier0, tier1, tier2, media)
+        #[arg(short, long)]
+        tier: Option<String>,
+    },
 }
 
 fn main() {
@@ -313,6 +334,18 @@ fn main() {
 
         Commands::Transcribe { model, audio } => {
             run_transcribe(&model, &audio);
+        }
+
+        Commands::Audit => {
+            run_audit();
+        }
+
+        Commands::Clean { execute } => {
+            run_clean(!execute);
+        }
+
+        Commands::Fetch { name, tier } => {
+            run_fetch(name, tier);
         }
     }
 }
@@ -697,6 +730,396 @@ fn run_metal(model_path: &std::path::Path, tokenizer_path: &std::path::Path, pro
     let tok_s = if decode_s > 0.0 { gen_count as f64 / decode_s } else { 0.0 };
     println!("\n---");
     println!("Prefill: {:.0}ms | Decode: {} tokens in {:.1}s ({:.1} tok/s)", prefill_ms, gen_count, decode_s, tok_s);
+}
+
+// ── Model management commands ────────────────────────────────────
+
+fn run_audit() {
+    use cyb_llm::manifest::{self, format_size, Tier};
+
+    let statuses = manifest::inspect_all();
+    let unknown = manifest::find_unknown();
+
+    let mut total_current: u64 = 0;
+    let mut total_expected: f64 = 0.0;
+    let mut issue_count = 0;
+
+    println!(
+        "{:<28} {:>6} {:>6} {:>6} {:>6} {}",
+        "Model", "Now", "Target", "Tier", "Quant", "Status"
+    );
+    println!("{}", "─".repeat(90));
+
+    for s in &statuses {
+        total_expected += s.spec.expected_gb as f64;
+
+        if !s.exists {
+            println!(
+                "{:<28} {:>6} {:>5.1}G {:>6} {:>6}  MISSING",
+                s.spec.name, "—", s.spec.expected_gb, s.spec.tier, s.spec.target_quant
+            );
+            issue_count += 1;
+            continue;
+        }
+
+        total_current += s.size_bytes;
+        let size_gb = s.size_bytes as f64 / 1e9;
+        let issues = s.issues();
+        let status = if issues.is_empty() {
+            "ok".to_string()
+        } else {
+            issue_count += issues.len();
+            issues.join(", ")
+        };
+
+        // Detect current format
+        let fmt = if s.has_onnx && s.has_safetensors {
+            "st+onnx"
+        } else if s.has_onnx {
+            "onnx"
+        } else if s.has_safetensors {
+            "st"
+        } else if s.has_gguf {
+            "gguf"
+        } else if s.has_ggml {
+            "ggml"
+        } else if s.has_pytorch {
+            "pt"
+        } else {
+            "?"
+        };
+
+        println!(
+            "{:<28} {:>5.1}G {:>5.1}G {:>6} {:>6}  {}",
+            s.spec.name, size_gb, s.spec.expected_gb, s.spec.tier, s.spec.target_quant, status
+        );
+    }
+
+    // Unknown directories
+    for (name, size) in &unknown {
+        total_current += size;
+        println!(
+            "{:<28} {:>6} {:>6} {:>6} {:>6}  UNKNOWN (not in soma spec)",
+            name,
+            format_size(*size),
+            "—",
+            "?",
+            "?"
+        );
+        issue_count += 1;
+    }
+
+    println!("{}", "─".repeat(90));
+    println!(
+        "{:<28} {:>5.1}G {:>5.1}G",
+        "TOTAL",
+        total_current as f64 / 1e9,
+        total_expected
+    );
+    let savings = total_current as f64 / 1e9 - total_expected;
+    if savings > 0.5 {
+        println!("\nPotential savings: {:.1}G", savings);
+    }
+
+    // Summary by tier
+    println!();
+    for tier in [Tier::Tier0, Tier::Tier1, Tier::Tier2, Tier::Media] {
+        let tier_models: Vec<_> = statuses.iter().filter(|s| s.spec.tier == tier).collect();
+        let tier_size: u64 = tier_models.iter().map(|s| s.size_bytes).sum();
+        let tier_ok = tier_models.iter().filter(|s| s.is_ok()).count();
+        let tier_total = tier_models.len();
+        println!(
+            "  {}: {}/{} ok, {}",
+            tier,
+            tier_ok,
+            tier_total,
+            format_size(tier_size)
+        );
+    }
+
+    if issue_count > 0 {
+        println!("\n{issue_count} issue(s) found. Run `cyb-llm clean` to fix.");
+    } else {
+        println!("\nAll models ok.");
+    }
+}
+
+fn run_clean(dry_run: bool) {
+    use cyb_llm::manifest::{self, format_size};
+
+    let statuses = manifest::inspect_all();
+    let mut saved: u64 = 0;
+    let base = manifest::models_dir();
+
+    for s in &statuses {
+        if !s.exists {
+            continue;
+        }
+        let dir = base.join(s.spec.name);
+
+        // Delete files matching delete_patterns
+        for pattern in s.spec.delete_patterns {
+            for entry in glob_dir(&dir, pattern) {
+                if entry.is_file() {
+                    let fsize = entry.metadata().map(|m| m.len()).unwrap_or(0);
+                    if dry_run {
+                        println!(
+                            "  WOULD DELETE {}/{} ({})",
+                            s.spec.name,
+                            entry.file_name().unwrap_or_default().to_string_lossy(),
+                            format_size(fsize)
+                        );
+                    } else {
+                        println!(
+                            "  DELETE {}/{} ({})",
+                            s.spec.name,
+                            entry.file_name().unwrap_or_default().to_string_lossy(),
+                            format_size(fsize)
+                        );
+                        let _ = std::fs::remove_file(&entry);
+                    }
+                    saved += fsize;
+                }
+            }
+        }
+
+        // Remove junk dirs
+        for junk in &[".huggingface", ".cache", "__pycache__"] {
+            let junk_path = dir.join(junk);
+            if junk_path.exists() {
+                let size = dir_size_recursive(&junk_path);
+                if dry_run {
+                    println!(
+                        "  WOULD DELETE {}/{}/ ({})",
+                        s.spec.name,
+                        junk,
+                        format_size(size)
+                    );
+                } else {
+                    println!(
+                        "  DELETE {}/{}/ ({})",
+                        s.spec.name,
+                        junk,
+                        format_size(size)
+                    );
+                    let _ = std::fs::remove_dir_all(&junk_path);
+                }
+                saved += size;
+            }
+        }
+
+        // Remove junk files
+        for junk in &[
+            ".gitattributes",
+            "README.md",
+            "LICENSE",
+            "LICENSE.md",
+            "USE_POLICY.md",
+            "NOTICE",
+        ] {
+            let junk_path = dir.join(junk);
+            if junk_path.is_file() {
+                let size = junk_path.metadata().map(|m| m.len()).unwrap_or(0);
+                if dry_run {
+                    println!(
+                        "  WOULD DELETE {}/{} ({})",
+                        s.spec.name,
+                        junk,
+                        format_size(size)
+                    );
+                } else {
+                    println!("  DELETE {}/{} ({})", s.spec.name, junk, format_size(size));
+                    let _ = std::fs::remove_file(&junk_path);
+                }
+                saved += size;
+            }
+        }
+    }
+
+    // Flag unknown directories
+    let unknown = manifest::find_unknown();
+    for (name, size) in &unknown {
+        println!(
+            "  FLAG {}/ ({}) — not in soma spec, delete manually if unwanted",
+            name,
+            format_size(*size)
+        );
+    }
+
+    let action = if dry_run { "Would save" } else { "Saved" };
+    println!("\n{action}: {}", format_size(saved));
+    if dry_run && saved > 0 {
+        println!("Run with --execute to apply: cyb-llm clean --execute");
+    }
+}
+
+fn run_fetch(name_filter: Option<String>, tier_filter: Option<String>) {
+    use cyb_llm::manifest::{self, format_size, Tier};
+
+    let tier_match: Option<Tier> = match tier_filter.as_deref() {
+        Some("tier0" | "0") => Some(Tier::Tier0),
+        Some("tier1" | "1") => Some(Tier::Tier1),
+        Some("tier2" | "2") => Some(Tier::Tier2),
+        Some("media") => Some(Tier::Media),
+        Some(other) => {
+            eprintln!("Unknown tier: {other}. Use: tier0, tier1, tier2, media");
+            return;
+        }
+        None => None,
+    };
+
+    let base = manifest::models_dir();
+    std::fs::create_dir_all(&base).ok();
+
+    let api = match hf_hub::api::sync::Api::new() {
+        Ok(a) => a,
+        Err(e) => {
+            eprintln!("HF API init failed: {e}");
+            return;
+        }
+    };
+
+    for spec in manifest::MANIFEST {
+        // Filter
+        if let Some(ref name) = name_filter {
+            if !spec.name.contains(name.as_str()) {
+                continue;
+            }
+        }
+        if let Some(target_tier) = tier_match {
+            if spec.tier != target_tier {
+                continue;
+            }
+        }
+
+        if !spec.hf_download || spec.hf_repo.is_empty() {
+            println!("SKIP {} — not an HF download", spec.name);
+            continue;
+        }
+
+        let model_dir = base.join(spec.name);
+
+        // Check if already complete
+        let status = manifest::inspect_model(spec);
+        if status.exists && status.missing_shards.is_none() {
+            println!("OK   {} ({})", spec.name, format_size(status.size_bytes));
+            continue;
+        }
+
+        if status.exists && status.missing_shards.is_some() {
+            println!(
+                "FIX  {} — {}",
+                spec.name,
+                status.missing_shards.as_deref().unwrap_or("incomplete")
+            );
+        } else {
+            println!("PULL {} ← {}", spec.name, spec.hf_repo);
+        }
+
+        // Download all files from repo
+        let repo = api.model(spec.hf_repo.to_string());
+
+        // Use hf-hub's info endpoint to list files, then download each
+        match repo.info() {
+            Ok(info) => {
+                std::fs::create_dir_all(&model_dir).ok();
+                let siblings = info.siblings;
+                let mut downloaded = 0u64;
+                for file_info in &siblings {
+                    let filename = &file_info.rfilename;
+
+                    // Skip large unnecessary files
+                    if filename.ends_with(".h5")
+                        || filename.ends_with(".msgpack")
+                        || filename.contains("pytorch_model")
+                        || filename.contains("flax_model")
+                        || filename == ".gitattributes"
+                    {
+                        continue;
+                    }
+
+                    let target = model_dir.join(filename);
+                    if target.exists() {
+                        continue;
+                    }
+
+                    // Create subdirectories
+                    if let Some(parent) = target.parent() {
+                        std::fs::create_dir_all(parent).ok();
+                    }
+
+                    match repo.get(filename) {
+                        Ok(cached_path) => {
+                            // hf-hub caches to its own dir; copy/link to our dir
+                            if cached_path != target {
+                                if let Err(e) = std::fs::copy(&cached_path, &target) {
+                                    eprintln!("  WARN: copy {filename} failed: {e}");
+                                    continue;
+                                }
+                            }
+                            let fsize = target.metadata().map(|m| m.len()).unwrap_or(0);
+                            downloaded += fsize;
+                            println!("  GET  {filename} ({})", format_size(fsize));
+                        }
+                        Err(e) => {
+                            eprintln!("  FAIL {filename}: {e}");
+                        }
+                    }
+                }
+                if downloaded > 0 {
+                    println!(
+                        "  DONE {} (downloaded {})",
+                        spec.name,
+                        format_size(downloaded)
+                    );
+                }
+            }
+            Err(e) => {
+                eprintln!("  FAIL listing {}: {e}", spec.hf_repo);
+            }
+        }
+    }
+}
+
+fn glob_dir(dir: &std::path::Path, pattern: &str) -> Vec<std::path::PathBuf> {
+    // Simple glob: supports * and ** prefix
+    let mut results = Vec::new();
+    let target_name = pattern.replace("*/", "").replace("**/", "");
+
+    fn visit(dir: &std::path::Path, target: &str, results: &mut Vec<std::path::PathBuf>) {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    visit(&path, target, results);
+                } else if let Some(name) = path.file_name().and_then(|n| n.to_str()) {
+                    if name == target
+                        || (target.starts_with('*') && name.ends_with(&target[1..]))
+                    {
+                        results.push(path);
+                    }
+                }
+            }
+        }
+    }
+
+    visit(dir, &target_name, &mut results);
+    results
+}
+
+fn dir_size_recursive(path: &std::path::Path) -> u64 {
+    let mut total = 0;
+    if let Ok(entries) = std::fs::read_dir(path) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.is_dir() {
+                total += dir_size_recursive(&p);
+            } else {
+                total += p.metadata().map(|m| m.len()).unwrap_or(0);
+            }
+        }
+    }
+    total
 }
 
 /// Resolve model path — keep symlink parent (don't canonicalize to blobs/)
