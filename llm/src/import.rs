@@ -342,16 +342,25 @@ fn select_weights(dir: &Path, result: &mut ImportResult) {
         }
         result.weights_format = "safetensors".into();
     }
-    // Single GGUF (no safetensors) → rename to weights.gguf, delete ONNX dupes
-    else if gguf_files.len() == 1 && !has_safetensors {
-        let src = gguf_files[0].path();
+    // GGUF without safetensors → rename largest to weights.gguf, delete ONNX dupes
+    else if !gguf_files.is_empty() && !has_safetensors {
+        // Find the largest GGUF (main model weights)
+        let mut largest = &gguf_files[0];
+        let mut largest_size = 0u64;
+        for gf in &gguf_files {
+            let sz = gf.metadata().map(|m| m.len()).unwrap_or(0);
+            if sz > largest_size {
+                largest_size = sz;
+                largest = gf;
+            }
+        }
+        let src = largest.path();
         let dst = dir.join("weights.gguf");
         if src != dst && !dst.exists() {
             if let Err(e) = std::fs::rename(&src, &dst) {
                 result.errors.push(format!("rename weights: {e}"));
             }
         }
-        // Delete ONNX dirs if GGUF is the canonical format
         delete_onnx_dirs(dir, &entries, result);
         result.weights_format = "gguf".into();
     }
@@ -407,21 +416,36 @@ fn select_weights(dir: &Path, result: &mut ImportResult) {
         if has_onnx {
             result.weights_format = "onnx".into();
         }
-        // PT models
-        let has_pt = entries.iter().any(|e| {
+        // PT/PTH → rename single .pt to weights.pt
+        let pt_files: Vec<_> = entries.iter().filter(|e| {
             let ext = e.path().extension().map(|x| x.to_str().unwrap_or("").to_string()).unwrap_or_default();
-            ext == "pt" || ext == "pth"
-        });
-        if has_pt && !has_onnx {
+            (ext == "pt" || ext == "pth") && e.metadata().map(|m| m.is_file()).unwrap_or(false)
+        }).collect();
+        if pt_files.len() == 1 && !has_onnx {
+            let src = pt_files[0].path();
+            let ext = src.extension().unwrap_or_default().to_str().unwrap_or("pt");
+            let dst = dir.join(format!("weights.{ext}"));
+            if src != dst && !dst.exists() {
+                let _ = std::fs::rename(&src, &dst);
+            }
+            result.weights_format = "pytorch".into();
+        } else if !pt_files.is_empty() && !has_onnx {
             result.weights_format = "pytorch".into();
         }
-        // .bin (fasttext etc)
-        let has_bin = entries.iter().any(|e| {
+        // .bin (fasttext, GGML) → rename to weights.bin
+        let bin_files: Vec<_> = entries.iter().filter(|e| {
             let n = e.file_name();
             let n = n.to_str().unwrap_or("");
-            (n == "model.bin" || n.starts_with("ggml")) && n.ends_with(".bin")
-        });
-        if has_bin && !has_pt && !has_onnx {
+            e.metadata().map(|m| m.is_file()).unwrap_or(false)
+                && n.ends_with(".bin")
+                && (n == "model.bin" || n.starts_with("ggml"))
+        }).collect();
+        if bin_files.len() == 1 && pt_files.is_empty() && !has_onnx {
+            let src = bin_files[0].path();
+            let dst = dir.join("weights.bin");
+            if src != dst && !dst.exists() {
+                let _ = std::fs::rename(&src, &dst);
+            }
             result.weights_format = "bin".into();
         }
     }
@@ -449,6 +473,7 @@ fn delete_onnx_dirs(dir: &Path, entries: &[std::fs::DirEntry], result: &mut Impo
 /// Files and dirs to delete from a canonical model directory
 const JUNK_FILES: &[&str] = &[
     ".gitattributes",
+    ".DS_Store",
     "LICENSE",
     "LICENSE.md",
     "USE_POLICY.md",
@@ -457,6 +482,21 @@ const JUNK_FILES: &[&str] = &[
     "flax_model.msgpack",
     "tf_model.h5",
     "rust_model.ot",
+    // Redundant with tokenizer.json
+    "merges.txt",
+    "vocab.json",
+    "added_tokens.json",
+    "special_tokens_map.json",
+    // Redundant with chat.toml
+    "chat_template.jinja",
+    "chat_template.json",
+    // Redundant with config.toml
+    "preprocessor_config.json",
+    "video_preprocessor_config.json",
+    "processor_config.json",
+    // Misc
+    "requirements.txt",
+    "versions.txt",
 ];
 
 const JUNK_DIRS: &[&str] = &[
@@ -468,10 +508,13 @@ const JUNK_DIRS: &[&str] = &[
 ];
 
 const JUNK_PATTERNS: &[&str] = &[
-    "pytorch_model",     // pytorch_model.bin, pytorch_model-*.bin
-    "TestPassed",        // abliteration test artifacts
-    "added_tokens.json", // redundant with tokenizer.json
-    "special_tokens_map.json", // redundant with chat.toml
+    "pytorch_model",       // pytorch_model.bin, pytorch_model-*.bin
+    "TestPassed",          // abliteration test artifacts
+];
+
+/// File extensions that are always junk in a model directory
+const JUNK_EXTENSIONS: &[&str] = &[
+    "py",    // handler.py, modeling_*.py, configuration_*.py, etc.
 ];
 
 fn clean_junk(dir: &Path, result: &mut ImportResult) {
@@ -496,13 +539,24 @@ fn clean_junk(dir: &Path, result: &mut ImportResult) {
 
         // Pattern match
         if JUNK_PATTERNS.iter().any(|p| name_str.contains(p)) {
-            let meta = entry.metadata();
-            if meta.map(|m| m.is_file()).unwrap_or(false) {
+            if entry.metadata().map(|m| m.is_file()).unwrap_or(false) {
                 if std::fs::remove_file(entry.path()).is_ok() {
                     result.files_deleted += 1;
                 }
             }
             continue;
+        }
+
+        // Extension match (.py files etc.)
+        if let Some(ext) = entry.path().extension().and_then(|e| e.to_str()) {
+            if JUNK_EXTENSIONS.contains(&ext) {
+                if entry.metadata().map(|m| m.is_file()).unwrap_or(false) {
+                    if std::fs::remove_file(entry.path()).is_ok() {
+                        result.files_deleted += 1;
+                    }
+                    continue;
+                }
+            }
         }
 
         // Junk directories
@@ -515,7 +569,8 @@ fn clean_junk(dir: &Path, result: &mut ImportResult) {
         }
     }
 
-    // Delete original JSON configs now that TOML versions exist
+    // Delete original JSON configs: either TOML replacement exists,
+    // or the JSON was empty/stub (no useful data extracted)
     let json_toml_pairs = [
         ("config.json", "config.toml"),
         ("tokenizer_config.json", "chat.toml"),
@@ -524,10 +579,30 @@ fn clean_junk(dir: &Path, result: &mut ImportResult) {
     for (json_name, toml_name) in json_toml_pairs {
         let json_path = dir.join(json_name);
         let toml_path = dir.join(toml_name);
-        if json_path.exists() && toml_path.exists() {
-            if std::fs::remove_file(&json_path).is_ok() {
-                result.files_deleted += 1;
+        if json_path.exists() {
+            // Delete if TOML exists, OR if this is generation_config without
+            // useful params (just _from_model_config + transformers_version)
+            let should_delete = toml_path.exists() || {
+                json_name == "generation_config.json" && {
+                    std::fs::read_to_string(&json_path)
+                        .map(|s| !s.contains("temperature") && !s.contains("top_p"))
+                        .unwrap_or(false)
+                }
+            };
+            if should_delete {
+                if std::fs::remove_file(&json_path).is_ok() {
+                    result.files_deleted += 1;
+                }
             }
+        }
+    }
+
+    // Delete duplicate onnx/ dir when onnx_q8/ exists (keep only quantized)
+    let has_onnx_q8 = dir.join("onnx_q8").exists();
+    let has_onnx = dir.join("onnx").exists();
+    if has_onnx && has_onnx_q8 {
+        if std::fs::remove_dir_all(dir.join("onnx")).is_ok() {
+            result.files_deleted += 1;
         }
     }
 }
