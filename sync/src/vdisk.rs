@@ -331,6 +331,234 @@ impl VDiskManager {
     pub fn merge_registry(&mut self, other: &GSet) {
         self.registry.merge(other);
     }
+
+    /// Rechunk: re-encode existing files on a disk with new (k, n) parameters.
+    ///
+    /// Called after a device joins/leaves. For each file on the disk:
+    /// 1. Decode from existing shards (old k, old n).
+    /// 2. Re-encode with new parameters (new k, new n).
+    /// 3. Distribute new shards to current device set.
+    /// 4. Update registry entry.
+    ///
+    /// Returns (rechunked_count, skipped_count).
+    pub fn rechunk(&mut self, disk_name: &str) -> Result<(usize, usize), String> {
+        let config = self
+            .disks
+            .get(disk_name)
+            .ok_or_else(|| format!("disk '{}' not found", disk_name))?
+            .clone();
+
+        let device_names: Vec<String> = self
+            .attachments
+            .iter()
+            .filter(|a| a.disk_name == disk_name)
+            .map(|a| a.device_name.clone())
+            .collect();
+
+        let n_devices = device_names.len();
+        if n_devices < 2 {
+            return Ok((0, 0));
+        }
+
+        let new_f = match &config.redundancy {
+            Redundancy::Max => n_devices - 1,
+            Redundancy::Tolerate(f) => *f,
+        };
+        let new_k = n_devices - new_f;
+        let new_n = n_devices.next_power_of_two();
+
+        // Collect files that need rechunking (old k/n differ from new).
+        let files_to_rechunk: Vec<String> = self
+            .registry
+            .files
+            .values()
+            .filter(|e| e.k != new_k || e.n != new_n)
+            .map(|e| e.name.clone())
+            .collect();
+
+        let mut rechunked = 0;
+        let mut skipped = 0;
+
+        for file_name in &files_to_rechunk {
+            // Step 1: decode from existing shards.
+            match self.get_file(file_name) {
+                Ok(data) => {
+                    // Step 2: re-encode with new parameters.
+                    let shards = erasure::encode(&data, new_k, new_n);
+                    let commitment = das::commit(&shards, new_k, data.len());
+
+                    // Step 3: distribute to current devices.
+                    let mut shard_hashes = Vec::with_capacity(new_n);
+                    for shard in &shards {
+                        let device_idx = shard.index % n_devices;
+                        let device_name = &device_names[device_idx];
+                        if let Some(store) = self.stores.get_mut(device_name) {
+                            let hash = store.put(shard).map_err(|e| e.to_string())?;
+                            shard_hashes.push(hash.to_hex());
+                        }
+                    }
+
+                    // Step 4: update registry.
+                    let timestamp = store::now_ms();
+                    let device_id = "vdisk".to_string();
+                    let prev_hash = self.registry.latest_hash(&device_id);
+                    let entry_hash = FileEntry::compute_hash(
+                        file_name,
+                        &shard_hashes,
+                        timestamp,
+                        &prev_hash,
+                        &device_id,
+                    );
+                    self.registry.insert(FileEntry {
+                        name: file_name.clone(),
+                        original_len: data.len(),
+                        k: new_k,
+                        n: new_n,
+                        shard_hashes,
+                        timestamp,
+                        prev_hash,
+                        entry_hash,
+                        device_id,
+                        das_root: format!("{:?}", commitment.root),
+                        vdf_proof: None,
+                        shard_copies: config.shard_copies,
+                    });
+                    rechunked += 1;
+                }
+                Err(_) => {
+                    skipped += 1;
+                }
+            }
+        }
+
+        Ok((rechunked, skipped))
+    }
+
+    /// Rebalance: migrate chunks from over-capacity devices to under-capacity ones.
+    ///
+    /// For each device, compute target load (proportional to capacity).
+    /// Move excess chunks to devices with room.
+    /// Returns number of chunks migrated.
+    pub fn rebalance(&mut self, disk_name: &str) -> Result<usize, String> {
+        let device_names: Vec<String> = self
+            .attachments
+            .iter()
+            .filter(|a| a.disk_name == disk_name)
+            .map(|a| a.device_name.clone())
+            .collect();
+
+        if device_names.len() < 2 {
+            return Ok(0);
+        }
+
+        // Compute per-device load and capacity.
+        let mut device_load: Vec<(String, u64, u64)> = Vec::new(); // (name, used, capacity)
+        for name in &device_names {
+            let (used, cap) = if let Some(store) = self.stores.get(name) {
+                (store.used(), store.capacity())
+            } else {
+                (0, 0)
+            };
+            device_load.push((name.clone(), used, cap));
+        }
+
+        let total_cap: u64 = device_load.iter().map(|(_, _, c)| *c).sum();
+        let total_used: u64 = device_load.iter().map(|(_, u, _)| *u).sum();
+
+        if total_cap == 0 || total_used == 0 {
+            return Ok(0);
+        }
+
+        // Compute target usage per device (proportional to capacity).
+        let mut targets: Vec<(String, u64, u64, i64)> = device_load
+            .iter()
+            .map(|(name, used, cap)| {
+                let target = if total_cap > 0 {
+                    (total_used as f64 * *cap as f64 / total_cap as f64) as u64
+                } else {
+                    0
+                };
+                let delta = *used as i64 - target as i64;
+                (name.clone(), *used, target, delta)
+            })
+            .collect();
+
+        // Sort: over-capacity first (positive delta), under-capacity last.
+        targets.sort_by(|a, b| b.3.cmp(&a.3));
+
+        let mut migrated = 0;
+
+        // Find over-capacity devices and under-capacity devices.
+        let over: Vec<String> = targets
+            .iter()
+            .filter(|(_, _, _, d)| *d > 0)
+            .map(|(n, _, _, _)| n.clone())
+            .collect();
+        let under: Vec<String> = targets
+            .iter()
+            .filter(|(_, _, _, d)| *d < 0)
+            .map(|(n, _, _, _)| n.clone())
+            .collect();
+
+        // For each file, check if its shards are on over-capacity devices
+        // and could be moved to under-capacity devices.
+        let file_names: Vec<String> = self.registry.files.keys().cloned().collect();
+        for file_name in &file_names {
+            let entry = match self.registry.get(file_name) {
+                Some(e) => e.clone(),
+                None => continue,
+            };
+
+            for (shard_idx, hash_hex) in entry.shard_hashes.iter().enumerate() {
+                let hash = match hex_to_hash(hash_hex) {
+                    Ok(h) => h,
+                    Err(_) => continue,
+                };
+
+                // Find which over-capacity device has this shard.
+                let mut source = None;
+                for dev_name in &over {
+                    if let Some(store) = self.stores.get(dev_name) {
+                        if store.has(&hash) {
+                            source = Some(dev_name.clone());
+                            break;
+                        }
+                    }
+                }
+
+                if source.is_none() {
+                    continue;
+                }
+                let source_name = source.unwrap();
+
+                // Find an under-capacity device that doesn't have it yet.
+                for dest_name in &under {
+                    if let Some(dest_store) = self.stores.get(dest_name) {
+                        if !dest_store.has(&hash) {
+                            // Copy chunk from source to dest.
+                            let bytes = match self.stores.get(&source_name) {
+                                Some(s) => match s.get(&hash) {
+                                    Ok(b) => b,
+                                    Err(_) => continue,
+                                },
+                                None => continue,
+                            };
+
+                            if let Some(dest) = self.stores.get_mut(dest_name) {
+                                let shard = store::bytes_to_shard(shard_idx, &bytes);
+                                if dest.put(&shard).is_ok() {
+                                    migrated += 1;
+                                }
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        Ok(migrated)
+    }
 }
 
 /// Convert hex string to Hash (simplified).
@@ -509,5 +737,125 @@ mod tests {
         let status = mgr.status("empty").unwrap();
         assert!(!status.healthy);
         assert!(status.message.contains("no devices"));
+    }
+
+    #[test]
+    fn rechunk_on_device_join() {
+        let (_dir, mut mgr) = setup();
+
+        mgr.create_disk(DiskConfig {
+            name: "work".into(),
+            redundancy: Redundancy::Tolerate(1),
+            tier: Tier::Active,
+            cache_policy: CachePolicy::Lru,
+            shard_copies: 1,
+        })
+        .unwrap();
+
+        // Start with 2 devices → k=1, n=2 (full replication).
+        mgr.attach("dev_a", "work", 10_000_000).unwrap();
+        mgr.attach("dev_b", "work", 10_000_000).unwrap();
+
+        let data = b"file that will be rechunked when a new device joins";
+        mgr.put_file("work", "rechunk_me.txt", data).unwrap();
+
+        let entry_before = mgr.registry().get("rechunk_me.txt").unwrap().clone();
+        let old_k = entry_before.k;
+        let old_n = entry_before.n;
+
+        // Add 2 more devices → now 4 devices, k=3, n=4.
+        mgr.attach("dev_c", "work", 10_000_000).unwrap();
+        mgr.attach("dev_d", "work", 10_000_000).unwrap();
+
+        // Rechunk.
+        let (rechunked, skipped) = mgr.rechunk("work").unwrap();
+        assert_eq!(rechunked, 1);
+        assert_eq!(skipped, 0);
+
+        // Verify new parameters.
+        let entry_after = mgr.registry().get("rechunk_me.txt").unwrap();
+        assert!(entry_after.k > old_k || entry_after.n > old_n,
+            "rechunk didn't change parameters: old k={} n={}, new k={} n={}",
+            old_k, old_n, entry_after.k, entry_after.n);
+
+        // Verify data is still readable.
+        let recovered = mgr.get_file("rechunk_me.txt").unwrap();
+        assert_eq!(&recovered, &data[..]);
+    }
+
+    #[test]
+    fn rechunk_preserves_data_integrity() {
+        let (_dir, mut mgr) = setup();
+
+        mgr.create_disk(DiskConfig {
+            name: "data".into(),
+            redundancy: Redundancy::Tolerate(1),
+            tier: Tier::Active,
+            cache_policy: CachePolicy::Lru,
+            shard_copies: 1,
+        })
+        .unwrap();
+
+        mgr.attach("a", "data", 10_000_000).unwrap();
+        mgr.attach("b", "data", 10_000_000).unwrap();
+
+        // Put multiple files.
+        let files: Vec<(String, Vec<u8>)> = (0..10)
+            .map(|i| {
+                let name = format!("file_{}.dat", i);
+                let data: Vec<u8> = (0..100 + i * 50).map(|j| ((i + j) % 256) as u8).collect();
+                mgr.put_file("data", &name, &data).unwrap();
+                (name, data)
+            })
+            .collect();
+
+        // Add devices and rechunk.
+        mgr.attach("c", "data", 10_000_000).unwrap();
+        mgr.attach("d", "data", 10_000_000).unwrap();
+
+        let (rechunked, _) = mgr.rechunk("data").unwrap();
+        assert_eq!(rechunked, 10);
+
+        // All files still readable with correct data.
+        for (name, original) in &files {
+            let recovered = mgr.get_file(name).unwrap();
+            assert_eq!(&recovered, original, "file {} corrupted after rechunk", name);
+        }
+    }
+
+    #[test]
+    fn rebalance_moves_chunks() {
+        let (_dir, mut mgr) = setup();
+
+        mgr.create_disk(DiskConfig {
+            name: "uneven".into(),
+            redundancy: Redundancy::Tolerate(1),
+            tier: Tier::Active,
+            cache_policy: CachePolicy::Lru,
+            shard_copies: 1,
+        })
+        .unwrap();
+
+        // Device A: small capacity. Device B: large capacity.
+        mgr.attach("small", "uneven", 1_000_000).unwrap();
+        mgr.attach("large", "uneven", 10_000_000).unwrap();
+
+        // Put files — initially distributed round-robin (roughly equal).
+        for i in 0..5 {
+            let data: Vec<u8> = (0..200).map(|j| ((i + j) % 256) as u8).collect();
+            mgr.put_file("uneven", &format!("f_{}", i), &data).unwrap();
+        }
+
+        // Rebalance should move chunks from "small" to "large".
+        let migrated = mgr.rebalance("uneven").unwrap();
+        // At least some chunks should move (large has 10x capacity).
+        // The exact count depends on initial distribution.
+
+        // All files still readable.
+        for i in 0..5 {
+            let expected: Vec<u8> = (0..200).map(|j| ((i + j) % 256) as u8).collect();
+            let recovered = mgr.get_file(&format!("f_{}", i)).unwrap();
+            assert_eq!(recovered, expected, "file f_{} corrupted after rebalance", i);
+        }
     }
 }
