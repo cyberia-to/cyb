@@ -15,6 +15,7 @@ use crate::ir::Graph;
 /// Detected model format
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ModelFormat {
+    Cyb,
     Onnx,
     Safetensors,
     Gguf,
@@ -31,6 +32,7 @@ pub fn detect_format(path: &Path) -> Result<ModelFormat, String> {
         .unwrap_or("");
 
     match ext {
+        "cyb" => return Ok(ModelFormat::Cyb),
         "onnx" => return Ok(ModelFormat::Onnx),
         "safetensors" => return Ok(ModelFormat::Safetensors),
         "gguf" => return Ok(ModelFormat::Gguf),
@@ -50,6 +52,11 @@ pub fn detect_format(path: &Path) -> Result<ModelFormat, String> {
         .map_err(|e| format!("Cannot read magic bytes: {e}"))?;
 
     if bytes_read >= 4 {
+        // CYB magic
+        if &magic[0..4] == b"CYB\x01" {
+            return Ok(ModelFormat::Cyb);
+        }
+
         // GGUF magic
         if &magic[0..4] == b"GGUF" {
             return Ok(ModelFormat::Gguf);
@@ -107,6 +114,11 @@ pub fn load_model(path: &Path) -> Result<Graph, String> {
     log::info!("Detected format: {format:?} for {}", path.display());
 
     match format {
+        ModelFormat::Cyb => {
+            let (graph, _config) = crate::cyb_format::read_cyb(path)
+                .map_err(|e| format!("CYB load failed: {e}"))?;
+            Ok(graph)
+        }
         ModelFormat::Onnx => onnx::load_onnx(path),
         ModelFormat::Safetensors => safetensors::load_safetensors(path),
         ModelFormat::Gguf => gguf::load_gguf(path),

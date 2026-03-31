@@ -11,7 +11,7 @@
 //! JSON configs are converted to TOML. Duplicates, junk, and training
 //! artifacts are deleted. Weight files renamed to weights.*.
 
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
 /// Result of an import operation
 #[derive(Default)]
@@ -47,6 +47,114 @@ pub fn canonicalize(model_dir: &Path) -> ImportResult {
     result.final_bytes = dir_size(model_dir);
 
     result
+}
+
+/// Convert a canonicalized model directory to a single .cyb file.
+/// Reads weights via the loader, config from config.toml, writes .cyb.
+/// Returns (output_path, input_size, output_size) on success.
+pub fn convert_to_cyb(model_dir: &Path) -> Result<(std::path::PathBuf, u64, u64), String> {
+    let model_name = model_dir
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("model");
+
+    // Find weights file
+    let weights_path = find_weights(model_dir)
+        .ok_or_else(|| format!("{model_name}: no weights file found"))?;
+
+    let input_size = dir_size(model_dir);
+
+    // Load weights via existing loader
+    let graph = crate::loader::load_model(&weights_path)
+        .map_err(|e| format!("{model_name}: load failed: {e}"))?;
+
+    // Determine if graph has actual nodes (ONNX) or just weights (safetensors/GGUF)
+    let include_graph = !graph.nodes.is_empty();
+
+    // Build config string: read config.toml + append tokenizer/chat/sampling/vocab inline
+    let config = build_cyb_config(model_dir);
+
+    // Output path: model_dir/model_name.cyb
+    let output_path = model_dir.join(format!("{model_name}.cyb"));
+
+    crate::cyb_format::write_cyb(&output_path, &graph, &config, include_graph)
+        .map_err(|e| format!("{model_name}: write .cyb failed: {e}"))?;
+
+    let output_size = output_path.metadata().map(|m| m.len()).unwrap_or(0);
+
+    Ok((output_path, input_size, output_size))
+}
+
+/// Find the canonical weights file in a model directory
+fn find_weights(dir: &Path) -> Option<std::path::PathBuf> {
+    // Check canonical names first
+    for name in &[
+        "weights.gguf",
+        "weights.safetensors",
+        "weights.onnx",
+        "weights.pt",
+        "weights.pth",
+        "weights.bin",
+    ] {
+        let p = dir.join(name);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+
+    // Fallback: find any weight file
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if let Some(ext) = p.extension().and_then(|e| e.to_str()) {
+                match ext {
+                    "gguf" | "safetensors" | "onnx" | "pt" | "pth" => return Some(p),
+                    "bin" => {
+                        let name = p.file_name().unwrap_or_default().to_str().unwrap_or("");
+                        if name.starts_with("weights") || name.starts_with("ggml") || name == "model.bin" {
+                            return Some(p);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+    None
+}
+
+/// Build combined config for .cyb embedding:
+/// config.toml + tokenizer info + chat template + sampling params
+fn build_cyb_config(dir: &Path) -> String {
+    let mut config = String::new();
+
+    // config.toml — architecture params
+    if let Ok(s) = std::fs::read_to_string(dir.join("config.toml")) {
+        config.push_str(&s);
+        if !config.ends_with('\n') {
+            config.push('\n');
+        }
+    }
+
+    // vocab.toml — tokenizer metadata
+    if let Ok(s) = std::fs::read_to_string(dir.join("vocab.toml")) {
+        config.push_str("\n[tokenizer]\n");
+        config.push_str(&s);
+    }
+
+    // chat.toml — chat template
+    if let Ok(s) = std::fs::read_to_string(dir.join("chat.toml")) {
+        config.push_str("\n[chat]\n");
+        config.push_str(&s);
+    }
+
+    // sampling.toml — inference defaults
+    if let Ok(s) = std::fs::read_to_string(dir.join("sampling.toml")) {
+        config.push_str("\n[sampling]\n");
+        config.push_str(&s);
+    }
+
+    config
 }
 
 // ── Config converters ────────────────────────────────────────────
