@@ -121,16 +121,26 @@ impl MetalModel {
         let kv_num_heads = cj["num_key_value_heads"].as_u64().unwrap_or(num_heads as u64) as usize;
         let num_layers = cj["num_hidden_layers"].as_u64().ok_or("missing num_hidden_layers")? as usize;
         let vocab_size = cj["vocab_size"].as_u64().ok_or("missing vocab_size")? as usize;
-        let head_dim = cj["head_dim"].as_u64().map(|v| v as usize).unwrap_or(hidden_size / num_heads);
         let intermediate_size = cj["intermediate_size"].as_u64().unwrap_or((hidden_size * 4) as u64) as usize;
         let rope_theta = cj["rope_theta"].as_f64().unwrap_or(10000.0) as f32;
         let _rms_norm_eps = cj["rms_norm_eps"].as_f64().unwrap_or(1e-6) as f32;
         let tie_word_embeddings = cj["tie_word_embeddings"].as_bool().unwrap_or(true);
         let max_seq = cj["max_position_embeddings"].as_u64()
-            .map(|v| (v as usize).min(8192)) // cap at 8192 for memory
+            .map(|v| (v as usize).min(8192))
             .unwrap_or(DEFAULT_MAX_SEQ);
 
+        // Load weights first (needed for head_dim auto-detection)
         let graph = crate::loader::load_model(path)?;
+
+        // head_dim: from config, or auto-detect from q_proj weight shape
+        let head_dim = cj["head_dim"].as_u64().map(|v| v as usize).unwrap_or_else(|| {
+            if let Some(w) = graph.get_weight("model.layers.0.self_attn.q_proj.weight") {
+                let q_dim = w.shape[0];
+                log::info!("Auto-detected head_dim: q_dim={q_dim} / {num_heads} = {}", q_dim / num_heads);
+                q_dim / num_heads
+            } else { hidden_size / num_heads }
+        });
+
         let has_qk_norm = graph.get_weight("model.layers.0.self_attn.q_norm.weight").is_some();
         let has_attn_bias = graph.get_weight("model.layers.0.self_attn.q_proj.bias").is_some();
 

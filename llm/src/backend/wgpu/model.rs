@@ -991,10 +991,6 @@ impl NativeModel {
         let vocab_size = config_json.get("vocab_size")
             .and_then(|v| v.as_u64())
             .ok_or("Missing vocab_size in config.json")? as usize;
-        let head_dim = config_json.get("head_dim")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as usize)
-            .unwrap_or(hidden_size / num_heads);
         let intermediate_size = config_json.get("intermediate_size")
             .and_then(|v| v.as_u64())
             .unwrap_or((hidden_size * 4) as u64) as usize;
@@ -1008,8 +1004,22 @@ impl NativeModel {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        // Load weights (safetensors, GGUF, or any supported format)
+        // Load weights first (needed for head_dim auto-detection)
         let graph = crate::loader::load_model(path)?;
+
+        // head_dim: from config, or auto-detect from q_proj weight shape
+        let head_dim = config_json.get("head_dim")
+            .and_then(|v| v.as_u64())
+            .map(|v| v as usize)
+            .unwrap_or_else(|| {
+                if let Some(w) = graph.get_weight("model.layers.0.self_attn.q_proj.weight") {
+                    let q_dim = w.shape[0];
+                    log::info!("Auto-detected head_dim from q_proj: q_dim={q_dim} / {num_heads} = {}", q_dim / num_heads);
+                    q_dim / num_heads
+                } else {
+                    hidden_size / num_heads
+                }
+            });
 
         // Detect QK norm from weight names
         let has_qk_norm = graph.get_weight("model.layers.0.self_attn.q_norm.weight").is_some();

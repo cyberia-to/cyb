@@ -272,6 +272,8 @@ fn build_graph_from_gguf(
     let mut graph = Graph::new();
 
     for info in tensor_infos {
+        // Our converter stores dims in HF convention: [N, K] = [output_features, input_features]
+        // (Standard GGUF from llama.cpp uses [ne0, ne1] = [K, N], but our format uses HF order)
         let shape: Vec<usize> = info.dims.iter().map(|&d| d as usize).collect();
         let dtype = gguf_type_to_dtype(info.type_id);
 
@@ -315,9 +317,18 @@ fn build_graph_from_gguf(
         );
     }
 
-    // Debug: log first few weight names
-    let names: Vec<&String> = graph.weights.keys().take(5).collect();
-    log::info!("GGUF first weights: {:?}", names);
+    // Debug: log weight shapes for layer 0
+    for suffix in ["q_proj.weight", "k_proj.weight", "v_proj.weight", "o_proj.weight", "mlp.gate_proj.weight", "mlp.up_proj.weight", "mlp.down_proj.weight"] {
+        let name = format!("model.layers.0.self_attn.{suffix}");
+        let name2 = format!("model.layers.0.{suffix}");
+        let key = if graph.weights.contains_key(&name) { &name } else { &name2 };
+        if let Some(w) = graph.weights.get(key) {
+            log::info!("GGUF {}: shape={:?} dtype={:?} bytes={}", key, w.shape, w.dtype, w.data.len());
+        }
+    }
+    // Check for fused QKV or gate_up
+    let l0_keys: Vec<&String> = graph.weights.keys().filter(|k| k.contains("layers.0")).collect();
+    log::info!("GGUF layer 0 tensors: {:?}", l0_keys);
 
     graph
 }
