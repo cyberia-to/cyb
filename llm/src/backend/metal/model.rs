@@ -159,7 +159,8 @@ impl MetalModel {
         // Helper: load weight as f32
         let weight_to_f32 = |name: &str| -> Result<Vec<f32>, String> {
             let w = graph.get_weight(name).ok_or_else(|| format!("Missing: {name}"))?;
-            Ok(crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype))
+            let mut f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
+            Ok(f32s)
         };
 
         let weight_to_f16 = |name: &str| -> Result<Vec<u16>, String> {

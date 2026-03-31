@@ -311,7 +311,8 @@ fn build_graph_from_gguf(
             info.name.clone(),
             WeightData {
                 data: raw_data,
-                needs_transpose: shape.len() == 2, // GGUF 2D tensors are column-major
+                // Our converter stores HF-order (row-major) data, not standard GGUF column-major
+                needs_transpose: false,
                 shape,
                 dtype,
             },

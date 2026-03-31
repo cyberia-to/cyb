@@ -1065,11 +1065,9 @@ impl NativeModel {
         let weight_to_f32 = |name: &str| -> Result<Vec<f32>, String> {
             let w = graph.get_weight(name)
                 .ok_or_else(|| format!("Missing weight: {name}"))?;
-            let mut f32s = safetensors_to_f32(&w.data, w.dtype);
-            if w.needs_transpose && w.shape.len() == 2 {
-                f32s = transpose_f32(&f32s, w.shape[0], w.shape[1]);
-            }
-            Ok(f32s)
+            // Don't transpose — wgpu f32_matmul reads W[row*K+i] which with
+            // GGUF column-major data gives W^T[row][i] = correct for Y=X@W^T
+            Ok(safetensors_to_f32(&w.data, w.dtype))
         };
 
         // Load embedding table
