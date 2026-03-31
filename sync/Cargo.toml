@@ -1,0 +1,20 @@
+# ---
+# tags: cyb, sync, config
+# crystal-type: source
+# crystal-domain: cyb
+# ---
+[package]
+name = "cyber-sync"
+version = "0.1.0"
+edition = "2024"
+description = "Local device data availability — erasure-coded virtual filesystem"
+
+[dependencies]
+nebu = { path = "../../nebu/rs" }
+cyber-hemera = { path = "../../hemera/rs" }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+
+[dev-dependencies]
+proptest = "1"
+tempfile = "3"
