@@ -311,7 +311,7 @@ fn build_graph_from_gguf(
             info.name.clone(),
             WeightData {
                 data: raw_data,
-                // Our converter stores HF-order (row-major) data, not standard GGUF column-major
+                // Our converter stores HF-order data. Transpose handled per-dtype in weight_to_f32.
                 needs_transpose: false,
                 shape,
                 dtype,

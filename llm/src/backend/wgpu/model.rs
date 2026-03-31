@@ -269,17 +269,19 @@ pub fn safetensors_to_f32(data: &[u8], dtype: crate::ir::DType) -> Vec<f32> {
             .collect(),
         DType::Q4 => {
             // GGUF Q4_0: blocks of {half scale, uint8_t qs[16]} = 18 bytes = 32 weights
+            // llama.cpp order: first all lo nibbles (j=0..15), then all hi nibbles (j=16..31)
             let block_size = 18;
             data.chunks_exact(block_size).flat_map(|block| {
                 let scale_bits = u16::from_le_bytes([block[0], block[1]]);
                 let scale = half::f16::from_bits(scale_bits).to_f32();
                 let qs = &block[2..18];
-                (0..16).flat_map(move |j| {
+                let mut vals = [0.0f32; 32];
+                for j in 0..16 {
                     let byte = qs[j];
-                    let lo = (byte & 0x0F) as i32 - 8;
-                    let hi = (byte >> 4) as i32 - 8;
-                    [scale * lo as f32, scale * hi as f32]
-                })
+                    vals[j] = scale * ((byte & 0x0F) as i32 - 8) as f32;      // lo → first half
+                    vals[j + 16] = scale * ((byte >> 4) as i32 - 8) as f32;    // hi → second half
+                }
+                vals
             }).collect()
         }
         DType::Q8 => {
@@ -1065,9 +1067,15 @@ impl NativeModel {
         let weight_to_f32 = |name: &str| -> Result<Vec<f32>, String> {
             let w = graph.get_weight(name)
                 .ok_or_else(|| format!("Missing weight: {name}"))?;
-            // Don't transpose — wgpu f32_matmul reads W[row*K+i] which with
-            // GGUF column-major data gives W^T[row][i] = correct for Y=X@W^T
-            Ok(safetensors_to_f32(&w.data, w.dtype))
+            let mut f32s = safetensors_to_f32(&w.data, w.dtype);
+            // Q4/Q8 GGUF dequant produces column-major f32 — transpose to row-major
+            // (F16/F32 GGUF: stored in HF-order, no transpose needed — wgpu matmul
+            //  accidentally handles column-major F16 correctly via W^T read pattern)
+            if w.needs_transpose && w.shape.len() == 2 {
+                let (rows, cols) = (w.shape[0], w.shape[1]);
+                f32s = transpose_f32(&f32s, cols, rows); // stored as [cols, rows], transpose to [rows, cols]
+            }
+            Ok(f32s)
         };
 
         // Load embedding table
@@ -1099,10 +1107,8 @@ impl NativeModel {
             let input_norm_f32 = weight_to_f32(&format!("model.layers.{i}.input_layernorm.weight"))?;
             let input_norm_weight = pipelines.upload_f32(&input_norm_f32);
 
-            // Quantize projections to Q4 on-the-fly for faster inference
             let quantize_upload = |name: &str, n: usize, k: usize| -> Result<(wgpu::Buffer, wgpu::Buffer), String> {
                 let mut f32_data = weight_to_f32(name)?;
-                // Apply weight_scale if present (BitNet ternary models)
                 let scale_name = format!("{name}_scale");
                 if let Ok(scale_data) = weight_to_f32(&scale_name) {
                     if !scale_data.is_empty() {

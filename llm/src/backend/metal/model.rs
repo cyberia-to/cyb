@@ -160,12 +160,19 @@ impl MetalModel {
         let weight_to_f32 = |name: &str| -> Result<Vec<f32>, String> {
             let w = graph.get_weight(name).ok_or_else(|| format!("Missing: {name}"))?;
             let mut f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
+            // Q4/Q8 GGUF dequant produces column-major — transpose to row-major
+            if w.needs_transpose && w.shape.len() == 2 {
+                f32s = crate::backend::wgpu::model::transpose_f32(&f32s, w.shape[1], w.shape[0]);
+            }
             Ok(f32s)
         };
 
         let weight_to_f16 = |name: &str| -> Result<Vec<u16>, String> {
             let w = graph.get_weight(name).ok_or_else(|| format!("Missing: {name}"))?;
-            let f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
+            let mut f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
+            if w.needs_transpose && w.shape.len() == 2 {
+                f32s = crate::backend::wgpu::model::transpose_f32(&f32s, w.shape[1], w.shape[0]);
+            }
             Ok(f32s.iter().map(|&v| aruminium::f32_to_fp16(v)).collect())
         };
 
