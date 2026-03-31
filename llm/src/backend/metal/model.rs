@@ -398,6 +398,34 @@ impl MetalModel {
                         batch.dispatch_threadgroups((wg_q + wg_k + wg_v, 1, 1), (256, 1, 1));
                     }
 
+                    // ── QK-norm (Qwen3: per-head RMSNorm on Q and K) ──
+                    // Uses rms_norm with head_dim, dispatches num_heads workgroups per call
+                    if c.has_qk_norm {
+                        let head_norm_params = {
+                            let p = [c.head_dim as u32, 0u32];
+                            let mut b = bytemuck::bytes_of(&p).to_vec();
+                            b[4..8].copy_from_slice(&1e-6f32.to_le_bytes());
+                            b
+                        };
+                        if let Some(ref qnw) = layer.q_norm_weight {
+                            batch.set_pipeline(&p.rms_norm);
+                            batch.set_buffer(&self.scratch.q, 0, 0);
+                            batch.set_buffer(qnw, 0, 1);
+                            batch.set_buffer(&self.scratch.q, 0, 2);
+                            batch.set_bytes(&head_norm_params, 3);
+                            // One workgroup per head — each normalizes head_dim elements
+                            batch.dispatch_threadgroups((c.num_heads, 1, 1), (256, 1, 1));
+                        }
+                        if let Some(ref knw) = layer.k_norm_weight {
+                            batch.set_pipeline(&p.rms_norm);
+                            batch.set_buffer(&self.scratch.k, 0, 0);
+                            batch.set_buffer(knw, 0, 1);
+                            batch.set_buffer(&self.scratch.k, 0, 2);
+                            batch.set_bytes(&head_norm_params, 3);
+                            batch.dispatch_threadgroups((c.kv_num_heads, 1, 1), (256, 1, 1));
+                        }
+                    }
+
                     // ── Fused RoPE Q+K (1 dispatch instead of 2) ──
                     let rope_params = [half_dim as u32, c.head_dim as u32, c.num_heads as u32, c.kv_num_heads as u32];
                     let total_rope = half_dim * (c.num_heads + c.kv_num_heads);

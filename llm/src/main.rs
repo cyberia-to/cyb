@@ -661,6 +661,7 @@ fn run_metal(model_path: &std::path::Path, tokenizer_path: &std::path::Path, pro
         }
     };
     let token_ids = encoding.get_ids();
+    eprintln!("Tokens ({}): {:?}", token_ids.len(), &token_ids[..token_ids.len().min(20)]);
     let eos = cyb_llm::generate::detect_eos_tokens(&tokenizer, model_dir);
 
     // Prefill
