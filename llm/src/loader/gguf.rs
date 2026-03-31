@@ -332,6 +332,61 @@ fn build_graph_from_gguf(
     let l0_keys: Vec<&String> = graph.weights.keys().filter(|k| k.contains("layers.0")).collect();
     log::info!("GGUF layer 0 tensors: {:?}", l0_keys);
 
+    // Split fused projections (Phi3/nuextract: qkv_proj → q/k/v, gate_up_proj → gate/up)
+    let fused_keys: Vec<String> = graph.weights.keys()
+        .filter(|k| k.contains("qkv_proj.weight") || k.contains("gate_up_proj.weight"))
+        .cloned().collect();
+    for key in fused_keys {
+        if let Some(w) = graph.weights.remove(&key) {
+            let n = w.shape[0]; // total output dim
+            let k = if w.shape.len() > 1 { w.shape[1] } else { 1 };
+            let prefix = key.rsplit_once('.').map(|(p, _)| p).unwrap_or(&key);
+
+            // Calculate bytes for a sub-matrix [sub_n, k] given the dtype
+            let sub_bytes = |sub_n: usize| -> usize {
+                let total_elements = sub_n * k;
+                match w.dtype {
+                    DType::Q4 => (total_elements / 32) * 18,
+                    DType::Q8 => (total_elements / 32) * 34,
+                    DType::F16 => total_elements * 2,
+                    _ => total_elements * 4,
+                }
+            };
+
+            if key.contains("qkv_proj") {
+                let (q_n, kv_n) = if n % 3 == 0 { (n/3, n/3) } else { (n/2, n/4) };
+                let q_bytes = sub_bytes(q_n);
+                let kv_bytes = sub_bytes(kv_n);
+                let prefix = prefix.strip_suffix(".qkv_proj").unwrap_or(prefix);
+                if q_bytes + kv_bytes * 2 <= w.data.len() {
+                    graph.add_weight(format!("{prefix}.q_proj.weight"), WeightData {
+                        data: w.data[..q_bytes].to_vec(), shape: vec![q_n, k], dtype: w.dtype, needs_transpose: false,
+                    });
+                    graph.add_weight(format!("{prefix}.k_proj.weight"), WeightData {
+                        data: w.data[q_bytes..q_bytes+kv_bytes].to_vec(), shape: vec![kv_n, k], dtype: w.dtype, needs_transpose: false,
+                    });
+                    graph.add_weight(format!("{prefix}.v_proj.weight"), WeightData {
+                        data: w.data[q_bytes+kv_bytes..q_bytes+kv_bytes*2].to_vec(), shape: vec![kv_n, k], dtype: w.dtype, needs_transpose: false,
+                    });
+                    log::info!("Split {key} → q[{q_n},{k}] k[{kv_n},{k}] v[{kv_n},{k}]");
+                }
+            } else if key.contains("gate_up_proj") {
+                let half_n = n / 2;
+                let half_bytes = sub_bytes(half_n);
+                let prefix = prefix.strip_suffix(".gate_up_proj").unwrap_or(prefix);
+                if half_bytes * 2 <= w.data.len() {
+                    graph.add_weight(format!("{prefix}.gate_proj.weight"), WeightData {
+                        data: w.data[..half_bytes].to_vec(), shape: vec![half_n, k], dtype: w.dtype, needs_transpose: false,
+                    });
+                    graph.add_weight(format!("{prefix}.up_proj.weight"), WeightData {
+                        data: w.data[half_bytes..half_bytes*2].to_vec(), shape: vec![half_n, k], dtype: w.dtype, needs_transpose: false,
+                    });
+                    log::info!("Split {key} → gate[{half_n},{k}] up[{half_n},{k}]");
+                }
+            }
+        }
+    }
+
     graph
 }
 
