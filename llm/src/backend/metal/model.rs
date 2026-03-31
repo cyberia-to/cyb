@@ -18,11 +18,12 @@ pub struct MetalModelConfig {
     pub vocab_size: usize,
     pub intermediate_size: usize,
     pub has_qk_norm: bool,
+    pub is_ternary: bool,
 }
 
 struct MetalLayerWeights {
     input_norm_weight: MtlBuffer,
-    q_proj: MtlBuffer,   // block_q4_0 [K/32][N]
+    q_proj: MtlBuffer,   // block_q4_0 [K/32][N] or ternary [K/4][N]
     k_proj: MtlBuffer,
     v_proj: MtlBuffer,
     o_proj: MtlBuffer,
@@ -35,6 +36,8 @@ struct MetalLayerWeights {
     gate_proj: MtlBuffer,
     up_proj: MtlBuffer,
     down_proj: MtlBuffer,
+    // Ternary weight scales (BitNet)
+    weight_scales: Option<[f32; 7]>, // q,k,v,o,gate,up,down
 }
 
 struct MetalKVCache {
@@ -104,9 +107,14 @@ impl MetalModel {
         let has_qk_norm = graph.get_weight("model.layers.0.self_attn.q_norm.weight").is_some();
         let has_attn_bias = graph.get_weight("model.layers.0.self_attn.q_proj.bias").is_some();
 
+        let is_ternary = cj.get("model_type").and_then(|v| v.as_str()) == Some("bitnet");
+        if is_ternary {
+            log::info!("BitNet model detected — using native ternary weights");
+        }
+
         let config = MetalModelConfig {
             hidden_size, num_heads, kv_num_heads, head_dim,
-            num_layers, vocab_size, intermediate_size, has_qk_norm,
+            num_layers, vocab_size, intermediate_size, has_qk_norm, is_ternary,
         };
 
         log::info!("Metal model: hidden={hidden_size}, heads={num_heads}, kv_heads={kv_num_heads}, layers={num_layers}, vocab={vocab_size}");
@@ -171,6 +179,18 @@ impl MetalModel {
             pipelines.upload_bytes(&packed).map_err(|e| format!("{e}"))
         };
 
+        // Helper: load raw ternary bytes + extract weight_scale
+        let ternary_upload = |name: &str| -> Result<(MtlBuffer, f32), String> {
+            let w = graph.get_weight(name).ok_or_else(|| format!("Missing: {name}"))?;
+            let buf = pipelines.upload_bytes(&w.data).map_err(|e| format!("{e}"))?;
+            let scale_name = format!("{name}_scale");
+            let scale = if let Some(sw) = graph.get_weight(&scale_name) {
+                let sv = crate::backend::wgpu::model::safetensors_to_f32(&sw.data, sw.dtype);
+                if !sv.is_empty() { sv[0] } else { 1.0 }
+            } else { 1.0 };
+            Ok((buf, scale))
+        };
+
         // Load layers
         let mut layers = Vec::with_capacity(num_layers);
         for i in 0..num_layers {
@@ -180,10 +200,28 @@ impl MetalModel {
                 &weight_to_f16(&format!("model.layers.{i}.input_layernorm.weight"))?
             ).map_err(|e| format!("{e}"))?;
 
-            let q_proj = quantize_upload(&format!("model.layers.{i}.self_attn.q_proj.weight"), q_dim, hidden_size)?;
-            let k_proj = quantize_upload(&format!("model.layers.{i}.self_attn.k_proj.weight"), kv_dim, hidden_size)?;
-            let v_proj = quantize_upload(&format!("model.layers.{i}.self_attn.v_proj.weight"), kv_dim, hidden_size)?;
-            let o_proj = quantize_upload(&format!("model.layers.{i}.self_attn.o_proj.weight"), hidden_size, q_dim)?;
+            let (q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj, weight_scales);
+            if is_ternary {
+                let (qp, qs) = ternary_upload(&format!("model.layers.{i}.self_attn.q_proj.weight"))?;
+                let (kp, ks) = ternary_upload(&format!("model.layers.{i}.self_attn.k_proj.weight"))?;
+                let (vp, vs) = ternary_upload(&format!("model.layers.{i}.self_attn.v_proj.weight"))?;
+                let (op, os) = ternary_upload(&format!("model.layers.{i}.self_attn.o_proj.weight"))?;
+                let (gp, gs) = ternary_upload(&format!("model.layers.{i}.mlp.gate_proj.weight"))?;
+                let (up_, us) = ternary_upload(&format!("model.layers.{i}.mlp.up_proj.weight"))?;
+                let (dp, ds) = ternary_upload(&format!("model.layers.{i}.mlp.down_proj.weight"))?;
+                q_proj = qp; k_proj = kp; v_proj = vp; o_proj = op;
+                gate_proj = gp; up_proj = up_; down_proj = dp;
+                weight_scales = Some([qs, ks, vs, os, gs, us, ds]);
+            } else {
+                q_proj = quantize_upload(&format!("model.layers.{i}.self_attn.q_proj.weight"), q_dim, hidden_size)?;
+                k_proj = quantize_upload(&format!("model.layers.{i}.self_attn.k_proj.weight"), kv_dim, hidden_size)?;
+                v_proj = quantize_upload(&format!("model.layers.{i}.self_attn.v_proj.weight"), kv_dim, hidden_size)?;
+                o_proj = quantize_upload(&format!("model.layers.{i}.self_attn.o_proj.weight"), hidden_size, q_dim)?;
+                gate_proj = quantize_upload(&format!("model.layers.{i}.mlp.gate_proj.weight"), intermediate_size, hidden_size)?;
+                up_proj = quantize_upload(&format!("model.layers.{i}.mlp.up_proj.weight"), intermediate_size, hidden_size)?;
+                down_proj = quantize_upload(&format!("model.layers.{i}.mlp.down_proj.weight"), hidden_size, intermediate_size)?;
+                weight_scales = None;
+            };
 
             let q_proj_bias = if has_attn_bias {
                 Some(pipelines.upload_f16(&weight_to_f16(&format!("model.layers.{i}.self_attn.q_proj.bias"))?).map_err(|e| format!("{e}"))?)
@@ -206,15 +244,12 @@ impl MetalModel {
                 &weight_to_f16(&format!("model.layers.{i}.post_attention_layernorm.weight"))?
             ).map_err(|e| format!("{e}"))?;
 
-            let gate_proj = quantize_upload(&format!("model.layers.{i}.mlp.gate_proj.weight"), intermediate_size, hidden_size)?;
-            let up_proj = quantize_upload(&format!("model.layers.{i}.mlp.up_proj.weight"), intermediate_size, hidden_size)?;
-            let down_proj = quantize_upload(&format!("model.layers.{i}.mlp.down_proj.weight"), hidden_size, intermediate_size)?;
-
             layers.push(MetalLayerWeights {
                 input_norm_weight, q_proj, k_proj, v_proj, o_proj,
                 q_proj_bias, k_proj_bias, v_proj_bias,
                 q_norm_weight, k_norm_weight,
                 post_norm_weight, gate_proj, up_proj, down_proj,
+                weight_scales,
             });
         }
 
@@ -323,23 +358,43 @@ impl MetalModel {
                     let kv = &self.kv_cache[i];
                     // hidden2 is already normed (from prev layer's fused_add_norm or initial norm)
 
-                    // ── Fused Q+K+V projection (3→1 dispatch) ──
-                    let q_dim = (c.num_heads * c.head_dim) as u32;
-                    let kv_dim = (c.kv_num_heads * c.head_dim) as u32;
-                    let wg_q = div_ceil(q_dim as usize, 8);
-                    let wg_k = div_ceil(kv_dim as usize, 8);
-                    let wg_v = div_ceil(kv_dim as usize, 8);
-                    let qkv_params = [q_dim, kv_dim, kv_dim, c.hidden_size as u32, wg_q as u32, wg_k as u32];
-                    batch.set_pipeline(&p.fused_qkv);
-                    batch.set_buffer(&self.scratch.hidden2, 0, 0);
-                    batch.set_buffer(&layer.q_proj, 0, 1);
-                    batch.set_buffer(&layer.k_proj, 0, 2);
-                    batch.set_buffer(&layer.v_proj, 0, 3);
-                    batch.set_buffer(&self.scratch.q, 0, 4);
-                    batch.set_buffer(&self.scratch.k, 0, 5);
-                    batch.set_buffer(&self.scratch.v, 0, 6);
-                    batch.set_bytes(bytemuck::cast_slice(&qkv_params), 7);
-                    batch.dispatch_threadgroups((wg_q + wg_k + wg_v, 1, 1), (256, 1, 1));
+                    let q_dim_val = (c.num_heads * c.head_dim) as u32;
+                    let kv_dim_val = (c.kv_num_heads * c.head_dim) as u32;
+
+                    if c.is_ternary {
+                        // ── Ternary Q/K/V projections (3 separate dispatches) ──
+                        let ws = layer.weight_scales.unwrap_or([1.0; 7]);
+
+                        let dispatch_ternary = |batch: &aruminium::BatchEncoder, input: &MtlBuffer, w: &MtlBuffer, out: &MtlBuffer, n: u32, k: u32, scale: f32| {
+                            let params = [n, k, scale.to_bits()];
+                            batch.set_pipeline(&p.matvec_ternary);
+                            batch.set_buffer(input, 0, 0);
+                            batch.set_buffer(w, 0, 1);
+                            batch.set_buffer(out, 0, 2);
+                            batch.set_bytes(bytemuck::cast_slice(&params), 3);
+                            batch.dispatch_threadgroups((div_ceil(n as usize, 8), 1, 1), (256, 1, 1));
+                        };
+
+                        dispatch_ternary(batch, &self.scratch.hidden2, &layer.q_proj, &self.scratch.q, q_dim_val, c.hidden_size as u32, ws[0]);
+                        dispatch_ternary(batch, &self.scratch.hidden2, &layer.k_proj, &self.scratch.k, kv_dim_val, c.hidden_size as u32, ws[1]);
+                        dispatch_ternary(batch, &self.scratch.hidden2, &layer.v_proj, &self.scratch.v, kv_dim_val, c.hidden_size as u32, ws[2]);
+                    } else {
+                        // ── Fused Q+K+V projection (3→1 dispatch, Q4) ──
+                        let wg_q = div_ceil(q_dim_val as usize, 8);
+                        let wg_k = div_ceil(kv_dim_val as usize, 8);
+                        let wg_v = wg_k;
+                        let qkv_params = [q_dim_val, kv_dim_val, kv_dim_val, c.hidden_size as u32, wg_q as u32, wg_k as u32];
+                        batch.set_pipeline(&p.fused_qkv);
+                        batch.set_buffer(&self.scratch.hidden2, 0, 0);
+                        batch.set_buffer(&layer.q_proj, 0, 1);
+                        batch.set_buffer(&layer.k_proj, 0, 2);
+                        batch.set_buffer(&layer.v_proj, 0, 3);
+                        batch.set_buffer(&self.scratch.q, 0, 4);
+                        batch.set_buffer(&self.scratch.k, 0, 5);
+                        batch.set_buffer(&self.scratch.v, 0, 6);
+                        batch.set_bytes(bytemuck::cast_slice(&qkv_params), 7);
+                        batch.dispatch_threadgroups((wg_q + wg_k + wg_v, 1, 1), (256, 1, 1));
+                    }
 
                     // ── Fused RoPE Q+K (1 dispatch instead of 2) ──
                     let rope_params = [half_dim as u32, c.head_dim as u32, c.num_heads as u32, c.kv_num_heads as u32];
@@ -372,8 +427,17 @@ impl MetalModel {
                     batch.set_bytes(bytemuck::cast_slice(&attn_params), 4);
                     batch.dispatch_threadgroups((c.num_heads, 1, 1), (256, 1, 1));
 
-                    // ── O projection (input = attention output) ──
-                    {
+                    // ── O projection ──
+                    if c.is_ternary {
+                        let ws = layer.weight_scales.unwrap_or([1.0; 7]);
+                        let params = [c.hidden_size as u32, (c.num_heads * c.head_dim) as u32, ws[3].to_bits()];
+                        batch.set_pipeline(&p.matvec_ternary);
+                        batch.set_buffer(&self.scratch.attn_out, 0, 0);
+                        batch.set_buffer(&layer.o_proj, 0, 1);
+                        batch.set_buffer(&self.scratch.down, 0, 2);
+                        batch.set_bytes(bytemuck::cast_slice(&params), 3);
+                        batch.dispatch_threadgroups((div_ceil(c.hidden_size, 8), 1, 1), (256, 1, 1));
+                    } else {
                         let params = [c.hidden_size as u32, (c.num_heads * c.head_dim) as u32];
                         batch.set_pipeline(&p.matvec_q4_fast);
                         batch.set_buffer(&self.scratch.attn_out, 0, 0);
@@ -383,30 +447,50 @@ impl MetalModel {
                         batch.dispatch_threadgroups((div_ceil(c.hidden_size, 8), 1, 1), (256, 1, 1));
                     }
 
-                    // ── Fused residual add + post RMS norm (1 dispatch instead of 2) ──
+                    // ── Fused residual add + post RMS norm ──
                     batch.set_pipeline(&p.fused_add_norm);
-                    batch.set_buffer(&self.scratch.hidden, 0, 0);  // residual
-                    batch.set_buffer(&self.scratch.down, 0, 1);    // O-proj output
-                    batch.set_buffer(&self.scratch.hidden, 0, 2);  // out_residual (in-place)
+                    batch.set_buffer(&self.scratch.hidden, 0, 0);
+                    batch.set_buffer(&self.scratch.down, 0, 1);
+                    batch.set_buffer(&self.scratch.hidden, 0, 2);
                     batch.set_buffer(&layer.post_norm_weight, 0, 3);
-                    batch.set_buffer(&self.scratch.hidden2, 0, 4); // normed output
+                    batch.set_buffer(&self.scratch.hidden2, 0, 4);
                     batch.set_bytes(&norm_params_bytes, 5);
                     batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
 
-                    // ── Fused gate+up projection (2→1 dispatch) ──
-                    let inter = c.intermediate_size as u32;
-                    let wg_gate = div_ceil(c.intermediate_size, 8);
-                    let gate_up_params = [inter, c.hidden_size as u32, wg_gate as u32];
-                    batch.set_pipeline(&p.fused_gate_up);
-                    batch.set_buffer(&self.scratch.hidden2, 0, 0);
-                    batch.set_buffer(&layer.gate_proj, 0, 1);
-                    batch.set_buffer(&layer.up_proj, 0, 2);
-                    batch.set_buffer(&self.scratch.gate, 0, 3);
-                    batch.set_buffer(&self.scratch.up, 0, 4);
-                    batch.set_bytes(bytemuck::cast_slice(&gate_up_params), 5);
-                    batch.dispatch_threadgroups((wg_gate * 2, 1, 1), (256, 1, 1));
+                    // ── FFN projections ──
+                    if c.is_ternary {
+                        let ws = layer.weight_scales.unwrap_or([1.0; 7]);
+                        // Gate projection
+                        let params_g = [c.intermediate_size as u32, c.hidden_size as u32, ws[4].to_bits()];
+                        batch.set_pipeline(&p.matvec_ternary);
+                        batch.set_buffer(&self.scratch.hidden2, 0, 0);
+                        batch.set_buffer(&layer.gate_proj, 0, 1);
+                        batch.set_buffer(&self.scratch.gate, 0, 2);
+                        batch.set_bytes(bytemuck::cast_slice(&params_g), 3);
+                        batch.dispatch_threadgroups((div_ceil(c.intermediate_size, 8), 1, 1), (256, 1, 1));
+                        // Up projection
+                        let params_u = [c.intermediate_size as u32, c.hidden_size as u32, ws[5].to_bits()];
+                        batch.set_pipeline(&p.matvec_ternary);
+                        batch.set_buffer(&self.scratch.hidden2, 0, 0);
+                        batch.set_buffer(&layer.up_proj, 0, 1);
+                        batch.set_buffer(&self.scratch.up, 0, 2);
+                        batch.set_bytes(bytemuck::cast_slice(&params_u), 3);
+                        batch.dispatch_threadgroups((div_ceil(c.intermediate_size, 8), 1, 1), (256, 1, 1));
+                    } else {
+                        let inter = c.intermediate_size as u32;
+                        let wg_gate = div_ceil(c.intermediate_size, 8);
+                        let gate_up_params = [inter, c.hidden_size as u32, wg_gate as u32];
+                        batch.set_pipeline(&p.fused_gate_up);
+                        batch.set_buffer(&self.scratch.hidden2, 0, 0);
+                        batch.set_buffer(&layer.gate_proj, 0, 1);
+                        batch.set_buffer(&layer.up_proj, 0, 2);
+                        batch.set_buffer(&self.scratch.gate, 0, 3);
+                        batch.set_buffer(&self.scratch.up, 0, 4);
+                        batch.set_bytes(bytemuck::cast_slice(&gate_up_params), 5);
+                        batch.dispatch_threadgroups((wg_gate * 2, 1, 1), (256, 1, 1));
+                    }
 
-                    // ── SwiGLU ──
+                    // ── SwiGLU (bitnet uses relu2 but silu for throughput bench) ──
                     let silu_params = [c.intermediate_size as u32];
                     batch.set_pipeline(&p.silu_mul_f16);
                     batch.set_buffer(&self.scratch.gate, 0, 0);
@@ -416,7 +500,16 @@ impl MetalModel {
                     batch.dispatch_threadgroups((div_ceil(c.intermediate_size, 256), 1, 1), (256, 1, 1));
 
                     // ── Down projection ──
-                    {
+                    if c.is_ternary {
+                        let ws = layer.weight_scales.unwrap_or([1.0; 7]);
+                        let params = [c.hidden_size as u32, c.intermediate_size as u32, ws[6].to_bits()];
+                        batch.set_pipeline(&p.matvec_ternary);
+                        batch.set_buffer(&self.scratch.gate, 0, 0);
+                        batch.set_buffer(&layer.down_proj, 0, 1);
+                        batch.set_buffer(&self.scratch.down, 0, 2);
+                        batch.set_bytes(bytemuck::cast_slice(&params), 3);
+                        batch.dispatch_threadgroups((div_ceil(c.hidden_size, 8), 1, 1), (256, 1, 1));
+                    } else {
                         let params = [c.hidden_size as u32, c.intermediate_size as u32];
                         batch.set_pipeline(&p.matvec_q4_fast);
                         batch.set_buffer(&self.scratch.gate, 0, 0);

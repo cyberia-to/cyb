@@ -1,41 +1,55 @@
-// Ternary (BitNet) matvec — 906 GOPS batch=8, 105 tok/s
-// Weights: {-1, 0, +1}, packed 4 per byte (2 bits each).
-// Branchless: sign = (t & 1) - (t >> 1)
+// Ternary (BitNet) matvec — native 2-bit weights, safetensors layout
+// Weights: {-1, 0, +1} packed 4 per byte along N dimension.
+// Layout: [N/4, K] row-major — byte at W[n_packed * K + k] contains 4 outputs.
+// Encoding: 0=-1, 1=0, 2=+1, extracted by (byte >> (sub*2)) & 3, then -1.
+// NR=8 rows per workgroup (2 packed rows × 4 sub-neurons each).
+// 4 simdgroups sharing same n_packed get L1 cache hits on same bytes.
 
 #include <metal_stdlib>
 using namespace metal;
 
-struct MatvecParams { uint N; uint K; };
+struct TernaryParams { uint N; uint K; float scale; };
+
+constant uint NR = 8u;
 
 kernel void matvec_ternary(device const half *X   [[buffer(0)]],
                            device const uchar *W   [[buffer(1)]],
                            device half *Y          [[buffer(2)]],
-                           constant MatvecParams &p [[buffer(3)]],
-                           uint group_id [[threadgroup_position_in_grid]],
-                           uint lid [[thread_index_in_threadgroup]]) {
+                           constant TernaryParams &p [[buffer(3)]],
+                           uint wg_id [[threadgroup_position_in_grid]],
+                           uint lid [[thread_index_in_threadgroup]],
+                           uint simd_lane [[thread_index_in_simdgroup]],
+                           uint simd_group [[simdgroup_index_in_threadgroup]]) {
 
-    uint col = group_id * 256u + lid;
-    if (col >= p.N) return;
+    uint out_row = wg_id * NR + simd_group;
+    if (out_row >= p.N) return;
 
-    uint k_packed = p.K >> 2u;
+    uint n_packed = out_row >> 2u;
+    uint sub = out_row & 3u;
+    uint shift = sub << 1u;
+
+    uint row_offset = n_packed * p.K;
     float sum = 0.0f;
 
-    for (uint i = 0; i < k_packed; i += 4u) {
-        uint base_k = i << 2u;
-        device const half4 *X4 = (device const half4 *)(X + base_k);
+    // Vectorized: read 4 weight bytes at once (= 4 weights for our sub-neuron)
+    uint K4 = p.K >> 2u;
+    for (uint k4 = simd_lane; k4 < K4; k4 += 32u) {
+        uint base_k = k4 << 2u;
 
-        for (uint j = 0; j < 4u; j++) {
-            uint8_t packed = W[(i + j) * p.N + col];
+        // Read 4 bytes as one uint (single memory transaction)
+        uint packed4 = *(device const uint *)(W + row_offset + base_k);
+        int v0 = int((packed4 >> shift) & 3u) - 1;
+        int v1 = int(((packed4 >> 8u) >> shift) & 3u) - 1;
+        int v2 = int(((packed4 >> 16u) >> shift) & 3u) - 1;
+        int v3 = int(((packed4 >> 24u) >> shift) & 3u) - 1;
 
-            // Branchless: sign = (t & 1) - (t >> 1)
-            float s0 = float(int(packed & 1u) - int((packed >> 1u) & 1u));
-            float s1 = float(int((packed >> 2u) & 1u) - int((packed >> 3u) & 1u));
-            float s2 = float(int((packed >> 4u) & 1u) - int((packed >> 5u) & 1u));
-            float s3 = float(int((packed >> 6u) & 1u) - int((packed >> 7u) & 1u));
-
-            float4 xv = float4(X4[j]);
-            sum += xv.x * s0 + xv.y * s1 + xv.z * s2 + xv.w * s3;
-        }
+        float4 xv = float4(*(device const half4 *)(X + base_k));
+        sum += xv.x * float(v0) + xv.y * float(v1)
+             + xv.z * float(v2) + xv.w * float(v3);
     }
-    Y[col] = half(sum);
+
+    sum = simd_sum(sum);
+    if (simd_lane == 0u) {
+        Y[out_row] = half(sum * p.scale);
+    }
 }
