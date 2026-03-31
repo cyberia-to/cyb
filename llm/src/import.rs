@@ -29,8 +29,10 @@ pub struct ImportResult {
 pub fn canonicalize(model_dir: &Path) -> ImportResult {
     let mut result = ImportResult::default();
 
-    // 1. Convert JSON configs → TOML
+    // 1. Convert JSON configs → TOML (or create manually for non-HF models)
     convert_config_json(model_dir, &mut result);
+    create_manual_configs(model_dir, &mut result);
+    ensure_model_type(model_dir);
     convert_tokenizer_config(model_dir, &mut result);
     convert_generation_config(model_dir, &mut result);
     create_vocab_toml(model_dir, &mut result);
@@ -73,14 +75,22 @@ fn convert_config_json(dir: &Path, result: &mut ImportResult) {
 
     let mut toml = String::new();
 
-    // Architecture
-    if let Some(v) = json.get("architectures").and_then(|a| a.as_array()).and_then(|a| a.first()).and_then(|v| v.as_str()) {
-        toml.push_str(&format!("architecture = \"{v}\"\n"));
-    } else if let Some(v) = json.get("model_type").and_then(|v| v.as_str()) {
+    // model_type — always first, used for runtime dispatch
+    if let Some(v) = json.get("model_type").and_then(|v| v.as_str()) {
         toml.push_str(&format!("model_type = \"{v}\"\n"));
     }
 
-    // Core params — emit each if present
+    // architecture — full HF class name
+    if let Some(v) = json.get("architectures").and_then(|a| a.as_array())
+        .and_then(|a| a.first()).and_then(|v| v.as_str())
+    {
+        toml.push_str(&format!("architecture = \"{v}\"\n"));
+    }
+
+    // For VLM models, arch params are nested under text_config
+    let params = json.get("text_config").unwrap_or(&json);
+
+    // Core integer params
     let fields = [
         ("hidden_size", "hidden_size"),
         ("num_attention_heads", "num_attention_heads"),
@@ -89,11 +99,13 @@ fn convert_config_json(dir: &Path, result: &mut ImportResult) {
         ("intermediate_size", "intermediate_size"),
         ("vocab_size", "vocab_size"),
         ("max_position_embeddings", "max_position_embeddings"),
+        ("head_dim", "head_dim"),
         ("num_experts", "num_experts"),
         ("num_experts_per_tok", "num_experts_per_tok"),
+        ("num_labels", "num_labels"),
     ];
     for (json_key, toml_key) in fields {
-        if let Some(v) = json.get(json_key).and_then(|v| v.as_u64()) {
+        if let Some(v) = params.get(json_key).and_then(|v| v.as_u64()) {
             toml.push_str(&format!("{toml_key} = {v}\n"));
         }
     }
@@ -104,7 +116,7 @@ fn convert_config_json(dir: &Path, result: &mut ImportResult) {
         ("layer_norm_eps", "layer_norm_eps"),
     ];
     for (json_key, toml_key) in float_fields {
-        if let Some(v) = json.get(json_key).and_then(|v| v.as_f64()) {
+        if let Some(v) = params.get(json_key).and_then(|v| v.as_f64()) {
             toml.push_str(&format!("{toml_key} = {v}\n"));
         }
     }
@@ -113,9 +125,14 @@ fn convert_config_json(dir: &Path, result: &mut ImportResult) {
         ("tie_word_embeddings", "tie_word_embeddings"),
     ];
     for (json_key, toml_key) in bool_fields {
-        if let Some(v) = json.get(json_key).and_then(|v| v.as_bool()) {
+        if let Some(v) = params.get(json_key).and_then(|v| v.as_bool()) {
             toml.push_str(&format!("{toml_key} = {v}\n"));
         }
+    }
+
+    // Detect vision projector component
+    if dir.join("mmproj-model-f16.gguf").exists() {
+        toml.push_str("\n[components.vision]\nweights = \"mmproj-model-f16.gguf\"\nrole = \"vision-encoder\"\n");
     }
 
     if let Err(e) = std::fs::write(&dst, &toml) {
@@ -123,6 +140,180 @@ fn convert_config_json(dir: &Path, result: &mut ImportResult) {
         return;
     }
     result.configs_converted += 1;
+}
+
+/// Ensure config.toml has model_type field (patch existing files that lack it)
+fn ensure_model_type(dir: &Path) {
+    let path = dir.join("config.toml");
+    let content = match std::fs::read_to_string(&path) {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+    if content.contains("model_type") {
+        return;
+    }
+    // Infer model_type from architecture field
+    let model_type = if let Some(arch_line) = content.lines().find(|l| l.starts_with("architecture")) {
+        let arch = arch_line.split('"').nth(1).unwrap_or("");
+        match arch {
+            a if a.contains("Qwen3_5") => "qwen3_5_vl",
+            a if a.contains("Qwen3") => "qwen3",
+            a if a.contains("Qwen2_5_VL") || a.contains("Qwen2VL") => "qwen2_vl",
+            a if a.contains("Qwen2") => "qwen2",
+            a if a.contains("Llama") => "llama",
+            a if a.contains("Phi3") => "phi3",
+            a if a.contains("BitNet") => "bitnet",
+            a if a.contains("MiMo") => "mimo",
+            a if a.contains("Roberta") => "roberta",
+            a if a.contains("Deberta") => "deberta-v2",
+            a if a.contains("ModernBert") => "modernbert",
+            a if a.contains("EuroBert") => "eurobert",
+            a if a.contains("Moondream") || a.contains("moondream") => "moondream",
+            _ => return, // can't infer, skip
+        }
+    } else {
+        return;
+    };
+
+    let new_content = format!("model_type = \"{model_type}\"\n{content}");
+    let _ = std::fs::write(&path, new_content);
+}
+
+/// Create config.toml for models without config.json (media, non-HF)
+fn create_manual_configs(dir: &Path, result: &mut ImportResult) {
+    let dst = dir.join("config.toml");
+    if dst.exists() {
+        return;
+    }
+
+    let name = dir.file_name().and_then(|n| n.to_str()).unwrap_or("");
+
+    let toml = match name {
+        "glotlid" => r#"model_type = "fasttext"
+num_languages = 2102
+embedding_dim = 256
+"#,
+        "whisper-small" => r#"model_type = "whisper"
+architecture = "WhisperForConditionalGeneration"
+hidden_size = 768
+num_attention_heads = 12
+num_hidden_layers = 12
+vocab_size = 51865
+num_mels = 80
+"#,
+        "yolo11n" => r#"model_type = "yolo"
+architecture = "YOLOv11"
+variant = "nano"
+num_classes = 80
+input_size = 640
+"#,
+        "beats" => r#"model_type = "beats"
+architecture = "BEATsAudioClassifier"
+hidden_size = 768
+num_attention_heads = 12
+num_hidden_layers = 12
+num_labels = 527
+input_sample_rate = 16000
+"#,
+        "piper-tts" => {
+            // Scan for voice ONNX files
+            let mut toml = String::from("model_type = \"vits\"\narchitecture = \"VitsModel\"\nsample_rate = 22050\n\n");
+            if let Ok(scan) = scan_piper_voices(dir) {
+                toml.push_str(&scan);
+            }
+            return write_config(&dst, &toml, result);
+        }
+        "xtts-v2" => r#"model_type = "xtts"
+architecture = "XttsModel"
+gpt_layers = 30
+gpt_n_model_channels = 1024
+gpt_n_heads = 16
+num_audio_tokens = 1026
+d_vector_dim = 512
+output_sample_rate = 24000
+languages = ["en", "es", "fr", "de", "it", "pt", "pl", "tr", "ru", "nl", "cs", "ar", "zh-cn", "hu", "ko", "ja", "hi"]
+
+[components.gpt]
+weights = "model.pth"
+role = "autoregressive-decoder"
+
+[components.dvae]
+weights = "dvae.pth"
+role = "discrete-vae"
+
+[components.mel_stats]
+weights = "mel_stats.pth"
+role = "mel-statistics"
+
+[components.speakers]
+weights = "speakers_xtts.pth"
+role = "speaker-embeddings"
+"#,
+        "wan22-video" => {
+            // Find VAE safetensors
+            let vae_file = find_vae_file(dir);
+            let vae_path = vae_file.as_deref().unwrap_or("VAE/Wan2.2_VAE.safetensors");
+            let toml = format!(
+                "model_type = \"wan\"\narchitecture = \"Wan2.2-TI2V\"\ntask = \"text-image-to-video\"\n\n\
+                 [components.transformer]\nweights = \"weights.gguf\"\nrole = \"diffusion-transformer\"\n\n\
+                 [components.vae]\nweights = \"{vae_path}\"\nrole = \"vae-decoder\"\n"
+            );
+            return write_config(&dst, &toml, result);
+        }
+        _ => return,
+    };
+
+    write_config(&dst, toml, result);
+}
+
+fn write_config(dst: &Path, content: &str, result: &mut ImportResult) {
+    if let Err(e) = std::fs::write(dst, content) {
+        result.errors.push(format!("write config.toml: {e}"));
+    } else {
+        result.configs_converted += 1;
+    }
+}
+
+fn scan_piper_voices(dir: &Path) -> std::io::Result<String> {
+    let mut voices = String::new();
+    fn visit(dir: &Path, base: &Path, voices: &mut String) {
+        if let Ok(entries) = std::fs::read_dir(dir) {
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.is_dir() {
+                    visit(&path, base, voices);
+                } else if path.extension().map(|e| e == "onnx").unwrap_or(false) {
+                    let rel = path.strip_prefix(base).unwrap_or(&path);
+                    let name = path.file_stem().and_then(|n| n.to_str()).unwrap_or("");
+                    // Extract language from name (e.g. "en_US-amy-low" → "en")
+                    let lang = name.split('-').next().and_then(|s| s.split('_').next()).unwrap_or("unknown");
+                    voices.push_str(&format!(
+                        "[[voices]]\nname = \"{name}\"\nlanguage = \"{lang}\"\nweights = \"{}\"\n\n",
+                        rel.display()
+                    ));
+                }
+            }
+        }
+    }
+    visit(dir, dir, &mut voices);
+    Ok(voices)
+}
+
+fn find_vae_file(dir: &Path) -> Option<String> {
+    let vae_dir = dir.join("VAE");
+    if !vae_dir.exists() {
+        return None;
+    }
+    if let Ok(entries) = std::fs::read_dir(&vae_dir) {
+        for entry in entries.flatten() {
+            let name = entry.file_name();
+            let name = name.to_str().unwrap_or("");
+            if name.ends_with(".safetensors") {
+                return Some(format!("VAE/{name}"));
+            }
+        }
+    }
+    None
 }
 
 fn convert_tokenizer_config(dir: &Path, result: &mut ImportResult) {

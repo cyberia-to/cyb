@@ -425,35 +425,135 @@ the scheduler is a policy function over atoms — it decides WHERE, not WHAT. ch
 
 ## soma model standard
 
-one model = one directory with five TOML files + one weights file. no JSON. no duplicates. no waste.
+one model = one directory. config.toml is the single entry point — the runtime reads it and knows everything: what the model is, what to load, how to run it. no JSON. no duplicates. no waste.
 
 ### canonical layout
 
 ```
 model_name/
-├── config.toml        # architecture
-├── vocab.toml         # tokenizer vocabulary + merge rules
-├── chat.toml          # chat template + special tokens
-├── sampling.toml      # default inference params
-├── weights.*          # one weights file
-└── README.md          # source, license, abliteration, benchmarks
+├── config.toml        # REQUIRED: model_type, architecture, params, components
+├── tokenizer.json     # if model has tokenizer (kept for tokenizers crate)
+├── vocab.toml         # tokenizer metadata (type, vocab_size)
+├── chat.toml          # chat template + special tokens (generative models)
+├── sampling.toml      # default inference params (generative models)
+└── weights.*          # weights file(s) declared in config.toml
 ```
 
-### config.toml — architecture
+only config.toml and weights are required. everything else is optional based on model type.
+
+### config.toml — the single entry point
+
+every model has config.toml. it declares three things:
+1. what the model is (`model_type`, `architecture`)
+2. how big it is (dimensions, layers, vocab)
+3. where the weights are (implicit `weights.*` or explicit `[components]`)
+
+#### LLM decoder example (qwen, llama, deepseek)
 
 ```toml
+model_type = "qwen3"
 architecture = "Qwen3ForCausalLM"
 hidden_size = 1024
 num_attention_heads = 16
 num_key_value_heads = 8
 num_hidden_layers = 28
-intermediate_size = 2816
+intermediate_size = 3072
 vocab_size = 151936
 max_position_embeddings = 40960
 rope_theta = 1_000_000.0
 rms_norm_eps = 1e-6
 tie_word_embeddings = true
 ```
+
+#### multi-component model (TTS, diffusion, VLM with vision projector)
+
+```toml
+model_type = "xtts"
+architecture = "XttsModel"
+gpt_layers = 30
+gpt_n_model_channels = 1024
+
+[components.gpt]
+weights = "model.pth"
+role = "autoregressive-decoder"
+
+[components.dvae]
+weights = "dvae.pth"
+role = "discrete-vae"
+
+[components.speakers]
+weights = "speakers.pth"
+role = "speaker-embeddings"
+```
+
+the `[components]` section replaces the single `weights.*` convention. runtime iterates components and loads each by role.
+
+#### multi-voice TTS
+
+```toml
+model_type = "vits"
+architecture = "VitsModel"
+sample_rate = 22050
+
+[[voices]]
+name = "en_US-amy-medium"
+language = "en"
+weights = "en/en_US/amy/medium/en_US-amy-medium.onnx"
+
+[[voices]]
+name = "ru_RU-denis-medium"
+language = "ru"
+weights = "ru/ru_RU/denis/medium/ru_RU-denis-medium.onnx"
+```
+
+#### classifier/encoder (deberta, granite, jina)
+
+```toml
+model_type = "roberta"
+architecture = "RobertaForSequenceClassification"
+hidden_size = 768
+num_attention_heads = 12
+num_hidden_layers = 12
+num_labels = 2
+```
+
+#### detector (YOLO)
+
+```toml
+model_type = "yolo"
+architecture = "YOLOv11"
+variant = "nano"
+num_classes = 80
+input_size = 640
+```
+
+#### language classifier (fasttext)
+
+```toml
+model_type = "fasttext"
+num_languages = 2102
+```
+
+### model_type values
+
+| model_type | runtime path | examples |
+|-----------|-------------|----------|
+| qwen2, qwen3 | transformer_decoder | qwen2.5-*, qwen3-* |
+| llama | transformer_decoder | smollm2, mistral |
+| phi3 | transformer_decoder | nuextract-1.5 |
+| bitnet | transformer_decoder (ternary) | bitnet-2b |
+| mimo | moe_decoder | mimo-7b-rl |
+| roberta, deberta-v2 | transformer_encoder | granite-hap, deberta-zeroshot |
+| modernbert, eurobert | transformer_encoder | modernbert, jina-v5 |
+| moondream | transformer_decoder + vision | moondream2 |
+| qwen2_vl, qwen3_5_vl | transformer_decoder + vision | qwen2.5-vl, qwen3.5-4b |
+| whisper | encoder_decoder | whisper-small |
+| yolo | cnn_detector | yolo11n |
+| beats | transformer_encoder (audio) | beats |
+| fasttext | fasttext | glotlid |
+| vits | tts (VITS/piper) | piper-tts |
+| xtts | tts (autoregressive) | xtts-v2 |
+| wan | diffusion_dit | wan22-video |
 
 ### vocab.toml — tokenizer
 
