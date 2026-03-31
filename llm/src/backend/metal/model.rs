@@ -395,7 +395,7 @@ impl MetalModel {
 
                     // ── Fused gate+up projection (2→1 dispatch) ──
                     let inter = c.intermediate_size as u32;
-                    let wg_gate = div_ceil(inter as usize, 8);
+                    let wg_gate = div_ceil(c.intermediate_size, 8);
                     let gate_up_params = [inter, c.hidden_size as u32, wg_gate as u32];
                     batch.set_pipeline(&p.fused_gate_up);
                     batch.set_buffer(&self.scratch.hidden2, 0, 0);
