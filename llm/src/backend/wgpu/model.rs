@@ -8,23 +8,7 @@ use std::sync::Arc;
 use crate::onnx_proto::onnx::ModelProto;
 use prost::Message;
 
-/// Convert TOML value to serde_json::Value for uniform config access
-fn toml_to_json(v: &toml::Value) -> serde_json::Value {
-    match v {
-        toml::Value::String(s) => serde_json::Value::String(s.clone()),
-        toml::Value::Integer(i) => serde_json::json!(*i),
-        toml::Value::Float(f) => serde_json::json!(*f),
-        toml::Value::Boolean(b) => serde_json::Value::Bool(*b),
-        toml::Value::Array(a) => serde_json::Value::Array(a.iter().map(toml_to_json).collect()),
-        toml::Value::Table(t) => {
-            let m: serde_json::Map<String, serde_json::Value> = t.iter()
-                .map(|(k, v)| (k.clone(), toml_to_json(v)))
-                .collect();
-            serde_json::Value::Object(m)
-        }
-        toml::Value::Datetime(d) => serde_json::Value::String(d.to_string()),
-    }
-}
+use crate::cyb_format::toml_to_json_value as toml_to_json;
 
 use super::dispatch;
 use super::pipelines::{ComputeShader, Pipelines};
@@ -272,6 +256,31 @@ pub fn safetensors_to_f32(data: &[u8], dtype: crate::ir::DType) -> Vec<f32> {
             .chunks_exact(2)
             .map(|c| half::f16::from_le_bytes([c[0], c[1]]).to_f32())
             .collect(),
+        DType::Q4 => {
+            // GGUF Q4_0: blocks of {half scale, uint8_t qs[16]} = 18 bytes = 32 weights
+            let block_size = 18;
+            data.chunks_exact(block_size).flat_map(|block| {
+                let scale_bits = u16::from_le_bytes([block[0], block[1]]);
+                let scale = half::f16::from_bits(scale_bits).to_f32();
+                let qs = &block[2..18];
+                (0..16).flat_map(move |j| {
+                    let byte = qs[j];
+                    let lo = (byte & 0x0F) as i32 - 8;
+                    let hi = (byte >> 4) as i32 - 8;
+                    [scale * lo as f32, scale * hi as f32]
+                })
+            }).collect()
+        }
+        DType::Q8 => {
+            // GGUF Q8_0: blocks of {half scale, int8_t qs[32]} = 34 bytes = 32 weights
+            let block_size = 34;
+            data.chunks_exact(block_size).flat_map(|block| {
+                let scale_bits = u16::from_le_bytes([block[0], block[1]]);
+                let scale = half::f16::from_bits(scale_bits).to_f32();
+                let qs = &block[2..34];
+                qs.iter().map(move |&q| scale * (q as i8) as f32)
+            }).collect()
+        }
         DType::U8 | DType::Ternary => {
             // Ternary weights: 4 values packed per byte (2 bits each)
             // Encoding: 0b00 = -1, 0b01 = 0, 0b10 = +1
@@ -570,9 +579,20 @@ impl NativeModel {
         let has_qk_norm = tensors.contains_key("model.layers.0.attn.q_norm.layernorm.weight");
         let head_dim = if has_qk_norm {
             tensors["model.layers.0.attn.q_norm.layernorm.weight"].dims[0] as usize
-        } else {
-            let cos_tp = tensors.get("cos_cache").ok_or("Missing cos_cache")?;
+        } else if let Some(cos_tp) = tensors.get("cos_cache") {
             (cos_tp.dims[1] as usize) * 2
+        } else {
+            // Fallback: read from config.toml/config.json in model directory
+            let model_dir = path.parent().unwrap_or(Path::new("."));
+            let cfg_path = model_dir.join("config.toml");
+            if cfg_path.exists() {
+                let s = std::fs::read_to_string(&cfg_path).unwrap_or_default();
+                let tv: toml::Value = toml::from_str(&s).unwrap_or(toml::Value::Table(Default::default()));
+                let cj = toml_to_json(&tv);
+                let h = cj.get("hidden_size").and_then(|v| v.as_u64()).unwrap_or(768) as usize;
+                let n = cj.get("num_attention_heads").and_then(|v| v.as_u64()).unwrap_or(12) as usize;
+                h / n
+            } else { 64 } // default head_dim
         };
 
         let block_size = graph
@@ -860,14 +880,39 @@ impl NativeModel {
         let final_norm_name = format!("model.layers.{num_layers}.final_norm_layernorm.weight");
         let final_norm_weight = load_f32_weight(&final_norm_name)?;
 
-        // RoPE caches
-        let cos_tp = tensors.get("cos_cache").ok_or("Missing cos_cache")?;
-        let cos_raw = read_tensor_raw(cos_tp, model_dir)?;
-        let cos_cache = raw_to_f32(&cos_raw, cos_tp.data_type);
-
-        let sin_tp = tensors.get("sin_cache").ok_or("Missing sin_cache")?;
-        let sin_raw = read_tensor_raw(sin_tp, model_dir)?;
-        let sin_cache = raw_to_f32(&sin_raw, sin_tp.data_type);
+        // RoPE caches — from ONNX or generated
+        let (cos_cache, sin_cache) = if let Some(cos_tp) = tensors.get("cos_cache") {
+            let cos_raw = read_tensor_raw(cos_tp, model_dir)?;
+            let sin_tp = tensors.get("sin_cache").ok_or("Missing sin_cache")?;
+            let sin_raw = read_tensor_raw(sin_tp, model_dir)?;
+            (raw_to_f32(&cos_raw, cos_tp.data_type), raw_to_f32(&sin_raw, sin_tp.data_type))
+        } else {
+            // Generate RoPE cache (cos_cache not baked into this ONNX export)
+            let rope_theta = {
+                let md = path.parent().unwrap_or(Path::new("."));
+                let cfg = md.join("config.toml");
+                if cfg.exists() {
+                    let s = std::fs::read_to_string(&cfg).unwrap_or_default();
+                    let tv: toml::Value = toml::from_str(&s).unwrap_or(toml::Value::Table(Default::default()));
+                    let cj = toml_to_json(&tv);
+                    cj.get("rope_theta").and_then(|v| v.as_f64()).unwrap_or(10000.0) as f32
+                } else { 10000.0f32 }
+            };
+            log::info!("Generating RoPE cache (not found in model, theta={rope_theta})");
+            let half_dim = head_dim / 2;
+            let max_seq = 2048;
+            let mut cos = vec![0.0f32; max_seq * half_dim];
+            let mut sin = vec![0.0f32; max_seq * half_dim];
+            for pos in 0..max_seq {
+                for i in 0..half_dim {
+                    let freq = 1.0 / (rope_theta as f64).powf(2.0 * i as f64 / head_dim as f64);
+                    let angle = pos as f64 * freq;
+                    cos[pos * half_dim + i] = angle.cos() as f32;
+                    sin[pos * half_dim + i] = angle.sin() as f32;
+                }
+            }
+            (cos, sin)
+        };
 
         let kv_cache = (0..num_layers)
             .map(|_| KVCache {

@@ -423,11 +423,18 @@ fn run_embed(model_path: &str, text: &str) {
     let path = std::path::Path::new(model_path);
     let model_dir = path.parent().unwrap_or(std::path::Path::new("."));
 
-    // Read config.json for model parameters
-    let config_path = model_dir.join("config.json");
-    let bert_config = if config_path.exists() {
-        let config_str = std::fs::read_to_string(&config_path).expect("Cannot read config.json");
-        let config_json: serde_json::Value = serde_json::from_str(&config_str).expect("Invalid config.json");
+    // Read config from config.json or config.toml
+    let config_json_path = model_dir.join("config.json");
+    let config_toml_path = model_dir.join("config.toml");
+    let bert_config = if config_json_path.exists() || config_toml_path.exists() {
+        let config_json: serde_json::Value = if config_json_path.exists() {
+            let s = std::fs::read_to_string(&config_json_path).expect("Cannot read config.json");
+            serde_json::from_str(&s).expect("Invalid config.json")
+        } else {
+            let s = std::fs::read_to_string(&config_toml_path).expect("Cannot read config.toml");
+            let tv: toml::Value = toml::from_str(&s).expect("Invalid config.toml");
+            cyb_llm::cyb_format::toml_to_json_value(&tv)
+        };
 
         // Auto-detect weight prefix from model_type
         let model_type = config_json["model_type"].as_str().unwrap_or("");
@@ -464,13 +471,20 @@ fn run_embed(model_path: &str, text: &str) {
     println!("Loading weights from {}...", path.display());
     let mut graph_with_weights = cyb_llm::loader::load_model(path).expect("Failed to load model");
 
-    // Detect model type for template selection
-    let model_type = if config_path.exists() {
-        let s = std::fs::read_to_string(&config_path).unwrap_or_default();
-        let j: serde_json::Value = serde_json::from_str(&s).unwrap_or_default();
-        j["model_type"].as_str().unwrap_or("").to_string()
-    } else {
-        String::new()
+    // Detect model type from config
+    let model_type = {
+        let jp = model_dir.join("config.json");
+        let tp = model_dir.join("config.toml");
+        if jp.exists() {
+            let s = std::fs::read_to_string(&jp).unwrap_or_default();
+            let j: serde_json::Value = serde_json::from_str(&s).unwrap_or_default();
+            j["model_type"].as_str().unwrap_or("").to_string()
+        } else if tp.exists() {
+            let s = std::fs::read_to_string(&tp).unwrap_or_default();
+            let tv: toml::Value = toml::from_str(&s).unwrap_or(toml::Value::Table(Default::default()));
+            let j = cyb_llm::cyb_format::toml_to_json_value(&tv);
+            j["model_type"].as_str().unwrap_or("").to_string()
+        } else { String::new() }
     };
 
     let is_modernbert = model_type == "modernbert";

@@ -870,3 +870,21 @@ fn read_string_at(data: &[u8], pos: &mut usize) -> io::Result<String> {
     *pos += len;
     Ok(s)
 }
+
+/// Convert a TOML value to serde_json::Value for uniform config access
+pub fn toml_to_json_value(v: &toml::Value) -> serde_json::Value {
+    match v {
+        toml::Value::String(s) => serde_json::Value::String(s.clone()),
+        toml::Value::Integer(i) => serde_json::json!(*i),
+        toml::Value::Float(f) => serde_json::json!(*f),
+        toml::Value::Boolean(b) => serde_json::Value::Bool(*b),
+        toml::Value::Array(a) => serde_json::Value::Array(a.iter().map(toml_to_json_value).collect()),
+        toml::Value::Table(t) => {
+            let m: serde_json::Map<String, serde_json::Value> = t.iter()
+                .map(|(k, v)| (k.clone(), toml_to_json_value(v)))
+                .collect();
+            serde_json::Value::Object(m)
+        }
+        toml::Value::Datetime(d) => serde_json::Value::String(d.to_string()),
+    }
+}
