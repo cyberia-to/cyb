@@ -158,7 +158,7 @@ fn attack_empty_shards() {
         device_id: "dev".into(),
         das_root: "0".repeat(64),
             vdf_proof: None,
-            shard_copies: 1,    };
+            shard_copies: 1, deleted: false,};
 
     assert_eq!(
         g.validated_insert(entry),
@@ -186,7 +186,7 @@ fn attack_empty_name() {
         device_id: "dev".into(),
         das_root: "0".repeat(64),
             vdf_proof: None,
-            shard_copies: 1,    };
+            shard_copies: 1, deleted: false,};
 
     assert_eq!(g.validated_insert(entry), Err(ValidationError::EmptyName));
 }
@@ -223,7 +223,7 @@ fn attack_registry_bloat() {
             device_id: "d".into(),
             das_root: "0".repeat(64),
             vdf_proof: None,
-            shard_copies: 1,        };
+            shard_copies: 1, deleted: false,};
         match g.validated_insert(entry) {
             Ok(()) => accepted += 1,
             Err(ValidationError::RegistryFull) => rejected += 1,
@@ -419,7 +419,7 @@ fn attack_forged_prev_hash() {
         device_id: "dev".into(),
         das_root: "0".repeat(64),
             vdf_proof: None,
-            shard_copies: 1,    };
+            shard_copies: 1, deleted: false,};
 
     // entry_hash was computed with real_prev but entry claims forged prev.
     // verify_hash() recomputes with the claimed prev → mismatch.
@@ -503,7 +503,7 @@ fn make_entry(name: &str, ts: u64, device: &str) -> FileEntry {
         device_id: device.into(),
         das_root: "0".repeat(64),
             vdf_proof: None,
-            shard_copies: 1,    }
+            shard_copies: 1, deleted: false,}
 }
 
 fn make_entry_with_hashes(name: &str, ts: u64, device: &str, hashes: &[&str]) -> FileEntry {
@@ -521,7 +521,7 @@ fn make_entry_with_hashes(name: &str, ts: u64, device: &str, hashes: &[&str]) ->
         device_id: device.into(),
         das_root: "0".repeat(64),
             vdf_proof: None,
-            shard_copies: 1,    }
+            shard_copies: 1, deleted: false,}
 }
 
 fn make_valid_entry(name: &str, ts: u64, device: &str) -> FileEntry {
@@ -540,5 +540,5 @@ fn make_valid_entry(name: &str, ts: u64, device: &str) -> FileEntry {
         device_id: device.into(),
         das_root: "0".repeat(64),
             vdf_proof: None,
-            shard_copies: 1,    }
+            shard_copies: 1, deleted: false,}
 }

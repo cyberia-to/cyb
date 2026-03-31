@@ -164,7 +164,7 @@ fn chaos() {
                     timestamp: ts, prev_hash: prev, entry_hash,
                     device_id: "chaos".into(), das_root: format!("{:?}", commitment.root),
             vdf_proof: None,
-            shard_copies: 1,                });
+            shard_copies: 1, deleted: false,});
 
                 files.insert(name, FileTruth { data, k, n, shards, shard_hashes, das_commitment: commitment });
                 s.put += 1;

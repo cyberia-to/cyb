@@ -621,7 +621,7 @@ fn make_entry(name: &str, ts: u64, device: &str, prev: &str) -> FileEntry {
         device_id: device.into(),
         das_root: "0".repeat(64),
             vdf_proof: None,
-            shard_copies: 1,    }
+            shard_copies: 1, deleted: false,}
 }
 
 fn make_entry_with(
@@ -645,7 +645,7 @@ fn make_entry_with(
         device_id: device.into(),
         das_root: "0".repeat(64),
             vdf_proof: None,
-            shard_copies: 1,    }
+            shard_copies: 1, deleted: false,}
 }
 
 fn sorted_names(g: &GSet) -> Vec<String> {

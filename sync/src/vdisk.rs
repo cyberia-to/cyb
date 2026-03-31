@@ -268,6 +268,7 @@ impl VDiskManager {
             das_root: format!("{:?}", commitment.root),
             vdf_proof: None,
             shard_copies: 1,
+            deleted: false,
         };
         self.registry.insert(entry);
 
@@ -421,7 +422,7 @@ impl VDiskManager {
                         device_id,
                         das_root: format!("{:?}", commitment.root),
                         vdf_proof: None,
-                        shard_copies: config.shard_copies,
+                        shard_copies: config.shard_copies, deleted: false,
                     });
                     rechunked += 1;
                 }
@@ -715,6 +716,7 @@ mod tests {
             das_root: "0".repeat(64),
             vdf_proof: None,
             shard_copies: 1,
+            deleted: false,
         });
 
         mgr.merge_registry(&other);

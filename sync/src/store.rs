@@ -42,6 +42,9 @@ pub struct FileEntry {
     /// Higher = more availability, more storage. Default 1.
     #[serde(default = "default_shard_copies")]
     pub shard_copies: usize,
+    /// Tombstone: true = this file has been deleted. Shards can be GC'd.
+    #[serde(default)]
+    pub deleted: bool,
 }
 
 fn default_shard_copies() -> usize { 1 }
@@ -187,6 +190,86 @@ impl ChunkStore {
         self.index.contains_key(&hex) || self.root.join(&hex).exists()
     }
 
+    /// Remove a chunk by hash hex. Returns bytes freed.
+    pub fn remove(&mut self, hash_hex: &str) -> std::io::Result<u64> {
+        let path = self.root.join(hash_hex);
+        let size = if path.exists() {
+            let meta = std::fs::metadata(&path)?;
+            std::fs::remove_file(&path)?;
+            meta.len()
+        } else {
+            0
+        };
+        self.index.remove(hash_hex);
+        self.used = self.used.saturating_sub(size);
+        Ok(size)
+    }
+
+    /// Garbage collect: remove chunks not in the live set.
+    /// Returns (removed_count, bytes_freed).
+    pub fn gc(&mut self, live_hashes: &std::collections::HashSet<String>) -> std::io::Result<(usize, u64)> {
+        // List all chunks on disk.
+        let all_chunks: Vec<String> = std::fs::read_dir(&self.root)?
+            .filter_map(|e| e.ok())
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.len() == 64 { Some(name) } else { None }
+            })
+            .collect();
+
+        let mut removed = 0;
+        let mut freed = 0u64;
+
+        for hash_hex in &all_chunks {
+            if !live_hashes.contains(hash_hex) {
+                freed += self.remove(hash_hex)?;
+                removed += 1;
+            }
+        }
+
+        Ok((removed, freed))
+    }
+
+    /// Integrity audit: verify all local chunks match their hash.
+    /// Returns (ok_count, corrupt_count, corrupt_hashes).
+    pub fn audit(&self) -> std::io::Result<(usize, usize, Vec<String>)> {
+        let mut ok = 0;
+        let mut corrupt = Vec::new();
+
+        let entries: Vec<String> = std::fs::read_dir(&self.root)?
+            .filter_map(|e| e.ok())
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.len() == 64 { Some(name) } else { None }
+            })
+            .collect();
+
+        for hash_hex in &entries {
+            let path = self.root.join(hash_hex);
+            if let Ok(bytes) = std::fs::read(&path) {
+                if verify_chunk(&bytes, hash_hex) {
+                    ok += 1;
+                } else {
+                    corrupt.push(hash_hex.clone());
+                }
+            }
+        }
+
+        Ok((ok, corrupt.len(), corrupt))
+    }
+
+    /// List all chunk hashes on disk.
+    pub fn list_chunks(&self) -> std::io::Result<Vec<String>> {
+        let entries: Vec<String> = std::fs::read_dir(&self.root)?
+            .filter_map(|e| e.ok())
+            .filter_map(|e| {
+                let name = e.file_name().to_string_lossy().to_string();
+                if name.len() == 64 { Some(name) } else { None }
+            })
+            .collect();
+        Ok(entries)
+    }
+
     pub fn used(&self) -> u64 {
         self.used
     }
@@ -287,22 +370,75 @@ impl GSet {
         cyber_hemera::hash(&data).to_hex()
     }
 
+    /// List live (non-deleted) file names.
     pub fn list(&self) -> Vec<&str> {
-        let mut names: Vec<&str> = self.files.keys().map(|s| s.as_str()).collect();
+        let mut names: Vec<&str> = self.files
+            .values()
+            .filter(|e| !e.deleted)
+            .map(|e| e.name.as_str())
+            .collect();
         names.sort();
         names
     }
 
+    /// Get a live (non-deleted) file entry by name.
     pub fn get(&self, name: &str) -> Option<&FileEntry> {
+        self.files.get(name).filter(|e| !e.deleted)
+    }
+
+    /// Get entry including tombstones (for GC/internal use).
+    pub fn get_raw(&self, name: &str) -> Option<&FileEntry> {
         self.files.get(name)
     }
 
+    /// Number of live (non-deleted) entries.
     pub fn len(&self) -> usize {
-        self.files.len()
+        self.files.values().filter(|e| !e.deleted).count()
+    }
+
+    /// Number of tombstones.
+    pub fn tombstone_count(&self) -> usize {
+        self.files.values().filter(|e| e.deleted).count()
     }
 
     pub fn is_empty(&self) -> bool {
-        self.files.is_empty()
+        self.len() == 0
+    }
+
+    /// Compact: remove tombstones older than `max_age_ms`.
+    /// Only safe after all devices have synced past the tombstone.
+    pub fn compact(&mut self, max_age_ms: u64) -> usize {
+        let now = now_ms();
+        let before = self.files.len();
+        self.files.retain(|_, e| {
+            !(e.deleted && now.saturating_sub(e.timestamp) > max_age_ms)
+        });
+        before - self.files.len()
+    }
+
+    /// Delta: entries newer than `since_timestamp`.
+    /// Used for delta sync — only send what changed.
+    pub fn delta_since(&self, since_timestamp: u64) -> GSet {
+        let mut delta = GSet::new();
+        for entry in self.files.values() {
+            if entry.timestamp > since_timestamp {
+                delta.insert(entry.clone());
+            }
+        }
+        delta
+    }
+
+    /// All shard hashes referenced by live entries (for GC).
+    pub fn live_shard_hashes(&self) -> std::collections::HashSet<String> {
+        let mut hashes = std::collections::HashSet::new();
+        for entry in self.files.values() {
+            if !entry.deleted {
+                for h in &entry.shard_hashes {
+                    hashes.insert(h.clone());
+                }
+            }
+        }
+        hashes
     }
 
     /// Get the latest entry_hash from this device's chain (for prev_hash linking).
@@ -397,7 +533,8 @@ mod tests {
             device_id: "dev1".into(),
             das_root: "0".repeat(64),
             vdf_proof: None,
-            shard_copies: 1,        }
+            shard_copies: 1, deleted: false,
+        }
     }
 
     #[test]

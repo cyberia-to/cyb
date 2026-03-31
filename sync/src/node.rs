@@ -6,6 +6,7 @@
 //! Layer 4 (availability): DAS commitment in FileEntry; sampling on sync.
 //! Layer 5 (merge): LWW-Element-Set CRDT with deterministic conflict resolution.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
@@ -26,6 +27,9 @@ const MSG_CHUNK_DATA: u8 = 6;
 const MSG_CHUNK_NOT_FOUND: u8 = 7;
 const MSG_REGISTRY: u8 = 8;
 const MSG_REGISTRY_RESPONSE: u8 = 9;
+const MSG_DELTA_SYNC: u8 = 10;
+const MSG_HEARTBEAT: u8 = 11;
+const MSG_HEARTBEAT_ACK: u8 = 12;
 
 /// Registry response: includes Merkle root for completeness verification.
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -33,6 +37,15 @@ struct RegistryResponse {
     registry: GSet,
     merkle_root: String,
 }
+
+/// Peer liveness state.
+struct PeerHealth {
+    last_seen: u64,
+    consecutive_failures: u32,
+}
+
+/// Threshold: peer is dead after this many consecutive heartbeat failures.
+const DEAD_AFTER_FAILURES: u32 = 3;
 
 pub struct SharedState {
     pub registry: GSet,
@@ -42,6 +55,10 @@ pub struct SharedState {
     pub peers: Vec<String>,
     pub peer_capacities: Vec<u64>,
     pub device_id: String,
+    /// Per-peer liveness tracking.
+    pub peer_health: HashMap<String, PeerHealth>,
+    /// Timestamp of last successful sync with each peer (for delta sync).
+    pub last_sync_ts: HashMap<String, u64>,
 }
 
 pub struct SyncNode {
@@ -100,6 +117,8 @@ impl SyncNode {
             peers,
             peer_capacities,
             device_id: device_id.clone(),
+            peer_health: HashMap::new(),
+            last_sync_ts: HashMap::new(),
         }));
 
         println!("node started on port {}", port);
@@ -209,7 +228,7 @@ impl SyncNode {
             device_id: state.device_id.clone(),
             das_root,
             vdf_proof: Some(vdf_proof),
-            shard_copies: 1,
+            shard_copies: 1, deleted: false,
         };
 
         state.registry.insert(entry);
@@ -419,6 +438,126 @@ impl SyncNode {
     pub async fn list_files(&self) -> Vec<String> {
         let state = self.state.read().await;
         state.registry.list().iter().map(|s| s.to_string()).collect()
+    }
+
+    /// Delete a file (tombstone). Shards will be GC'd on next gc() call.
+    pub async fn delete_file(&self, name: &str) -> Result<()> {
+        let mut state = self.state.write().await;
+        let existing = state.registry.get_raw(name)
+            .ok_or_else(|| anyhow::anyhow!("file '{}' not found", name))?
+            .clone();
+
+        if existing.deleted {
+            anyhow::bail!("file '{}' already deleted", name);
+        }
+
+        // Insert tombstone with higher timestamp.
+        let timestamp = store::now_ms();
+        let prev_hash = state.registry.latest_hash(&state.device_id);
+        let shard_hashes = existing.shard_hashes.clone();
+        let device_id = state.device_id.clone();
+        let entry_hash = FileEntry::compute_hash(
+            name, &shard_hashes, timestamp, &prev_hash, &device_id,
+        );
+
+        state.registry.insert(FileEntry {
+            name: name.to_string(),
+            original_len: 0,
+            k: existing.k,
+            n: existing.n,
+            shard_hashes,
+            timestamp,
+            prev_hash,
+            entry_hash,
+            device_id,
+            das_root: "0".repeat(64),
+            vdf_proof: None,
+            shard_copies: 1,
+            deleted: true,
+        });
+
+        self.save_registry(&state)?;
+        println!("deleted '{}' (tombstone)", name);
+        Ok(())
+    }
+
+    /// Garbage collect: remove orphaned chunks not referenced by any live file.
+    pub async fn gc(&self) -> Result<(usize, u64)> {
+        let state = self.state.read().await;
+        let live_hashes = state.registry.live_shard_hashes();
+        let chunks_dir = state.data_dir.join("chunks");
+        drop(state);
+
+        let mut store = store::ChunkStore::new(&chunks_dir, 0)?;
+        let (removed, freed) = store.gc(&live_hashes)?;
+        println!("gc: removed {} orphaned chunks, freed {} bytes", removed, freed);
+        Ok((removed, freed))
+    }
+
+    /// Integrity audit: hash-check all local chunks.
+    pub async fn audit(&self) -> Result<(usize, usize)> {
+        let state = self.state.read().await;
+        let chunks_dir = state.data_dir.join("chunks");
+        drop(state);
+
+        let store = store::ChunkStore::new(&chunks_dir, 0)?;
+        let (ok, corrupt, corrupt_hashes) = store.audit()?;
+
+        if !corrupt_hashes.is_empty() {
+            eprintln!("audit: {} corrupt chunks detected, removing", corrupt);
+            let mut store_mut = store::ChunkStore::new(&chunks_dir, 0)?;
+            for h in &corrupt_hashes {
+                store_mut.remove(h)?;
+            }
+        }
+
+        println!("audit: {} ok, {} corrupt (removed)", ok, corrupt);
+        Ok((ok, corrupt))
+    }
+
+    /// Heartbeat: check liveness of all peers.
+    /// Returns (alive_count, dead_peers).
+    pub async fn heartbeat(&self) -> Result<(usize, Vec<String>)> {
+        let state = self.state.read().await;
+        let peers = state.peers.clone();
+        drop(state);
+
+        let mut alive = 0;
+        let mut dead = Vec::new();
+
+        for peer in &peers {
+            let is_alive = ping_peer(peer).await;
+
+            let mut state = self.state.write().await;
+            let health = state.peer_health
+                .entry(peer.clone())
+                .or_insert(PeerHealth { last_seen: 0, consecutive_failures: 0 });
+
+            if is_alive {
+                health.last_seen = store::now_ms();
+                health.consecutive_failures = 0;
+                alive += 1;
+            } else {
+                health.consecutive_failures += 1;
+                if health.consecutive_failures >= DEAD_AFTER_FAILURES {
+                    dead.push(peer.clone());
+                }
+            }
+        }
+
+        Ok((alive, dead))
+    }
+
+    /// Compute deterministic (k, n) from the number of alive peers.
+    /// All nodes using the same algorithm + same device set = same result.
+    pub fn compute_params(alive_devices: usize, redundancy_f: usize) -> (usize, usize) {
+        if alive_devices < 2 {
+            return (1, 1);
+        }
+        let n = alive_devices.min(8).next_power_of_two();
+        let f = redundancy_f.min(n - 1);
+        let k = n - f;
+        (k, n)
     }
 
     pub async fn status(&self) -> (usize, usize, usize, usize) {
@@ -656,6 +795,33 @@ async fn fetch_registry_with_proof(peer: &str) -> Result<RegistryResponse> {
     } else {
         anyhow::bail!("unexpected response type {}", response)
     }
+}
+
+/// Heartbeat: ping a peer, return true if alive.
+async fn ping_peer(peer: &str) -> bool {
+    let stream = match tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        TcpStream::connect(peer),
+    )
+    .await
+    {
+        Ok(Ok(mut s)) => {
+            if s.write_u8(MSG_PING).await.is_err() {
+                return false;
+            }
+            match tokio::time::timeout(
+                std::time::Duration::from_secs(2),
+                s.read_u8(),
+            )
+            .await
+            {
+                Ok(Ok(MSG_PONG)) => true,
+                _ => false,
+            }
+        }
+        _ => false,
+    };
+    stream
 }
 
 // ── Wire helpers ──
