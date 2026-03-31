@@ -6,15 +6,11 @@ use clap::{Parser, Subcommand};
 use cyber_sync::node::SyncNode;
 
 #[derive(Parser)]
-#[command(name = "cyber-sync", about = "erasure-coded device sync")]
+#[command(name = "cyber-sync", about = "erasure-coded device sync over iroh QUIC")]
 struct Cli {
     /// Data directory for this device.
     #[arg(short, long, default_value = "~/.cyber-sync")]
     dir: String,
-
-    /// Listen port.
-    #[arg(short, long, default_value = "4200")]
-    port: u16,
 
     /// Data shards (k). Any k of n shards reconstruct the file.
     #[arg(short, long, default_value = "2")]
@@ -55,16 +51,19 @@ enum Command {
         output: Option<PathBuf>,
     },
 
+    /// Delete a file (tombstone).
+    Rm { name: String },
+
     /// List files.
     Ls,
 
     /// Show status.
     Status,
 
-    /// Add a peer (host:port) with optional capacity.
+    /// Add a peer by node ID.
     AddPeer {
-        /// Peer address (host:port).
-        addr: String,
+        /// Peer node ID (public key hex from `cyber-sync status`).
+        node_id: String,
         /// Peer storage capacity (e.g. 50GB, 100MB). 0 = unlimited.
         #[arg(short, long, default_value = "0")]
         capacity: String,
@@ -72,9 +71,15 @@ enum Command {
 
     /// Sync with all peers (or a specific one).
     Sync {
-        /// Specific peer (host:port). Omit to sync with all.
+        /// Specific peer node ID. Omit to sync with all.
         peer: Option<String>,
     },
+
+    /// Garbage collect orphaned chunks.
+    Gc,
+
+    /// Integrity audit: hash-check all local chunks.
+    Audit,
 }
 
 #[tokio::main]
@@ -83,7 +88,7 @@ async fn main() -> Result<()> {
     let cli = Cli::parse();
 
     let dir = expand_tilde(&cli.dir);
-    let node = SyncNode::start(&dir, cli.port, cli.k, cli.n).await?;
+    let node = SyncNode::start(&dir, cli.k, cli.n).await?;
 
     match cli.command {
         Command::Daemon { interval } => {
@@ -109,6 +114,9 @@ async fn main() -> Result<()> {
                 std::io::stdout().write_all(&data)?;
             }
         }
+        Command::Rm { name } => {
+            node.delete_file(&name).await?;
+        }
         Command::Ls => {
             let files = node.list_files().await;
             if files.is_empty() {
@@ -120,16 +128,16 @@ async fn main() -> Result<()> {
             }
         }
         Command::Status => {
-            let (files, peers, chunks, port) = node.status().await;
-            println!("port:   {}", port);
+            let (files, peers, chunks, _) = node.status().await;
+            println!("node:   {}", node.node_id());
             println!("files:  {}", files);
             println!("peers:  {}", peers);
             println!("chunks: {}", chunks);
             println!("erasure: k={}, n={}", cli.k, cli.n);
         }
-        Command::AddPeer { addr, capacity } => {
+        Command::AddPeer { node_id, capacity } => {
             let cap = parse_capacity(&capacity)?;
-            node.add_peer(&addr, cap).await?;
+            node.add_peer(&node_id, cap).await?;
         }
         Command::Sync { peer } => {
             if let Some(p) = peer {
@@ -137,6 +145,12 @@ async fn main() -> Result<()> {
             } else {
                 node.sync_all().await?;
             }
+        }
+        Command::Gc => {
+            node.gc().await?;
+        }
+        Command::Audit => {
+            node.audit().await?;
         }
     }
 

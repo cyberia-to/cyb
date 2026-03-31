@@ -11,8 +11,9 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use anyhow::{Context, Result};
+use iroh::endpoint::Connection;
+use iroh::{Endpoint, EndpointId, RelayMode, SecretKey};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
-use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::RwLock;
 
 use crate::das;
@@ -55,42 +56,51 @@ pub struct SharedState {
     pub peers: Vec<String>,
     pub peer_capacities: Vec<u64>,
     pub device_id: String,
-    /// Per-peer liveness tracking.
     pub peer_health: HashMap<String, PeerHealth>,
-    /// Timestamp of last successful sync with each peer (for delta sync).
     pub last_sync_ts: HashMap<String, u64>,
 }
 
+/// ALPN protocol identifier for cyber-sync.
+const SYNC_ALPN: &[u8] = b"cyber-sync/0";
+
 pub struct SyncNode {
     state: Arc<RwLock<SharedState>>,
-    port: u16,
+    endpoint: Endpoint,
 }
 
 impl SyncNode {
-    pub async fn start(data_dir: &Path, port: u16, k: usize, n: usize) -> Result<Self> {
+    pub async fn start(data_dir: &Path, k: usize, n: usize) -> Result<Self> {
         assert!(n.is_power_of_two());
         assert!(k >= 1 && k <= n);
 
         std::fs::create_dir_all(data_dir)?;
         std::fs::create_dir_all(data_dir.join("chunks"))?;
 
-        // Stable device ID derived from data dir.
-        let device_id = {
-            let id_path = data_dir.join("device_id");
-            if id_path.exists() {
-                std::fs::read_to_string(&id_path)?
-            } else {
-                let id = cyber_hemera::hash(data_dir.to_string_lossy().as_bytes()).to_hex()[..16]
-                    .to_string();
-                std::fs::write(&id_path, &id)?;
-                id
-            }
+        // Load or generate persistent secret key (stable node identity).
+        let key_path = data_dir.join("secret.key");
+        let secret_key = if key_path.exists() {
+            let bytes = std::fs::read(&key_path)?;
+            let bytes32: [u8; 32] = bytes.try_into().map_err(|_| anyhow::anyhow!("bad key file"))?;
+            SecretKey::from(bytes32)
+        } else {
+            let key = SecretKey::generate(&mut rand::rng());
+            std::fs::write(&key_path, key.to_bytes())?;
+            key
         };
+
+        // Create iroh endpoint.
+        let endpoint = Endpoint::builder()
+            .relay_mode(RelayMode::Disabled)
+            .secret_key(secret_key)
+            .bind()
+            .await
+            .context("failed to bind iroh endpoint")?;
+
+        let device_id = endpoint.id().to_string();
 
         let registry_path = data_dir.join("registry.json");
         let registry = if registry_path.exists() {
-            let data = std::fs::read_to_string(&registry_path)?;
-            serde_json::from_str(&data).unwrap_or_default()
+            serde_json::from_str(&std::fs::read_to_string(&registry_path)?).unwrap_or_default()
         } else {
             GSet::new()
         };
@@ -121,37 +131,40 @@ impl SyncNode {
             last_sync_ts: HashMap::new(),
         }));
 
-        println!("node started on port {}", port);
+        println!("node started");
         println!("  id: {}", device_id);
         println!("  dir: {}", data_dir.display());
         println!("  erasure: k={}, n={}", k, n);
 
-        Ok(Self { state, port })
+        Ok(Self { state, endpoint })
     }
 
     pub async fn run_daemon(&self, sync_interval_secs: u64) -> Result<()> {
-        let listener = TcpListener::bind(("0.0.0.0", self.port)).await?;
-        println!("listening on 0.0.0.0:{}", self.port);
+        println!("listening via iroh QUIC + mDNS");
 
+        let ep = self.endpoint.clone();
         let state = self.state.clone();
         tokio::spawn(async move {
-            loop {
-                match listener.accept().await {
-                    Ok((stream, addr)) => {
-                        let state = state.clone();
-                        tokio::spawn(async move {
-                            if let Err(e) = handle_connection(stream, state).await {
-                                eprintln!("connection from {} error: {}", addr, e);
-                            }
-                        });
+            while let Some(incoming) = ep.accept().await {
+                let state = state.clone();
+                tokio::spawn(async move {
+                    let conn = match incoming.accept() {
+                        Ok(c) => match c.await {
+                            Ok(c) => c,
+                            Err(e) => { eprintln!("connect error: {}", e); return; }
+                        },
+                        Err(e) => { eprintln!("accept error: {}", e); return; }
+                    };
+                    if let Err(e) = handle_connection(conn, state).await {
+                        eprintln!("connection error: {}", e);
                     }
-                    Err(e) => eprintln!("accept error: {}", e),
-                }
+                });
             }
         });
 
         if sync_interval_secs > 0 {
             let state = self.state.clone();
+            let ep = self.endpoint.clone();
             println!("auto-sync every {}s", sync_interval_secs);
             tokio::spawn(async move {
                 let mut interval =
@@ -159,7 +172,7 @@ impl SyncNode {
                 interval.tick().await;
                 loop {
                     interval.tick().await;
-                    if let Err(e) = background_sync(&state).await {
+                    if let Err(e) = background_sync(&state, &ep).await {
                         eprintln!("auto-sync error: {}", e);
                     }
                 }
@@ -282,7 +295,7 @@ impl SyncNode {
 
             // Try peers — Layer 1: verify hash of fetched data.
             for peer in &peers {
-                match fetch_chunk_from_peer(peer, expected_hash).await {
+                match fetch_chunk_from_peer(&self.endpoint, peer, expected_hash).await {
                     Ok(bytes) => {
                         if store::verify_chunk(&bytes, expected_hash) {
                             std::fs::write(&path, &bytes)?;
@@ -326,7 +339,7 @@ impl SyncNode {
     pub async fn sync_with(&self, peer: &str) -> Result<()> {
         println!("syncing with {}...", peer);
 
-        let response = fetch_registry_with_proof(peer).await?;
+        let response = fetch_registry_with_proof(&self.endpoint, peer).await?;
         let remote_count = response.registry.len();
 
         // Layer 3: verify Merkle root matches claimed registry.
@@ -382,7 +395,7 @@ impl SyncNode {
             for hash_hex in &entry.shard_hashes {
                 let path = chunks_dir.join(hash_hex);
                 if !path.exists() {
-                    match fetch_chunk_from_peer(peer, hash_hex).await {
+                    match fetch_chunk_from_peer(&self.endpoint, peer, hash_hex).await {
                         Ok(bytes) => {
                             if store::verify_chunk(&bytes, hash_hex) {
                                 std::fs::write(&path, &bytes)?;
@@ -526,7 +539,7 @@ impl SyncNode {
         let mut dead = Vec::new();
 
         for peer in &peers {
-            let is_alive = ping_peer(peer).await;
+            let is_alive = ping_peer(&self.endpoint, peer).await;
 
             let mut state = self.state.write().await;
             let health = state.peer_health
@@ -567,12 +580,11 @@ impl SyncNode {
         let chunks = std::fs::read_dir(state.data_dir.join("chunks"))
             .map(|d| d.count())
             .unwrap_or(0);
-        (files, peers, chunks, self.port as usize)
+        (files, peers, chunks, 0)
     }
 
     pub fn node_id(&self) -> String {
-        let state = self.state.try_read().unwrap();
-        state.device_id.clone()
+        self.endpoint.id().to_string()
     }
 
     pub async fn save(&self) -> Result<()> {
@@ -590,7 +602,7 @@ impl SyncNode {
 
 // ── Background auto-sync ──
 
-async fn background_sync(state: &Arc<RwLock<SharedState>>) -> Result<()> {
+async fn background_sync(state: &Arc<RwLock<SharedState>>, ep: &Endpoint) -> Result<()> {
     {
         let mut s = state.write().await;
         let path = s.data_dir.join("registry.json");
@@ -615,7 +627,7 @@ async fn background_sync(state: &Arc<RwLock<SharedState>>) -> Result<()> {
 
     for peer in &peers {
         // Layer 3: fetch registry with proof.
-        let response = match fetch_registry_with_proof(peer).await {
+        let response = match fetch_registry_with_proof(ep, peer).await {
             Ok(r) => r,
             Err(_) => continue,
         };
@@ -642,7 +654,7 @@ async fn background_sync(state: &Arc<RwLock<SharedState>>) -> Result<()> {
             for hash_hex in &entry.shard_hashes {
                 let path = chunks_dir.join(hash_hex);
                 if !path.exists() {
-                    if let Ok(bytes) = fetch_chunk_from_peer(peer, hash_hex).await {
+                    if let Ok(bytes) = fetch_chunk_from_peer(ep, peer, hash_hex).await {
                         if store::verify_chunk(&bytes, hash_hex) {
                             std::fs::write(&path, &bytes)?;
                             total_fetched += 1;
@@ -721,27 +733,27 @@ fn format_bytes(bytes: u64) -> String {
 
 // ── Server: handle incoming connections ──
 
-async fn handle_connection(mut stream: TcpStream, state: Arc<RwLock<SharedState>>) -> Result<()> {
-    let msg_type = stream.read_u8().await?;
+async fn handle_connection(conn: Connection, state: Arc<RwLock<SharedState>>) -> Result<()> {
+    let (mut send, mut recv) = conn.accept_bi().await?;
+    let msg_type = recv.read_u8().await?;
 
     match msg_type {
         MSG_PING => {
-            stream.write_u8(MSG_PONG).await?;
+            send.write_u8(MSG_PONG).await?;
         }
         MSG_GET_CHUNK => {
-            let hash_hex = read_string(&mut stream).await?;
+            let hash_hex = read_string(&mut recv).await?;
             let state = state.read().await;
             let path = state.data_dir.join("chunks").join(&hash_hex);
             if path.exists() {
                 let data = std::fs::read(&path)?;
-                stream.write_u8(MSG_CHUNK_DATA).await?;
-                write_bytes(&mut stream, &data).await?;
+                send.write_u8(MSG_CHUNK_DATA).await?;
+                write_bytes(&mut send, &data).await?;
             } else {
-                stream.write_u8(MSG_CHUNK_NOT_FOUND).await?;
+                send.write_u8(MSG_CHUNK_NOT_FOUND).await?;
             }
         }
         MSG_REGISTRY => {
-            // Layer 3: serve registry WITH Merkle root.
             let state = state.read().await;
             let registry: GSet = {
                 let path = state.data_dir.join("registry.json");
@@ -752,44 +764,48 @@ async fn handle_connection(mut stream: TcpStream, state: Arc<RwLock<SharedState>
                 }
             };
             let merkle_root = registry.merkle_root();
-            let response = RegistryResponse {
-                registry,
-                merkle_root,
-            };
-            stream.write_u8(MSG_REGISTRY_RESPONSE).await?;
-            write_bytes(&mut stream, serde_json::to_string(&response)?.as_bytes()).await?;
+            let response = RegistryResponse { registry, merkle_root };
+            send.write_u8(MSG_REGISTRY_RESPONSE).await?;
+            write_bytes(&mut send, serde_json::to_string(&response)?.as_bytes()).await?;
         }
         _ => {}
     }
 
+    send.finish()?;
     Ok(())
 }
 
 // ── Client: fetch from peers ──
 
-async fn fetch_chunk_from_peer(peer: &str, hash_hex: &str) -> Result<Vec<u8>> {
-    let mut stream = TcpStream::connect(peer)
+async fn connect_peer(ep: &Endpoint, peer: &str) -> Result<Connection> {
+    let node_id: EndpointId = peer.parse().context("invalid node ID")?;
+    ep.connect(node_id, SYNC_ALPN)
         .await
-        .context("failed to connect to peer")?;
-    stream.write_u8(MSG_GET_CHUNK).await?;
-    write_bytes(&mut stream, hash_hex.as_bytes()).await?;
-    let response = stream.read_u8().await?;
+        .context("failed to connect to peer")
+}
+
+async fn fetch_chunk_from_peer(ep: &Endpoint, peer: &str, hash_hex: &str) -> Result<Vec<u8>> {
+    let conn = connect_peer(ep, peer).await?;
+    let (mut send, mut recv) = conn.open_bi().await?;
+    send.write_u8(MSG_GET_CHUNK).await?;
+    write_bytes(&mut send, hash_hex.as_bytes()).await?;
+    send.finish()?;
+    let response = recv.read_u8().await?;
     if response == MSG_CHUNK_DATA {
-        read_bytes(&mut stream).await
+        read_bytes(&mut recv).await
     } else {
         anyhow::bail!("chunk not found on peer")
     }
 }
 
-/// Layer 3: fetch registry with Merkle root for completeness verification.
-async fn fetch_registry_with_proof(peer: &str) -> Result<RegistryResponse> {
-    let mut stream = TcpStream::connect(peer)
-        .await
-        .context("failed to connect to peer")?;
-    stream.write_u8(MSG_REGISTRY).await?;
-    let response = stream.read_u8().await?;
+async fn fetch_registry_with_proof(ep: &Endpoint, peer: &str) -> Result<RegistryResponse> {
+    let conn = connect_peer(ep, peer).await?;
+    let (mut send, mut recv) = conn.open_bi().await?;
+    send.write_u8(MSG_REGISTRY).await?;
+    send.finish()?;
+    let response = recv.read_u8().await?;
     if response == MSG_REGISTRY_RESPONSE {
-        let data = read_bytes(&mut stream).await?;
+        let data = read_bytes(&mut recv).await?;
         let json = String::from_utf8(data)?;
         Ok(serde_json::from_str(&json)?)
     } else {
@@ -797,50 +813,47 @@ async fn fetch_registry_with_proof(peer: &str) -> Result<RegistryResponse> {
     }
 }
 
-/// Heartbeat: ping a peer, return true if alive.
-async fn ping_peer(peer: &str) -> bool {
-    let stream = match tokio::time::timeout(
-        std::time::Duration::from_secs(2),
-        TcpStream::connect(peer),
-    )
-    .await
-    {
-        Ok(Ok(mut s)) => {
-            if s.write_u8(MSG_PING).await.is_err() {
-                return false;
-            }
-            match tokio::time::timeout(
-                std::time::Duration::from_secs(2),
-                s.read_u8(),
-            )
-            .await
-            {
-                Ok(Ok(MSG_PONG)) => true,
-                _ => false,
-            }
-        }
-        _ => false,
+async fn ping_peer(ep: &Endpoint, peer: &str) -> bool {
+    let conn = match tokio::time::timeout(
+        std::time::Duration::from_secs(3),
+        connect_peer(ep, peer),
+    ).await {
+        Ok(Ok(c)) => c,
+        _ => return false,
     };
-    stream
+    let bi = match tokio::time::timeout(
+        std::time::Duration::from_secs(2),
+        conn.open_bi(),
+    ).await {
+        Ok(Ok(bi)) => bi,
+        _ => return false,
+    };
+    let (mut send, mut recv) = bi;
+    if send.write_u8(MSG_PING).await.is_err() { return false; }
+    let _ = send.finish();
+    matches!(
+        tokio::time::timeout(std::time::Duration::from_secs(2), recv.read_u8()).await,
+        Ok(Ok(MSG_PONG))
+    )
 }
 
-// ── Wire helpers ──
+// ── Wire helpers (generic over AsyncRead/AsyncWrite) ──
 
-async fn write_bytes(stream: &mut TcpStream, data: &[u8]) -> Result<()> {
-    stream.write_u32(data.len() as u32).await?;
-    stream.write_all(data).await?;
+async fn write_bytes(w: &mut (impl AsyncWriteExt + Unpin), data: &[u8]) -> Result<()> {
+    w.write_u32(data.len() as u32).await?;
+    w.write_all(data).await?;
     Ok(())
 }
 
-async fn read_bytes(stream: &mut TcpStream) -> Result<Vec<u8>> {
-    let len = stream.read_u32().await? as usize;
+async fn read_bytes(r: &mut (impl AsyncReadExt + Unpin)) -> Result<Vec<u8>> {
+    let len = r.read_u32().await? as usize;
     let mut buf = vec![0u8; len];
-    stream.read_exact(&mut buf).await?;
+    r.read_exact(&mut buf).await?;
     Ok(buf)
 }
 
-async fn read_string(stream: &mut TcpStream) -> Result<String> {
-    Ok(String::from_utf8(read_bytes(stream).await?)?)
+async fn read_string(r: &mut (impl AsyncReadExt + Unpin)) -> Result<String> {
+    Ok(String::from_utf8(read_bytes(r).await?)?)
 }
 
 fn shard_to_bytes(shard: &erasure::Shard) -> Vec<u8> {
