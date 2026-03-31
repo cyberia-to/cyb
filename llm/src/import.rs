@@ -342,7 +342,7 @@ fn select_weights(dir: &Path, result: &mut ImportResult) {
         }
         result.weights_format = "safetensors".into();
     }
-    // Single GGUF → rename to weights.gguf
+    // Single GGUF (no safetensors) → rename to weights.gguf, delete ONNX dupes
     else if gguf_files.len() == 1 && !has_safetensors {
         let src = gguf_files[0].path();
         let dst = dir.join("weights.gguf");
@@ -351,6 +351,8 @@ fn select_weights(dir: &Path, result: &mut ImportResult) {
                 result.errors.push(format!("rename weights: {e}"));
             }
         }
+        // Delete ONNX dirs if GGUF is the canonical format
+        delete_onnx_dirs(dir, &entries, result);
         result.weights_format = "gguf".into();
     }
     // GGUF exists alongside safetensors → GGUF is quantized, prefer it
@@ -383,10 +385,24 @@ fn select_weights(dir: &Path, result: &mut ImportResult) {
     else if safetensors_files.len() > 1 && !has_gguf {
         result.weights_format = format!("safetensors ({}x shards)", safetensors_files.len());
     }
-    // ONNX models
+    // GGUF exists alongside ONNX (multiple GGUF or other combos) → keep GGUF, delete ONNX
+    else if has_gguf {
+        if gguf_files.len() == 1 {
+            let src = gguf_files[0].path();
+            let dst = dir.join("weights.gguf");
+            if src != dst && !dst.exists() {
+                let _ = std::fs::rename(&src, &dst);
+            }
+        }
+        delete_onnx_dirs(dir, &entries, result);
+        result.weights_format = "gguf".into();
+    }
+    // Pure ONNX models (no safetensors, no GGUF)
     else {
         let has_onnx = entries.iter().any(|e| {
             e.path().extension().map(|x| x == "onnx").unwrap_or(false)
+                || (e.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                    && e.file_name().to_str().unwrap_or("").starts_with("onnx"))
         });
         if has_onnx {
             result.weights_format = "onnx".into();
@@ -407,6 +423,23 @@ fn select_weights(dir: &Path, result: &mut ImportResult) {
         });
         if has_bin && !has_pt && !has_onnx {
             result.weights_format = "bin".into();
+        }
+    }
+}
+
+/// Delete ONNX directories when a higher-priority format (GGUF/safetensors) exists
+fn delete_onnx_dirs(dir: &Path, entries: &[std::fs::DirEntry], result: &mut ImportResult) {
+    for entry in entries {
+        if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+            let name = entry.file_name();
+            let name = name.to_str().unwrap_or("");
+            if name.starts_with("onnx") {
+                let size = dir_size(&entry.path());
+                if std::fs::remove_dir_all(entry.path()).is_ok() {
+                    result.files_deleted += 1;
+                    result.downloaded_bytes += size;
+                }
+            }
         }
     }
 }
