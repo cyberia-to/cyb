@@ -8,6 +8,24 @@ use std::sync::Arc;
 use crate::onnx_proto::onnx::ModelProto;
 use prost::Message;
 
+/// Convert TOML value to serde_json::Value for uniform config access
+fn toml_to_json(v: &toml::Value) -> serde_json::Value {
+    match v {
+        toml::Value::String(s) => serde_json::Value::String(s.clone()),
+        toml::Value::Integer(i) => serde_json::json!(*i),
+        toml::Value::Float(f) => serde_json::json!(*f),
+        toml::Value::Boolean(b) => serde_json::Value::Bool(*b),
+        toml::Value::Array(a) => serde_json::Value::Array(a.iter().map(toml_to_json).collect()),
+        toml::Value::Table(t) => {
+            let m: serde_json::Map<String, serde_json::Value> = t.iter()
+                .map(|(k, v)| (k.clone(), toml_to_json(v)))
+                .collect();
+            serde_json::Value::Object(m)
+        }
+        toml::Value::Datetime(d) => serde_json::Value::String(d.to_string()),
+    }
+}
+
 use super::dispatch;
 use super::pipelines::{ComputeShader, Pipelines};
 
@@ -458,8 +476,13 @@ fn precompute_rope(
 fn precompute_f32_matmul(p: &Pipelines, n: u32, k: u32) -> (wgpu::Buffer, (u32, u32, u32)) {
     let params = F32MatmulParams { n, k, p: 1 };
     let buf = p.upload_uniform_permanent(bytemuck::bytes_of(&params));
-    // wg_id.x = N output rows, wg_id.y = P batch rows (1 for decode)
-    (buf, (n, 1, 1))
+    if n <= 65535 {
+        (buf, (n, 1, 1))
+    } else {
+        let x = 65535u32.min(n);
+        let z = (n + x - 1) / x;
+        (buf, (x, 1, z))
+    }
 }
 
 #[repr(C)]
@@ -887,13 +910,24 @@ impl NativeModel {
 
     /// Load model from safetensors file (f32/bf16/f16 weights)
     pub fn load_from_safetensors(path: &Path, pipelines: Arc<Pipelines>) -> Result<Self, String> {
-        // Read config.json from the same directory
+        // Read config from config.json or config.toml
         let model_dir = path.parent().unwrap_or(Path::new("."));
-        let config_path = model_dir.join("config.json");
-        let config_str = std::fs::read_to_string(&config_path)
-            .map_err(|e| format!("Cannot read config.json: {e}"))?;
-        let config_json_root: serde_json::Value = serde_json::from_str(&config_str)
-            .map_err(|e| format!("Invalid config.json: {e}"))?;
+        let config_json_path = model_dir.join("config.json");
+        let config_toml_path = model_dir.join("config.toml");
+        let config_json_root: serde_json::Value = if config_json_path.exists() {
+            let s = std::fs::read_to_string(&config_json_path)
+                .map_err(|e| format!("Cannot read config.json: {e}"))?;
+            serde_json::from_str(&s).map_err(|e| format!("Invalid config.json: {e}"))?
+        } else if config_toml_path.exists() {
+            // Parse TOML and convert to serde_json::Value for uniform access
+            let s = std::fs::read_to_string(&config_toml_path)
+                .map_err(|e| format!("Cannot read config.toml: {e}"))?;
+            let toml_val: toml::Value = toml::from_str(&s)
+                .map_err(|e| format!("Invalid config.toml: {e}"))?;
+            toml_to_json(&toml_val)
+        } else {
+            return Err("No config.json or config.toml found".to_string());
+        };
         // VLM models nest LLM config under "text_config"
         let config_json = config_json_root.get("text_config").unwrap_or(&config_json_root);
 
@@ -929,8 +963,8 @@ impl NativeModel {
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        // Load safetensors file (needed to detect qk_norm and biases)
-        let graph = crate::loader::safetensors::load_safetensors(path)?;
+        // Load weights (safetensors, GGUF, or any supported format)
+        let graph = crate::loader::load_model(path)?;
 
         // Detect QK norm from weight names
         let has_qk_norm = graph.get_weight("model.layers.0.self_attn.q_norm.weight").is_some();

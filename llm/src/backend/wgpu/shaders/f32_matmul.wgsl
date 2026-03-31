@@ -29,7 +29,8 @@ fn main(
     @builtin(subgroup_invocation_id) sg_id: u32,
     @builtin(subgroup_size) sg_size: u32,
 ) {
-    let out_row = wg_id.x;
+    // N can be split across x*z when > 65535
+    let out_row = wg_id.z * 65535u + wg_id.x;
     let batch_row = wg_id.y;
     let tid = local_id.x;
     let sg_idx = tid / sg_size;

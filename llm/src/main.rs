@@ -141,21 +141,18 @@ fn main() {
             let is_local = model_path_buf.exists()
                 || model.ends_with(".safetensors")
                 || model.ends_with(".onnx")
-                || model.ends_with(".gguf");
+                || model.ends_with(".gguf")
+                || model.ends_with(".cyb");
 
             if is_local {
                 // Local file path — detect format
                 let model_path = resolve_model_path(&model_path_buf);
                 let model_dir = model_path.parent().unwrap_or(std::path::Path::new("."));
 
-                let is_safetensors = model_path
-                    .extension()
-                    .map(|e| e == "safetensors")
-                    .unwrap_or(false);
-                let is_gguf = model_path
-                    .extension()
-                    .map(|e| e == "gguf")
-                    .unwrap_or(false);
+                let ext = model_path.extension().and_then(|e| e.to_str()).unwrap_or("");
+                let is_safetensors = ext == "safetensors";
+                let is_gguf = ext == "gguf";
+                let is_cyb = ext == "cyb";
 
                 println!("Loading local model: {}", model_path.display());
 
@@ -198,7 +195,28 @@ fn main() {
                 let pipelines = backend.pipelines;
 
                 let load_start = std::time::Instant::now();
-                let mut generator = if is_gguf {
+                let mut generator = if is_cyb {
+                    // .cyb format: weights alongside as weights.gguf or weights.onnx
+                    // Our converter stores HF-style weight names in GGUF, so use
+                    // the safetensors loading path (which expects HF names)
+                    let gguf_path = model_dir.join("weights.gguf");
+                    let onnx_path = model_dir.join("weights.onnx");
+                    let weights_path = if gguf_path.exists() { gguf_path }
+                        else if onnx_path.exists() { onnx_path }
+                        else { eprintln!("No weights.gguf or weights.onnx alongside .cyb"); return; };
+                    // Route by weight format: GGUF (HF names) → safetensors path, ONNX → ONNX path
+                    let is_weights_onnx = weights_path.extension().map(|e| e == "onnx").unwrap_or(false);
+                    let gen_result = if is_weights_onnx {
+                        cyb_llm::generate::TextGenerator::new(&weights_path, &tokenizer_path, pipelines)
+                    } else {
+                        // GGUF with HF-style weight names → use safetensors loading path
+                        cyb_llm::generate::TextGenerator::new_safetensors(&weights_path, &tokenizer_path, pipelines)
+                    };
+                    match gen_result {
+                        Ok(g) => g,
+                        Err(e) => { eprintln!("Model load failed: {e}"); return; }
+                    }
+                } else if is_gguf {
                     match cyb_llm::generate::TextGenerator::new_gguf(
                         &model_path,
                         &tokenizer_path,

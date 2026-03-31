@@ -315,6 +315,10 @@ fn build_graph_from_gguf(
         );
     }
 
+    // Debug: log first few weight names
+    let names: Vec<&String> = graph.weights.keys().take(5).collect();
+    log::info!("GGUF first weights: {:?}", names);
+
     graph
 }
 

@@ -1450,8 +1450,15 @@ fn precompute_matmul(
 fn precompute_f32_matmul(p: &Pipelines, n: u32, k: u32, batch: u32) -> (wgpu::Buffer, (u32, u32, u32)) {
     let params = F32MatmulParams { n, k, p: batch };
     let buf = p.upload_uniform(bytemuck::bytes_of(&params));
-    // wg_id.x = N output neurons, wg_id.y = P batch rows
-    (buf, (n, batch, 1))
+    // wg_id.x = N output neurons (split across x*z if > 65535), wg_id.y = P batch rows
+    if n <= 65535 {
+        (buf, (n, batch, 1))
+    } else {
+        // Split N across x and z: x*z >= N
+        let x = 65535u32.min(n);
+        let z = (n + x - 1) / x;
+        (buf, (x, batch, z))
+    }
 }
 
 fn precompute_argmax(p: &Pipelines, n: u32) -> (wgpu::Buffer, (u32, u32, u32)) {
