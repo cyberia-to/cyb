@@ -126,11 +126,10 @@ fn load_safetensors_single(path: &Path) -> Result<Graph, String> {
         let byte_end = data_start + offset_end as usize;
 
         if byte_end > mmap.len() {
-            log::warn!(
-                "Tensor {name} data out of bounds: {byte_end} > {}",
+            return Err(format!(
+                "Tensor {name} data out of bounds: offset {byte_end} > file size {}. File may be truncated.",
                 mmap.len()
-            );
-            continue;
+            ));
         }
 
         let raw_data = mmap[byte_start..byte_end].to_vec();

@@ -4,10 +4,14 @@ use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
 #[command(name = "cyb-llm")]
-#[command(about = "Pure Rust LLM runtime on wgpu")]
+#[command(about = "Pure Rust LLM runtime — wgpu + Metal")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
+    /// Backend: auto, metal, wgpu (default: auto — Metal on macOS, wgpu elsewhere)
+    #[arg(long, default_value = "auto", global = true)]
+    backend: String,
 }
 
 #[derive(Subcommand)]
@@ -111,7 +115,30 @@ fn main() {
                 };
                 log::info!("Using tokenizer: {}", tokenizer_path.display());
 
-                // Initialize GPU backend
+                // Choose backend
+                let use_metal = if cli.backend == "metal" {
+                    true
+                } else if cli.backend == "wgpu" {
+                    false
+                } else {
+                    // auto: Metal on macOS for safetensors, wgpu otherwise
+                    cfg!(target_os = "macos") && is_safetensors
+                };
+
+                if use_metal && is_safetensors {
+                    #[cfg(target_os = "macos")]
+                    {
+                        run_metal(&model_path, &tokenizer_path, &prompt, max_tokens, temperature);
+                        return;
+                    }
+                    #[cfg(not(target_os = "macos"))]
+                    {
+                        eprintln!("Metal backend not available on this platform");
+                        return;
+                    }
+                }
+
+                // Initialize wgpu backend
                 let backend = cyb_llm::backend::create_wgpu_backend();
                 let pipelines = backend.pipelines;
 
@@ -594,6 +621,69 @@ fn run_transcribe(model_path: &str, audio_path: &str) {
             eprintln!("Transcription failed: {e}");
         }
     }
+}
+
+/// Run inference on Metal backend (macOS)
+#[cfg(target_os = "macos")]
+fn run_metal(model_path: &std::path::Path, tokenizer_path: &std::path::Path, prompt: &str, max_tokens: usize, temperature: f32) {
+    use cyb_llm::backend::metal::MetalModel;
+
+    let load_start = std::time::Instant::now();
+    let mut model = match MetalModel::load_from_safetensors(model_path) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("Metal model load failed: {e}");
+            return;
+        }
+    };
+    println!("Model loaded in {:.1}s (Metal)", load_start.elapsed().as_secs_f64());
+
+    let tokenizer = match tokenizers::Tokenizer::from_file(tokenizer_path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Tokenizer load failed: {e}");
+            return;
+        }
+    };
+
+    let encoding = match tokenizer.encode(prompt, true) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("Tokenization failed: {e}");
+            return;
+        }
+    };
+    let token_ids = encoding.get_ids();
+
+    // EOS detection
+    let model_dir = model_path.parent().unwrap_or(std::path::Path::new("."));
+    let eos = cyb_llm::generate::detect_eos_tokens(&tokenizer, model_dir);
+
+    // Prefill
+    let prefill_start = std::time::Instant::now();
+    let mut next_token = 0u32;
+    for &tid in token_ids {
+        next_token = model.forward_decode(tid);
+    }
+    let prefill_ms = prefill_start.elapsed().as_secs_f64() * 1000.0;
+
+    // Decode
+    println!("---");
+    use std::io::Write;
+    let decode_start = std::time::Instant::now();
+    let mut gen_count = 0usize;
+    for _ in 0..max_tokens {
+        if eos.contains(&next_token) { break; }
+        gen_count += 1;
+        let decoded = tokenizer.decode(&[next_token], false).unwrap_or_else(|_| "?".to_string());
+        print!("{decoded}");
+        std::io::stdout().flush().ok();
+        next_token = model.forward_decode(next_token);
+    }
+    let decode_s = decode_start.elapsed().as_secs_f64();
+    let tok_s = if decode_s > 0.0 { gen_count as f64 / decode_s } else { 0.0 };
+    println!("\n---");
+    println!("Prefill: {:.0}ms | Decode: {} tokens in {:.1}s ({:.1} tok/s)", prefill_ms, gen_count, decode_s, tok_s);
 }
 
 /// Resolve model path — keep symlink parent (don't canonicalize to blobs/)

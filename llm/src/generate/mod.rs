@@ -8,6 +8,54 @@ use std::sync::Arc;
 use crate::backend::wgpu::model::{NativeModel, argmax, sample_top_p};
 use crate::backend::wgpu::pipelines::Pipelines;
 
+/// Detect EOS tokens from tokenizer + generation_config.json
+pub fn detect_eos_tokens(tokenizer: &tokenizers::Tokenizer, model_dir: &Path) -> Vec<u32> {
+    let mut eos = Vec::new();
+
+    // 1. Read generation_config.json (authoritative source)
+    let gen_config_path = model_dir.join("generation_config.json");
+    if let Ok(data) = std::fs::read_to_string(&gen_config_path) {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) {
+            if let Some(eos_id) = json.get("eos_token_id") {
+                match eos_id {
+                    serde_json::Value::Number(n) => {
+                        if let Some(id) = n.as_u64() {
+                            eos.push(id as u32);
+                        }
+                    }
+                    serde_json::Value::Array(arr) => {
+                        for v in arr {
+                            if let Some(id) = v.as_u64() {
+                                eos.push(id as u32);
+                            }
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
+    // 2. Fallback: common hardcoded IDs
+    for &id in &[2u32, 50256] {
+        if !eos.contains(&id) {
+            eos.push(id);
+        }
+    }
+
+    // 3. Lookup special tokens in tokenizer
+    for special in &["<|endoftext|>", "</s>", "<|end_of_text|>", "<|eot_id|>", "<|im_end|>"] {
+        if let Some(id) = tokenizer.token_to_id(special) {
+            if !eos.contains(&id) {
+                eos.push(id);
+            }
+        }
+    }
+
+    log::info!("EOS tokens: {:?}", eos);
+    eos
+}
+
 /// Text generator — model + tokenizer + generation loop
 pub struct TextGenerator {
     model: NativeModel,
@@ -28,13 +76,8 @@ impl TextGenerator {
         let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path)
             .map_err(|e| format!("Tokenizer load failed: {e}"))?;
 
-        // Common EOS tokens (Qwen3, Llama, GPT-2)
-        let eos_tokens = vec![
-            151643, // Qwen3 <|endoftext|>
-            151645, // Qwen3 <|im_end|>
-            2,      // Llama </s>
-            50256,  // GPT-2 <|endoftext|>
-        ];
+        let model_dir = model_path.parent().unwrap_or(Path::new("."));
+        let eos_tokens = detect_eos_tokens(&tokenizer, model_dir);
 
         Ok(Self {
             model,
@@ -54,27 +97,8 @@ impl TextGenerator {
         let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path)
             .map_err(|e| format!("Tokenizer load failed: {e}"))?;
 
-        // EOS tokens for common models
-        let mut eos_tokens = vec![
-            2,      // Llama </s>
-            // SmolLM <|endoftext|> (id 0) detected via tokenizer lookup below
-            50256,  // GPT-2 <|endoftext|>
-        ];
-        if let Some(id) = tokenizer.token_to_id("<|endoftext|>") {
-            if !eos_tokens.contains(&id) {
-                eos_tokens.push(id);
-            }
-        }
-        if let Some(id) = tokenizer.token_to_id("</s>") {
-            if !eos_tokens.contains(&id) {
-                eos_tokens.push(id);
-            }
-        }
-        if let Some(id) = tokenizer.token_to_id("<|end_of_text|>") {
-            if !eos_tokens.contains(&id) {
-                eos_tokens.push(id);
-            }
-        }
+        let model_dir = model_path.parent().unwrap_or(Path::new("."));
+        let eos_tokens = detect_eos_tokens(&tokenizer, model_dir);
 
         Ok(Self {
             model,
@@ -94,23 +118,8 @@ impl TextGenerator {
         let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path)
             .map_err(|e| format!("Tokenizer load failed: {e}"))?;
 
-        // EOS tokens for common models
-        let mut eos_tokens = vec![
-            2,      // Llama </s>
-            // SmolLM <|endoftext|> (id 0) detected via tokenizer lookup below
-            50256,  // GPT-2 <|endoftext|>
-        ];
-        // Try to detect EOS from tokenizer special tokens
-        if let Some(id) = tokenizer.token_to_id("<|endoftext|>") {
-            if !eos_tokens.contains(&id) {
-                eos_tokens.push(id);
-            }
-        }
-        if let Some(id) = tokenizer.token_to_id("</s>") {
-            if !eos_tokens.contains(&id) {
-                eos_tokens.push(id);
-            }
-        }
+        let model_dir = model_path.parent().unwrap_or(Path::new("."));
+        let eos_tokens = detect_eos_tokens(&tokenizer, model_dir);
 
         Ok(Self {
             model,
@@ -133,7 +142,7 @@ impl TextGenerator {
 
         let encoding = self
             .tokenizer
-            .encode(prompt, false)
+            .encode(prompt, true)  // add_special_tokens=true (BOS)
             .map_err(|e| format!("Tokenization failed: {e}"))?;
         let mut token_ids: Vec<u32> = encoding.get_ids().to_vec();
         log::info!("Prompt tokens ({} tokens): {:?}", token_ids.len(), token_ids);

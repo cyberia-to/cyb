@@ -892,8 +892,10 @@ impl NativeModel {
         let config_path = model_dir.join("config.json");
         let config_str = std::fs::read_to_string(&config_path)
             .map_err(|e| format!("Cannot read config.json: {e}"))?;
-        let config_json: serde_json::Value = serde_json::from_str(&config_str)
+        let config_json_root: serde_json::Value = serde_json::from_str(&config_str)
             .map_err(|e| format!("Invalid config.json: {e}"))?;
+        // VLM models nest LLM config under "text_config"
+        let config_json = config_json_root.get("text_config").unwrap_or(&config_json_root);
 
         let hidden_size = config_json.get("hidden_size")
             .and_then(|v| v.as_u64())

@@ -89,8 +89,10 @@ impl MetalModel {
         let model_dir = path.parent().unwrap_or(Path::new("."));
         let config_str = std::fs::read_to_string(model_dir.join("config.json"))
             .map_err(|e| format!("config.json: {e}"))?;
-        let cj: serde_json::Value = serde_json::from_str(&config_str)
+        let cj_root: serde_json::Value = serde_json::from_str(&config_str)
             .map_err(|e| format!("config parse: {e}"))?;
+        // VLM models (Qwen3.5-VL etc.) nest LLM config under "text_config"
+        let cj = cj_root.get("text_config").unwrap_or(&cj_root);
 
         let hidden_size = cj["hidden_size"].as_u64().ok_or("missing hidden_size")? as usize;
         let num_heads = cj["num_attention_heads"].as_u64().ok_or("missing num_attention_heads")? as usize;
