@@ -12,6 +12,10 @@ struct Cli {
     /// Backend: auto, metal, wgpu (default: auto — Metal on macOS, wgpu elsewhere)
     #[arg(long, default_value = "auto", global = true)]
     backend: String,
+
+    /// Precision: q4 (quantized, fast), f16 (full precision, accurate)
+    #[arg(long, default_value = "q4", global = true)]
+    precision: String,
 }
 
 #[derive(Subcommand)]
@@ -128,7 +132,7 @@ fn main() {
                 if use_metal && is_safetensors {
                     #[cfg(target_os = "macos")]
                     {
-                        run_metal(&model_path, &tokenizer_path, &prompt, max_tokens, temperature);
+                        run_metal(&model_path, &tokenizer_path, &prompt, max_tokens, temperature, cli.precision == "f16");
                         return;
                     }
                     #[cfg(not(target_os = "macos"))]
@@ -628,11 +632,15 @@ fn run_transcribe(model_path: &str, audio_path: &str) {
 
 /// Run inference on Metal backend (macOS)
 #[cfg(target_os = "macos")]
-fn run_metal(model_path: &std::path::Path, tokenizer_path: &std::path::Path, prompt: &str, max_tokens: usize, temperature: f32) {
+fn run_metal(model_path: &std::path::Path, tokenizer_path: &std::path::Path, prompt: &str, max_tokens: usize, temperature: f32, use_f16: bool) {
     use cyb_llm::backend::metal::MetalModel;
 
     let load_start = std::time::Instant::now();
-    let mut model = match MetalModel::load_from_safetensors(model_path) {
+    let mut model = match if use_f16 {
+        MetalModel::load_from_safetensors_f16(model_path)
+    } else {
+        MetalModel::load_from_safetensors(model_path)
+    } {
         Ok(m) => m,
         Err(e) => {
             eprintln!("Metal model load failed: {e}");
