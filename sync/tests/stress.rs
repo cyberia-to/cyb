@@ -206,7 +206,8 @@ fn merge_storm_20_devices() {
                 entry_hash: entry_hash.clone(),
                 device_id: device_id.clone(),
                 das_root: "0".repeat(64),
-            };
+            vdf_proof: None,
+            shard_copies: 1,            };
             prev = entry_hash;
             reg.insert(entry);
         }
@@ -275,7 +276,8 @@ fn merge_conflict_10_devices_same_file() {
             entry_hash,
             device_id,
             das_root: "0".repeat(64),
-        });
+            vdf_proof: None,
+            shard_copies: 1,        });
         registries.push(reg);
     }
 
@@ -447,7 +449,8 @@ fn validated_merge_adversarial_1000() {
                 entry_hash,
                 device_id: "adv".into(),
                 das_root: "0".repeat(64),
-            });
+            vdf_proof: None,
+            shard_copies: 1,            });
             expected_valid += 1;
         } else if i < 750 {
             // Forged hash.
@@ -462,7 +465,8 @@ fn validated_merge_adversarial_1000() {
                 entry_hash: "forged".repeat(10),
                 device_id: "adv".into(),
                 das_root: "0".repeat(64),
-            });
+            vdf_proof: None,
+            shard_copies: 1,            });
             expected_invalid += 1;
         } else {
             // Future timestamp.
@@ -480,7 +484,8 @@ fn validated_merge_adversarial_1000() {
                 entry_hash,
                 device_id: "adv".into(),
                 das_root: "0".repeat(64),
-            });
+            vdf_proof: None,
+            shard_copies: 1,            });
             expected_invalid += 1;
         }
     }
@@ -527,7 +532,8 @@ fn split_brain_rejoin() {
             entry_hash,
             device_id,
             das_root: "0".repeat(64),
-        });
+            vdf_proof: None,
+            shard_copies: 1,        });
     }
 
     // Partition B: devices 5-9 write files b_0..b_9.
@@ -550,7 +556,8 @@ fn split_brain_rejoin() {
             entry_hash,
             device_id,
             das_root: "0".repeat(64),
-        });
+            vdf_proof: None,
+            shard_copies: 1,        });
     }
 
     // Both partitions also write to a shared filename.
@@ -569,7 +576,8 @@ fn split_brain_rejoin() {
             entry_hash: eh,
             device_id: "dev_0".into(),
             das_root: "0".repeat(64),
-        }
+            vdf_proof: None,
+            shard_copies: 1,        }
     };
     let shared_b = {
         let shard_hashes = vec!["shared_b".into()];
@@ -586,7 +594,8 @@ fn split_brain_rejoin() {
             entry_hash: eh,
             device_id: "dev_5".into(),
             das_root: "0".repeat(64),
-        }
+            vdf_proof: None,
+            shard_copies: 1,        }
     };
     partition_a.insert(shared_a);
     partition_b.insert(shared_b);

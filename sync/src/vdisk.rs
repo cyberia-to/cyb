@@ -45,6 +45,10 @@ pub struct DiskConfig {
     pub redundancy: Redundancy,
     pub tier: Tier,
     pub cache_policy: CachePolicy,
+    /// Number of copies of each shard across devices.
+    /// 1 = minimum (D/k per device), 2-3 = higher availability.
+    /// Tier 0 ignores this (always full replication).
+    pub shard_copies: usize,
 }
 
 /// Redundancy specification.
@@ -262,6 +266,8 @@ impl VDiskManager {
             entry_hash,
             device_id,
             das_root: format!("{:?}", commitment.root),
+            vdf_proof: None,
+            shard_copies: 1,
         };
         self.registry.insert(entry);
 
@@ -360,6 +366,7 @@ mod tests {
             redundancy: Redundancy::Tolerate(1),
             tier: Tier::Active,
             cache_policy: CachePolicy::Lru,
+            shard_copies: 1,
         })
         .unwrap();
 
@@ -382,6 +389,7 @@ mod tests {
             redundancy: Redundancy::Tolerate(1),
             tier: Tier::Active,
             cache_policy: CachePolicy::Lru,
+            shard_copies: 1,
         })
         .unwrap();
 
@@ -404,6 +412,7 @@ mod tests {
             redundancy: Redundancy::Tolerate(1),
             tier: Tier::Active,
             cache_policy: CachePolicy::Lru,
+            shard_copies: 1,
         })
         .unwrap();
 
@@ -431,6 +440,7 @@ mod tests {
             redundancy: Redundancy::Max,
             tier: Tier::Critical,
             cache_policy: CachePolicy::Hot,
+            shard_copies: 1,
         })
         .unwrap();
 
@@ -452,6 +462,7 @@ mod tests {
             redundancy: Redundancy::Tolerate(1),
             tier: Tier::Active,
             cache_policy: CachePolicy::Lru,
+            shard_copies: 1,
         })
         .unwrap();
 
@@ -474,6 +485,8 @@ mod tests {
             entry_hash: "a".repeat(64),
             device_id: "other".into(),
             das_root: "0".repeat(64),
+            vdf_proof: None,
+            shard_copies: 1,
         });
 
         mgr.merge_registry(&other);
@@ -489,6 +502,7 @@ mod tests {
             redundancy: Redundancy::Tolerate(1),
             tier: Tier::Active,
             cache_policy: CachePolicy::Lru,
+            shard_copies: 1,
         })
         .unwrap();
 

@@ -620,7 +620,8 @@ fn make_entry(name: &str, ts: u64, device: &str, prev: &str) -> FileEntry {
         entry_hash,
         device_id: device.into(),
         das_root: "0".repeat(64),
-    }
+            vdf_proof: None,
+            shard_copies: 1,    }
 }
 
 fn make_entry_with(
@@ -643,7 +644,8 @@ fn make_entry_with(
         entry_hash,
         device_id: device.into(),
         das_root: "0".repeat(64),
-    }
+            vdf_proof: None,
+            shard_copies: 1,    }
 }
 
 fn sorted_names(g: &GSet) -> Vec<String> {

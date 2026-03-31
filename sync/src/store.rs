@@ -14,7 +14,7 @@ use crate::erasure::Shard;
 
 /// A file tracked by the system.
 ///
-/// Layer 2: each entry carries ordering metadata (timestamp, prev_hash, device_id).
+/// Layer 2: each entry carries ordering metadata (timestamp, prev_hash, device_id, vdf_proof).
 /// Layer 4: das_root commits to the erasure-coded shard set.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FileEntry {
@@ -34,7 +34,17 @@ pub struct FileEntry {
     pub device_id: String,
     /// DAS commitment root over erasure-coded shards (layer 4).
     pub das_root: String,
+    /// VDF proof: proves physical time elapsed since prev_hash (layer 2 ordering).
+    /// None for legacy entries or when VDF is disabled.
+    #[serde(default)]
+    pub vdf_proof: Option<crate::vdf::VdfProof>,
+    /// Number of shard copies per device (controls D/k tradeoff).
+    /// Higher = more availability, more storage. Default 1.
+    #[serde(default = "default_shard_copies")]
+    pub shard_copies: usize,
 }
+
+fn default_shard_copies() -> usize { 1 }
 
 /// Maximum allowed clock drift from local time (1 hour in ms).
 /// Entries with timestamps beyond now + MAX_CLOCK_DRIFT are rejected.
@@ -56,6 +66,8 @@ pub enum ValidationError {
     NoShards,
     /// Registry is full.
     RegistryFull,
+    /// VDF proof is invalid (output doesn't match sequential squaring).
+    VdfInvalid,
 }
 
 impl FileEntry {
@@ -104,6 +116,17 @@ impl FileEntry {
         let now = now_ms();
         if self.timestamp > now + MAX_CLOCK_DRIFT_MS {
             return Err(ValidationError::TimestampFuture);
+        }
+        // Layer 2: verify VDF proof if present.
+        if let Some(ref vdf) = self.vdf_proof {
+            if !crate::vdf::verify(vdf) {
+                return Err(ValidationError::VdfInvalid);
+            }
+            // VDF input must be derived from prev_hash.
+            let expected_input = crate::vdf::challenge_from_hash(&self.prev_hash);
+            if vdf.input != expected_input {
+                return Err(ValidationError::VdfInvalid);
+            }
         }
         Ok(())
     }
@@ -373,7 +396,8 @@ mod tests {
             entry_hash,
             device_id: "dev1".into(),
             das_root: "0".repeat(64),
-        }
+            vdf_proof: None,
+            shard_copies: 1,        }
     }
 
     #[test]

@@ -182,7 +182,7 @@ impl SyncNode {
             shard_hashes.push(hex);
         }
 
-        // Layer 2: hash chain — link to previous entry from this device.
+        // Layer 2: hash chain + VDF — link to previous entry, prove elapsed time.
         let prev_hash = state.registry.latest_hash(&state.device_id);
         let timestamp = store::now_ms();
         let entry_hash = FileEntry::compute_hash(
@@ -192,6 +192,10 @@ impl SyncNode {
             &prev_hash,
             &state.device_id,
         );
+
+        // VDF: prove physical time since previous entry.
+        let vdf_input = crate::vdf::challenge_from_hash(&prev_hash);
+        let vdf_proof = crate::vdf::evaluate(vdf_input, 100); // 100 iterations for local
 
         let entry = FileEntry {
             name: name.to_string(),
@@ -204,6 +208,8 @@ impl SyncNode {
             entry_hash,
             device_id: state.device_id.clone(),
             das_root,
+            vdf_proof: Some(vdf_proof),
+            shard_copies: 1,
         };
 
         state.registry.insert(entry);
