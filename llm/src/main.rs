@@ -83,6 +83,24 @@ enum Commands {
         execute: bool,
     },
 
+    /// Convert safetensors to quantized GGUF (Q4/Q8/F16)
+    Convert {
+        /// Model name (from manifest) or "all" for all bloated models
+        name: String,
+
+        /// Override quant level: q4, q8, f16 (default: from manifest)
+        #[arg(short, long)]
+        quant: Option<String>,
+
+        /// Actually convert (default: dry run)
+        #[arg(long)]
+        execute: bool,
+
+        /// Delete original safetensors after successful conversion
+        #[arg(long)]
+        cleanup: bool,
+    },
+
     /// Fetch missing or incomplete models from HuggingFace
     Fetch {
         /// Only fetch this model (by name)
@@ -346,6 +364,15 @@ fn main() {
 
         Commands::Fetch { name, tier } => {
             run_fetch(name, tier);
+        }
+
+        Commands::Convert {
+            name,
+            quant,
+            execute,
+            cleanup,
+        } => {
+            run_convert(&name, quant.as_deref(), execute, cleanup);
         }
     }
 }
@@ -1078,6 +1105,158 @@ fn run_fetch(name_filter: Option<String>, tier_filter: Option<String>) {
                 eprintln!("  FAIL listing {}: {e}", spec.hf_repo);
             }
         }
+    }
+}
+
+fn run_convert(name: &str, quant_override: Option<&str>, execute: bool, cleanup: bool) {
+    use cyb_llm::manifest::{self, format_size, Quant, MANIFEST};
+    use cyb_llm::quantize::{self, QuantType};
+
+    let base = manifest::models_dir();
+
+    let quant_from_str = |s: &str| -> Option<QuantType> {
+        match s {
+            "q4" | "Q4" | "q4_0" => Some(QuantType::Q4_0),
+            "q8" | "Q8" | "q8_0" => Some(QuantType::Q8_0),
+            "f16" | "F16" => Some(QuantType::F16),
+            _ => None,
+        }
+    };
+
+    let quant_for_spec = |spec: &manifest::ModelSpec| -> Option<QuantType> {
+        if let Some(qs) = quant_override {
+            return quant_from_str(qs);
+        }
+        match spec.target_quant {
+            Quant::Q4 => Some(QuantType::Q4_0),
+            Quant::Q8 => Some(QuantType::Q8_0),
+            Quant::F16 => Some(QuantType::F16),
+            Quant::Native => None,
+        }
+    };
+
+    let targets: Vec<&manifest::ModelSpec> = if name == "all" {
+        MANIFEST
+            .iter()
+            .filter(|s| {
+                let status = manifest::inspect_model(s);
+                status.exists
+                    && status.has_safetensors
+                    && s.target_quant != Quant::Native
+                    && status.missing_shards.is_none()
+            })
+            .collect()
+    } else {
+        MANIFEST.iter().filter(|s| s.name.contains(name)).collect()
+    };
+
+    if targets.is_empty() {
+        eprintln!("No models matched '{name}'");
+        return;
+    }
+
+    for spec in &targets {
+        let model_dir = base.join(spec.name);
+        if !model_dir.exists() {
+            println!("SKIP {} — not downloaded", spec.name);
+            continue;
+        }
+
+        let qt = match quant_for_spec(spec) {
+            Some(q) => q,
+            None => {
+                println!("SKIP {} — native format", spec.name);
+                continue;
+            }
+        };
+
+        let status = manifest::inspect_model(spec);
+        if status.missing_shards.is_some() {
+            println!(
+                "SKIP {} — {}",
+                spec.name,
+                status.missing_shards.as_deref().unwrap_or("incomplete")
+            );
+            continue;
+        }
+        if !status.has_safetensors {
+            println!("SKIP {} — no safetensors to convert", spec.name);
+            continue;
+        }
+
+        let output_name = format!("{}.gguf", spec.name);
+        let output_path = model_dir.join(&output_name);
+
+        if output_path.exists() {
+            let size = output_path.metadata().map(|m| m.len()).unwrap_or(0);
+            println!("SKIP {} — already converted ({})", spec.name, format_size(size));
+            continue;
+        }
+
+        let qt_name = match qt {
+            QuantType::Q4_0 => "Q4_0",
+            QuantType::Q8_0 => "Q8_0",
+            QuantType::F16 => "F16",
+        };
+
+        println!(
+            "CONVERT {} → {} ({}, {} → ~{})",
+            spec.name, output_name, qt_name,
+            format_size(status.size_bytes),
+            format_size((spec.expected_gb * 1e9) as u64),
+        );
+
+        if !execute {
+            continue;
+        }
+
+        let start = std::time::Instant::now();
+        match quantize::convert_safetensors_to_gguf(&model_dir, &output_path, qt, true) {
+            Ok(stats) => {
+                let elapsed = start.elapsed().as_secs_f64();
+                let out_size = output_path.metadata().map(|m| m.len()).unwrap_or(0);
+                println!(
+                    "  OK  {} tensors, {:.1}x compression, {} → {} in {:.1}s",
+                    stats.n_tensors, stats.compression_ratio(),
+                    format_size(stats.input_bytes), format_size(out_size), elapsed,
+                );
+                println!(
+                    "       Q4: {}, Q8: {}, F32(norms): {}, F16: {}",
+                    stats.quantized_q4, stats.quantized_q8, stats.kept_f32, stats.kept_f16,
+                );
+
+                if cleanup {
+                    let mut freed = 0u64;
+                    if let Ok(entries) = std::fs::read_dir(&model_dir) {
+                        for entry in entries.flatten() {
+                            let p = entry.path();
+                            let is_st = p.extension().map(|e| e == "safetensors").unwrap_or(false);
+                            let is_index = p.file_name().and_then(|n| n.to_str())
+                                .map(|n| n.contains("index")).unwrap_or(false);
+                            if is_st || is_index {
+                                let sz = p.metadata().map(|m| m.len()).unwrap_or(0);
+                                if let Err(e) = std::fs::remove_file(&p) {
+                                    eprintln!("  WARN: rm {:?}: {e}", p.file_name());
+                                } else {
+                                    freed += sz;
+                                }
+                            }
+                        }
+                    }
+                    if freed > 0 {
+                        println!("  FREED {} (deleted safetensors)", format_size(freed));
+                    }
+                }
+            }
+            Err(e) => {
+                eprintln!("  FAIL {}: {e}", spec.name);
+                let _ = std::fs::remove_file(&output_path);
+            }
+        }
+    }
+
+    if !execute {
+        println!("\nDry run. Add --execute to convert: cyb-llm convert {} --execute", name);
     }
 }
 
