@@ -50,39 +50,112 @@ pub fn canonicalize(model_dir: &Path) -> ImportResult {
 }
 
 /// Convert a canonicalized model directory to a single .cyb file.
-/// Reads weights via the loader, config from config.toml, writes .cyb.
+/// Tries the standard loader first, falls back to raw binary packing.
 /// Returns (output_path, input_size, output_size) on success.
 pub fn convert_to_cyb(model_dir: &Path) -> Result<(std::path::PathBuf, u64, u64), String> {
+    use crate::ir::{Graph, WeightData, DType};
+    use std::collections::HashMap;
+
     let model_name = model_dir
         .file_name()
         .and_then(|n| n.to_str())
         .unwrap_or("model");
 
-    // Find weights file
-    let weights_path = find_weights(model_dir)
-        .ok_or_else(|| format!("{model_name}: no weights file found"))?;
-
     let input_size = dir_size(model_dir);
-
-    // Load weights via existing loader
-    let graph = crate::loader::load_model(&weights_path)
-        .map_err(|e| format!("{model_name}: load failed: {e}"))?;
-
-    // Determine if graph has actual nodes (ONNX) or just weights (safetensors/GGUF)
-    let include_graph = !graph.nodes.is_empty();
-
-    // Build config string: read config.toml + append tokenizer/chat/sampling/vocab inline
     let config = build_cyb_config(model_dir);
-
-    // Output path: model_dir/model_name.cyb
     let output_path = model_dir.join(format!("{model_name}.cyb"));
+
+    // Try standard loader first
+    let graph = if let Some(weights_path) = find_weights(model_dir) {
+        match crate::loader::load_model(&weights_path) {
+            Ok(g) => Some(g),
+            Err(_) => None,
+        }
+    } else {
+        None
+    };
+
+    let graph = match graph {
+        Some(g) if !g.weights.is_empty() => g,
+        _ => {
+            // Fallback: pack raw binary files as opaque weight blobs
+            pack_raw_weights(model_dir)?
+        }
+    };
+
+    let include_graph = !graph.nodes.is_empty();
 
     crate::cyb_format::write_cyb(&output_path, &graph, &config, include_graph)
         .map_err(|e| format!("{model_name}: write .cyb failed: {e}"))?;
 
     let output_size = output_path.metadata().map(|m| m.len()).unwrap_or(0);
-
     Ok((output_path, input_size, output_size))
+}
+
+/// Fallback: pack all weight-like files as raw binary blobs.
+/// Used for PyTorch .pt, fasttext .bin, ONNX with broken external data,
+/// multi-component models (xtts-v2, piper-tts).
+fn pack_raw_weights(dir: &Path) -> Result<crate::ir::Graph, String> {
+    use crate::ir::{Graph, WeightData, DType};
+    use std::collections::HashMap;
+
+    let mut weights = HashMap::new();
+
+    fn visit_dir(dir: &Path, base: &Path, weights: &mut HashMap<String, WeightData>) {
+        let entries = match std::fs::read_dir(dir) {
+            Ok(e) => e,
+            Err(_) => return,
+        };
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                visit_dir(&path, base, weights);
+                continue;
+            }
+            let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("");
+            let is_weight = matches!(
+                ext,
+                "gguf" | "safetensors" | "onnx" | "onnx_data" | "pt" | "pth" | "bin"
+            );
+            if !is_weight {
+                continue;
+            }
+            // Skip .cyb files (our own output)
+            if ext == "cyb" {
+                continue;
+            }
+
+            let rel = path.strip_prefix(base).unwrap_or(&path);
+            let name = rel.to_string_lossy().to_string();
+
+            let data = match std::fs::read(&path) {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+            let size = data.len();
+
+            weights.insert(name, WeightData {
+                data,
+                shape: vec![size],
+                dtype: DType::U8, // raw bytes
+            });
+        }
+    }
+
+    visit_dir(dir, dir, &mut weights);
+
+    if weights.is_empty() {
+        return Err(format!(
+            "{}: no weight files found",
+            dir.file_name().unwrap_or_default().to_string_lossy()
+        ));
+    }
+
+    Ok(Graph {
+        nodes: Vec::new(),
+        tensors: HashMap::new(),
+        weights,
+    })
 }
 
 /// Find the canonical weights file in a model directory
