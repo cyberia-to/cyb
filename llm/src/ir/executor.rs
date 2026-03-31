@@ -237,7 +237,9 @@ impl GraphExecutor {
 
         let mut all_dispatches: Vec<DispatchCmd> = Vec::with_capacity(graph.nodes.len() * 2);
 
+        let dispatches_before = all_dispatches.len();
         for node in &graph.nodes {
+            let before = all_dispatches.len();
             self.prepare_node(
                 node,
                 graph,
@@ -252,7 +254,13 @@ impl GraphExecutor {
                 &dummy_cos,
                 &dummy_sin,
             );
+            let produced = all_dispatches.len() - before;
+            let has_output = node.outputs.iter().any(|o| buffers.contains_key(o));
+            if produced == 0 && !has_output {
+                log::warn!("Node {} ({:?}) produced no dispatch and no output. inputs: {:?}", node.id, node.op, node.inputs);
+            }
         }
+        log::info!("Encoder: {} dispatches from {} nodes", all_dispatches.len() - dispatches_before, graph.nodes.len());
 
         // Single compute pass
         let mut enc = p.device.create_command_encoder(&Default::default());
@@ -264,13 +272,31 @@ impl GraphExecutor {
         }
         p.queue.submit(std::iter::once(enc.finish()));
 
+        // Debug: dump intermediate buffer stats
+        {
+            for i in 0..12 {
+                let name = format!("layer_{i}.output_ln");
+                if let Some(buf) = buffers.get(&name) {
+                    let vals = p.read_f32(buf, 8.min(output_size));
+                    let has_nan = vals.iter().any(|v| v.is_nan());
+                    eprintln!("  {name} = [{:.4}, {:.4}, {:.4}, {:.4}...] nan={has_nan}",
+                        vals.get(0).unwrap_or(&0.0), vals.get(1).unwrap_or(&0.0),
+                        vals.get(2).unwrap_or(&0.0), vals.get(3).unwrap_or(&0.0));
+                }
+            }
+        }
+
         // Read output
         let output_buf = buffers
             .get(output_tensor_name)
+            .or_else(|| buffers.get("logits"))
             .unwrap_or_else(|| {
-                // Try "logits" as fallback
-                buffers.get("logits")
-                    .expect(&format!("Output tensor '{}' not found in buffer map", output_tensor_name))
+                // Debug: list available buffers
+                let keys: Vec<_> = buffers.keys().collect();
+                log::error!("Output '{}' not found. Available: {:?}", output_tensor_name, &keys[..keys.len().min(20)]);
+                // Try last buffer
+                buffers.values().last()
+                    .expect("No buffers at all")
             });
         p.read_f32(output_buf, output_size)
     }
