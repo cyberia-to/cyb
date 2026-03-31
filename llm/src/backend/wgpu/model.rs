@@ -370,6 +370,7 @@ struct RopeParams {
 struct F32MatmulParams {
     n: u32,
     k: u32,
+    p: u32,
 }
 
 #[repr(C)]
@@ -455,11 +456,10 @@ fn precompute_rope(
 }
 
 fn precompute_f32_matmul(p: &Pipelines, n: u32, k: u32) -> (wgpu::Buffer, (u32, u32, u32)) {
-    let params = F32MatmulParams { n, k };
+    let params = F32MatmulParams { n, k, p: 1 };
     let buf = p.upload_uniform_permanent(bytemuck::bytes_of(&params));
-    let x = n.min(65535);
-    let y = (n + x - 1) / x;
-    (buf, (x, y, 1))
+    // wg_id.x = N output rows, wg_id.y = P batch rows (1 for decode)
+    (buf, (n, 1, 1))
 }
 
 #[repr(C)]
