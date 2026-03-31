@@ -185,9 +185,12 @@ fn main() {
                     load_start.elapsed().as_secs_f64()
                 );
 
+                // Apply chat template if model is instruction-tuned
+                let formatted_prompt = cyb_llm::generate::apply_chat_template(&prompt, model_dir);
+
                 // Generate
                 println!("---");
-                match generator.generate(&prompt, max_tokens, temperature) {
+                match generator.generate(&formatted_prompt, max_tokens, temperature) {
                     Ok(_text) => {}
                     Err(e) => {
                         eprintln!("\nGeneration failed: {e}");
@@ -646,7 +649,11 @@ fn run_metal(model_path: &std::path::Path, tokenizer_path: &std::path::Path, pro
         }
     };
 
-    let encoding = match tokenizer.encode(prompt, true) {
+    // Apply chat template if instruction-tuned
+    let model_dir = model_path.parent().unwrap_or(std::path::Path::new("."));
+    let formatted = cyb_llm::generate::apply_chat_template(prompt, model_dir);
+
+    let encoding = match tokenizer.encode(formatted.as_str(), true) {
         Ok(e) => e,
         Err(e) => {
             eprintln!("Tokenization failed: {e}");
@@ -654,9 +661,6 @@ fn run_metal(model_path: &std::path::Path, tokenizer_path: &std::path::Path, pro
         }
     };
     let token_ids = encoding.get_ids();
-
-    // EOS detection
-    let model_dir = model_path.parent().unwrap_or(std::path::Path::new("."));
     let eos = cyb_llm::generate::detect_eos_tokens(&tokenizer, model_dir);
 
     // Prefill

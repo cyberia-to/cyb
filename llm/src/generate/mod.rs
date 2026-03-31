@@ -8,6 +8,28 @@ use std::sync::Arc;
 use crate::backend::wgpu::model::{NativeModel, argmax, sample_top_p};
 use crate::backend::wgpu::pipelines::Pipelines;
 
+/// Apply chat template if the model is instruction-tuned.
+/// Returns the formatted prompt or the original if no template applies.
+pub fn apply_chat_template(prompt: &str, model_dir: &Path) -> String {
+    // Read tokenizer_config.json for chat_template
+    let tc_path = model_dir.join("tokenizer_config.json");
+    if let Ok(data) = std::fs::read_to_string(&tc_path) {
+        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) {
+            if json.get("chat_template").and_then(|v| v.as_str()).is_some() {
+                // Model has a chat template — apply ChatML format
+                // (covers Qwen2/2.5, SmolLM2-Instruct, Llama3, BitNet)
+                let formatted = format!(
+                    "<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+                );
+                log::info!("Chat template applied (ChatML format)");
+                return formatted;
+            }
+        }
+    }
+    // No chat template — base model, use raw prompt
+    prompt.to_string()
+}
+
 /// Detect EOS tokens from tokenizer + generation_config.json
 pub fn detect_eos_tokens(tokenizer: &tokenizers::Tokenizer, model_dir: &Path) -> Vec<u32> {
     let mut eos = Vec::new();
