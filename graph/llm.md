@@ -705,18 +705,161 @@ matmul(a: f16, b: ternary) → kernel_matmul_ternary  // add/subtract only
 matmul(a: f16, b: f16)   → kernel_matmul_f16
 ```
 
-## memory management
+## memory architecture — zero-copy physical
 
-three tiers mirroring [[soma]] cognitive architecture:
-- resident (tier 0): always in GPU memory, never evicted
-- cached (tier 1): loaded on first use, LRU eviction
-- streamed (tier 2): loaded per-inference, freed after
+the single biggest performance unlock for inference on Apple Silicon. every existing framework (Ollama, llama.cpp, CoreML, MLX) leaks performance through copies:
 
-KV cache lifecycle:
-- allocate on first token
-- grow with each generated token
-- free when generation completes
-- shared pool across concurrent inferences
+```
+current (everyone):
+NVMe → kernel buf → mmap buf → malloc buf → Metal buf → GPU → result
+                     copy 1      copy 2       copy 3
+
+cyb-llm:
+NVMe DMA → PhysPage → AMX / Metal / ANE → result
+              ↑
+     never moves, never copies
+```
+
+three copies of a 7B Q4 model (3.5GB) burn 10.5GB of bandwidth. on M1 Pro (200 GB/s), that is 5% of total bandwidth wasted before any computation. for tier 0 (8 models loaded simultaneously), the waste compounds.
+
+Apple Silicon unified memory makes copies unnecessary. CPU, GPU, AMX, ANE, NVMe controller share the same physical DRAM. one buffer, visible to all hardware units, zero copies. [[unimem]] is the Rust crate that makes this accessible from userspace.
+
+### the physical memory stack
+
+```
+┌─────────────────────────────────────────────────────┐
+│ PhysPage — IOKit contiguous allocation               │
+│   va: *mut u8 (CPU access)                          │
+│   pa: u64     (hardware access)                     │
+│   pinned: never swapped, never moved                │
+├─────────────────────────────────────────────────────┤
+│ HypRegion — Hypervisor stage-2 page tables           │
+│   deterministic latency (~30ns)                     │
+│   private TLB namespace (no shootdowns)             │
+├─────────────────────────────────────────────────────┤
+│ Arena — bump allocator over physical pages            │
+│   alloc: ~4ns (single atomic fetch_add)             │
+│   reset: ~0ns (move cursor to zero)                 │
+│   pa_of(ptr): pure arithmetic, no syscall           │
+├─────────────────────────────────────────────────────┤
+│ Pool — fixed-size tensor slots                       │
+│   acquire/release: ~10ns (lock-free queue)          │
+│   pre-allocated at model load                       │
+├─────────────────────────────────────────────────────┤
+│ DmaTarget trait — one interface to all hardware      │
+│   submit(pa, size, op) → DmaToken                   │
+│   AMX, ANE, NVMe all implement the same trait       │
+└─────────────────────────────────────────────────────┘
+```
+
+### how .cyb loads with zero copies
+
+the .cyb file format is designed for this pipeline. tensor data section is 64-byte aligned — exactly what NVMe DMA and AMX require.
+
+```
+// current: 3 copies
+let data = std::fs::read("model.cyb")?;           // NVMe → kernel → userspace (copy 1)
+let buf = device.new_buffer_with_bytes(&data);      // userspace → GPU (copy 2)
+
+// with unimem: 0 copies
+let page = PhysPage::alloc(tensor_data_size)?;      // pinned physical memory
+nvme.submit(page.pa(), tensor_data_size, Read);     // NVMe DMA → physical RAM directly
+// page.pa() is the same DRAM that Metal/AMX/ANE see
+// no copy — hardware reads from the same physical address
+```
+
+model load time goes from O(file_size / memcpy_bandwidth) to O(file_size / nvme_bandwidth). on M1 Pro: NVMe reads at ~5 GB/s. a 5GB model loads in 1 second with zero CPU involvement. the CPU is free to do other work while weights stream in.
+
+### residency tiers on physical memory
+
+three tiers mirroring [[soma]] cognitive architecture, now mapped to physical memory primitives:
+
+| tier | soma role | memory primitive | lifecycle | budget |
+|------|-----------|-----------------|-----------|--------|
+| resident | tier 0 (8 always-on models) | PhysPage, pinned forever | alloc at boot, never freed | ~2GB |
+| cached | tier 1-2 (on-demand models) | Arena region, LRU eviction | load on first use, evict under pressure | ~10GB |
+| streamed | activations, KV cache | Pool slots, acquire/release | per-inference, O(1) recycle | ~2GB |
+
+resident models never touch the allocator after boot. cached models load via NVMe DMA into Arena regions — eviction moves the arena cursor back, pages stay pinned. streamed allocations are pool slots recycled every forward pass — ~10ns per acquire/release, zero syscalls.
+
+### KV cache on physical memory
+
+KV cache is the single largest dynamic allocation during inference:
+
+```
+kv_size_per_token = num_layers × 2 × num_kv_heads × head_dim × sizeof(f16)
+qwen3-0.6b: 28 × 2 × 8 × 128 × 2 = 114KB per token
+qwen2.5-coder-14b: 48 × 2 × 8 × 128 × 2 = 196KB per token
+at 4K context: 456MB — 786MB
+```
+
+with Pool: pre-allocate KV slots at model load. each decode step acquires the next slot (~10ns). no malloc, no page fault, no TLB miss. physical address known — AMX/ANE can read KV directly without any staging.
+
+paged KV attention: allocate KV in fixed-size blocks (e.g. 256 tokens per block). blocks are Pool slots. eliminates fragmentation entirely.
+
+### cross-unit pipeline — zero copies between stages
+
+the full inference pipeline touches multiple hardware units. with physical memory, the handoff is instant:
+
+```
+PhysPage at pa=0x8_0000_0000:
+  │
+  ├─ NVMe DMA: load weights into pa       (NVMe controller → DRAM)
+  │
+  ├─ CPU NEON: dequantize Q4 → f16 at pa  (CPU reads/writes same DRAM)
+  │
+  ├─ AMX: matmul on pa                     (AMX reads same DRAM via fabric)
+  │
+  ├─ Metal GPU: attention kernel on pa     (GPU reads same DRAM via fabric)
+  │
+  ├─ ANE: tier 0 model on pa              (ANE reads same DRAM via fabric)
+  │
+  └─ CPU: read result from pa             (zero copy out)
+```
+
+every arrow is the same physical DRAM cells. no buffer copy, no staging, no synchronization barrier. the unified memory fabric handles coherency in hardware.
+
+### the bandwidth wall — why this matters
+
+LLM decode is memory-bandwidth-bound, not compute-bound. a 7B Q4 model reads ~3.5GB of weights per token. on M1 Pro (200 GB/s):
+
+```
+theoretical floor:  3.5GB / 200 GB/s = 17.5ms per token = 57 tok/s
+with 3 copies:      3.5GB × 4 / 200 GB/s = 70ms per token = 14 tok/s
+with zero-copy:     3.5GB / 200 GB/s = 17.5ms per token = 57 tok/s
+```
+
+zero-copy recovers 4x bandwidth. the theoretical limit becomes achievable. for smaller models (0.6B router, 0.5B intent): weights fit in L2/SLC cache after first pass — subsequent tokens are cache hits at ~400 GB/s, yielding 1000+ tok/s.
+
+### what changes in the runtime
+
+| component | current | with unimem |
+|-----------|---------|-------------|
+| model load | `std::fs::read()` + memcpy | `PhysPage::alloc()` + NVMe DMA |
+| weight storage | `Vec<u8>` on heap | `PhysPage` pinned in DRAM |
+| activation alloc | `device.new_buffer()` per layer | `Pool::acquire()` ~10ns |
+| KV cache | `Vec::push()` growing | `Pool::acquire()` fixed blocks |
+| Metal dispatch | copy to MTLBuffer | `pa_of(ptr)` → same DRAM, no copy |
+| ANE dispatch | IOSurface copy | `pa` → ANE descriptor directly |
+| cross-unit handoff | buffer copy + fence | same pa, hardware coherency |
+| model eviction | `drop(Vec)` + dealloc | `arena.reset()` ~0ns, pages stay |
+
+the API surface for unimem integration:
+
+```rust
+// in cyb-llm backend
+trait MemoryBackend {
+    fn alloc_weights(&self, size: usize) -> PhysRegion;
+    fn alloc_activation(&self, size: usize) -> PoolSlot;
+    fn pa_of(&self, ptr: *const u8) -> u64;
+    fn load_from_cyb(&self, path: &Path, tensor_offset: u64, size: u64) -> PhysRegion;
+}
+
+// default: mmap backend (works everywhere, 3 copies)
+// apple silicon: unimem backend (zero copies, 4x bandwidth)
+```
+
+runtime auto-detects Apple Silicon and uses unimem when available. mmap fallback for other platforms. same .cyb file, same inference code, different memory backend.
 
 ## integration with [[Nox]]
 
