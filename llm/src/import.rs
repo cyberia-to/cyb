@@ -1152,7 +1152,8 @@ fn convert_onnx_to_gguf(onnx_path: &Path, gguf_path: &Path) -> Result<(), String
         // But embeddings and other non-matmul 2D tensors keep their shape
         let is_projection = name.contains("proj.weight") || name.contains("_proj.weight")
             || name.contains("gate_proj") || name.contains("up_proj") || name.contains("down_proj")
-            || name.contains("dense.weight") || name.contains("lm_head");
+            || name.contains("dense.weight") || name.contains("lm_head")
+            || name.contains("Wqkv.weight") || name.contains("Wi.weight") || name.contains("Wo.weight");
         let shape: Vec<usize> = if w.shape.len() == 2 && is_projection {
             vec![w.shape[1], w.shape[0]]
         } else {
@@ -1194,10 +1195,11 @@ fn convert_onnx_to_gguf(onnx_path: &Path, gguf_path: &Path) -> Result<(), String
 
     // Tensor data (aligned, transpose projection weights for HF row-major order)
     for (name, w) in &weights {
-        let is_projection = name.contains("proj.weight") || name.contains("_proj.weight")
+        let is_proj_data = name.contains("proj.weight") || name.contains("_proj.weight")
             || name.contains("gate_proj") || name.contains("up_proj") || name.contains("down_proj")
-            || name.contains("dense.weight") || name.contains("lm_head");
-        if w.shape.len() == 2 && is_projection {
+            || name.contains("dense.weight") || name.contains("lm_head")
+            || name.contains("Wqkv.weight") || name.contains("Wi.weight") || name.contains("Wo.weight");
+        if w.shape.len() == 2 && is_proj_data {
             // Transpose data from ONNX [K, N] to HF [N, K]
             let (rows, cols) = (w.shape[0], w.shape[1]); // ONNX: rows=K, cols=N
             let elem_size = w.dtype.element_size();
