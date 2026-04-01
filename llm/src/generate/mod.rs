@@ -150,6 +150,27 @@ impl TextGenerator {
         })
     }
 
+    /// Create a new text generator from .cyb model file
+    pub fn new_cyb(
+        cyb_path: &Path,
+        tokenizer_path: &Path,
+        pipelines: Arc<Pipelines>,
+    ) -> Result<Self, String> {
+        let model = NativeModel::load_from_cyb(cyb_path, pipelines)?;
+
+        let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path)
+            .map_err(|e| format!("Tokenizer load failed: {e}"))?;
+
+        let model_dir = cyb_path.parent().unwrap_or(Path::new("."));
+        let eos_tokens = detect_eos_tokens(&tokenizer, model_dir);
+
+        Ok(Self {
+            model,
+            tokenizer,
+            eos_tokens,
+        })
+    }
+
     /// Generate text from a prompt
     pub fn generate(
         &mut self,

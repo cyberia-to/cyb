@@ -1044,7 +1044,8 @@ fn run_status() {
         let is_decoder = matches!(info.model_type.as_str(),
             "qwen2" | "qwen3" | "qwen3_5_vl" | "qwen2_vl" | "llama" | "phi3"
             | "bitnet" | "mimo" | "moondream");
-        let has_weights = dir.join("weights.gguf").exists()
+        let has_weights = has_cyb
+            || dir.join("weights.gguf").exists()
             || dir.join("weights.safetensors").exists()
             || std::fs::read_dir(&dir).into_iter().flatten().flatten()
                 .any(|e| ext_is(&e.path(), "gguf"));
@@ -1107,41 +1108,51 @@ fn quick_bench(model_dir: &std::path::Path) -> (String, String) {
         return ("—".into(), "—".into());
     }
 
-    // Find loadable weight file: weights.gguf > *.gguf > weights.safetensors > .cyb (extract)
+    // Find loadable weight file: .cyb > weights.gguf > *.gguf > weights.safetensors
+    let cyb_path = std::fs::read_dir(model_dir).into_iter().flatten().flatten()
+        .find(|e| ext_is(&e.path(), "cyb"))
+        .map(|e| e.path());
     let gguf_path = if model_dir.join("weights.gguf").exists() {
-        model_dir.join("weights.gguf")
-    } else if let Some(p) = std::fs::read_dir(model_dir).into_iter().flatten().flatten()
-        .find(|e| ext_is(&e.path(), "gguf")).map(|e| e.path())
-    {
-        p
-    } else if model_dir.join("weights.safetensors").exists() {
-        model_dir.join("weights.safetensors")
+        Some(model_dir.join("weights.gguf"))
     } else {
-        // No weight files on disk — can't bench
+        std::fs::read_dir(model_dir).into_iter().flatten().flatten()
+            .find(|e| ext_is(&e.path(), "gguf"))
+            .map(|e| e.path())
+    };
+    let st_path = if model_dir.join("weights.safetensors").exists() {
+        Some(model_dir.join("weights.safetensors"))
+    } else { None };
+
+    // Determine which loader to use
+    enum LoadPath { Cyb(std::path::PathBuf), Gguf(std::path::PathBuf), Safetensors(std::path::PathBuf) }
+    let load_path = if let Some(p) = cyb_path {
+        LoadPath::Cyb(p)
+    } else if let Some(p) = gguf_path {
+        LoadPath::Gguf(p)
+    } else if let Some(p) = st_path {
+        LoadPath::Safetensors(p)
+    } else {
         return ("—".into(), "—".into());
     };
-
-    let is_gguf = ext_is(&gguf_path, "gguf");
 
     // Init wgpu
     let backend = cyb_llm::backend::create_wgpu_backend();
     let pipelines = backend.pipelines;
 
     // Load model
-    let mut generator = if is_gguf {
-        match cyb_llm::generate::TextGenerator::new_gguf(
-            &gguf_path, &tokenizer_path, pipelines,
-        ) {
+    let mut generator = match &load_path {
+        LoadPath::Cyb(p) => match cyb_llm::generate::TextGenerator::new_cyb(p, &tokenizer_path, pipelines) {
             Ok(g) => g,
-            Err(_) => return ("fail".into(), "—".into()),
-        }
-    } else {
-        match cyb_llm::generate::TextGenerator::new_safetensors(
-            &gguf_path, &tokenizer_path, pipelines,
-        ) {
+            Err(e) => { eprintln!("  cyb load: {e}"); return ("fail".into(), "—".into()); }
+        },
+        LoadPath::Gguf(p) => match cyb_llm::generate::TextGenerator::new_gguf(p, &tokenizer_path, pipelines) {
             Ok(g) => g,
-            Err(_) => return ("fail".into(), "—".into()),
-        }
+            Err(e) => { eprintln!("  gguf load: {e}"); return ("fail".into(), "—".into()); }
+        },
+        LoadPath::Safetensors(p) => match cyb_llm::generate::TextGenerator::new_safetensors(p, &tokenizer_path, pipelines) {
+            Ok(g) => g,
+            Err(e) => { eprintln!("  st load: {e}"); return ("fail".into(), "—".into()); }
+        },
     };
 
     // Generate
