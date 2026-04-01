@@ -113,6 +113,9 @@ enum Commands {
         name: String,
     },
 
+    /// Full status report: formats, sizes, loadability, config completeness
+    Status,
+
     /// Fetch missing or incomplete models from HuggingFace
     Fetch {
         /// Only fetch this model (by name)
@@ -390,6 +393,10 @@ fn main() {
 
         Commands::Audit => {
             run_audit();
+        }
+
+        Commands::Status => {
+            run_status();
         }
 
         Commands::Clean { execute } => {
@@ -918,6 +925,209 @@ fn run_metal(model_path: &std::path::Path, tokenizer_path: &std::path::Path, pro
 }
 
 // ── Model management commands ────────────────────────────────────
+
+fn run_status() {
+    use cyb_llm::manifest::{self, format_size, Tier, MANIFEST};
+
+    let base = manifest::models_dir();
+
+    println!();
+    println!("  cyb-llm model status — {}", base.display());
+    println!();
+    println!(
+        "  {:<24} {:>5} {:>8} {:>8} {:>6}  {:>5}  {}",
+        "MODEL", "TIER", "DISK", "FORMAT", "CFGS", "LOAD", "STATUS"
+    );
+    println!("  {}", "─".repeat(85));
+
+    let mut total_disk = 0u64;
+    let mut total_ok = 0usize;
+    let mut total_models = 0usize;
+
+    for spec in MANIFEST {
+        let dir = base.join(spec.name);
+        total_models += 1;
+
+        if !dir.exists() {
+            println!(
+                "  {:<24} {:>5} {:>8} {:>8} {:>6}  {:>5}  {}",
+                spec.name, spec.tier, "—", "—", "—", "—", "\x1b[31mMISSING\x1b[0m"
+            );
+            continue;
+        }
+
+        // Scan directory
+        let entries: Vec<_> = std::fs::read_dir(&dir)
+            .into_iter().flatten().flatten().collect();
+
+        // Disk size
+        let disk_bytes: u64 = entries.iter()
+            .filter_map(|e| e.metadata().ok())
+            .filter(|m| m.is_file())
+            .map(|m| m.len())
+            .sum::<u64>()
+            + scan_subdirs_size(&dir);
+        total_disk += disk_bytes;
+
+        // Detect formats present
+        let has_cyb = entries.iter().any(|e| ext_is(&e.path(), "cyb"));
+        let has_gguf = entries.iter().any(|e| ext_is(&e.path(), "gguf"));
+        let has_safetensors = entries.iter().any(|e| ext_is(&e.path(), "safetensors"));
+        let has_onnx = entries.iter().any(|e| ext_is(&e.path(), "onnx"))
+            || entries.iter().any(|e| e.file_type().map(|t| t.is_dir()).unwrap_or(false)
+                && e.file_name().to_str().unwrap_or("").starts_with("onnx"));
+        let has_pt = entries.iter().any(|e| {
+            let ext = e.path().extension().and_then(|x| x.to_str()).unwrap_or("").to_string();
+            ext == "pt" || ext == "pth"
+        });
+        let has_bin = entries.iter().any(|e| ext_is(&e.path(), "bin"));
+
+        let mut formats = Vec::new();
+        if has_cyb { formats.push("\x1b[32mcyb\x1b[0m"); }
+        if has_gguf { formats.push("gguf"); }
+        if has_safetensors { formats.push("st"); }
+        if has_onnx { formats.push("onnx"); }
+        if has_pt { formats.push("pt"); }
+        if has_bin { formats.push("bin"); }
+        let format_str = if formats.is_empty() { "none".to_string() } else { formats.join("+") };
+
+        // Config completeness
+        let has_config = dir.join("config.toml").exists();
+        let has_vocab = dir.join("vocab.toml").exists();
+        let has_chat = dir.join("chat.toml").exists();
+        let has_sampling = dir.join("sampling.toml").exists();
+        let has_tokenizer = dir.join("tokenizer.json").exists();
+        let cfg_count = [has_config, has_vocab, has_chat, has_sampling, has_tokenizer]
+            .iter().filter(|&&x| x).count();
+        let cfg_str = format!("{}/5", cfg_count);
+
+        // Loadability check
+        let loadable = if has_cyb {
+            // Try reading .cyb header
+            let cyb_path = entries.iter()
+                .find(|e| ext_is(&e.path(), "cyb"))
+                .map(|e| e.path());
+            match cyb_path {
+                Some(p) => match cyb_llm::cyb_format::read_cyb_config(&p) {
+                    Ok(cfg) if !cfg.is_empty() => "\x1b[32m✓\x1b[0m",
+                    _ => "\x1b[33m?\x1b[0m",
+                },
+                None => "\x1b[33m?\x1b[0m",
+            }
+        } else if has_gguf || has_safetensors || has_onnx || has_pt || has_bin {
+            "\x1b[33m~\x1b[0m" // legacy format, loadable but not .cyb
+        } else {
+            "\x1b[31m✗\x1b[0m"
+        };
+
+        // Status
+        let mut issues = Vec::new();
+        if !has_cyb && (has_gguf || has_safetensors || has_onnx || has_pt || has_bin) {
+            issues.push("no .cyb");
+        }
+        if has_cyb && (has_gguf || has_safetensors || has_onnx || has_pt || has_bin) {
+            issues.push("legacy weights");
+        }
+        if !has_config {
+            issues.push("no config.toml");
+        }
+
+        let status_str = if issues.is_empty() {
+            total_ok += 1;
+            "\x1b[32mok\x1b[0m".to_string()
+        } else {
+            format!("\x1b[33m{}\x1b[0m", issues.join(", "))
+        };
+
+        println!(
+            "  {:<24} {:>5} {:>8} {:>8} {:>6}  {:>5}  {}",
+            spec.name,
+            spec.tier,
+            format_size(disk_bytes),
+            format_str,
+            cfg_str,
+            loadable,
+            status_str,
+        );
+    }
+
+    // Unknown dirs
+    let known: std::collections::HashSet<&str> = MANIFEST.iter().map(|m| m.name).collect();
+    if let Ok(entries) = std::fs::read_dir(&base) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                let name = entry.file_name().to_string_lossy().to_string();
+                if !known.contains(name.as_str()) && !name.starts_with('.') {
+                    let size = scan_subdirs_size(&entry.path())
+                        + std::fs::read_dir(entry.path()).into_iter().flatten().flatten()
+                            .filter_map(|e| e.metadata().ok())
+                            .filter(|m| m.is_file())
+                            .map(|m| m.len()).sum::<u64>();
+                    if size > 1_000_000 {
+                        println!(
+                            "  {:<24} {:>5} {:>8} {:>8} {:>6}  {:>5}  \x1b[31mUNKNOWN\x1b[0m",
+                            name, "?", format_size(size), "?", "—", "—"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    println!("  {}", "─".repeat(85));
+
+    // Summary
+    println!();
+    println!("  {} models  |  {}/{} ready  |  {} total disk",
+        total_models, total_ok, total_models, format_size(total_disk));
+
+    // Per-tier summary
+    for tier in [Tier::Tier0, Tier::Tier1, Tier::Tier2, Tier::Media] {
+        let tier_models: Vec<_> = MANIFEST.iter()
+            .filter(|s| s.tier == tier)
+            .collect();
+        let tier_ok = tier_models.iter()
+            .filter(|s| {
+                let d = base.join(s.name);
+                d.exists() && d.join("config.toml").exists()
+                    && std::fs::read_dir(&d).into_iter().flatten().flatten()
+                        .any(|e| ext_is(&e.path(), "cyb"))
+            })
+            .count();
+        let tier_disk: u64 = tier_models.iter()
+            .filter_map(|s| {
+                let d = base.join(s.name);
+                if d.exists() { Some(manifest::inspect_model(s).size_bytes) } else { None }
+            })
+            .sum();
+        println!("  {} {}/{} ready  {}",
+            tier, tier_ok, tier_models.len(), format_size(tier_disk));
+    }
+    println!();
+}
+
+fn ext_is(path: &std::path::Path, ext: &str) -> bool {
+    path.extension().and_then(|e| e.to_str()).map(|e| e == ext).unwrap_or(false)
+}
+
+fn scan_subdirs_size(dir: &std::path::Path) -> u64 {
+    let mut total = 0u64;
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                total += scan_subdirs_size(&entry.path());
+                if let Ok(sub_entries) = std::fs::read_dir(entry.path()) {
+                    for se in sub_entries.flatten() {
+                        if let Ok(m) = se.metadata() {
+                            if m.is_file() { total += m.len(); }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    total
+}
 
 fn run_audit() {
     use cyb_llm::manifest::{self, format_size, Tier};
