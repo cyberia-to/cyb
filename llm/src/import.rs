@@ -994,7 +994,67 @@ const JUNK_EXTENSIONS: &[&str] = &[
     "py",    // handler.py, modeling_*.py, configuration_*.py, etc.
 ];
 
+/// When .cyb exists, delete ALL legacy weight files and TOML configs.
+/// .cyb is self-contained — it has config + weights inside.
+/// Only keep: .cyb file itself + tokenizer.json (runtime needs it).
+fn clean_legacy_weights(dir: &Path, result: &mut ImportResult) {
+    let legacy_extensions = ["safetensors", "gguf", "onnx", "onnx_data", "pt", "pth", "bin"];
+
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            let name = entry.file_name();
+            let name = name.to_str().unwrap_or("");
+
+            // Delete legacy weight files
+            if let Some(ext) = path.extension().and_then(|e| e.to_str()) {
+                if legacy_extensions.contains(&ext) {
+                    if let Ok(meta) = entry.metadata() {
+                        if meta.is_file() {
+                            let size = meta.len();
+                            if std::fs::remove_file(&path).is_ok() {
+                                result.files_deleted += 1;
+                                result.downloaded_bytes += size;
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Delete safetensors index files
+            if name.contains(".safetensors.index.json") {
+                if std::fs::remove_file(&path).is_ok() {
+                    result.files_deleted += 1;
+                }
+            }
+
+            // Delete legacy subdirs (onnx/, onnx_q8/, VAE/)
+            if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
+                let dir_name = name;
+                if dir_name.starts_with("onnx") || dir_name == "VAE" {
+                    let size = dir_size(&path);
+                    if std::fs::remove_dir_all(&path).is_ok() {
+                        result.files_deleted += 1;
+                        result.downloaded_bytes += size;
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn clean_junk(dir: &Path, result: &mut ImportResult) {
+    // If .cyb exists, it IS the model. Delete all legacy weight formats.
+    let has_cyb = std::fs::read_dir(dir)
+        .into_iter()
+        .flatten()
+        .flatten()
+        .any(|e| e.path().extension().map(|x| x == "cyb").unwrap_or(false));
+
+    if has_cyb {
+        clean_legacy_weights(dir, result);
+    }
+
     // Delete junk files
     let entries: Vec<_> = std::fs::read_dir(dir)
         .into_iter()
