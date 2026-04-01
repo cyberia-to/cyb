@@ -1,3 +1,4 @@
+#![allow(unused)]
 //! ANE training — Qwen3-0.6B forward+backward+optimizer
 //!
 //! Usage: cargo run --release -p cyb-llm --bin bench-ane-train -- --ckpt PATH --data PATH [--steps 100] [--lr 3e-4]

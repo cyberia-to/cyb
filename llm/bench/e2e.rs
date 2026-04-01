@@ -1,3 +1,4 @@
+#![allow(unused)]
 //! End-to-end inference benchmark — cyb-llm vs ollama
 //!
 //! Loads real models from ~/llm/, generates tokens, measures tok/s.

@@ -1,3 +1,4 @@
+#![allow(unused_imports, unused_variables)]
 //! ANE inference with KV-cache — Qwen3-0.6B
 //!
 //! Prefill: QKV/Wo/FFN on ANE, QK-norm+RoPE+attention on CPU
@@ -314,7 +315,7 @@ fn forward_decode(
                 fn vDSP_vdiv(A: *const f32, IA: i64, B: *const f32, IB: i64,
                     C: *mut f32, IC: i64, N: u64);
             }
-            unsafe { vDSP_vdiv(buf.gate.as_ptr(), 1, buf.h1.as_ptr(), 1, buf.gate.as_mut_ptr(), 1, h) };
+            vDSP_vdiv(buf.gate.as_ptr(), 1, buf.h1.as_ptr(), 1, buf.gate.as_mut_ptr(), 1, h);
             cyb_llm::backend::cpu::accel::vDSP_vmul(buf.gate.as_ptr(), 1, buf.h3.as_ptr(), 1,
                 buf.gate.as_mut_ptr(), 1, h);
         }

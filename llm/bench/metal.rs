@@ -1,3 +1,4 @@
+#![allow(unused_imports)]
 //! Kernel benchmark — wgpu vs Metal dispatch comparison
 //!
 //! Measures raw GFLOPS for matmul and matvec kernels at realistic model dimensions.

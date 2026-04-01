@@ -932,6 +932,7 @@ fn run_status() {
     let base = manifest::models_dir();
 
     // Parse config.toml for each model to get architecture info
+    #[allow(dead_code)]
     struct ModelInfo {
         model_type: String,
         hidden: String,
@@ -1091,6 +1092,7 @@ fn ext_is(path: &std::path::Path, ext: &str) -> bool {
     path.extension().and_then(|e| e.to_str()).map(|e| e == ext).unwrap_or(false)
 }
 
+#[allow(dead_code)]
 fn scan_subdirs_size(dir: &std::path::Path) -> u64 {
     let mut total = 0u64;
     if let Ok(entries) = std::fs::read_dir(dir) {
