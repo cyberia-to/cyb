@@ -51,14 +51,6 @@ fn load_safetensors_sharded(dir: &Path, index_path: &Path) -> Result<Graph, Stri
         .into_iter().collect();
     shard_files.sort();
 
-    // Build reverse map: tensor_name → shard_file
-    let mut tensor_to_shard: HashMap<String, String> = HashMap::new();
-    for (tensor_name, shard) in weight_map {
-        if let Some(s) = shard.as_str() {
-            tensor_to_shard.insert(tensor_name.clone(), s.to_string());
-        }
-    }
-
     let mut graph = Graph::new();
     for shard_file in &shard_files {
         let shard_path = dir.join(shard_file);
@@ -66,19 +58,16 @@ fn load_safetensors_sharded(dir: &Path, index_path: &Path) -> Result<Graph, Stri
             log::warn!("Shard {} not found, skipping", shard_file);
             continue;
         }
-        // Only load tensors that belong to THIS shard
-        let shard_tensors: std::collections::HashSet<&str> = tensor_to_shard.iter()
-            .filter(|(_, sf)| sf.as_str() == shard_file.as_str())
-            .map(|(tn, _)| tn.as_str())
-            .collect();
-
-        let shard_graph = load_safetensors_single_filtered(&shard_path, Some(&shard_tensors))?;
+        // Load all tensors that fit in this shard (OOB ones belong to other shards)
+        let shard_graph = load_safetensors_single(&shard_path)?;
+        let count = shard_graph.weights.len();
         for (name, weight) in shard_graph.weights {
             graph.add_weight(name.clone(), weight);
             if let Some(meta) = shard_graph.tensors.get(&name) {
                 graph.add_tensor(name, meta.clone());
             }
         }
+        log::info!("Shard {}: {} tensors loaded", shard_file, count);
     }
 
     log::info!("Safetensors sharded: {} weights from {} shards in {}",
@@ -88,10 +77,6 @@ fn load_safetensors_sharded(dir: &Path, index_path: &Path) -> Result<Graph, Stri
 
 /// Load a single safetensors file into Graph IR
 fn load_safetensors_single(path: &Path) -> Result<Graph, String> {
-    load_safetensors_single_filtered(path, None)
-}
-
-fn load_safetensors_single_filtered(path: &Path, filter: Option<&std::collections::HashSet<&str>>) -> Result<Graph, String> {
     let file = std::fs::File::open(path)
         .map_err(|e| format!("Cannot open {}: {e}", path.display()))?;
     let mmap = unsafe {
@@ -126,27 +111,6 @@ fn load_safetensors_single_filtered(path: &Path, filter: Option<&std::collection
 
     let data_start = 8 + header_size;
 
-    // Multi-shard: each shard header has global offsets for ALL tensors.
-    // But data is packed locally (offset 0 = first tensor's data in this shard).
-    // Build global→local offset map for this shard's tensors.
-    let global_to_local: HashMap<u64, u64> = {
-        let mut offsets: Vec<(u64, u64)> = descriptors.iter()
-            .filter(|(name, _)| {
-                if let Some(f) = &filter { f.contains(name.as_str()) } else { true }
-            })
-            .filter(|(name, _)| name.as_str() != "__metadata__")
-            .filter_map(|(_, v)| serde_json::from_value::<TensorDescriptor>(v.clone()).ok()
-                .map(|d| (d.data_offsets[0], d.data_offsets[1] - d.data_offsets[0])))
-            .collect();
-        offsets.sort();
-        let mut map = HashMap::new();
-        let mut local = 0u64;
-        for (global_start, size) in offsets {
-            map.insert(global_start, local);
-            local += size;
-        }
-        map
-    };
 
     let mut graph = Graph::new();
     let mut loaded = 0;
@@ -162,18 +126,11 @@ fn load_safetensors_single_filtered(path: &Path, filter: Option<&std::collection
 
         let dtype = safetensors_dtype(&desc.dtype);
         let [offset_start, offset_end] = desc.data_offsets;
-        let size = (offset_end - offset_start) as usize;
-        let local = global_to_local.get(&offset_start).copied().unwrap_or(offset_start) as usize;
-        let byte_start = data_start + local;
-        let byte_end = byte_start + size;
-
-        // Skip tensors not in filter (multi-shard: only load this shard's tensors)
-        if let Some(f) = &filter {
-            if !f.contains(name.as_str()) { continue; }
-        }
+        let byte_start = data_start + offset_start as usize;
+        let byte_end = data_start + offset_end as usize;
 
         if byte_end > mmap.len() {
-            log::debug!("Tensor {name} OOB: {byte_end} > {}, skipping", mmap.len());
+            log::warn!("Tensor {name} OOB: {byte_end} > {}, skipping", mmap.len());
             continue;
         }
 
