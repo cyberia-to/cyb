@@ -275,14 +275,16 @@ impl GraphExecutor {
         // Debug: find first NaN layer
         if std::env::var("CYB_DEBUG_ENCODER").is_ok() {
             for i in 0..64 {
-                for suffix in &["q_out", "q_biased", "k_biased", "v_biased", "attn_out", "attn_dense", "attn_dense_biased", "residual1", "attn_ln", "inter_out", "inter_biased", "inter_act", "output_dense", "output_biased", "residual2", "output_ln"] {
+                for suffix in &["q_out", "attn_out", "attn_dense", "residual1", "attn_ln", "inter_out", "inter_biased", "inter_act", "output_dense", "output_biased", "residual2", "output_ln"] {
                     let name = format!("layer_{i}.{suffix}");
                     if let Some(buf) = buffers.get(&name) {
-                        let vals = p.read_f32(buf, 8.min(output_size));
-                        let has_nan = vals.iter().any(|v| v.is_nan());
-                        if has_nan || *suffix == "output_ln" || i == 8 {
-                            eprintln!("  {name} = [{:.4}, {:.4}...] nan={has_nan}",
-                                vals.get(0).unwrap_or(&0.0), vals.get(1).unwrap_or(&0.0));
+                        let vals = p.read_f32(buf, buf.size() as usize / 4);
+                        let nan_count = vals.iter().filter(|v| v.is_nan()).count();
+                        let has_nan = nan_count > 0;
+                        let first_nan = vals.iter().position(|v| v.is_nan()).unwrap_or(0);
+                        if i == 0 || has_nan {
+                            eprintln!("  {name} [{} elems] = [{:.4}, {:.4}...] nan={nan_count}/{} first_nan_at={first_nan}",
+                                vals.len(), vals.get(0).unwrap_or(&0.0), vals.get(1).unwrap_or(&0.0), vals.len(), );
                         }
                         if has_nan { break; } // stop at first NaN
                     }
@@ -446,8 +448,21 @@ impl GraphExecutor {
                 let batch = seq_len as u32; // 1 for decode, >1 for encoder
 
                 if let Some(w) = weights.get(weight_id) {
-                    let n = w.n();
-                    let k = w.k();
+                    // For ONNX weights: shape might be [K, N] (matmul Y=X@W)
+                    // For HF/GGUF weights: shape is [N, K] (matmul Y=X@W^T)
+                    // Detect: if shape[0]*batch matches activation size, it's [K, N] (ONNX)
+                    let (n, k) = {
+                        let s0 = w.shape.get(0).copied().unwrap_or(0);
+                        let s1 = w.shape.get(1).copied().unwrap_or(0);
+                        let act_elems = (activation.size() / 4) as usize / batch as usize;
+                        if s0 == act_elems && s1 != act_elems {
+                            // shape[0] = K (matches activation), shape[1] = N
+                            (s1 as u32, s0 as u32)
+                        } else {
+                            // shape[0] = N, shape[1] = K (HF convention)
+                            (s0 as u32, s1 as u32)
+                        }
+                    };
 
                     if batch > 1 || w.quant == GpuQuantFormat::F32 {
                         // Batch-aware f32 matmul: output [P, N]

@@ -64,7 +64,7 @@ fn gelu_kernel(@builtin(global_invocation_id) gid: vec3<u32>) {
     let idx = gid.x;
     let x = gelu_in[idx];
     let c = 0.7978845608; // sqrt(2/pi)
-    let inner = c * (x + 0.044715 * x * x * x);
+    let inner = clamp(c * (x + 0.044715 * x * x * x), -10.0, 10.0);
     gelu_out[idx] = 0.5 * x * (1.0 + tanh(inner));
 }
 
