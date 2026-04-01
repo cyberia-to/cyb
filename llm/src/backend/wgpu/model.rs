@@ -141,6 +141,8 @@ pub struct NativeModel {
     /// Quantization format for projections (Q4, Q8, or F32)
     quant_format: QuantFormat,
     model_params: ModelParamBuffers,
+    /// TurboQuant KV cache compressor (None = standard uncompressed cache)
+    pub kv_compressor: Option<crate::kv_compress::KvCompressor>,
 }
 
 /// Convert model-level QuantFormat to dispatch::QuantFormat
@@ -990,6 +992,7 @@ impl NativeModel {
                 argmax_params,
                 argmax_wg,
             },
+            kv_compressor: None,
         })
     }
 
@@ -1360,6 +1363,7 @@ impl NativeModel {
                 argmax_params,
                 argmax_wg,
             },
+            kv_compressor: None,
         })
     }
 
@@ -2280,7 +2284,24 @@ impl NativeModel {
                 argmax_params,
                 argmax_wg,
             },
+            kv_compressor: None,
         })
+    }
+
+    /// Enable TurboQuant KV cache compression.
+    /// Call after model load, before inference. Reduces KV cache memory ~4x.
+    pub fn enable_kv_compression(&mut self) {
+        let config = crate::kv_compress::KvCompressConfig {
+            head_dim: self.config.head_dim,
+            kv_heads: self.config.kv_num_heads,
+            num_layers: self.config.num_layers,
+            enabled: true,
+        };
+        self.kv_compressor = Some(crate::kv_compress::KvCompressor::new(config));
+        log::info!(
+            "TurboQuant KV compression enabled: head_dim={}, kv_heads={}, layers={}",
+            self.config.head_dim, self.config.kv_num_heads, self.config.num_layers
+        );
     }
 
     /// Reset KV cache
@@ -2289,6 +2310,9 @@ impl NativeModel {
         for cache in &mut self.kv_cache {
             cache.key = None;
             cache.value = None;
+        }
+        if let Some(ref mut compressor) = self.kv_compressor {
+            compressor.reset();
         }
     }
 
