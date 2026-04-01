@@ -62,8 +62,8 @@ pub fn canonicalize(model_dir: &Path) -> ImportResult {
 /// Tries the standard loader first, falls back to raw binary packing.
 /// Returns (output_path, input_size, output_size) on success.
 pub fn convert_to_cyb(model_dir: &Path) -> Result<(std::path::PathBuf, u64, u64), String> {
-    use crate::ir::{Graph, WeightData, DType};
-    use std::collections::HashMap;
+    
+    
 
     let model_name = model_dir
         .file_name()
@@ -1006,7 +1006,7 @@ fn flatten_onnx_dir(dir: &Path, result: &mut ImportResult) -> bool {
 }
 
 /// Delete ONNX directories when a higher-priority format (GGUF/safetensors) exists
-fn delete_onnx_dirs(dir: &Path, entries: &[std::fs::DirEntry], result: &mut ImportResult) {
+fn delete_onnx_dirs(_dir: &Path, entries: &[std::fs::DirEntry], result: &mut ImportResult) {
     for entry in entries {
         if entry.file_type().map(|t| t.is_dir()).unwrap_or(false) {
             let name = entry.file_name();
@@ -1251,7 +1251,7 @@ fn convert_onnx_to_gguf(onnx_path: &Path, gguf_path: &Path) -> Result<(), String
     use crate::loader::onnx::load_onnx;
 
     // Load ONNX via our loader (which renames weights)
-    let mut graph = load_onnx(onnx_path)?;
+    let graph = load_onnx(onnx_path)?;
 
     if graph.weights.is_empty() {
         return Err("No weights found in ONNX model".into());
@@ -1325,7 +1325,7 @@ fn convert_onnx_to_gguf(onnx_path: &Path, gguf_path: &Path) -> Result<(), String
     }
 
     // Pad header to alignment
-    let header_end = f.get_ref().metadata().map(|m| m.len()).unwrap_or(0);
+    let _header_end = f.get_ref().metadata().map(|m| m.len()).unwrap_or(0);
     // Can't get position from BufWriter easily, flush and check
     f.flush().map_err(|e| format!("{e}"))?;
     let pos = std::fs::metadata(gguf_path).map(|m| m.len()).unwrap_or(0);

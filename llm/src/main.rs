@@ -504,7 +504,7 @@ fn run_embed(model_path: &str, text: &str) {
     if is_modernbert {
         use cyb_llm::ir::{DType, WeightData};
         let hidden = bert_config.hidden_size;
-        let inter = bert_config.intermediate_size;
+        let _inter = bert_config.intermediate_size;
         let keys: Vec<String> = graph_with_weights.weights.keys().cloned().collect();
         let qkv_keys: Vec<String> = keys.iter().filter(|k| k.ends_with(".Wqkv.weight") || k.ends_with(".attn.Wqkv.weight")).cloned().collect();
         let wi_keys: Vec<String> = keys.iter().filter(|k| k.ends_with(".mlp.Wi.weight")).cloned().collect();
@@ -512,13 +512,13 @@ fn run_embed(model_path: &str, text: &str) {
         for key in qkv_keys {
             if let Some(w) = graph_with_weights.weights.remove(&key) {
                 let elem_size = w.dtype.element_size();
-                let row_bytes = hidden * elem_size;
+                let _row_bytes = hidden * elem_size;
                 let prefix = key.strip_suffix(".Wqkv.weight").unwrap().to_string();
                 // Dequant to f32 if needed, then split
                 let f32_data = cyb_llm::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
                 let total_out = f32_data.len() / hidden; // total output neurons
                 let per_split = total_out / 3;
-                let f32_row_bytes = hidden * 4; // f32
+                let _f32_row_bytes = hidden * 4; // f32
                 for (idx, name) in ["q", "k", "v"].iter().enumerate() {
                     let start = idx * per_split * hidden;
                     let end = start + per_split * hidden;
@@ -935,10 +935,10 @@ fn run_status() {
     println!("  cyb-llm model status — {}", base.display());
     println!();
     println!(
-        "  {:<24} {:>5} {:>8} {:>8} {:>6}  {:>5}  {}",
-        "MODEL", "TIER", "DISK", "FORMAT", "CFGS", "LOAD", "STATUS"
+        "  {:<24} {:>5} {:>6} {:>6} {:>4} {:>6} {:>4} {:>3}  {}",
+        "MODEL", "TIER", "DISK", "FMT", "CFGS", "LOAD", "W#", "OK", "STATUS"
     );
-    println!("  {}", "─".repeat(85));
+    println!("  {}", "─".repeat(90));
 
     let mut total_disk = 0u64;
     let mut total_ok = 0usize;
@@ -950,8 +950,8 @@ fn run_status() {
 
         if !dir.exists() {
             println!(
-                "  {:<24} {:>5} {:>8} {:>8} {:>6}  {:>5}  {}",
-                spec.name, spec.tier, "—", "—", "—", "—", "\x1b[31mMISSING\x1b[0m"
+                "  {:<24} {:>5} {:>6} {:>6} {:>4} {:>6} {:>4} {:>3}  {}",
+                spec.name, spec.tier, "—", "—", "—", "—", "—", "—", "\x1b[31mMISSING\x1b[0m"
             );
             continue;
         }
@@ -1001,23 +1001,47 @@ fn run_status() {
             .iter().filter(|&&x| x).count();
         let cfg_str = format!("{}/5", cfg_count);
 
-        // Loadability check
-        let loadable = if has_cyb {
-            // Try reading .cyb header
+        // Load test: actually try loading the .cyb or weight file, measure time
+        let (loadable, load_ms, n_weights) = if has_cyb {
             let cyb_path = entries.iter()
                 .find(|e| ext_is(&e.path(), "cyb"))
                 .map(|e| e.path());
             match cyb_path {
-                Some(p) => match cyb_llm::cyb_format::read_cyb_config(&p) {
-                    Ok(cfg) if !cfg.is_empty() => "\x1b[32m✓\x1b[0m",
-                    _ => "\x1b[33m?\x1b[0m",
-                },
-                None => "\x1b[33m?\x1b[0m",
+                Some(p) => {
+                    let start = std::time::Instant::now();
+                    match cyb_llm::cyb_format::read_cyb(&p) {
+                        Ok((graph, config)) => {
+                            let ms = start.elapsed().as_millis() as u64;
+                            let nw = graph.weights.len();
+                            let ok = !config.is_empty() && nw > 0;
+                            if ok {
+                                ("\x1b[32m✓\x1b[0m", ms, nw)
+                            } else if !config.is_empty() {
+                                ("\x1b[33m~\x1b[0m", ms, nw) // config ok but no parsed weights (raw pack)
+                            } else {
+                                ("\x1b[31m✗\x1b[0m", ms, 0)
+                            }
+                        }
+                        Err(_) => ("\x1b[31m✗\x1b[0m", 0, 0),
+                    }
+                }
+                None => ("\x1b[31m✗\x1b[0m", 0, 0),
             }
         } else if has_gguf || has_safetensors || has_onnx || has_pt || has_bin {
-            "\x1b[33m~\x1b[0m" // legacy format, loadable but not .cyb
+            ("\x1b[33m~\x1b[0m", 0, 0) // legacy, not benchmarked
         } else {
-            "\x1b[31m✗\x1b[0m"
+            ("\x1b[31m✗\x1b[0m", 0, 0)
+        };
+
+        let load_str = if load_ms > 0 {
+            format!("{:>4}ms", load_ms)
+        } else {
+            "    —".to_string()
+        };
+        let weights_str = if n_weights > 0 {
+            format!("{:>4}", n_weights)
+        } else {
+            "   —".to_string()
         };
 
         // Status
@@ -1040,12 +1064,14 @@ fn run_status() {
         };
 
         println!(
-            "  {:<24} {:>5} {:>8} {:>8} {:>6}  {:>5}  {}",
+            "  {:<24} {:>5} {:>6} {:>6} {:>4} {} {} {:>3}  {}",
             spec.name,
             spec.tier,
             format_size(disk_bytes),
             format_str,
             cfg_str,
+            load_str,
+            weights_str,
             loadable,
             status_str,
         );
@@ -1065,8 +1091,8 @@ fn run_status() {
                             .map(|m| m.len()).sum::<u64>();
                     if size > 1_000_000 {
                         println!(
-                            "  {:<24} {:>5} {:>8} {:>8} {:>6}  {:>5}  \x1b[31mUNKNOWN\x1b[0m",
-                            name, "?", format_size(size), "?", "—", "—"
+                            "  {:<24} {:>5} {:>6} {:>6} {:>4} {:>6} {:>4} {:>3}  \x1b[31mUNKNOWN\x1b[0m",
+                            name, "?", format_size(size), "?", "—", "—", "—", "—"
                         );
                     }
                 }
@@ -1074,7 +1100,7 @@ fn run_status() {
         }
     }
 
-    println!("  {}", "─".repeat(85));
+    println!("  {}", "─".repeat(90));
 
     // Summary
     println!();
