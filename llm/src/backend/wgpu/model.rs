@@ -1476,17 +1476,17 @@ impl NativeModel {
             .and_then(|v| v.as_f32()).unwrap_or(1e-5);
         let head_dim = hidden_size / num_heads;
 
-        let vocab_size = graph.get_weight("token_embd.weight")
+        let vocab_size = graph.get_weight("model.embed_tokens.weight")
             .map(|w| if w.shape.len() >= 2 { w.shape[1] } else { w.shape[0] })
             .unwrap_or(32000);
 
         let intermediate_size = metadata.get(&format!("{arch}.feed_forward_length"))
             .and_then(|v| v.as_u32()).map(|v| v as usize)
-            .unwrap_or_else(|| graph.get_weight("blk.0.ffn_gate.weight")
+            .unwrap_or_else(|| graph.get_weight("model.layers.0.mlp.gate_proj.weight")
                 .map(|w| if w.shape.len() >= 2 { w.shape[1] } else { w.shape[0] })
                 .unwrap_or(hidden_size * 4));
 
-        let first_weight_dtype = graph.get_weight("blk.0.attn_q.weight")
+        let first_weight_dtype = graph.get_weight("model.layers.0.self_attn.q_proj.weight")
             .map(|w| w.dtype).unwrap_or(DType::F32);
         let quant_format = match first_weight_dtype {
             DType::Q4 | DType::Q4_K | DType::Q4_1 | DType::Q2_K | DType::Q3_K | DType::Q5_K | DType::Q6_K => QuantFormat::Q4,
@@ -1523,7 +1523,7 @@ impl NativeModel {
         let ModelConfig { hidden_size, num_heads, kv_num_heads, head_dim,
             num_layers, vocab_size, block_size, has_qk_norm } = config;
 
-        let intermediate_size = graph.get_weight("blk.0.ffn_gate.weight")
+        let intermediate_size = graph.get_weight("model.layers.0.mlp.gate_proj.weight")
             .map(|w| if w.shape.len() >= 2 { w.shape[1] } else { w.shape[0] })
             .unwrap_or(hidden_size * 4);
 
@@ -2161,7 +2161,7 @@ impl NativeModel {
             Ok(pipelines.upload_f32(&f32_data))
         };
 
-        // Load embedding table — GGUF stores as [hidden, vocab], transpose to [vocab, hidden]
+        // Load embedding table — stored as [hidden, vocab], transpose to [vocab, hidden]
         let embed_w = graph.get_weight("token_embd.weight")
             .ok_or("Missing token_embd.weight")?;
         let embed_raw = gguf_to_f32(&embed_w.data, embed_w.dtype);
@@ -2201,18 +2201,18 @@ impl NativeModel {
         for i in 0..num_layers {
             log::info!("Loading layer {i}/{num_layers}...");
 
-            let input_norm_weight = load_f32_weight(&format!("blk.{i}.attn_norm.weight"))?;
+            let input_norm_weight = load_f32_weight(&format!("model.layers.{i}.input_layernorm.weight"))?;
 
-            let (q_proj_packed, q_proj_scales) = load_quantized_weight(&format!("blk.{i}.attn_q.weight"))?;
-            let (k_proj_packed, k_proj_scales) = load_quantized_weight(&format!("blk.{i}.attn_k.weight"))?;
-            let (v_proj_packed, v_proj_scales) = load_quantized_weight(&format!("blk.{i}.attn_v.weight"))?;
-            let (o_proj_packed, o_proj_scales) = load_quantized_weight(&format!("blk.{i}.attn_output.weight"))?;
+            let (q_proj_packed, q_proj_scales) = load_quantized_weight(&format!("model.layers.{i}.self_attn.q_proj.weight"))?;
+            let (k_proj_packed, k_proj_scales) = load_quantized_weight(&format!("model.layers.{i}.self_attn.k_proj.weight"))?;
+            let (v_proj_packed, v_proj_scales) = load_quantized_weight(&format!("model.layers.{i}.self_attn.v_proj.weight"))?;
+            let (o_proj_packed, o_proj_scales) = load_quantized_weight(&format!("model.layers.{i}.self_attn.o_proj.weight"))?;
 
-            let post_norm_weight = load_f32_weight(&format!("blk.{i}.ffn_norm.weight"))?;
+            let post_norm_weight = load_f32_weight(&format!("model.layers.{i}.post_attention_layernorm.weight"))?;
 
-            let (gate_proj_packed, gate_proj_scales) = load_quantized_weight(&format!("blk.{i}.ffn_gate.weight"))?;
-            let (up_proj_packed, up_proj_scales) = load_quantized_weight(&format!("blk.{i}.ffn_up.weight"))?;
-            let (down_proj_packed, down_proj_scales) = load_quantized_weight(&format!("blk.{i}.ffn_down.weight"))?;
+            let (gate_proj_packed, gate_proj_scales) = load_quantized_weight(&format!("model.layers.{i}.mlp.gate_proj.weight"))?;
+            let (up_proj_packed, up_proj_scales) = load_quantized_weight(&format!("model.layers.{i}.mlp.up_proj.weight"))?;
+            let (down_proj_packed, down_proj_scales) = load_quantized_weight(&format!("model.layers.{i}.mlp.down_proj.weight"))?;
 
             // Pre-compute param buffers
             let hs = hidden_size as u32;
@@ -2312,7 +2312,7 @@ impl NativeModel {
         }
 
         // Final norm
-        let final_norm_weight = load_f32_weight("output_norm.weight")?;
+        let final_norm_weight = load_f32_weight("model.norm.weight")?;
 
         // Compute RoPE cos/sin cache
         let max_seq_len = 2048;
