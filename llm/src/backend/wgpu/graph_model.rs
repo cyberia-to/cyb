@@ -43,6 +43,7 @@ pub struct GraphModel {
     cos_cache: Vec<f32>,
     sin_cache: Vec<f32>,
     /// Config
+    #[allow(dead_code)]
     config: GraphModelConfig,
 }
 

@@ -15,11 +15,10 @@
 //! ```
 
 use crate::ir::{
-    Attrs, AttrValue, BackendHint, DType, Dim, Graph, Node, Op, Residency,
-    Shape, TensorMeta, WeightData,
+    Attrs, AttrValue, BackendHint, DType, Graph, Node, Op, WeightData,
 };
 use std::collections::HashMap;
-use std::io::{self, Read, Write};
+use std::io::{self, Write};
 use std::path::Path;
 
 // ── Constants ────────────────────────────────────────────────────

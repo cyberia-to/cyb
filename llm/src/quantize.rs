@@ -3,7 +3,6 @@
 //! Pure Rust, zero Python. Reads FP16/BF16/FP32 safetensors, block-quantizes
 //! weights, writes standard GGUF v3 that cyb-llm (and llama.cpp) can load.
 
-use std::collections::HashMap;
 use std::io::{self, Write};
 use std::path::Path;
 
@@ -373,6 +372,7 @@ impl ConvertStats {
 // ── Metadata extraction ──────────────────────────────────────────
 
 #[derive(Debug)]
+#[allow(dead_code)]
 enum MetaValue {
     String(String),
     U32(u32),

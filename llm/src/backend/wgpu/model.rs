@@ -1989,7 +1989,7 @@ impl NativeModel {
                     }
                     out
                 }
-                DType::Q4_K | DType::Q6_K | DType::Q2_K | DType::Q3_K | DType::Q5_K | DType::Q4_1 => {
+                DType::Q4_K | DType::Q6_K | DType::Q2_K | DType::Q3_K | DType::Q5_K => {
                     // K-quant types: dequantize to f32 via our Q4 intermediate
                     log::debug!("Dequantizing {:?} to f32 ({} bytes)", dtype, data.len());
                     // Compute num_elements from data size + block format

@@ -12,7 +12,7 @@
 //! Only recognizes torch.FloatStorage, torch.HalfStorage, etc.
 
 use std::collections::HashMap;
-use std::io::{Cursor, Read, Seek, SeekFrom};
+use std::io::Cursor;
 use std::path::Path;
 
 use crate::ir::{DType, Graph, TensorMeta, WeightData};
@@ -49,7 +49,7 @@ impl ZipReader {
             if data[pos..pos + 4] != [0x50, 0x4b, 0x01, 0x02] {
                 break;
             }
-            let compressed_size = u32::from_le_bytes([
+            let _compressed_size = u32::from_le_bytes([
                 data[pos + 20], data[pos + 21], data[pos + 22], data[pos + 23],
             ]) as u64;
             let uncompressed_size = u32::from_le_bytes([
@@ -117,14 +117,14 @@ struct TensorInfo {
 ///   GLOBAL "torch._utils" "_rebuild_tensor_v2"
 ///   ... storage reference, offset, shape, stride ...
 fn parse_pickle_tensors(pickle_data: &[u8]) -> Vec<TensorInfo> {
-    let mut tensors = Vec::new();
-    let mut cursor = Cursor::new(pickle_data);
+    let tensors = Vec::new();
+    let _cursor = Cursor::new(pickle_data);
 
     // Simplified pickle parser: scan for storage references
     // PyTorch pickle uses protocol 2+ with specific opcodes
     // Key pattern: GLOBAL "torch" "FloatStorage" → (storage_key, dtype)
 
-    let mut current_name = String::new();
+    let mut _current_name = String::new();
     let mut storage_keys: Vec<(String, DType)> = Vec::new(); // (key, dtype)
 
     // Scan for tensor rebuild patterns by looking at raw bytes
@@ -166,7 +166,7 @@ fn parse_pickle_tensors(pickle_data: &[u8]) -> Vec<TensorInfo> {
                 if s.contains('.') && (s.contains("weight") || s.contains("bias") ||
                     s.contains("embed") || s.contains("norm") || s.contains("proj") ||
                     s.contains("attn") || s.contains("mlp") || s.contains("layer")) {
-                    current_name = s.clone();
+                    _current_name = s.clone();
                 }
 
                 i += 2 + slen;
