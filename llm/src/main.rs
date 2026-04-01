@@ -1036,14 +1036,9 @@ fn run_status() {
         };
         let load_str = if load_ms > 0 { format!("{load_ms}ms") } else { "—".to_string() };
 
-        let ok_str = if load_ok && has_cyb {
+        if load_ok && has_cyb {
             total_ok += 1;
-            "\x1b[32m✓\x1b[0m"
-        } else if has_cyb {
-            "\x1b[33m~\x1b[0m"
-        } else {
-            "\x1b[31m✗\x1b[0m"
-        };
+        }
 
         // Bench: tok/s + quality (only for decoder LLMs with weights.gguf + tokenizer)
         let is_decoder = matches!(info.model_type.as_str(),
