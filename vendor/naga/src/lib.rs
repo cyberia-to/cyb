@@ -1,3 +1,4 @@
+#![allow(unused_parens, mismatched_lifetime_syntaxes)]
 /*! Universal shader translator.
 
 The central structure of the crate is [`Module`]. A `Module` contains:
