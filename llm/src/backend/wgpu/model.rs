@@ -156,146 +156,6 @@ fn quant_fmt_to_dispatch(qf: QuantFormat) -> dispatch::QuantFormat {
     }
 }
 
-/// Build GGUF metadata KV pairs from ModelConfig
-fn build_gguf_metadata(config: &ModelConfig, rope_theta: f32, rms_norm_eps: f32) -> Vec<(String, GgufMetaValue)> {
-    vec![
-        ("general.architecture".into(), GgufMetaValue::Str("llama".into())),
-        ("llama.embedding_length".into(), GgufMetaValue::U32(config.hidden_size as u32)),
-        ("llama.attention.head_count".into(), GgufMetaValue::U32(config.num_heads as u32)),
-        ("llama.attention.head_count_kv".into(), GgufMetaValue::U32(config.kv_num_heads as u32)),
-        ("llama.block_count".into(), GgufMetaValue::U32(config.num_layers as u32)),
-        ("llama.rope.freq_base".into(), GgufMetaValue::F32(rope_theta)),
-        ("llama.attention.layer_norm_rms_epsilon".into(), GgufMetaValue::F32(rms_norm_eps)),
-    ]
-}
-
-enum GgufMetaValue {
-    Str(String),
-    U32(u32),
-    F32(f32),
-}
-
-/// Write a Graph's weights as a GGUF file with given metadata
-fn write_graph_as_gguf(
-    graph: &crate::ir::Graph,
-    metadata: &[(String, GgufMetaValue)],
-    path: &Path,
-) -> std::io::Result<()> {
-    use std::io::Write;
-    use crate::ir::DType;
-
-    let alignment: usize = 32;
-
-    // Sort weights by name
-    let mut names: Vec<&String> = graph.weights.keys().collect();
-    names.sort();
-
-    // Pre-compute header size
-    let mut header_size = 4 + 4 + 8 + 8; // magic + version + n_tensors + n_kv
-
-    for (key, val) in metadata {
-        header_size += 8 + key.len(); // key string
-        header_size += 4; // value type
-        match val {
-            GgufMetaValue::Str(s) => header_size += 8 + s.len(),
-            GgufMetaValue::U32(_) => header_size += 4,
-            GgufMetaValue::F32(_) => header_size += 4,
-        }
-    }
-
-    for name in &names {
-        let w = &graph.weights[*name];
-        header_size += 8 + name.len(); // name string
-        header_size += 4; // n_dims
-        header_size += 8 * w.shape.len(); // dims
-        header_size += 4; // type
-        header_size += 8; // offset
-    }
-
-    let header_padded = (header_size + alignment - 1) / alignment * alignment;
-
-    // Compute data offsets
-    let mut data_offset: u64 = 0;
-    let mut offsets = Vec::new();
-    for name in &names {
-        let w = &graph.weights[*name];
-        offsets.push(data_offset);
-        let aligned = ((w.data.len() + alignment - 1) / alignment * alignment) as u64;
-        data_offset += aligned;
-    }
-
-    let mut f = std::io::BufWriter::new(std::fs::File::create(path)?);
-
-    // Header
-    f.write_all(&0x4655_4747u32.to_le_bytes())?; // GGUF magic
-    f.write_all(&3u32.to_le_bytes())?; // version 3
-    f.write_all(&(names.len() as u64).to_le_bytes())?;
-    f.write_all(&(metadata.len() as u64).to_le_bytes())?;
-
-    // Metadata KV
-    for (key, val) in metadata {
-        f.write_all(&(key.len() as u64).to_le_bytes())?;
-        f.write_all(key.as_bytes())?;
-        match val {
-            GgufMetaValue::Str(s) => {
-                f.write_all(&8u32.to_le_bytes())?; // GGUF_TYPE_STRING
-                f.write_all(&(s.len() as u64).to_le_bytes())?;
-                f.write_all(s.as_bytes())?;
-            }
-            GgufMetaValue::U32(v) => {
-                f.write_all(&4u32.to_le_bytes())?; // GGUF_TYPE_UINT32
-                f.write_all(&v.to_le_bytes())?;
-            }
-            GgufMetaValue::F32(v) => {
-                f.write_all(&6u32.to_le_bytes())?; // GGUF_TYPE_FLOAT32
-                f.write_all(&v.to_le_bytes())?;
-            }
-        }
-    }
-
-    // Tensor infos
-    for (i, name) in names.iter().enumerate() {
-        let w = &graph.weights[*name];
-        f.write_all(&(name.len() as u64).to_le_bytes())?;
-        f.write_all(name.as_bytes())?;
-        f.write_all(&(w.shape.len() as u32).to_le_bytes())?;
-        for &dim in &w.shape {
-            f.write_all(&(dim as u64).to_le_bytes())?;
-        }
-        // Map DType to GGML type
-        let ggml_type: u32 = match w.dtype {
-            DType::F32 => 0,
-            DType::F16 => 1,
-            DType::Q4 => 2,
-            DType::Q8 => 8,
-            DType::Q4_K => 12,
-            DType::Q6_K => 14,
-            _ => 0, // fallback to F32
-        };
-        f.write_all(&ggml_type.to_le_bytes())?;
-        f.write_all(&offsets[i].to_le_bytes())?;
-    }
-
-    // Alignment padding
-    let padding = header_padded - header_size;
-    if padding > 0 {
-        f.write_all(&vec![0u8; padding])?;
-    }
-
-    // Tensor data
-    for name in &names {
-        let w = &graph.weights[*name];
-        f.write_all(&w.data)?;
-        let remainder = w.data.len() % alignment;
-        if remainder != 0 {
-            f.write_all(&vec![0u8; alignment - remainder])?;
-        }
-    }
-
-    f.flush()?;
-    Ok(())
-}
-
 /// Load and parse an ONNX model protobuf
 fn load_model_proto(path: &Path) -> Result<ModelProto, String> {
     let mut file = std::fs::File::open(path)
@@ -1508,74 +1368,42 @@ impl NativeModel {
     }
 
     /// Load model from GGUF file (Q4_0, Q8_0, F16, F32 weights)
+    /// Load from GGUF file on disk
     pub fn load_from_gguf(path: &Path, pipelines: Arc<Pipelines>) -> Result<Self, String> {
         use crate::loader::gguf::load_gguf_with_metadata;
         use crate::ir::DType;
 
         let (graph, metadata) = load_gguf_with_metadata(path)?;
 
-        // Detect architecture prefix (usually "llama" but could be others)
-        let arch = metadata
-            .get("general.architecture")
-            .and_then(|v| v.as_str())
-            .unwrap_or("llama");
+        let arch = metadata.get("general.architecture")
+            .and_then(|v| v.as_str()).unwrap_or("llama");
 
-        // Extract config from metadata
-        let hidden_size = metadata
-            .get(&format!("{arch}.embedding_length"))
-            .and_then(|v| v.as_u32())
-            .ok_or("Missing embedding_length in GGUF metadata")? as usize;
-        let num_heads = metadata
-            .get(&format!("{arch}.attention.head_count"))
-            .and_then(|v| v.as_u32())
-            .ok_or("Missing attention.head_count in GGUF metadata")? as usize;
-        let kv_num_heads = metadata
-            .get(&format!("{arch}.attention.head_count_kv"))
-            .and_then(|v| v.as_u32())
-            .unwrap_or(num_heads as u32) as usize;
-        let num_layers = metadata
-            .get(&format!("{arch}.block_count"))
-            .and_then(|v| v.as_u32())
-            .ok_or("Missing block_count in GGUF metadata")? as usize;
-        let rope_theta = metadata
-            .get(&format!("{arch}.rope.freq_base"))
-            .and_then(|v| v.as_f32())
-            .unwrap_or(10000.0);
-        let rms_norm_eps = metadata
-            .get(&format!("{arch}.attention.layer_norm_rms_epsilon"))
-            .and_then(|v| v.as_f32())
-            .unwrap_or(1e-5);
-
+        let hidden_size = metadata.get(&format!("{arch}.embedding_length"))
+            .and_then(|v| v.as_u32()).ok_or("Missing embedding_length")? as usize;
+        let num_heads = metadata.get(&format!("{arch}.attention.head_count"))
+            .and_then(|v| v.as_u32()).ok_or("Missing head_count")? as usize;
+        let kv_num_heads = metadata.get(&format!("{arch}.attention.head_count_kv"))
+            .and_then(|v| v.as_u32()).unwrap_or(num_heads as u32) as usize;
+        let num_layers = metadata.get(&format!("{arch}.block_count"))
+            .and_then(|v| v.as_u32()).ok_or("Missing block_count")? as usize;
+        let rope_theta = metadata.get(&format!("{arch}.rope.freq_base"))
+            .and_then(|v| v.as_f32()).unwrap_or(10000.0);
+        let rms_norm_eps = metadata.get(&format!("{arch}.attention.layer_norm_rms_epsilon"))
+            .and_then(|v| v.as_f32()).unwrap_or(1e-5);
         let head_dim = hidden_size / num_heads;
 
-        // Detect vocab size from embedding table shape
-        // GGUF stores embed as [hidden_size, vocab_size]
-        let embed_w = graph
-            .get_weight("token_embd.weight")
-            .ok_or("Missing token_embd.weight")?;
-        let vocab_size = if embed_w.shape.len() >= 2 {
-            embed_w.shape[1] // GGUF: [hidden, vocab]
-        } else {
-            embed_w.shape[0]
-        };
+        let vocab_size = graph.get_weight("token_embd.weight")
+            .map(|w| if w.shape.len() >= 2 { w.shape[1] } else { w.shape[0] })
+            .unwrap_or(32000);
 
-        // Detect intermediate size from metadata or gate weight
-        let intermediate_size = metadata
-            .get(&format!("{arch}.feed_forward_length"))
-            .and_then(|v| v.as_u32())
-            .map(|v| v as usize)
-            .unwrap_or_else(|| {
-                graph.get_weight("blk.0.ffn_gate.weight")
-                    .map(|w| if w.shape.len() >= 2 { w.shape[1] } else { w.shape[0] })
-                    .unwrap_or(hidden_size * 4)
-            });
+        let intermediate_size = metadata.get(&format!("{arch}.feed_forward_length"))
+            .and_then(|v| v.as_u32()).map(|v| v as usize)
+            .unwrap_or_else(|| graph.get_weight("blk.0.ffn_gate.weight")
+                .map(|w| if w.shape.len() >= 2 { w.shape[1] } else { w.shape[0] })
+                .unwrap_or(hidden_size * 4));
 
-        // Detect quantization format from first weight
-        // K-quant types are converted at load time to our simple Q4/Q8 format
-        let first_weight_dtype = graph
-            .get_weight("blk.0.attn_q.weight")
-            .map(|w| w.dtype)
-            .unwrap_or(DType::F32);
+        let first_weight_dtype = graph.get_weight("blk.0.attn_q.weight")
+            .map(|w| w.dtype).unwrap_or(DType::F32);
         let quant_format = match first_weight_dtype {
             DType::Q4 | DType::Q4_K | DType::Q4_1 | DType::Q2_K | DType::Q3_K | DType::Q5_K | DType::Q6_K => QuantFormat::Q4,
             DType::Q8 => QuantFormat::Q8,
@@ -1584,23 +1412,36 @@ impl NativeModel {
             _ => QuantFormat::F32,
         };
 
-        let block_size: usize = 32;
+        let has_qk_norm = graph.weights.keys().any(|k| k.contains("q_norm") || k.contains("k_norm"));
 
-        log::info!(
-            "GGUF config: arch={}, hidden={}, heads={}, kv_heads={}, head_dim={}, layers={}, vocab={}, ffn={}, quant={:?}, rope_theta={}, eps={}",
-            arch, hidden_size, num_heads, kv_num_heads, head_dim, num_layers, vocab_size, intermediate_size, quant_format, rope_theta, rms_norm_eps,
-        );
+        log::info!("GGUF: hidden={hidden_size}, heads={num_heads}, kv={kv_num_heads}, layers={num_layers}, vocab={vocab_size}, ffn={intermediate_size}, quant={quant_format:?}");
 
         let config = ModelConfig {
-            hidden_size,
-            num_heads,
-            kv_num_heads,
-            head_dim,
-            num_layers,
-            vocab_size,
-            block_size,
-            has_qk_norm: false,
+            hidden_size, num_heads, kv_num_heads, head_dim,
+            num_layers, vocab_size, block_size: 32, has_qk_norm,
         };
+
+        Self::load_from_graph(graph, config, quant_format, rope_theta, rms_norm_eps, pipelines)
+    }
+
+    /// Core: load a Graph with GGUF-style weight names into GPU.
+    /// Shared between load_from_gguf and load_from_cyb.
+    fn load_from_graph(
+        graph: crate::ir::Graph,
+        config: ModelConfig,
+        quant_format: QuantFormat,
+        rope_theta: f32,
+        rms_norm_eps: f32,
+        pipelines: Arc<Pipelines>,
+    ) -> Result<Self, String> {
+        use crate::ir::DType;
+
+        let ModelConfig { hidden_size, num_heads, kv_num_heads, head_dim,
+            num_layers, vocab_size, block_size, has_qk_norm } = config;
+
+        let intermediate_size = graph.get_weight("blk.0.ffn_gate.weight")
+            .map(|w| if w.shape.len() >= 2 { w.shape[1] } else { w.shape[0] })
+            .unwrap_or(hidden_size * 4);
 
         // Convert GGUF Q4_0 block format to our format: packed u32[] + f32 scales[]
         let convert_gguf_q4_0 = |data: &[u8], shape: &[usize]| -> (Vec<u32>, Vec<f32>) {
@@ -2237,6 +2078,8 @@ impl NativeModel {
         };
 
         // Load embedding table — GGUF stores as [hidden, vocab], transpose to [vocab, hidden]
+        let embed_w = graph.get_weight("token_embd.weight")
+            .ok_or("Missing token_embd.weight")?;
         let embed_raw = gguf_to_f32(&embed_w.data, embed_w.dtype);
         let mut embed_f32 = vec![0.0f32; vocab_size * hidden_size];
         for v in 0..vocab_size {
@@ -2429,7 +2272,7 @@ impl NativeModel {
     }
 
     /// Load model from .cyb format — native path, no temp files.
-    /// Reads .cyb → Graph + config, parses config for architecture, loads weights to GPU.
+    /// Reads .cyb → Graph + config → directly to GPU via load_from_graph.
     pub fn load_from_cyb(cyb_path: &Path, pipelines: Arc<Pipelines>) -> Result<Self, String> {
         use crate::ir::DType;
 
@@ -2441,18 +2284,14 @@ impl NativeModel {
         }
 
         // Parse config from embedded TOML
-        let get_str = |key: &str| -> Option<String> {
+        let get = |key: &str| -> Option<String> {
             config_str.lines()
                 .find(|l| l.starts_with(key))
                 .and_then(|l| l.split('=').nth(1))
                 .map(|v| v.trim().trim_matches('"').to_string())
         };
-        let get_usize = |key: &str| -> Option<usize> {
-            get_str(key).and_then(|v| v.parse().ok())
-        };
-        let get_f32 = |key: &str| -> Option<f32> {
-            get_str(key).and_then(|v| v.parse().ok())
-        };
+        let get_usize = |key: &str| -> Option<usize> { get(key).and_then(|v| v.parse().ok()) };
+        let get_f32 = |key: &str| -> Option<f32> { get(key).and_then(|v| v.parse().ok()) };
 
         let hidden_size = get_usize("hidden_size").ok_or("Missing hidden_size in .cyb config")?;
         let num_heads = get_usize("num_attention_heads").ok_or("Missing num_attention_heads")?;
@@ -2461,21 +2300,12 @@ impl NativeModel {
         let head_dim = hidden_size / num_heads;
         let rope_theta = get_f32("rope_theta").unwrap_or(10000.0);
         let rms_norm_eps = get_f32("rms_norm_eps").unwrap_or(1e-5);
+        let vocab_size = get_usize("vocab_size").unwrap_or(32000);
+        let has_qk_norm = graph.weights.keys().any(|k| k.contains("q_norm") || k.contains("k_norm"));
 
-        // Vocab size from embed weight shape
-        let vocab_size = graph.weights.values()
-            .find(|w| w.shape.len() >= 2 && w.shape[1] > 10000)
-            .map(|w| w.shape[1])
-            .or_else(|| get_usize("vocab_size"))
-            .unwrap_or(32000);
-
-        let intermediate_size = get_usize("intermediate_size").unwrap_or(hidden_size * 4);
-
-        // Detect quant format from weights
         let first_weight_dtype = graph.weights.values()
             .find(|w| w.shape.len() >= 2 && w.data.len() > 1000)
-            .map(|w| w.dtype)
-            .unwrap_or(DType::F32);
+            .map(|w| w.dtype).unwrap_or(DType::F32);
         let quant_format = match first_weight_dtype {
             DType::Q4 | DType::Q4_K | DType::Q4_1 | DType::Q2_K | DType::Q3_K | DType::Q5_K | DType::Q6_K => QuantFormat::Q4,
             DType::Q8 => QuantFormat::Q8,
@@ -2484,58 +2314,14 @@ impl NativeModel {
             _ => QuantFormat::F32,
         };
 
-        let has_qk_norm = graph.weights.keys().any(|k| k.contains("q_norm") || k.contains("k_norm"));
-
-        log::info!(
-            "CYB config: hidden={}, heads={}, kv_heads={}, head_dim={}, layers={}, vocab={}, ffn={}, quant={:?}",
-            hidden_size, num_heads, kv_num_heads, head_dim, num_layers, vocab_size, intermediate_size, quant_format,
-        );
+        log::info!("CYB: hidden={hidden_size}, heads={num_heads}, kv={kv_num_heads}, layers={num_layers}, vocab={vocab_size}, quant={quant_format:?}");
 
         let config = ModelConfig {
-            hidden_size,
-            num_heads,
-            kv_num_heads,
-            head_dim,
-            num_layers,
-            vocab_size,
-            block_size: 32,
-            has_qk_norm,
+            hidden_size, num_heads, kv_num_heads, head_dim,
+            num_layers, vocab_size, block_size: 32, has_qk_norm,
         };
 
-        // Delegate to load_from_graph which does the heavy lifting
-        // (weight conversion + GPU upload — shared with GGUF path)
-        Self::load_weights_to_gpu(graph, config, quant_format, rope_theta, rms_norm_eps, pipelines)
-    }
-
-    /// Core weight loading: Graph + config → NativeModel with GPU buffers.
-    /// Shared between load_from_gguf and load_from_cyb.
-    fn load_weights_to_gpu(
-        graph: crate::ir::Graph,
-        config: ModelConfig,
-        _quant_format: QuantFormat,
-        rope_theta: f32,
-        rms_norm_eps: f32,
-        pipelines: Arc<Pipelines>,
-    ) -> Result<Self, String> {
-        // This delegates to load_from_gguf's existing weight processing.
-        // For now, write Graph to temp GGUF in memory, but this avoids
-        // filesystem round-trip by using the graph directly.
-        //
-        // TODO: refactor load_from_gguf to call this function with a
-        // pre-loaded Graph instead of reading from disk.
-
-        // For immediate working version: serialize to in-memory GGUF bytes,
-        // write to temp file, load via existing path. Not ideal but correct.
-        let tmp_path = std::env::temp_dir().join(format!(".cyb_load_{}.gguf", std::process::id()));
-
-        // Use the quantize module's GGUF writer
-        let metadata = build_gguf_metadata(&config, rope_theta, rms_norm_eps);
-        write_graph_as_gguf(&graph, &metadata, &tmp_path)
-            .map_err(|e| format!("temp GGUF write failed: {e}"))?;
-
-        let result = Self::load_from_gguf(&tmp_path, pipelines);
-        let _ = std::fs::remove_file(&tmp_path);
-        result
+        Self::load_from_graph(graph, config, quant_format, rope_theta, rms_norm_eps, pipelines)
     }
 
     /// Enable TurboQuant KV cache compression.
