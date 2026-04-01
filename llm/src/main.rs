@@ -1107,25 +1107,18 @@ fn quick_bench(model_dir: &std::path::Path) -> (String, String) {
         return ("—".into(), "—".into());
     }
 
-    // Find loadable weight file: weights.gguf > *.gguf > weights.safetensors
+    // Find loadable weight file: weights.gguf > *.gguf > weights.safetensors > .cyb (extract)
     let gguf_path = if model_dir.join("weights.gguf").exists() {
         model_dir.join("weights.gguf")
+    } else if let Some(p) = std::fs::read_dir(model_dir).into_iter().flatten().flatten()
+        .find(|e| ext_is(&e.path(), "gguf")).map(|e| e.path())
+    {
+        p
+    } else if model_dir.join("weights.safetensors").exists() {
+        model_dir.join("weights.safetensors")
     } else {
-        // Search for any .gguf file
-        match std::fs::read_dir(model_dir).into_iter().flatten().flatten()
-            .find(|e| ext_is(&e.path(), "gguf"))
-            .map(|e| e.path())
-        {
-            Some(p) => p,
-            None => {
-                // Try safetensors
-                if model_dir.join("weights.safetensors").exists() {
-                    model_dir.join("weights.safetensors")
-                } else {
-                    return ("—".into(), "—".into());
-                }
-            }
-        }
+        // No weight files on disk — can't bench
+        return ("—".into(), "—".into());
     };
 
     let is_gguf = ext_is(&gguf_path, "gguf");
