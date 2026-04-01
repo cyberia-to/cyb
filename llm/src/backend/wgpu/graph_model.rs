@@ -82,7 +82,9 @@ impl GraphModel {
         let default_quant = detect_quant_format(raw_weights);
 
         // Upload weights to GPU
-        let gpu_weights = upload_weights(raw_weights, &pipelines, config.block_size)?;
+        // For encoder: force F32 (encoder uses batch f32_matmul, can't use Q4 buffers)
+        let force_f32 = matches!(architecture, Architecture::Encoder);
+        let gpu_weights = upload_weights(raw_weights, &pipelines, config.block_size, force_f32)?;
 
         // Create executor config
         let exec_config = ExecConfig {
@@ -269,10 +271,20 @@ fn upload_weights(
     weights: &HashMap<String, WeightData>,
     pipelines: &Pipelines,
     block_size: u32,
+    force_f32: bool,
 ) -> Result<HashMap<String, GpuWeight>, String> {
     let mut gpu_weights = HashMap::new();
 
     for (name, w) in weights {
+        if force_f32 && w.shape.len() >= 2 {
+            // Encoder: dequant everything to f32 for batch matmul compatibility
+            let f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
+            let buf = pipelines.upload_f32(&f32s);
+            gpu_weights.insert(name.clone(), GpuWeight {
+                buf, scales: None, quant: GpuQuantFormat::F32, shape: w.shape.clone(),
+            });
+            continue;
+        }
         let (buf, scales, quant) = upload_single_weight(w, pipelines, block_size)?;
         gpu_weights.insert(name.clone(), GpuWeight {
             buf,
