@@ -73,6 +73,12 @@ pub enum Op {
     SdpaWindow { num_heads: u32, head_dim: u32, window_size: u32 },
     /// KV cache — append/lookup, memory lifecycle
     KvCache,
+    /// TurboQuant KV compress: PolarQuant rotation + angle quantization (values),
+    /// QJL sign-bit projection (keys). Runs after K/V projection, before cache store.
+    KvCompress { head_dim: u32, bits: u32 },
+    /// TurboQuant KV decompress: angle dequant + inverse rotation (values),
+    /// QJL inner product estimation (keys). Runs at attention score computation.
+    KvDecompress { head_dim: u32, bits: u32 },
     /// Rotary position embedding (1D for LLMs, multi-axis for DiT/video)
     Rope { head_dim: u32, base: f32 },
     /// Sinusoidal timestep embedding for diffusion models
@@ -276,6 +282,8 @@ impl Op {
 
             // Legacy
             Op::Argmax => "Argmax",
+            Op::KvCompress { .. } => "KvCompress",
+            Op::KvDecompress { .. } => "KvDecompress",
         }
     }
 

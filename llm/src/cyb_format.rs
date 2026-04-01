@@ -361,6 +361,14 @@ fn serialize_op(buf: &mut Vec<u8>, op: &Op) -> io::Result<()> {
         Op::FlashAttention { num_heads, kv_heads, head_dim } => {
             buf.push(63); write_u32(buf, *num_heads)?; write_u32(buf, *kv_heads)?; write_u32(buf, *head_dim)?;
         }
+
+        // TurboQuant KV compression (64-65)
+        Op::KvCompress { head_dim, bits } => {
+            buf.push(64); write_u32(buf, *head_dim)?; write_u32(buf, *bits)?;
+        }
+        Op::KvDecompress { head_dim, bits } => {
+            buf.push(65); write_u32(buf, *head_dim)?; write_u32(buf, *bits)?;
+        }
     }
     Ok(())
 }
@@ -693,6 +701,9 @@ fn deserialize_op(data: &[u8], pos: &mut usize) -> io::Result<Op> {
         61 => Op::FusedSkipNorm { eps: read_f32_at(data, pos) },
         62 => Op::FusedSwiGlu,
         63 => Op::FlashAttention { num_heads: read_u32_at(data, pos), kv_heads: read_u32_at(data, pos), head_dim: read_u32_at(data, pos) },
+
+        64 => Op::KvCompress { head_dim: read_u32_at(data, pos), bits: read_u32_at(data, pos) },
+        65 => Op::KvDecompress { head_dim: read_u32_at(data, pos), bits: read_u32_at(data, pos) },
 
         _ => return Err(io::Error::new(io::ErrorKind::InvalidData, format!("unknown op tag {tag}"))),
     })
