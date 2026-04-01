@@ -173,8 +173,8 @@ fn main() {
                 } else if cli.backend == "wgpu" {
                     false
                 } else {
-                    // auto: Metal on macOS for safetensors or .cyb with GGUF (not ONNX)
-                    cfg!(target_os = "macos") && (is_safetensors || (is_cyb && model_dir.join("weights.gguf").exists()))
+                    // auto: Metal on macOS for safetensors or .cyb with GGUF/safetensors
+                    cfg!(target_os = "macos") && (is_safetensors || (is_cyb && (model_dir.join("weights.gguf").exists() || model_dir.join("weights.safetensors").exists())))
                 };
 
                 if use_metal && (is_safetensors || is_cyb) {
@@ -208,9 +208,11 @@ fn main() {
                     // the safetensors loading path (which expects HF names)
                     let gguf_path = model_dir.join("weights.gguf");
                     let onnx_path = model_dir.join("weights.onnx");
+                    let st_path = model_dir.join("weights.safetensors");
                     let weights_path = if gguf_path.exists() { gguf_path }
+                        else if st_path.exists() { st_path }
                         else if onnx_path.exists() { onnx_path }
-                        else { eprintln!("No weights.gguf or weights.onnx alongside .cyb"); return; };
+                        else { eprintln!("No weights alongside .cyb"); return; };
                     // All .cyb weights use HF-style names (GGUF natively, ONNX after rename)
                     let gen_result = cyb_llm::generate::TextGenerator::new_safetensors(
                         &weights_path, &tokenizer_path, pipelines);
