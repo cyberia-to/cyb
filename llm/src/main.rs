@@ -977,9 +977,9 @@ fn run_status() {
     println!();
 
     // Header
-    println!("  {:<22} {:<5} {:<12} {:>5} {:>3} {:>6} {:>6} {:>5} {}",
-        "MODEL", "TIER", "TYPE", "DISK", "L", "CTX", "LOAD", "OK", "NOTES");
-    println!("  {}", "─".repeat(82));
+    println!("  {:<22} {:<5} {:<10} {:>5} {:>3} {:>5} {:>6} {:>6} {:>4} {}",
+        "MODEL", "TIER", "TYPE", "DISK", "L", "CTX", "LOAD", "TOK/S", "GEN", "NOTES");
+    println!("  {}", "─".repeat(90));
 
     let mut total_disk = 0u64;
     let mut total_ok = 0usize;
@@ -990,8 +990,8 @@ fn run_status() {
         total_models += 1;
 
         if !dir.exists() {
-            println!("  {:<22} {:<5} {:<12} {:>5} {:>3} {:>6} {:>6} {:>5} \x1b[31mMISSING\x1b[0m",
-                spec.name, spec.tier, "—", "—", "—", "—", "—", "—");
+            println!("  {:<22} {:<5} {:<10} {:>5} {:>3} {:>5} {:>6} {:>6} {:>4} \x1b[31mMISSING\x1b[0m",
+                spec.name, spec.tier, "—", "—", "—", "—", "—", "—", "—");
             continue;
         }
 
@@ -1045,25 +1045,37 @@ fn run_status() {
             "\x1b[31m✗\x1b[0m"
         };
 
-        // Notes: issues or extra info
+        // Bench: tok/s + quality (only for decoder LLMs with weights.gguf + tokenizer)
+        let is_decoder = matches!(info.model_type.as_str(),
+            "qwen2" | "qwen3" | "qwen3_5_vl" | "qwen2_vl" | "llama" | "phi3"
+            | "bitnet" | "mimo" | "moondream");
+        let has_weights = dir.join("weights.gguf").exists()
+            || dir.join("weights.safetensors").exists()
+            || std::fs::read_dir(&dir).into_iter().flatten().flatten()
+                .any(|e| ext_is(&e.path(), "gguf"));
+        let (tok_s_str, quality_str) = if is_decoder && has_weights
+            && dir.join("tokenizer.json").exists()
+        {
+            eprint!("  bench {}...\r", spec.name);
+            quick_bench(&dir)
+        } else {
+            ("—".into(), "—".into())
+        };
+
+        // Notes
         let mut notes = Vec::new();
         if !has_cyb { notes.push("no .cyb"); }
         if !dir.join("config.toml").exists() { notes.push("no config"); }
-        let has_legacy = std::fs::read_dir(&dir).into_iter().flatten().flatten().any(|e| {
-            let ext = e.path().extension().and_then(|x| x.to_str()).unwrap_or("").to_string();
-            matches!(ext.as_str(), "gguf" | "safetensors" | "onnx" | "pt" | "pth" | "bin")
-        });
-        if has_cyb && has_legacy { notes.push("legacy"); }
         let notes_str = if notes.is_empty() {
             if !info.hidden.is_empty() { format!("h={}", info.hidden) } else { String::new() }
         } else {
             format!("\x1b[33m{}\x1b[0m", notes.join(", "))
         };
 
-        println!("  {:<22} {:<5} {:<12} {:>5} {:>3} {:>6} {:>6} {:>5} {}",
+        println!("  {:<22} {:<5} {:<10} {:>5} {:>3} {:>5} {:>6} {:>6} {:>4} {}",
             spec.name, spec.tier, type_str,
             format_size(disk_bytes), layers_str, ctx_str,
-            load_str, ok_str, notes_str);
+            load_str, tok_s_str, quality_str, notes_str);
     }
 
     println!("  {}", "─".repeat(82));
@@ -1090,6 +1102,89 @@ fn dir_size_status(path: &std::path::Path) -> u64 {
 
 fn ext_is(path: &std::path::Path, ext: &str) -> bool {
     path.extension().and_then(|e| e.to_str()).map(|e| e == ext).unwrap_or(false)
+}
+
+/// Quick bench: load model, generate a few tokens, measure tok/s + check sanity.
+/// Returns (tok_per_sec, quality) where quality is "ok"/"bad"/"—"
+fn quick_bench(model_dir: &std::path::Path) -> (String, String) {
+    let tokenizer_path = model_dir.join("tokenizer.json");
+    if !tokenizer_path.exists() {
+        return ("—".into(), "—".into());
+    }
+
+    // Find loadable weight file: weights.gguf > *.gguf > weights.safetensors
+    let gguf_path = if model_dir.join("weights.gguf").exists() {
+        model_dir.join("weights.gguf")
+    } else {
+        // Search for any .gguf file
+        match std::fs::read_dir(model_dir).into_iter().flatten().flatten()
+            .find(|e| ext_is(&e.path(), "gguf"))
+            .map(|e| e.path())
+        {
+            Some(p) => p,
+            None => {
+                // Try safetensors
+                if model_dir.join("weights.safetensors").exists() {
+                    model_dir.join("weights.safetensors")
+                } else {
+                    return ("—".into(), "—".into());
+                }
+            }
+        }
+    };
+
+    let is_gguf = ext_is(&gguf_path, "gguf");
+
+    // Init wgpu
+    let backend = cyb_llm::backend::create_wgpu_backend();
+    let pipelines = backend.pipelines;
+
+    // Load model
+    let mut generator = if is_gguf {
+        match cyb_llm::generate::TextGenerator::new_gguf(
+            &gguf_path, &tokenizer_path, pipelines,
+        ) {
+            Ok(g) => g,
+            Err(_) => return ("fail".into(), "—".into()),
+        }
+    } else {
+        match cyb_llm::generate::TextGenerator::new_safetensors(
+            &gguf_path, &tokenizer_path, pipelines,
+        ) {
+            Ok(g) => g,
+            Err(_) => return ("fail".into(), "—".into()),
+        }
+    };
+
+    // Generate
+    let prompt = cyb_llm::generate::apply_chat_template("What is 2+2?", model_dir);
+    let start = std::time::Instant::now();
+    let result = generator.generate(&prompt, 32, 0.0); // greedy, 32 tokens max
+    let elapsed = start.elapsed().as_secs_f64();
+
+    match result {
+        Ok(text) => {
+            let text = text.trim().to_string();
+            // Count tokens approximately (words * 1.3)
+            let approx_tokens = text.split_whitespace().count().max(1) as f64 * 1.3;
+            let tok_s = if elapsed > 0.01 { approx_tokens / elapsed } else { 0.0 };
+
+            // Quality check: does the output contain "4" or "four"?
+            let has_answer = text.contains('4') || text.to_lowercase().contains("four");
+            let is_garbage = text.len() < 2 || text.chars().filter(|c| c.is_alphanumeric()).count() < 3;
+
+            let quality = if is_garbage {
+                "\x1b[31mbad\x1b[0m"
+            } else if has_answer {
+                "\x1b[32mok\x1b[0m"
+            } else {
+                "\x1b[33m??\x1b[0m"
+            };
+
+            (format!("{:.0}", tok_s), quality.into())
+        }
+        Err(_) => ("err".into(), "\x1b[31mfail\x1b[0m".into()),
+    }
 }
 
 #[allow(dead_code)]
