@@ -621,6 +621,76 @@ fn run_embed(model_path: &str, text: &str) {
         }
     }
 
+    // EuroBERT (jina): remap weight names to BERT convention and add missing weights
+    let is_eurobert = model_type == "eurobert";
+    if is_eurobert {
+        use cyb_llm::ir::{DType, WeightData};
+        let wp = if bert_config.weight_prefix.is_empty() { "".to_string() } else { format!("{}.", bert_config.weight_prefix) };
+
+        // EuroBERT has no position embeddings (uses RoPE) — add zeros
+        let pos_name = format!("{wp}embeddings.position_embeddings.weight");
+        if !graph_with_weights.weights.contains_key(&pos_name) {
+            graph_with_weights.weights.insert(pos_name, WeightData {
+                data: vec![0u8; bert_config.max_position_embeddings * bert_config.hidden_size * 4],
+                shape: vec![bert_config.max_position_embeddings, bert_config.hidden_size],
+                dtype: DType::F32, needs_transpose: false,
+            });
+        }
+
+        // EuroBERT uses RMSNorm (no bias) but BERT template expects LayerNorm (weight + bias)
+        // Add zero biases for all LayerNorm nodes
+        for i in 0..bert_config.num_layers {
+            let renames = [
+                (format!("layers.{i}.input_layernorm.weight"), format!("{wp}encoder.layer.{i}.attention.output.LayerNorm.weight")),
+                (format!("layers.{i}.post_attention_layernorm.weight"), format!("{wp}encoder.layer.{i}.output.LayerNorm.weight")),
+                (format!("layers.{i}.self_attn.q_proj.weight"), format!("{wp}encoder.layer.{i}.attention.self.query.weight")),
+                (format!("layers.{i}.self_attn.k_proj.weight"), format!("{wp}encoder.layer.{i}.attention.self.key.weight")),
+                (format!("layers.{i}.self_attn.v_proj.weight"), format!("{wp}encoder.layer.{i}.attention.self.value.weight")),
+                (format!("layers.{i}.self_attn.o_proj.weight"), format!("{wp}encoder.layer.{i}.attention.output.dense.weight")),
+                (format!("layers.{i}.mlp.gate_proj.weight"), format!("{wp}encoder.layer.{i}.intermediate.dense.weight")),
+                (format!("layers.{i}.mlp.down_proj.weight"), format!("{wp}encoder.layer.{i}.output.dense.weight")),
+            ];
+            for (from, to) in renames {
+                if let Some(w) = graph_with_weights.weights.remove(&from) {
+                    graph_with_weights.weights.insert(to, w);
+                }
+            }
+            // Add zero biases for LayerNorm and projections
+            for suffix in &[
+                "attention.output.LayerNorm.bias", "output.LayerNorm.bias",
+                "attention.self.query.bias", "attention.self.key.bias",
+                "attention.self.value.bias", "attention.output.dense.bias",
+                "intermediate.dense.bias", "output.dense.bias",
+            ] {
+                let name = format!("{wp}encoder.layer.{i}.{suffix}");
+                if !graph_with_weights.weights.contains_key(&name) {
+                    let dim = if suffix.contains("intermediate") { bert_config.intermediate_size } else { bert_config.hidden_size };
+                    graph_with_weights.weights.insert(name, WeightData {
+                        data: vec![0u8; dim * 4], shape: vec![dim], dtype: DType::F32, needs_transpose: false,
+                    });
+                }
+            }
+        }
+
+        // Rename embeddings
+        if let Some(w) = graph_with_weights.weights.remove("embeddings.word_embeddings.weight") {
+            graph_with_weights.weights.insert(format!("{wp}embeddings.word_embeddings.weight"), w);
+        }
+        // Add embedding LayerNorm (zeros for RMSNorm compat)
+        for suffix in &["embeddings.LayerNorm.weight", "embeddings.LayerNorm.bias"] {
+            let name = format!("{wp}{suffix}");
+            if !graph_with_weights.weights.contains_key(&name) {
+                let h = bert_config.hidden_size;
+                let data = if suffix.contains("bias") { vec![0u8; h * 4] }
+                    else { (0..h).flat_map(|_| 1.0f32.to_le_bytes()).collect() };
+                graph_with_weights.weights.insert(name, WeightData {
+                    data, shape: vec![h], dtype: DType::F32, needs_transpose: false,
+                });
+            }
+        }
+        log::info!("EuroBERT: remapped {} layers to BERT convention", bert_config.num_layers);
+    }
+
     // Build graph from template
     let graph = if is_modernbert {
         modernbert_encoder(&bert_config)
@@ -642,8 +712,10 @@ fn run_embed(model_path: &str, text: &str) {
     let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path)
         .expect("Failed to load tokenizer");
 
-    // Tokenize input (strip padding — encoder runs variable length, no attention mask needed)
-    let encoding = tokenizer.encode(text, true).expect("Tokenization failed");
+    // Tokenize input — add special tokens (BOS/EOS) only when the model expects them
+    // ModernBERT and some encoders don't need special tokens and produce NaN with them
+    let add_special = !is_modernbert && model_type != "eurobert";
+    let encoding = tokenizer.encode(text, add_special).expect("Tokenization failed");
     let attention_mask = encoding.get_attention_mask();
     let input_ids: Vec<u32> = encoding.get_ids().iter().zip(attention_mask.iter())
         .filter(|&(_, &mask)| mask == 1)
