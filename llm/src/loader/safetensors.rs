@@ -44,34 +44,123 @@ fn load_safetensors_sharded(dir: &Path, index_path: &Path) -> Result<Graph, Stri
         .and_then(|v| v.as_object())
         .ok_or("No weight_map in index")?;
 
-    // Collect unique shard files
+    // Build tensor→shard mapping
+    let mut tensor_to_shard: HashMap<String, String> = HashMap::new();
+    for (tensor_name, shard) in weight_map {
+        if let Some(s) = shard.as_str() {
+            tensor_to_shard.insert(tensor_name.clone(), s.to_string());
+        }
+    }
+
+    // Collect unique shard files (sorted)
     let mut shard_files: Vec<String> = weight_map.values()
         .filter_map(|v| v.as_str().map(String::from))
         .collect::<std::collections::HashSet<_>>()
         .into_iter().collect();
     shard_files.sort();
 
-    let mut graph = Graph::new();
+    // mmap all shards and parse headers
+    struct ShardInfo {
+        mmap: memmap2::Mmap,
+        data_start: usize,
+        descriptors: serde_json::Map<String, serde_json::Value>,
+    }
+    let mut shards: HashMap<String, ShardInfo> = HashMap::new();
+
     for shard_file in &shard_files {
         let shard_path = dir.join(shard_file);
         if !shard_path.exists() {
             log::warn!("Shard {} not found, skipping", shard_file);
             continue;
         }
-        // Load all tensors that fit in this shard (OOB ones belong to other shards)
-        let shard_graph = load_safetensors_single(&shard_path)?;
-        let count = shard_graph.weights.len();
-        for (name, weight) in shard_graph.weights {
-            graph.add_weight(name.clone(), weight);
-            if let Some(meta) = shard_graph.tensors.get(&name) {
-                graph.add_tensor(name, meta.clone());
-            }
+        let file = std::fs::File::open(&shard_path)
+            .map_err(|e| format!("Cannot open {}: {e}", shard_path.display()))?;
+        let mmap = unsafe { memmap2::Mmap::map(&file)
+            .map_err(|e| format!("Cannot mmap {}: {e}", shard_path.display()))? };
+
+        if mmap.len() < 8 { continue; }
+        let header_size = u64::from_le_bytes([
+            mmap[0], mmap[1], mmap[2], mmap[3], mmap[4], mmap[5], mmap[6], mmap[7],
+        ]) as usize;
+        let data_start = 8 + header_size;
+        if data_start > mmap.len() { continue; }
+
+        let header_str = std::str::from_utf8(&mmap[8..8 + header_size])
+            .map_err(|e| format!("Invalid header UTF-8 in {}: {e}", shard_file))?;
+        let descriptors: serde_json::Map<String, serde_json::Value> = serde_json::from_str(header_str)
+            .map_err(|e| format!("Invalid header JSON in {}: {e}", shard_file))?;
+
+        shards.insert(shard_file.clone(), ShardInfo { mmap, data_start, descriptors });
+    }
+
+    // For each shard: build global→local offset map, then load tensors
+    let mut graph = Graph::new();
+    for shard_file in &shard_files {
+        let shard = match shards.get(shard_file) {
+            Some(s) => s,
+            None => continue,
+        };
+
+        // Get tensors belonging to this shard
+        let shard_tensor_names: Vec<&String> = tensor_to_shard.iter()
+            .filter(|(_, sf)| sf.as_str() == shard_file.as_str())
+            .map(|(tn, _)| tn)
+            .collect();
+
+        // Sort by global offset to compute local positions
+        let mut tensor_offsets: Vec<(&String, u64, u64)> = shard_tensor_names.iter()
+            .filter_map(|tn| {
+                let desc = shard.descriptors.get(tn.as_str())?;
+                let d: TensorDescriptor = serde_json::from_value(desc.clone()).ok()?;
+                Some((*tn, d.data_offsets[0], d.data_offsets[1] - d.data_offsets[0]))
+            })
+            .collect();
+        tensor_offsets.sort_by_key(|(_, offset, _)| *offset);
+
+        // Build global→local map
+        let mut global_to_local: HashMap<u64, u64> = HashMap::new();
+        let mut local_pos: u64 = 0;
+        for &(_, global_start, size) in &tensor_offsets {
+            global_to_local.insert(global_start, local_pos);
+            local_pos += size;
         }
-        log::info!("Shard {}: {} tensors loaded", shard_file, count);
+
+        // Load each tensor using local offset
+        let mut count = 0;
+        for tensor_name in &shard_tensor_names {
+            let desc_value = match shard.descriptors.get(tensor_name.as_str()) {
+                Some(v) => v,
+                None => continue,
+            };
+            let desc: TensorDescriptor = match serde_json::from_value(desc_value.clone()) {
+                Ok(d) => d,
+                Err(_) => continue,
+            };
+
+            let dtype = safetensors_dtype(&desc.dtype);
+            let size = (desc.data_offsets[1] - desc.data_offsets[0]) as usize;
+            let local = *global_to_local.get(&desc.data_offsets[0]).unwrap_or(&desc.data_offsets[0]) as usize;
+            let byte_start = shard.data_start + local;
+            let byte_end = byte_start + size;
+
+            if byte_end > shard.mmap.len() {
+                log::warn!("Tensor {} OOB in {}: local={} size={} end={} > {}",
+                    tensor_name, shard_file, local, size, byte_end, shard.mmap.len());
+                continue;
+            }
+
+            let raw_data = shard.mmap[byte_start..byte_end].to_vec();
+            graph.add_tensor(tensor_name.to_string(), TensorMeta::weight(desc.shape.clone(), dtype));
+            graph.add_weight(tensor_name.to_string(), WeightData {
+                data: raw_data, shape: desc.shape, dtype, needs_transpose: false,
+            });
+            count += 1;
+        }
+        log::info!("Shard {}: {}/{} tensors loaded", shard_file, count, shard_tensor_names.len());
     }
 
     log::info!("Safetensors sharded: {} weights from {} shards in {}",
-        graph.weights.len(), shard_files.len(), dir.display());
+        graph.weights.len(), shards.len(), dir.display());
     Ok(graph)
 }
 

@@ -263,6 +263,7 @@ pub fn decompose(op: &Op) -> Vec<Atom> {
 
         // === Legacy ===
         Op::Argmax => vec![Atom::Cmp(CmpOp::GreaterThan), Atom::Reduce(ReduceOp::Max)],
+        Op::KvCompress { .. } | Op::KvDecompress { .. } => vec![Atom::Read, Atom::Write],
     }
 }
 
