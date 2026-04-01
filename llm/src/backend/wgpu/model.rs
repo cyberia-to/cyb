@@ -63,6 +63,12 @@ struct LayerParamBuffers {
     q_rope_wg: (u32, u32, u32),
     k_rope_params: wgpu::Buffer,
     k_rope_wg: (u32, u32, u32),
+    fused_q_params: Option<wgpu::Buffer>,
+    fused_q_wg: (u32, u32, u32),
+    fused_k_params: Option<wgpu::Buffer>,
+    fused_k_wg: (u32, u32, u32),
+    fused_v_params: Option<wgpu::Buffer>,
+    fused_v_wg: (u32, u32, u32),
 }
 
 /// Per-layer weights, all on GPU.
@@ -400,6 +406,40 @@ struct RmsNormParams {
 
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct FusedNormQ4Params {
+    hidden: u32,
+    eps: f32,
+    n: u32,
+    k: u32,
+    num_blocks: u32,
+    u32s_per_row: u32,
+}
+
+fn precompute_fused_norm_q4(
+    p: &Pipelines,
+    n: u32,
+    k: u32,
+    block_size: u32,
+    eps: f32,
+) -> (wgpu::Buffer, (u32, u32, u32)) {
+    let num_blocks = k / block_size;
+    let params = FusedNormQ4Params {
+        hidden: k,
+        eps,
+        n,
+        k,
+        num_blocks,
+        u32s_per_row: num_blocks * (block_size / 2) / 4,
+    };
+    let buf = p.upload_uniform_permanent(bytemuck::bytes_of(&params));
+    let num_wg = (n + 3) / 4;
+    let x = num_wg.min(65535);
+    let y = (num_wg + x - 1) / x;
+    (buf, (x, y, 1))
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct RopeParams {
     half_dim: u32,
     head_dim: u32,
@@ -560,7 +600,13 @@ fn precompute_argmax(p: &Pipelines, n: u32) -> (wgpu::Buffer, (u32, u32, u32)) {
 }
 
 impl NativeModel {
-    /// Load model from ONNX file
+    /// Load model from .cyb file — the canonical runtime entry point.
+    pub fn load(cyb_path: &Path, pipelines: Arc<Pipelines>) -> Result<Self, String> {
+        Self::load_from_cyb(cyb_path, pipelines)
+    }
+
+    /// Load model from ONNX file (legacy — use .cyb via load())
+    #[allow(dead_code)]
     pub fn load_from_onnx(path: &Path, pipelines: Arc<Pipelines>) -> Result<Self, String> {
         let model = load_model_proto(path)?;
         let graph = model.graph.ok_or("No graph in model")?;
@@ -851,6 +897,19 @@ impl NativeModel {
             let (down_matmul_params, down_matmul_wg) =
                 precompute_q4_matmul(&pipelines, layer_down_n, layer_gate_n, bs);
 
+            let (fused_q_params, fused_q_wg) = {
+                let (b, w) = precompute_fused_norm_q4(&pipelines, layer_q_n, hs, bs, 1e-6);
+                (Some(b), w)
+            };
+            let (fused_k_params, fused_k_wg) = {
+                let (b, w) = precompute_fused_norm_q4(&pipelines, layer_k_n, hs, bs, 1e-6);
+                (Some(b), w)
+            };
+            let (fused_v_params, fused_v_wg) = {
+                let (b, w) = precompute_fused_norm_q4(&pipelines, layer_v_n, hs, bs, 1e-6);
+                (Some(b), w)
+            };
+
             layers.push(LayerWeights {
                 input_norm_weight,
                 q_proj_packed,
@@ -914,6 +973,12 @@ impl NativeModel {
                     q_rope_wg,
                     k_rope_params,
                     k_rope_wg,
+                    fused_q_params,
+                    fused_q_wg,
+                    fused_k_params,
+                    fused_k_wg,
+                    fused_v_params,
+                    fused_v_wg,
                 },
             });
         }
@@ -1230,6 +1295,19 @@ impl NativeModel {
             let (down_matmul_params, down_matmul_wg) =
                 precompute_q4_matmul(&pipelines, hs, intermediate_size as u32, bs);
 
+            let (fused_q_params, fused_q_wg) = {
+                let (b, w) = precompute_fused_norm_q4(&pipelines, q_dim as u32, hs, bs, rms_norm_eps);
+                (Some(b), w)
+            };
+            let (fused_k_params, fused_k_wg) = {
+                let (b, w) = precompute_fused_norm_q4(&pipelines, kv_dim as u32, hs, bs, rms_norm_eps);
+                (Some(b), w)
+            };
+            let (fused_v_params, fused_v_wg) = {
+                let (b, w) = precompute_fused_norm_q4(&pipelines, kv_dim as u32, hs, bs, rms_norm_eps);
+                (Some(b), w)
+            };
+
             layers.push(LayerWeights {
                 input_norm_weight,
                 q_proj_packed,
@@ -1305,6 +1383,12 @@ impl NativeModel {
                     q_rope_wg,
                     k_rope_params,
                     k_rope_wg,
+                    fused_q_params,
+                    fused_q_wg,
+                    fused_k_params,
+                    fused_k_wg,
+                    fused_v_params,
+                    fused_v_wg,
                 },
             });
         }
@@ -2147,6 +2231,13 @@ impl NativeModel {
             let (up_matmul_params, up_matmul_wg) = precompute_matmul_fn(intermediate_size as u32, hs);
             let (down_matmul_params, down_matmul_wg) = precompute_matmul_fn(hs, intermediate_size as u32);
 
+            let fused_q_params: Option<wgpu::Buffer> = None;
+            let fused_q_wg = (0u32, 0, 0);
+            let fused_k_params: Option<wgpu::Buffer> = None;
+            let fused_k_wg = (0u32, 0, 0);
+            let fused_v_params: Option<wgpu::Buffer> = None;
+            let fused_v_wg = (0u32, 0, 0);
+
             layers.push(LayerWeights {
                 input_norm_weight,
                 q_proj_packed,
@@ -2210,6 +2301,12 @@ impl NativeModel {
                     q_rope_wg,
                     k_rope_params,
                     k_rope_wg,
+                    fused_q_params,
+                    fused_q_wg,
+                    fused_k_params,
+                    fused_k_wg,
+                    fused_v_params,
+                    fused_v_wg,
                 },
             });
         }
@@ -2405,32 +2502,57 @@ impl NativeModel {
             for i in 0..num_layers {
                 let lp = &self.layers[i].params;
 
-                let (normed, norm_bg, norm_wg) = dispatch::rms_norm_prepare_precomputed(
-                    &p, &hidden, &self.layers[i].input_norm_weight,
-                    &lp.input_norm_params, 1, hidden_size, lp.input_norm_wg,
-                );
-                all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: norm_bg, wg: norm_wg });
-
-                let (mut q_buf, q_bg, q_wg, q_shader) = dispatch::prepare_matmul_for_quant(
-                    &p, &normed, &self.layers[i].q_proj_packed, &self.layers[i].q_proj_scales,
-                    &lp.q_matmul_params, self.layers[i].q_n, lp.q_matmul_wg,
-                    quant_fmt_to_dispatch(quant_fmt),
-                );
-                all_dispatches.push(DispatchCmd { shader: q_shader, bg: q_bg, wg: q_wg });
-
-                let (mut k_buf, k_bg, k_wg, k_shader) = dispatch::prepare_matmul_for_quant(
-                    &p, &normed, &self.layers[i].k_proj_packed, &self.layers[i].k_proj_scales,
-                    &lp.k_matmul_params, self.layers[i].k_n, lp.k_matmul_wg,
-                    quant_fmt_to_dispatch(quant_fmt),
-                );
-                all_dispatches.push(DispatchCmd { shader: k_shader, bg: k_bg, wg: k_wg });
-
-                let (mut v_buf, v_bg, v_wg, v_shader) = dispatch::prepare_matmul_for_quant(
-                    &p, &normed, &self.layers[i].v_proj_packed, &self.layers[i].v_proj_scales,
-                    &lp.v_matmul_params, self.layers[i].v_n, lp.v_matmul_wg,
-                    quant_fmt_to_dispatch(quant_fmt),
-                );
-                all_dispatches.push(DispatchCmd { shader: v_shader, bg: v_bg, wg: v_wg });
+                // Attention input norm + QKV projections
+                // Use fused norm+q4 when available (saves 1 dispatch per layer)
+                let (mut q_buf, mut k_buf, mut v_buf);
+                if let (Some(fq), Some(fk), Some(fv)) =
+                    (&lp.fused_q_params, &lp.fused_k_params, &lp.fused_v_params)
+                {
+                    let (q, q_bg, q_wg) = dispatch::fused_norm_q4_prepare_precomputed(
+                        &p, &hidden, &self.layers[i].input_norm_weight,
+                        &self.layers[i].q_proj_packed, &self.layers[i].q_proj_scales,
+                        fq, self.layers[i].q_n, lp.fused_q_wg,
+                    );
+                    all_dispatches.push(DispatchCmd { shader: &p.fused_norm_q4, bg: q_bg, wg: q_wg });
+                    let (k, k_bg, k_wg) = dispatch::fused_norm_q4_prepare_precomputed(
+                        &p, &hidden, &self.layers[i].input_norm_weight,
+                        &self.layers[i].k_proj_packed, &self.layers[i].k_proj_scales,
+                        fk, self.layers[i].k_n, lp.fused_k_wg,
+                    );
+                    all_dispatches.push(DispatchCmd { shader: &p.fused_norm_q4, bg: k_bg, wg: k_wg });
+                    let (v, v_bg, v_wg) = dispatch::fused_norm_q4_prepare_precomputed(
+                        &p, &hidden, &self.layers[i].input_norm_weight,
+                        &self.layers[i].v_proj_packed, &self.layers[i].v_proj_scales,
+                        fv, self.layers[i].v_n, lp.fused_v_wg,
+                    );
+                    all_dispatches.push(DispatchCmd { shader: &p.fused_norm_q4, bg: v_bg, wg: v_wg });
+                    q_buf = q; k_buf = k; v_buf = v;
+                } else {
+                    let (normed, norm_bg, norm_wg) = dispatch::rms_norm_prepare_precomputed(
+                        &p, &hidden, &self.layers[i].input_norm_weight,
+                        &lp.input_norm_params, 1, hidden_size, lp.input_norm_wg,
+                    );
+                    all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: norm_bg, wg: norm_wg });
+                    let (q, q_bg, q_wg, q_shader) = dispatch::prepare_matmul_for_quant(
+                        &p, &normed, &self.layers[i].q_proj_packed, &self.layers[i].q_proj_scales,
+                        &lp.q_matmul_params, self.layers[i].q_n, lp.q_matmul_wg,
+                        quant_fmt_to_dispatch(quant_fmt),
+                    );
+                    all_dispatches.push(DispatchCmd { shader: q_shader, bg: q_bg, wg: q_wg });
+                    let (k, k_bg, k_wg, k_shader) = dispatch::prepare_matmul_for_quant(
+                        &p, &normed, &self.layers[i].k_proj_packed, &self.layers[i].k_proj_scales,
+                        &lp.k_matmul_params, self.layers[i].k_n, lp.k_matmul_wg,
+                        quant_fmt_to_dispatch(quant_fmt),
+                    );
+                    all_dispatches.push(DispatchCmd { shader: k_shader, bg: k_bg, wg: k_wg });
+                    let (v, v_bg, v_wg, v_shader) = dispatch::prepare_matmul_for_quant(
+                        &p, &normed, &self.layers[i].v_proj_packed, &self.layers[i].v_proj_scales,
+                        &lp.v_matmul_params, self.layers[i].v_n, lp.v_matmul_wg,
+                        quant_fmt_to_dispatch(quant_fmt),
+                    );
+                    all_dispatches.push(DispatchCmd { shader: v_shader, bg: v_bg, wg: v_wg });
+                    q_buf = q; k_buf = k; v_buf = v;
+                };
 
                 // Add attention biases (Qwen2-style)
                 if let Some(ref bias) = self.layers[i].q_proj_bias {
@@ -2532,28 +2654,29 @@ impl NativeModel {
                 );
                 all_dispatches.push(DispatchCmd { shader: oproj_shader, bg: oproj_bg, wg: oproj_wg });
 
-                let (residual1, res1_bg, res1_wg) = dispatch::add_prepare(&p, &hidden, &attn_proj, hidden_size);
-                all_dispatches.push(DispatchCmd { shader: &p.add, bg: res1_bg, wg: res1_wg });
-
-                let (normed2, norm2_bg, norm2_wg) = dispatch::rms_norm_prepare_precomputed(
-                    &p, &residual1, &self.layers[i].post_norm_weight,
-                    &lp.post_norm_params, 1, hidden_size, lp.post_norm_wg,
-                );
-                all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: norm2_bg, wg: norm2_wg });
-
-                let (gate, gate_bg, gate_wg, gate_shader) = dispatch::prepare_matmul_for_quant(
-                    &p, &normed2, &self.layers[i].gate_proj_packed, &self.layers[i].gate_proj_scales,
-                    &lp.gate_matmul_params, self.layers[i].gate_n, lp.gate_matmul_wg,
-                    quant_fmt_to_dispatch(quant_fmt),
-                );
-                all_dispatches.push(DispatchCmd { shader: gate_shader, bg: gate_bg, wg: gate_wg });
-
-                let (up, up_bg, up_wg, up_shader) = dispatch::prepare_matmul_for_quant(
-                    &p, &normed2, &self.layers[i].up_proj_packed, &self.layers[i].up_proj_scales,
-                    &lp.up_matmul_params, self.layers[i].up_n, lp.up_matmul_wg,
-                    quant_fmt_to_dispatch(quant_fmt),
-                );
-                all_dispatches.push(DispatchCmd { shader: up_shader, bg: up_bg, wg: up_wg });
+                // Post-attention: fused skip+norm merges add+norm into 1 dispatch
+                let (residual1, gate, up);
+                {
+                    let (normed2, res1, fsn_bg, fsn_wg) = dispatch::fused_skip_norm_prepare_precomputed(
+                        &p, &attn_proj, &hidden, &self.layers[i].post_norm_weight,
+                        &lp.post_norm_params, 1, hidden_size, lp.post_norm_wg,
+                    );
+                    all_dispatches.push(DispatchCmd { shader: &p.fused_skip_norm, bg: fsn_bg, wg: fsn_wg });
+                    residual1 = res1;
+                    let (g, gate_bg, gate_wg, gate_shader) = dispatch::prepare_matmul_for_quant(
+                        &p, &normed2, &self.layers[i].gate_proj_packed, &self.layers[i].gate_proj_scales,
+                        &lp.gate_matmul_params, self.layers[i].gate_n, lp.gate_matmul_wg,
+                        quant_fmt_to_dispatch(quant_fmt),
+                    );
+                    all_dispatches.push(DispatchCmd { shader: gate_shader, bg: gate_bg, wg: gate_wg });
+                    let (u, up_bg, up_wg, up_shader) = dispatch::prepare_matmul_for_quant(
+                        &p, &normed2, &self.layers[i].up_proj_packed, &self.layers[i].up_proj_scales,
+                        &lp.up_matmul_params, self.layers[i].up_n, lp.up_matmul_wg,
+                        quant_fmt_to_dispatch(quant_fmt),
+                    );
+                    all_dispatches.push(DispatchCmd { shader: up_shader, bg: up_bg, wg: up_wg });
+                    gate = g; up = u;
+                };
 
                 let (ffn, silu_bg, silu_wg) = dispatch::silu_mul_prepare(&p, &gate, &up, self.layers[i].gate_n);
                 all_dispatches.push(DispatchCmd { shader: &p.silu_mul, bg: silu_bg, wg: silu_wg });

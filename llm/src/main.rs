@@ -140,192 +140,44 @@ fn main() {
             max_tokens,
             temperature,
         } => {
-            let model_path_buf = std::path::PathBuf::from(&model);
-            let is_local = model_path_buf.exists()
-                || model.ends_with(".safetensors")
-                || model.ends_with(".onnx")
-                || model.ends_with(".gguf")
-                || model.ends_with(".cyb");
-
-            if is_local {
-                // Local file path — detect format
-                let model_path = resolve_model_path(&model_path_buf);
-                let model_dir = model_path.parent().unwrap_or(std::path::Path::new("."));
-
-                let ext = model_path.extension().and_then(|e| e.to_str()).unwrap_or("");
-                let is_safetensors = ext == "safetensors";
-                let is_gguf = ext == "gguf";
-                let is_cyb = ext == "cyb";
-
-                println!("Loading local model: {}", model_path.display());
-
-                // Find tokenizer in model directory
-                let tokenizer_path = find_tokenizer(model_dir);
-                let tokenizer_path = match tokenizer_path {
-                    Some(p) => p,
-                    None => {
-                        eprintln!("No tokenizer.json found in {} or parent directories", model_dir.display());
-                        return;
-                    }
-                };
-                log::info!("Using tokenizer: {}", tokenizer_path.display());
-
-                // Choose backend
-                let use_metal = if cli.backend == "metal" {
-                    true
-                } else if cli.backend == "wgpu" {
-                    false
-                } else {
-                    // auto: Metal on macOS for safetensors or .cyb with GGUF/safetensors
-                    cfg!(target_os = "macos") && (is_safetensors || (is_cyb && (model_dir.join("weights.gguf").exists() || model_dir.join("weights.safetensors").exists())))
-                };
-
-                if use_metal && (is_safetensors || is_cyb) {
-                    #[cfg(target_os = "macos")]
-                    {
-                        // For .cyb, pass weights.gguf path to Metal
-                        let metal_weights = if is_cyb {
-                            let gp = model_dir.join("weights.gguf");
-                            if gp.exists() { gp } else { model_path.clone() }
-                        } else {
-                            model_path.clone()
-                        };
-                        run_metal(&metal_weights, &tokenizer_path, &prompt, max_tokens, temperature, cli.precision == "f16");
-                        return;
-                    }
-                    #[cfg(not(target_os = "macos"))]
-                    {
-                        eprintln!("Metal backend not available on this platform");
-                        return;
-                    }
-                }
-
-                // Initialize wgpu backend
-                let backend = cyb_llm::backend::create_wgpu_backend();
-                let pipelines = backend.pipelines;
-
-                let load_start = std::time::Instant::now();
-                let mut generator = if is_cyb {
-                    // .cyb format: weights alongside as weights.gguf or weights.onnx
-                    // Our converter stores HF-style weight names in GGUF, so use
-                    // the safetensors loading path (which expects HF names)
-                    let gguf_path = model_dir.join("weights.gguf");
-                    let onnx_path = model_dir.join("weights.onnx");
-                    let st_path = model_dir.join("weights.safetensors");
-                    let weights_path = if gguf_path.exists() { gguf_path }
-                        else if st_path.exists() { st_path }
-                        else if onnx_path.exists() { onnx_path }
-                        else { eprintln!("No weights alongside .cyb"); return; };
-                    // All .cyb weights use HF-style names (GGUF natively, ONNX after rename)
-                    let gen_result = cyb_llm::generate::TextGenerator::new_safetensors(
-                        &weights_path, &tokenizer_path, pipelines);
-                    match gen_result {
-                        Ok(g) => g,
-                        Err(e) => { eprintln!("Model load failed: {e}"); return; }
-                    }
-                } else if is_gguf {
-                    match cyb_llm::generate::TextGenerator::new_gguf(
-                        &model_path,
-                        &tokenizer_path,
-                        pipelines,
-                    ) {
-                        Ok(g) => g,
-                        Err(e) => {
-                            eprintln!("Model load failed: {e}");
-                            return;
-                        }
-                    }
-                } else if is_safetensors {
-                    match cyb_llm::generate::TextGenerator::new_safetensors(
-                        &model_path,
-                        &tokenizer_path,
-                        pipelines,
-                    ) {
-                        Ok(g) => g,
-                        Err(e) => {
-                            eprintln!("Model load failed: {e}");
-                            return;
-                        }
-                    }
-                } else {
-                    match cyb_llm::generate::TextGenerator::new(
-                        &model_path,
-                        &tokenizer_path,
-                        pipelines,
-                    ) {
-                        Ok(g) => g,
-                        Err(e) => {
-                            eprintln!("Model load failed: {e}");
-                            return;
-                        }
-                    }
-                };
-                println!(
-                    "Model loaded in {:.1}s",
-                    load_start.elapsed().as_secs_f64()
-                );
-
-                // Apply chat template if model is instruction-tuned
-                let formatted_prompt = cyb_llm::generate::apply_chat_template(&prompt, model_dir);
-
-                // Generate
-                println!("---");
-                match generator.generate(&formatted_prompt, max_tokens, temperature) {
-                    Ok(_text) => {}
-                    Err(e) => {
-                        eprintln!("\nGeneration failed: {e}");
-                    }
+            // Resolve: .cyb file or model directory containing .cyb
+            let model_path = std::path::PathBuf::from(&model);
+            let (cyb_path, model_dir) = if ext_is(&model_path, "cyb") && model_path.exists() {
+                let dir = model_path.parent().unwrap_or(std::path::Path::new("."));
+                (model_path.clone(), dir.to_path_buf())
+            } else if model_path.is_dir() {
+                match std::fs::read_dir(&model_path).into_iter().flatten().flatten()
+                    .find(|e| ext_is(&e.path(), "cyb")).map(|e| e.path())
+                {
+                    Some(p) => (p, model_path.clone()),
+                    None => { eprintln!("No .cyb file in {}. Run: cyb-llm import + pack", model_path.display()); return; }
                 }
             } else {
-                // HuggingFace model ID — download ONNX model
-                println!("Loading model (native wgpu): {model}");
+                eprintln!("Expected .cyb file or model directory. Got: {model}");
+                return;
+            };
 
-                let model_path = match cyb_llm::hub::download_model(&model) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        eprintln!("Model download failed: {e}");
-                        return;
-                    }
-                };
+            let tokenizer_path = match find_tokenizer(&model_dir) {
+                Some(p) => p,
+                None => { eprintln!("No tokenizer.json in {}", model_dir.display()); return; }
+            };
 
-                let tokenizer_path = match cyb_llm::hub::download_tokenizer(&model) {
-                    Ok(p) => p,
-                    Err(e) => {
-                        eprintln!("Tokenizer download failed: {e}");
-                        return;
-                    }
-                };
+            println!("Loading: {}", cyb_path.display());
+            let backend = cyb_llm::backend::create_wgpu_backend();
+            let load_start = std::time::Instant::now();
+            let mut generator = match cyb_llm::generate::TextGenerator::new(
+                &cyb_path, &tokenizer_path, backend.pipelines,
+            ) {
+                Ok(g) => g,
+                Err(e) => { eprintln!("Load failed: {e}"); return; }
+            };
+            println!("Loaded in {:.1}s", load_start.elapsed().as_secs_f64());
 
-                // Initialize GPU backend
-                let backend = cyb_llm::backend::create_wgpu_backend();
-                let pipelines = backend.pipelines;
-
-                let load_start = std::time::Instant::now();
-                let mut generator =
-                    match cyb_llm::generate::TextGenerator::new(
-                        &model_path,
-                        &tokenizer_path,
-                        pipelines,
-                    ) {
-                        Ok(g) => g,
-                        Err(e) => {
-                            eprintln!("Model load failed: {e}");
-                            return;
-                        }
-                    };
-                println!(
-                    "Model loaded in {:.1}s",
-                    load_start.elapsed().as_secs_f64()
-                );
-
-                // Generate
-                println!("---");
-                match generator.generate(&prompt, max_tokens, temperature) {
-                    Ok(_text) => {}
-                    Err(e) => {
-                        eprintln!("\nGeneration failed: {e}");
-                    }
-                }
+            let formatted = cyb_llm::generate::apply_chat_template(&prompt, &model_dir);
+            println!("---");
+            match generator.generate(&formatted, max_tokens, temperature) {
+                Ok(_) => {}
+                Err(e) => eprintln!("\nGeneration failed: {e}"),
             }
         }
 
@@ -1108,50 +960,20 @@ fn quick_bench(model_dir: &std::path::Path) -> (String, String) {
         return ("—".into(), "—".into());
     }
 
-    // Find loadable weight file: .cyb > weights.gguf > *.gguf > weights.safetensors
-    let cyb_path = std::fs::read_dir(model_dir).into_iter().flatten().flatten()
-        .find(|e| ext_is(&e.path(), "cyb"))
-        .map(|e| e.path());
-    let gguf_path = if model_dir.join("weights.gguf").exists() {
-        Some(model_dir.join("weights.gguf"))
-    } else {
-        std::fs::read_dir(model_dir).into_iter().flatten().flatten()
-            .find(|e| ext_is(&e.path(), "gguf"))
-            .map(|e| e.path())
-    };
-    let st_path = if model_dir.join("weights.safetensors").exists() {
-        Some(model_dir.join("weights.safetensors"))
-    } else { None };
-
-    // Determine which loader to use
-    enum LoadPath { Cyb(std::path::PathBuf), Gguf(std::path::PathBuf), Safetensors(std::path::PathBuf) }
-    let load_path = if let Some(p) = cyb_path {
-        LoadPath::Cyb(p)
-    } else if let Some(p) = gguf_path {
-        LoadPath::Gguf(p)
-    } else if let Some(p) = st_path {
-        LoadPath::Safetensors(p)
-    } else {
-        return ("—".into(), "—".into());
+    // Find .cyb file
+    let cyb_path = match std::fs::read_dir(model_dir).into_iter().flatten().flatten()
+        .find(|e| ext_is(&e.path(), "cyb")).map(|e| e.path())
+    {
+        Some(p) => p,
+        None => return ("—".into(), "—".into()),
     };
 
-    // Init wgpu
     let backend = cyb_llm::backend::create_wgpu_backend();
-    let pipelines = backend.pipelines;
-
-    // Load model
-    let mut generator = match &load_path {
-        LoadPath::Cyb(p) => match cyb_llm::generate::TextGenerator::new_cyb(p, &tokenizer_path, pipelines) {
-            Ok(g) => g,
-            Err(e) => { eprintln!("  cyb load: {e}"); return ("fail".into(), "—".into()); }
-        },
-        LoadPath::Gguf(p) => match cyb_llm::generate::TextGenerator::new_gguf(p, &tokenizer_path, pipelines) {
-            Ok(g) => g,
-            Err(e) => { eprintln!("  gguf load: {e}"); return ("fail".into(), "—".into()); }
-        },
-        LoadPath::Safetensors(p) => match cyb_llm::generate::TextGenerator::new_safetensors(p, &tokenizer_path, pipelines) {
-            Ok(g) => g,
-            Err(e) => { eprintln!("  st load: {e}"); return ("fail".into(), "—".into()); }
+    let mut generator = match cyb_llm::generate::TextGenerator::new(
+        &cyb_path, &tokenizer_path, backend.pipelines,
+    ) {
+        Ok(g) => g,
+        Err(e) => { eprintln!("  load: {e}"); return ("fail".into(), "—".into());
         },
     };
 

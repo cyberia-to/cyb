@@ -87,18 +87,18 @@ pub struct TextGenerator {
 }
 
 impl TextGenerator {
-    /// Create a new text generator from ONNX model + tokenizer paths
+    /// Create a text generator from .cyb file — the canonical constructor.
     pub fn new(
-        model_path: &Path,
+        cyb_path: &Path,
         tokenizer_path: &Path,
         pipelines: Arc<Pipelines>,
     ) -> Result<Self, String> {
-        let model = NativeModel::load_from_onnx(model_path, pipelines)?;
+        let model = NativeModel::load(cyb_path, pipelines)?;
 
         let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path)
             .map_err(|e| format!("Tokenizer load failed: {e}"))?;
 
-        let model_dir = model_path.parent().unwrap_or(Path::new("."));
+        let model_dir = cyb_path.parent().unwrap_or(Path::new("."));
         let eos_tokens = detect_eos_tokens(&tokenizer, model_dir);
 
         Ok(Self {
