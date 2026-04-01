@@ -29,6 +29,15 @@ pub struct ImportResult {
 pub fn canonicalize(model_dir: &Path) -> ImportResult {
     let mut result = ImportResult::default();
 
+    // 0. If .cyb exists but TOML configs are missing, extract from .cyb
+    if !model_dir.join("config.toml").exists() {
+        if let Ok(n) = extract_configs_from_cyb(model_dir) {
+            if n > 0 {
+                result.configs_converted += n;
+            }
+        }
+    }
+
     // 1. Convert JSON configs → TOML (or create manually for non-HF models)
     convert_config_json(model_dir, &mut result);
     create_manual_configs(model_dir, &mut result);
@@ -90,6 +99,74 @@ pub fn convert_to_cyb(model_dir: &Path) -> Result<(std::path::PathBuf, u64, u64)
 
     let output_size = output_path.metadata().map(|m| m.len()).unwrap_or(0);
     Ok((output_path, input_size, output_size))
+}
+
+/// Extract TOML configs from .cyb file back to disk.
+/// Used to restore configs after they were accidentally deleted.
+pub fn extract_configs_from_cyb(model_dir: &Path) -> Result<usize, String> {
+    // Find .cyb file
+    let cyb_path = std::fs::read_dir(model_dir)
+        .map_err(|e| e.to_string())?
+        .flatten()
+        .find(|e| e.path().extension().map(|x| x == "cyb").unwrap_or(false))
+        .map(|e| e.path())
+        .ok_or_else(|| "no .cyb file found".to_string())?;
+
+    let config_str = crate::cyb_format::read_cyb_config(&cyb_path)
+        .map_err(|e| format!("read .cyb config: {e}"))?;
+
+    if config_str.is_empty() {
+        return Ok(0);
+    }
+
+    // The embedded config has sections: top-level = config.toml,
+    // [tokenizer] = vocab.toml, [chat] = chat.toml, [sampling] = sampling.toml
+    let mut written = 0;
+
+    // Split by section headers
+    let mut config_part = String::new();
+    let mut vocab_part = String::new();
+    let mut chat_part = String::new();
+    let mut sampling_part = String::new();
+    let mut current = &mut config_part;
+
+    for line in config_str.lines() {
+        if line == "[tokenizer]" {
+            current = &mut vocab_part;
+            continue;
+        } else if line == "[chat]" {
+            current = &mut chat_part;
+            continue;
+        } else if line == "[sampling]" {
+            current = &mut sampling_part;
+            continue;
+        }
+        current.push_str(line);
+        current.push('\n');
+    }
+
+    if !config_part.trim().is_empty() && !model_dir.join("config.toml").exists() {
+        std::fs::write(model_dir.join("config.toml"), config_part.trim())
+            .map_err(|e| e.to_string())?;
+        written += 1;
+    }
+    if !vocab_part.trim().is_empty() && !model_dir.join("vocab.toml").exists() {
+        std::fs::write(model_dir.join("vocab.toml"), vocab_part.trim())
+            .map_err(|e| e.to_string())?;
+        written += 1;
+    }
+    if !chat_part.trim().is_empty() && !model_dir.join("chat.toml").exists() {
+        std::fs::write(model_dir.join("chat.toml"), chat_part.trim())
+            .map_err(|e| e.to_string())?;
+        written += 1;
+    }
+    if !sampling_part.trim().is_empty() && !model_dir.join("sampling.toml").exists() {
+        std::fs::write(model_dir.join("sampling.toml"), sampling_part.trim())
+            .map_err(|e| e.to_string())?;
+        written += 1;
+    }
+
+    Ok(written)
 }
 
 /// Fallback: pack all weight-like files as raw binary blobs.

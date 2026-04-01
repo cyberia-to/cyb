@@ -442,6 +442,28 @@ fn serialize_weights(weights: &HashMap<String, WeightData>) -> io::Result<(Vec<u
 // ── Reader ───────────────────────────────────────────────────────
 
 /// Read a .cyb file into a Graph + config string
+/// Extract just the embedded config TOML from a .cyb file (fast, no weight loading)
+pub fn read_cyb_config(path: &Path) -> io::Result<String> {
+    let file_data = std::fs::read(path)?;
+    if file_data.len() < 16 || file_data[..4] != CYB_MAGIC {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "not a .cyb file"));
+    }
+    let section_count = read_u32(&file_data, 12) as usize;
+
+    for i in 0..section_count {
+        let base = 16 + i * 20;
+        let id = read_u32(&file_data, base);
+        let offset = read_u64(&file_data, base + 4) as usize;
+        let size = read_u64(&file_data, base + 12) as usize;
+        if id == SECTION_CONFIG && size > 0 {
+            return std::str::from_utf8(&file_data[offset..offset + size])
+                .map(|s| s.to_string())
+                .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e));
+        }
+    }
+    Ok(String::new())
+}
+
 pub fn read_cyb(path: &Path) -> io::Result<(Graph, String)> {
     let file_data = std::fs::read(path)?;
     if file_data.len() < 16 {
