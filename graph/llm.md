@@ -1182,10 +1182,71 @@ fuse sequential ops into single kernels at graph IR level:
 - attention (Q×K, scale, mask, softmax, ×V) → flash attention kernel
 - rmsnorm + matmul → single dispatch
 
-### KV cache optimization
-- paged attention: allocate KV cache in fixed-size blocks, not contiguous. eliminates fragmentation
-- KV cache quantization: compress cached keys/values to Q8 or Q4 during long generations
-- prefix caching: reuse KV cache for common prompt prefixes across requests
+### KV cache compression — TurboQuant
+
+the KV cache is the memory wall. at long contexts it consumes more memory than the model itself:
+
+```
+qwen2.5-coder-14b at 128K context:
+  F16 KV cache = 48 × 2 × 8 × 128 × 131072 × 2 bytes = 25 GB
+  model weights Q4 = 5.9 GB
+  KV cache is 4x larger than the model
+```
+
+TurboQuant (Google Research, ICLR 2026) compresses KV cache from 16 bits to 2-3 bits with zero accuracy loss, approaching the Shannon limit:
+
+two-stage algorithm:
+
+1. PolarQuant — rotate K/V vectors by a precomputed matrix. after rotation, value distribution becomes predictable (near-uniform). the quantizer is computed once at model load — no calibration data needed. eliminates the 1-2 bits of scale/zero-point overhead that every previous method wastes.
+
+2. QJL (Quantized Johnson-Lindenstrauss) — project the quantization residual to a single sign bit. kills systematic bias in attention scores. compressed attention output is statistically identical to full precision.
+
+critical: naive implementation produces garbage. without proper bias correction in QJL, quantization errors compound and the model becomes unusable. the math must be followed exactly.
+
+impact on cyb-llm:
+
+```
+128K context, qwen2.5-coder-14b:
+  F16:  25 GB KV cache → does not fit on 16GB machine
+  Q8:   12.5 GB        → barely fits, no room for model
+  Q4:   6.2 GB          → fits but quality degrades
+  Q3 (TurboQuant): 4.7 GB → fits with model (5.9GB) on 16GB
+  Q2 (TurboQuant): 3.1 GB → fits with room for tier 0 models
+```
+
+128K context on a 16GB laptop. this was impossible before.
+
+implementation in the runtime:
+
+```
+// at model load: precompute rotation matrix (PolarQuant)
+let rotation = polar_quant::precompute(head_dim);  // one-time, ~1ms
+
+// at each token: compress K/V before storing in Pool slot
+let k_compressed = polar_quant::quantize(&k_vector, &rotation, bits=3);
+let v_compressed = polar_quant::quantize(&v_vector, &rotation, bits=3);
+
+// at attention: decompress and correct bias (QJL)
+let k_restored = qjl::dequantize(&k_compressed, &rotation);
+// k_restored is statistically identical to original k_vector
+```
+
+new ops in Graph IR:
+
+| op | what | where |
+|----|------|-------|
+| `KvCompress { bits, rotation }` | PolarQuant + store in Pool slot | after each layer's K/V projection |
+| `KvDecompress { bits, rotation }` | dequantize + QJL bias correction | before attention computation |
+
+jets: fused `kv_compress` + `kv_decompress` kernels for Metal/CUDA. the rotation is a matmul — fuses with the K/V projection matmul that already runs.
+
+this integrates with the write-new-only memory model: compressed KV entries are written to new Pool slots (append-only). decompression reads from existing slots (read-only). no mutation.
+
+### paged KV attention
+- allocate KV cache in fixed-size blocks (e.g. 256 tokens per block), not contiguous
+- blocks are Pool slots from [[unimem]] — acquire/release in ~10ns
+- with TurboQuant compression: each block is 5-8x smaller → more blocks fit in memory
+- prefix caching: reuse KV blocks for common prompt prefixes across requests
 
 ### MoE routing
 Mixture-of-Experts models (Wan2.2, MiMo-V2-Flash) select top-K experts per token. the runtime handles:
@@ -1199,7 +1260,8 @@ Mixture-of-Experts models (Wan2.2, MiMo-V2-Flash) select top-K experts per token
 when memory pressure hits, the runtime does not crash — it adapts:
 ```
 OOM detected
-  → drop KV cache precision (f16 → q8)
+  → compress KV cache (f16 → q3 TurboQuant) — zero quality loss, 5x savings
+  → if still OOM → compress KV further (q3 → q2) — near-zero loss
   → if still OOM → shed lowest-priority model
   → if still OOM → offload layers to CPU
   → if still OOM → reduce context window
@@ -1207,11 +1269,16 @@ OOM detected
 ```
 
 ### adaptive precision
-dynamically switch quantization based on available memory:
-- plenty of RAM → f16 weights, f16 KV cache
-- moderate pressure → q8 weights, f16 KV cache
-- heavy pressure → q4 weights, q8 KV cache
-- extreme → q4 weights, q4 KV cache, reduced context
+dynamically switch quantization based on available memory. TurboQuant makes the KV dimension much more aggressive without quality loss:
+
+```
+plenty of RAM   → f16 weights, f16 KV cache  (maximum quality)
+moderate        → q8 weights,  q3 KV cache   (TurboQuant, zero loss)
+heavy pressure  → q4 weights,  q2 KV cache   (TurboQuant, near-zero loss)
+extreme         → q4 weights,  q2 KV cache, reduced context
+```
+
+the key insight: KV cache compression via TurboQuant is nearly lossless, so the runtime should compress KV aggressively FIRST (free quality), then reduce weight precision (costs quality), then reduce context (costs capability). previous order was wrong — everyone compressed weights before KV cache because KV compression had quality loss. TurboQuant inverts the priority.
 
 ### device splitting
 split a single model across multiple backends:
