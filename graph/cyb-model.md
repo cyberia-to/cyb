@@ -141,7 +141,7 @@ method = "abliteration"
 
 ## program
 
-the entire inference pipeline as source code. reads all params from config — NOT hardcoded. change config → different model, same program.
+the entire inference pipeline as source code. reads all params from config — NOT hardcoded. change config → different model, same program. ALL behavior lives in the program — chat formatting, sampling strategy, tokenization. to change how the model talks, change the program, not a config file.
 
 ```trident
 ~~~program
@@ -191,6 +191,43 @@ pub fn forward(input_addr: Field, output_addr: Field, seq_len: Field,
 | parametric | no (frozen shapes) | yes (reads config) |
 | proof | not possible | every trident execution = STARK |
 | hardware | runtime rewrites graph | compiles to 28 targets |
+
+### behavior is code
+
+chat formatting, sampling, preprocessing — all in the program, not in config files. examples of what program controls:
+
+```trident
+// chat formatting — chatml style
+pub fn format_chatml(messages: &[Message], cfg: Config) {
+    for msg in messages {
+        io.write_token(cfg.tokenizer.bos_id)
+        io.write_string(msg.role)
+        io.write_string("\n")
+        io.write_string(msg.content)
+        io.write_token(cfg.tokenizer.eos_id)
+    }
+}
+
+// different model, different formatting — just change the program:
+// llama3 style
+pub fn format_llama3(messages: &[Message], cfg: Config) {
+    io.write_string("<|begin_of_text|>")
+    for msg in messages {
+        io.write_string("<|start_header_id|>")
+        io.write_string(msg.role)
+        io.write_string("<|end_header_id|>\n\n")
+        io.write_string(msg.content)
+        io.write_string("<|eot_id|>")
+    }
+}
+
+// sampling — want greedy instead of top_p? change one line:
+let token: Field = tensor.argmax(logits, a.vocab_size)
+// instead of:
+let token: Field = tensor.sample_top_p(logits, a.vocab_size, cfg.sampling.top_p, cfg.sampling.temperature)
+```
+
+same weights, same config, different behavior. the program is the model's personality.
 
 ## tensors
 
