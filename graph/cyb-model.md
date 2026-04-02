@@ -31,8 +31,8 @@ two supported program languages:
 
 | format | path | use for |
 |--------|------|---------|
-| [[trident]] | trident → [[nox]] → [[zheng]] proof | provable inference, field arithmetic |
-| Rust | Rust → native binary | fast inference, [[acpu]]/[[aruminium]]/[[rane]] |
+| .tri | [[trident]] → [[nox]] → [[zheng]] proof | provable inference, field arithmetic |
+| .rs | Rust → native binary | fast inference, [[acpu]]/[[aruminium]]/[[rane]] |
 
 ## frontmatter
 
