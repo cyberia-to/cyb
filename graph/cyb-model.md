@@ -5,25 +5,27 @@ crystal-domain: cyber
 alias: .model, model format, cyb model spec
 ---
 
-# .model — neural network in [[cyb-format]]
+# .model — neural network in [[format]]
 
-.model is a [[cyb-format]]-compatible extension. a .model file IS a .cyb file — same three rules, same parsing, same CLI. the extension tells tools and humans: this container holds a neural network.
+.model is a [[format]]-compatible extension. a .model file IS a .cyb file — same three rules, same parsing. the extension tells tools and humans: this container holds a neural network.
 
 one file = architecture + weights + vocabulary + chat template + benchmarks. ready for inference.
 
 ## required files
 
-| part | format | content |
+| name | format | content |
 |------|--------|---------|
 | config | toml | architecture parameters |
-| program | nox | forward pass (compiles to hardware) |
-| weights | tensors | weight data (own format, see below) |
+| program | nox | forward pass (compiles to hardware via [[trident]]) |
+| index | toml | tensor index (names, shapes, dtypes, offsets) |
+| weights | tensors | raw weight data (binary) |
 
 ## optional files
 
-| part | format | content |
+| name | format | content |
 |------|--------|---------|
-| vocab | toml | tokenizer vocabulary + merge rules |
+| vocab | toml | tokenizer metadata (type, special tokens) |
+| vocab-data | raw | full vocabulary (token strings + merge rules, binary) |
 | chat | toml | chat template + special tokens |
 | sampling | toml | default inference parameters |
 | preprocess | toml | image/audio/video preprocessing |
@@ -34,9 +36,11 @@ one file = architecture + weights + vocabulary + chat template + benchmarks. rea
 
 ```
 [cyb]
-version = 2
 types = ["model"]
 name = "qwen3-0.6b-abliterated"
+parameters = "0.6B"
+license = "Apache-2.0"
+languages = ["en", "zh", "ru"]
 
 [cyb.lineage]
 source = "huihui-ai/Qwen3-0.6B-abliterated"
@@ -44,48 +48,40 @@ method = "abliteration"
 
 [[files]]
 name = "config"
-type = "model"
 format = "toml"
 
 [[files]]
 name = "program"
-type = "model"
 format = "nox"
 
 [[files]]
+name = "index"
+format = "toml"
+
+[[files]]
 name = "vocab"
-type = "model"
 format = "toml"
 
 [[files]]
 name = "chat"
-type = "model"
 format = "toml"
 
 [[files]]
 name = "sampling"
-type = "model"
 format = "toml"
 
 [[files]]
 name = "eval"
-type = "model"
 format = "toml"
 
 [[files]]
 name = "card"
-type = "model"
 format = "md"
 
 [[files]]
 name = "weights"
-type = "model"
 format = "tensors"
 size = 1200000000
-
-[files.tensors]
-"model.embed_tokens.weight" = { shape = [151936, 1024], dtype = "f16", offset = 0, size = 311361536 }
-"model.layers.0.self_attn.q_proj.weight" = { shape = [2048, 1024], dtype = "q4_0", offset = 311361536, size = 1179648 }
 
 ~~~config
 model_type = "qwen3"
@@ -115,6 +111,12 @@ transformer_decoder {
   embed: token_embed(vocab=151936)
   output: linear(vocab=151936)
 }
+
+~~~index
+"model.embed_tokens.weight" = { shape = [151936, 1024], dtype = "f16", offset = 0, size = 311361536 }
+"model.layers.0.self_attn.q_proj.weight" = { shape = [2048, 1024], dtype = "q4_0", offset = 311361536, size = 1179648 }
+"model.layers.0.self_attn.k_proj.weight" = { shape = [1024, 1024], dtype = "q4_0", offset = 312541184, size = 589824 }
+"model.layers.0.input_layernorm.weight" = { shape = [1024], dtype = "f32", offset = 313131008, size = 4096 }
 
 ~~~vocab
 type = "bpe"
@@ -166,17 +168,17 @@ source: huihui-ai/Qwen3-0.6B-abliterated
 license: Apache 2.0
 
 ~~~weights
-<1.2GB safetensors binary data>
+<1.2GB tensor binary data>
 ```
 
-## config part
+## config
 
-architecture parameters. tensor name convention: HuggingFace (canonical per [[llm]] model registry).
+architecture parameters:
 
 | field | type | description |
 |-------|------|-------------|
-| model_type | string | runtime dispatch key: qwen3, llama, bitnet, mimo, whisper, yolo, ... |
-| architecture | string | HF class: Qwen3ForCausalLM, LlamaForCausalLM, ... |
+| model_type | string | runtime dispatch: qwen3, llama, bitnet, mimo, whisper, yolo |
+| architecture | string | HF class: Qwen3ForCausalLM, LlamaForCausalLM |
 | hidden_size | u32 | embedding dimension |
 | num_attention_heads | u32 | query heads |
 | num_key_value_heads | u32 | KV heads (GQA) |
@@ -189,27 +191,17 @@ architecture parameters. tensor name convention: HuggingFace (canonical per [[ll
 
 ## nox program
 
-the forward pass as a [[nox]] program. replaces ONNX graph.
-
-the runtime reads the program and compiles to optimal code for available hardware:
-- Apple Silicon → [[acpu]] AMX + [[rane]] ANE + [[aruminium]] Metal
-- NVIDIA → CUDA tensor cores
-- wgpu → cross-platform shaders
-- CPU → NEON/AVX2 SIMD
-
-all on [[unimem]] zero-copy physical memory when available.
-
-### why not ONNX
+the forward pass as a [[nox]] program. [[trident]] compiles it to 28 hardware targets. replaces ONNX graph.
 
 | | ONNX | nox program |
 |--|------|-------------|
 | size | millions of nodes | ~50 lines |
 | flash attention | cannot express | `attn: flash_attention` |
 | dynamic shapes | limited | native |
-| hardware optimization | runtime rewrites graph | compiler generates optimal code |
-| human readable | no (protobuf) | yes (in .cyb file) |
+| hardware targets | runtime rewrites graph | [[trident]] compiles to 28 targets |
+| human readable | no (protobuf) | yes |
 
-### supported architectures
+supported architectures:
 
 | nox construct | models |
 |--------------|--------|
@@ -222,83 +214,55 @@ all on [[unimem]] zero-copy physical memory when available.
 | tts_autoregressive | xtts |
 | moe_decoder | mimo, mixtral |
 
-## vocab part
+## tensor index
 
-embedded tokenizer. no external tokenizer.json needed.
-
-```toml
-type = "bpe"           # bpe | unigram | wordpiece | byte
-vocab_size = 151936
-merges_count = 151387
-bos_id = 151643
-eos_id = 151645
-pad_id = 151643
-```
-
-for full vocabulary data (token strings + merge rules), the runtime loads from the vocabulary section of the weights or from a companion tokenizer embedded in the binary zone.
-
-## preprocessors (multimodal)
+separate `~~~index` file inside the container. TOML format. one entry per tensor:
 
 ```toml
-[image]
-image_size = 448
-patch_size = 14
-mean = [0.485, 0.456, 0.406]
-std = [0.229, 0.224, 0.225]
-
-[audio]
-sample_rate = 16000
-n_fft = 400
-hop_length = 160
-n_mels = 80
-```
-
-## weights format: tensors
-
-own binary format. tensor index in TOML frontmatter, raw data in binary zone. no dependency on GGUF or safetensors parsers.
-
-### tensor index
-
-each tensor declared in frontmatter under `[files.tensors]`:
-
-```toml
-[[files]]
-name = "weights"
-format = "tensors"
-size = 1200000000
-
-[files.tensors]
-"model.embed_tokens.weight" = { shape = [151936, 1024], dtype = "f16", offset = 0, size = 311361536 }
 "model.layers.0.self_attn.q_proj.weight" = { shape = [2048, 1024], dtype = "q4_0", offset = 311361536, size = 1179648 }
-"model.layers.0.self_attn.k_proj.weight" = { shape = [1024, 1024], dtype = "q4_0", offset = 312541184, size = 589824 }
-"model.layers.0.input_layernorm.weight" = { shape = [1024], dtype = "f32", offset = 313131008, size = 4096 }
 ```
 
 per-tensor fields:
 - `shape` — dimensions
-- `dtype` — data type (see table below)
+- `dtype` — data type
 - `offset` — byte offset from start of `~~~weights` binary zone
 - `size` — byte count
 
-binary zone after `~~~weights` is raw concatenated tensor data. 64-byte aligned per tensor (for AMX/DMA).
+## weights binary zone
 
-### dtypes
+raw concatenated tensor data after `~~~weights`. page-aligned per tensor (4096 bytes) for zero-copy mmap to GPU/NVMe/AMX via [[unimem]].
+
+4096-byte alignment satisfies all hardware:
+
+| hardware | required alignment | 4096 ≥ |
+|----------|:-:|:-:|
+| CPU cache line | 64 | yes |
+| NEON | 16 | yes |
+| AVX-512 | 64 | yes |
+| Metal GPU | 256 | yes |
+| CUDA | 256 | yes |
+| NVMe DMA | 4096 | yes |
+| AMX | 64 | yes |
+
+overhead: ~4KB padding per tensor × ~300 tensors = ~1.2MB. negligible vs GB of weights.
+
+## dtypes
 
 | dtype | bits/value | block_size | description |
 |-------|:-:|:-:|-------------|
 | f32 | 32 | 1 | full precision (norms, biases) |
 | f16 | 16 | 1 | half precision (small critical models) |
 | bf16 | 16 | 1 | brain float |
-| q8_0 | 8.5 | 32 | 8-bit quantized (math, vision) |
-| q4_0 | 4.5 | 32 | 4-bit quantized (general LLMs) |
+| q8_0 | 8.5 | 32 | 8-bit block quantized (math, vision) |
+| q4_0 | 4.5 | 32 | 4-bit block quantized (general LLMs) |
 | q4_k | 4.5 | 256 | 4-bit K-quant (better quality) |
 | ternary | 1.58 | — | 1.58-bit (bitnet native) |
 
-block quantization (q4_0, q8_0): each block of `block_size` values has one f16 scale factor + packed integers. byte layout matches GGUF block format for compatibility.
+block quantization (q4_0, q8_0): each block of `block_size` values has one f16 scale factor + packed integers.
 
-### tensor naming
+## tensor naming
 
-HuggingFace convention is canonical. this is the only naming scheme .model files use:
+HuggingFace convention is canonical:
 
 ```
 model.embed_tokens.weight
@@ -317,38 +281,37 @@ model.norm.weight
 model.lm_head.weight
 ```
 
-import pipeline converts other naming conventions (GGUF `blk.{i}.attn_q`, ONNX paths) to HF at pack time. runtime only sees HF names.
-
-### import conversion table (GGUF → HF)
+import converts GGUF names to HF at pack time:
 
 | GGUF | HF |
 |------|-----|
 | token_embd.weight | model.embed_tokens.weight |
 | output_norm.weight | model.norm.weight |
 | output.weight | model.lm_head.weight |
-| blk.{i}.attn_norm.weight | model.layers.{i}.input_layernorm.weight |
 | blk.{i}.attn_q.weight | model.layers.{i}.self_attn.q_proj.weight |
 | blk.{i}.attn_k.weight | model.layers.{i}.self_attn.k_proj.weight |
 | blk.{i}.attn_v.weight | model.layers.{i}.self_attn.v_proj.weight |
 | blk.{i}.attn_output.weight | model.layers.{i}.self_attn.o_proj.weight |
-| blk.{i}.ffn_norm.weight | model.layers.{i}.post_attention_layernorm.weight |
 | blk.{i}.ffn_gate.weight | model.layers.{i}.mlp.gate_proj.weight |
 | blk.{i}.ffn_up.weight | model.layers.{i}.mlp.up_proj.weight |
 | blk.{i}.ffn_down.weight | model.layers.{i}.mlp.down_proj.weight |
+| blk.{i}.attn_norm.weight | model.layers.{i}.input_layernorm.weight |
+| blk.{i}.ffn_norm.weight | model.layers.{i}.post_attention_layernorm.weight |
 
-### why own format instead of safetensors/GGUF
+## vocab
 
-safetensors does not support block quantization (Q4, Q8). storing quantized tensors in safetensors loses dtype metadata — runtime cannot distinguish Q4 from raw U8.
+metadata in `~~~vocab` (TOML, text):
 
-GGUF supports quantization but brings its own naming convention, metadata format, and architectural assumptions. dependency on GGUF = dependency on llama.cpp decisions.
+```toml
+type = "bpe"
+vocab_size = 151936
+bos_id = 151643
+eos_id = 151645
+```
 
-own format: tensor index in TOML (readable, editable), binary data with per-tensor dtype and alignment, HF naming canonical, zero external dependencies.
+full vocabulary data (token strings + merge rules) in `~~~vocab-data` (binary). loaded by tokenizer at runtime.
 
-KV cache compression via TurboQuant (PolarQuant + QJL) happens at runtime — not stored in model file.
-
-## model lineage
-
-content-addressable provenance chain:
+## lineage
 
 ```toml
 [cyb.lineage]
@@ -356,16 +319,17 @@ source = "huihui-ai/Qwen3-0.6B-abliterated"
 method = "abliteration + q4_0"
 ```
 
-the full chain: base model → fine-tune → quantize → abliterate. when stored as [[particles]] in [[hemera]], each step is content-addressable and verifiable.
+when stored as [[particles]] in [[hemera]], each step in the chain (base → finetune → quantize → abliterate) is content-addressable and verifiable.
 
 ## runtime load
 
 ```
-model.cyb
+file.model
   → parse frontmatter (TOML)
-  → compile nox program → hardware kernels (cached)
-  → mmap weights into unimem Layout (zero-copy)
+  → compile nox program via trident → hardware kernels (cached)
+  → read ~~~index → tensor map
+  → mmap ~~~weights into unimem Layout (zero-copy)
   → inference ready
 ```
 
-see [[llm]] for memory architecture, [[unimem]] for zero-copy pipeline, [[TurboQuant]] for KV cache compression.
+see [[llm]] for memory architecture, [[unimem]] for zero-copy pipeline.
