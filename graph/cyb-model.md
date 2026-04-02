@@ -15,13 +15,13 @@ one file. ready for inference.
 
 | name | format | what it does |
 |------|--------|-------------|
-| card | md | what this model is, how to use |
-| config | toml | all parameters: architecture, tokenizer, sampling, lineage |
-| program | tri or rs | entire pipeline: input → output (reads params from config) |
-| tensors | toml | tensor index: names, shapes, encodings, offsets |
-| vocab | toml | full vocabulary: tokens + merge rules (empty for non-text models) |
-| eval | toml | benchmark results (updatable by user for routing) |
-| weights | tensors | raw weight data (binary, page-aligned) |
+| card | .md | what this model is, how to use |
+| config | .toml | all parameters: architecture, tokenizer, sampling, lineage |
+| program | .tri or .rs | entire pipeline: input → output (reads params from config) |
+| tensors | .toml | tensor index: names, shapes, encodings, offsets |
+| vocab | .toml | full vocabulary: tokens + merge rules (empty for non-text models) |
+| eval | .toml | benchmark results (updatable by user for routing) |
+| weights | .tensors | raw weight data (binary, page-aligned) |
 
 no optional files. everything is required. vocab is empty `{}` for models without tokenizer.
 
