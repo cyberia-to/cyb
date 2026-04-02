@@ -15,24 +15,19 @@ one file = program + weights + vocabulary + documentation. ready for inference.
 
 | name | format | what it does |
 |------|--------|-------------|
-| card | md | what this model is, how to use, benchmarks |
+| card | md | what this model is, how to use |
 | config | toml | metadata: name, license, parameters, languages |
 | program | trident | entire pipeline: input → output (compiles to [[nox]]) |
 | tensors | toml | tensor index: names, shapes, encodings, offsets |
 | vocab | toml | full vocabulary: tokens + merge rules |
+| eval | toml | benchmark results (updatable by user) |
 | weights | tensors | raw weight data (binary, page-aligned) |
 
-six files. model runs. first thing you see is the card.
+seven files. model runs. first thing you see is the card. eval is live — user updates it with real benchmarks, routing uses it to pick the best model for the task.
 
 program is [[trident]] source code. describes the ENTIRE pipeline — not just forward pass. input formatting, tokenization, embedding, forward, sampling, decoding — all in one program. no separate chat template, no separate sampling config, no separate preprocessor. the program IS the behavior.
 
 [[trident]] compiles to [[nox]] (18-instruction VM) which executes on any hardware. trident has `std.nn.tensor` (dot, matvec, relu, scale), type system (Field, U32, Bool, Digest), generics, modules. every execution produces a STARK proof.
-
-## optional files
-
-| name | format | what it adds |
-|------|--------|-------------|
-| eval | toml | benchmark results |
 
 ## example
 
