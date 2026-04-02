@@ -187,7 +187,7 @@ metadata about the model. NOT architecture — architecture is in the nox progra
 |-------|------|-------------|
 | model_type | string | qwen3, llama, bitnet, mimo, whisper, yolo |
 | architecture | string | HF class: Qwen3ForCausalLM, LlamaForCausalLM |
-| parameters | u64 | parameter count: 600000000, 7000000000 |
+| parameters | field | parameter count: 600000000, 7000000000 |
 | license | string | SPDX: Apache-2.0, MIT |
 | languages | string[] | supported languages |
 | context_length | u32 | recommended working context |
