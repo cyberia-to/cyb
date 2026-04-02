@@ -9,7 +9,7 @@ alias: .model, model format, cyb model spec
 
 .model is a [[format]]-compatible extension. a .model file IS a .cyb file — same three rules, same parsing. the extension tells tools and humans: this container holds a neural network.
 
-one file = architecture + weights + vocabulary + chat template + benchmarks. ready for inference.
+one file = program + weights + vocabulary + documentation. ready for inference.
 
 ## five files
 
@@ -18,7 +18,7 @@ one file = architecture + weights + vocabulary + chat template + benchmarks. rea
 | card | md | what this model is, how to use, benchmarks |
 | config | toml | metadata: name, license, parameters, languages |
 | program | trident | entire pipeline: input → output (compiles to [[nox]]) |
-| tensors | toml | tensor index: names, shapes, dtypes, offsets |
+| tensors | toml | tensor index: names, shapes, encodings, offsets |
 | vocab | toml | full vocabulary: tokens + merge rules |
 | weights | tensors | raw weight data (binary, page-aligned) |
 
@@ -54,7 +54,7 @@ format = "toml"
 
 [[files]]
 name = "program"
-format = "nox"
+format = "trident"
 
 [[files]]
 name = "tensors"
@@ -138,10 +138,10 @@ pub fn forward(input_addr: Field, output_addr: Field, seq_len: Field) {
 }
 
 ~~~tensors
-"model.embed_tokens.weight" = { shape = [151936, 1024], dtype = "f16", offset = 0, size = 311361536 }
-"model.layers.0.self_attn.q_proj.weight" = { shape = [2048, 1024], dtype = "q4_0", offset = 311361536, size = 1179648 }
-"model.layers.0.self_attn.k_proj.weight" = { shape = [1024, 1024], dtype = "q4_0", offset = 312541184, size = 589824 }
-"model.layers.0.input_layernorm.weight" = { shape = [1024], dtype = "f32", offset = 313131008, size = 4096 }
+"model.embed_tokens.weight" = { shape = [151936, 1024], encoding = "f16", offset = 0, size = 311361536 }
+"model.layers.0.self_attn.q_proj.weight" = { shape = [2048, 1024], encoding = "q4_0", offset = 311361536, size = 1179648 }
+"model.layers.0.self_attn.k_proj.weight" = { shape = [1024, 1024], encoding = "q4_0", offset = 312541184, size = 589824 }
+"model.layers.0.input_layernorm.weight" = { shape = [1024], encoding = "f32", offset = 313131008, size = 4096 }
 
 ~~~vocab
 [tokens]
@@ -156,24 +156,6 @@ pub fn forward(input_addr: Field, output_addr: Field, seq_len: Field) {
 0 = ["▁", "t"]
 1 = ["▁t", "h"]
 # ... 151387 merges total
-
-~~~chat
-format = "chatml"
-template = """
-{%- for message in messages %}
-<|im_start|>{{ message.role }}
-{{ message.content }}<|im_end|>
-{%- endfor %}
-"""
-bos_token = "<|endoftext|>"
-eos_token = "<|im_end|>"
-
-~~~sampling
-temperature = 0.7
-top_p = 0.9
-top_k = 40
-repetition_penalty = 1.1
-max_tokens = 2048
 
 ~~~eval
 [needle_in_haystack]
@@ -243,12 +225,12 @@ the program defines EVERYTHING: tokenization, embedding, forward pass, sampling,
 separate `~~~tensors` file inside the container. TOML format. one entry per tensor:
 
 ```toml
-"model.layers.0.self_attn.q_proj.weight" = { shape = [2048, 1024], dtype = "q4_0", offset = 311361536, size = 1179648 }
+"model.layers.0.self_attn.q_proj.weight" = { shape = [2048, 1024], encoding = "q4_0", offset = 311361536, size = 1179648 }
 ```
 
 per-tensor fields:
 - `shape` — dimensions
-- `dtype` — data type
+- `encoding` — data type
 - `offset` — byte offset from start of `~~~weights` binary zone
 - `size` — byte count
 
@@ -270,9 +252,9 @@ raw concatenated tensor data after `~~~weights`. page-aligned per tensor (4096 b
 
 overhead: ~4KB padding per tensor × ~300 tensors = ~1.2MB. negligible vs GB of weights.
 
-## dtypes
+## encodings
 
-| dtype | bits/value | block_size | description |
+| encoding | bits/value | block_size | description |
 |-------|:-:|:-:|-------------|
 | f32 | 32 | 1 | full precision (norms, biases) |
 | f16 | 16 | 1 | half precision (small critical models) |
