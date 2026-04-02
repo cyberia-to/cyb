@@ -80,11 +80,9 @@ binary parts must come after all text parts. within binary zone, parser reads by
 
 `types` array in `[cyb]` declares what the file contains. a single file can have multiple types. types and formats are not hardcoded in this spec — see [[cyb-registry]] for the ecosystem catalog of supported formats and types.
 
-## hemera integration
+## hemera
 
-every .cyb file is a [[particle]] — the native content unit of the [[hemera]] network. hemera computes the CID (content identifier), handles chunking, verification, deduplication, and distribution. the .cyb format itself does not define how addressing works — that is hemera's responsibility.
-
-what .cyb provides to hemera: a self-describing container with a readable index. hemera can inspect the frontmatter to understand what the particle contains without parsing binary data.
+.cyb is natively compatible with [[hemera]] — the hash format for content addressing. any .cyb file can be a hemera [[particle]]. hemera handles hashing, chunking, verification, and distribution. .cyb handles packaging and human readability. different layers, no coupling.
 
 ## parsing
 
