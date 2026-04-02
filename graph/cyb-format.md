@@ -74,32 +74,13 @@ transformer_decoder { layers: 28 }
 
 binary parts must come after all text parts. within binary zone, parser reads by `size` sequentially.
 
-## part formats
+## parts
 
-| format | readable | examples |
-|--------|:-:|---------|
-| toml | yes | config, metadata, eval results |
-| nox | yes | computation programs |
-| md | yes | documentation, model cards |
-| json | yes | structured data |
-| safetensors | no | tensor weights |
-| jpg, png | no | images |
-| wav, mp3 | no | audio |
-| mp4 | no | video |
-| cbor | no | compact binary data |
-| raw | no | arbitrary bytes |
+`format` is any string. the container does not interpret part contents — it stores them as-is. text or binary is determined by whether `size` is present in frontmatter.
 
-## types
+`type` on `[[parts]]` is optional — groups parts logically when a file contains multiple types.
 
-`types` array in `[cyb]`. one file can contain multiple types. each `[[parts]]` can have `type` for filtering.
-
-| type | purpose | spec |
-|------|---------|------|
-| model | neural network | [[cyb-model]] |
-| dataset | training/eval data | — |
-| document | text, media, mixed | — |
-| graph | knowledge subgraph | — |
-| checkpoint | training state | — |
+`types` array in `[cyb]` declares what the file contains. a single file can have multiple types. types and formats are not hardcoded in this spec — see [[cyb-registry]] for the ecosystem catalog of supported formats and types.
 
 ## content addressing
 
