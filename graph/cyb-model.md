@@ -331,14 +331,21 @@ dequantize: value[i] = int8[i] * scale / 127
 matmul: +1 = add, -1 = subtract, 0 = skip.
 ```
 
-### float → integer at import
+### import conversion
+
+everything converts to five encodings. no exceptions.
 
 | source | target | method |
 |--------|--------|--------|
 | float32 | u32 | `round(value * 65536)` |
-| float16 | u16 | `round(value * 256)` |
+| float16 / bfloat16 | u16 | `round(value * 256)` |
 | GGUF Q4_0 | q4 | direct copy |
+| GGUF Q4_1 / Q4_K / Q5_K | q4 | dequant → requant as q4 |
 | GGUF Q8_0 | q8 | direct copy |
+| GGUF Q6_K | q8 | dequant → requant as q8 |
+| BitNet ternary | ternary | direct copy |
+
+five encodings. like UTF-8 killed the encoding zoo.
 
 ## runtime load
 
