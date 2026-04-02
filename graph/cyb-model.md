@@ -225,9 +225,23 @@ TOML index. one entry per tensor. tensor names follow HuggingFace convention.
 
 ```toml
 ~~~tensors
-"model.embed_tokens.weight" = { shape = [151936, 1024], encoding = "u16", offset = 0, size = 311361536 }
-"model.layers.0.self_attn.q_proj.weight" = { shape = [2048, 1024], encoding = "q4", offset = 311361536, size = 1179648 }
-"model.layers.0.input_layernorm.weight" = { shape = [1024], encoding = "u32", offset = 313131008, size = 4096 }
+["model.embed_tokens.weight"]
+shape    = [151936, 1024]
+encoding = "u16"
+offset   = 0
+size     = 311361536
+
+["model.layers.0.self_attn.q_proj.weight"]
+shape    = [2048, 1024]
+encoding = "q4"
+offset   = 311361536
+size     = 1179648
+
+["model.layers.0.input_layernorm.weight"]
+shape    = [1024]
+encoding = "u32"
+offset   = 313131008
+size     = 4096
 ```
 
 ## vocab
