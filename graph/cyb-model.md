@@ -266,19 +266,76 @@ integers are [[nox]] field elements. field arithmetic on GPU int tensor cores = 
 | q4 | 4.5 | 32 | block int | 4-bit quantized (general LLMs) |
 | ternary | 1.58 | — | trit | 1.58-bit (bitnet, [[kuro]] native) |
 
-block quantization (q4, q8): each block of `block_size` values has one u16 scale factor + packed integers.
+### u32 layout
+
+```
+one value = 4 bytes, little-endian unsigned integer
+range: 0 .. 4294967295
+fixed-point: 16 integer bits + 16 fractional bits
+actual_value = stored_value / 65536.0
+```
+
+used for: norms, biases — tensors that were float32 in the original model.
+
+### u16 layout
+
+```
+one value = 2 bytes, little-endian unsigned integer
+range: 0 .. 65535
+fixed-point: 8 integer bits + 8 fractional bits
+actual_value = stored_value / 256.0
+```
+
+used for: embedding tables, small model weights that were float16 in the original model.
+
+### q4 layout (4-bit block quantized)
+
+```
+block of 32 values = 18 bytes:
+  [0..1]    u16 scale factor (little-endian)
+  [2..17]   32 × 4-bit values packed into 16 bytes
+            each byte = two 4-bit values (low nibble first)
+
+dequantize: value[i] = (nibble[i] - 8) * scale / 8
+```
+
+one tensor = ceil(num_elements / 32) blocks, concatenated. compatible with GGUF Q4_0.
+
+### q8 layout (8-bit block quantized)
+
+```
+block of 32 values = 34 bytes:
+  [0..1]    u16 scale factor (little-endian)
+  [2..33]   32 × signed int8 values
+
+dequantize: value[i] = int8[i] * scale / 127
+```
+
+one tensor = ceil(num_elements / 32) blocks, concatenated. compatible with GGUF Q8_0.
+
+### ternary layout (1.58-bit, bitnet)
+
+```
+32 values = 8 bytes:
+  each value is 2 bits: 00 = 0, 01 = +1, 10 = -1
+  16 values packed per u32 (little-endian)
+
+matmul: no multiply needed. +1 = add, -1 = subtract, 0 = skip.
+```
+
+used for: [[kuro]] (F₂) native models. XOR + popcount on binary hardware.
 
 ### float → integer conversion at import
 
-| source | target | conversion |
-|--------|--------|-----------|
-| float32 | u32 | fixed-point: multiply by 2^16, round, store as u32 |
-| float16 | u16 | reinterpret mantissa + exponent as fixed-point u16 |
-| bfloat16 | u16 | same as float16 |
-| Q4_0 (GGUF) | q4 | already integers, copy directly |
-| Q8_0 (GGUF) | q8 | already integers, copy directly |
+| source | target | method |
+|--------|--------|--------|
+| float32 norms/biases | u32 | `round(value * 65536)` |
+| float16 weights | u16 | `round(value * 256)` |
+| bfloat16 weights | u16 | `round(value * 256)` |
+| GGUF Q4_0 | q4 | direct copy (same layout) |
+| GGUF Q8_0 | q8 | direct copy (same layout) |
 
-quantized weights (Q4/Q8) are already integers — zero conversion needed. only norms and biases (originally float32) need fixed-point conversion. ~300 tensors out of ~300 for a typical model are already integer.
+Q4/Q8 weights are already integers — zero conversion. only norms and biases (originally float) need fixed-point conversion. for a typical 7B model: ~300 norm tensors × 4KB each = ~1.2MB to convert. the rest (99.9% of data) copies directly.
 
 ## tensor naming
 
