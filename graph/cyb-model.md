@@ -42,13 +42,6 @@ a .model can contain both programs (as `program` and `program-native`). runtime 
 [cyb]
 types = ["model"]
 name = "qwen3-0.6b-abliterated"
-parameters = 600000000
-license = "Apache-2.0"
-languages = ["en", "zh", "ru"]
-
-[cyb.lineage]
-source = "huihui-ai/Qwen3-0.6B-abliterated"
-method = "abliteration"
 
 [[files]]
 name = "card"
@@ -93,6 +86,11 @@ license: Apache 2.0
 
 ~~~config
 model_type = "qwen3"
+parameters = 600000000
+license = "Apache-2.0"
+languages = ["en", "zh", "ru"]
+
+[architecture]
 hidden_size = 1024
 num_attention_heads = 16
 num_key_value_heads = 8
@@ -103,7 +101,7 @@ vocab_size = 151936
 context_length = 32768
 max_position_embeddings = 40960
 rope_theta = 1000000
-rms_norm_eps = 0.000001
+rms_norm_eps = 1
 
 [tokenizer]
 type = "bpe"
@@ -112,13 +110,18 @@ eos_id = 151645
 pad_id = 151643
 
 [sampling]
-temperature = 0.7
-top_p = 0.9
+temperature = 700
+top_p = 900
+scale = 1000
 
 [chat]
 format = "chatml"
 bos_token = "<|endoftext|>"
 eos_token = "<|im_end|>"
+
+[lineage]
+source = "huihui-ai/Qwen3-0.6B-abliterated"
+method = "abliteration"
 
 ~~~program
 module model.pipeline
@@ -129,36 +132,34 @@ use std.nn.tensor
 
 pub fn forward(input_addr: Field, output_addr: Field, seq_len: Field,
                cfg: Config) {
-    let tokens: Field = io.bpe_encode(input_addr, seq_len, cfg.vocab_size)
-    let hidden: Field = tensor.embed(tokens, seq_len, cfg.hidden_size,
-                                     cfg.vocab_size)
+    let a: Architecture = cfg.architecture
+    let tokens: Field = io.bpe_encode(input_addr, seq_len, a.vocab_size)
+    let hidden: Field = tensor.embed(tokens, seq_len, a.hidden_size,
+                                     a.vocab_size)
 
-    for layer in 0..cfg.num_hidden_layers bounded 128 {
+    for layer in 0..a.num_hidden_layers bounded 128 {
         let l: Field = convert.as_field(layer)
-        hidden = tensor.rmsnorm(hidden, seq_len, cfg.hidden_size,
-                                cfg.rms_norm_eps)
+        hidden = tensor.rmsnorm(hidden, seq_len, a.hidden_size, a.rms_norm_eps)
         let q: Field = tensor.matvec(hidden, l,
-                                     cfg.num_attention_heads * cfg.head_dim,
-                                     cfg.hidden_size)
+                                     a.num_attention_heads * a.head_dim,
+                                     a.hidden_size)
         let k: Field = tensor.matvec(hidden, l,
-                                     cfg.num_key_value_heads * cfg.head_dim,
-                                     cfg.hidden_size)
+                                     a.num_key_value_heads * a.head_dim,
+                                     a.hidden_size)
         let v: Field = tensor.matvec(hidden, l,
-                                     cfg.num_key_value_heads * cfg.head_dim,
-                                     cfg.hidden_size)
+                                     a.num_key_value_heads * a.head_dim,
+                                     a.hidden_size)
         let attn: Field = tensor.flash_attention(q, k, v,
-                                                 cfg.num_attention_heads,
-                                                 cfg.num_key_value_heads,
-                                                 cfg.head_dim, seq_len)
-        hidden = tensor.residual_add(hidden, attn, cfg.hidden_size)
-        hidden = tensor.rmsnorm(hidden, seq_len, cfg.hidden_size,
-                                cfg.rms_norm_eps)
-        hidden = tensor.swiglu(hidden, l, cfg.intermediate_size,
-                               cfg.hidden_size)
+                                                 a.num_attention_heads,
+                                                 a.num_key_value_heads,
+                                                 a.head_dim, seq_len)
+        hidden = tensor.residual_add(hidden, attn, a.hidden_size)
+        hidden = tensor.rmsnorm(hidden, seq_len, a.hidden_size, a.rms_norm_eps)
+        hidden = tensor.swiglu(hidden, l, a.intermediate_size, a.hidden_size)
     }
 
-    let logits: Field = tensor.linear(hidden, cfg.vocab_size, cfg.hidden_size)
-    let token: Field = tensor.sample_top_p(logits, cfg.vocab_size,
+    let logits: Field = tensor.linear(hidden, a.vocab_size, a.hidden_size)
+    let token: Field = tensor.sample_top_p(logits, a.vocab_size,
                                            cfg.sampling.top_p,
                                            cfg.sampling.temperature)
     io.bpe_decode(token, output_addr)
@@ -201,30 +202,26 @@ pass_at_1 = 0.652
 
 ## config
 
-all model parameters. program reads from config — one program works for any model of the same architecture.
+everything about the model. program reads from config — one program works for any model of the same architecture.
 
-| field | type | description |
+frontmatter `[cyb]` = minimal container metadata (types, name). config = everything else.
+
+| top-level field | type | description |
 |-------|------|-------------|
 | model_type | string | qwen3, llama, bitnet, mimo, whisper, yolo |
-| hidden_size | field | embedding dimension |
-| num_attention_heads | field | query heads |
-| num_key_value_heads | field | KV heads (GQA) |
-| head_dim | field | dimension per head |
-| num_hidden_layers | field | transformer layers |
-| intermediate_size | field | FFN hidden dimension |
-| vocab_size | field | vocabulary size |
-| context_length | field | recommended working context |
-| max_position_embeddings | field | architectural max (RoPE limit) |
-| rope_theta | field | rotary position embedding base |
-| rms_norm_eps | field | normalization epsilon |
+| parameters | field | parameter count |
+| license | string | SPDX identifier |
+| languages | string[] | supported languages |
 
-| section | fields | purpose |
-|---------|--------|---------|
+| section | fields | description |
+|---------|--------|-------------|
+| [architecture] | hidden_size, num_attention_heads, num_key_value_heads, head_dim, num_hidden_layers, intermediate_size, vocab_size, context_length, max_position_embeddings, rope_theta, rms_norm_eps | what program reads |
 | [tokenizer] | type, bos_id, eos_id, pad_id | tokenizer params |
-| [sampling] | temperature, top_p | default sampling params |
+| [sampling] | temperature, top_p, scale | default sampling (integers, scale=1000) |
 | [chat] | format, bos_token, eos_token | chat formatting |
+| [lineage] | source, method | provenance |
 
-frontmatter `[cyb]` = file metadata (name, parameters, license, languages, lineage). config = model parameters (what the program needs to execute).
+all numeric values are integers (field elements). sampling uses integer representation: `temperature = 700` with `scale = 1000` means 0.7. no floats anywhere.
 
 ## program
 
@@ -312,7 +309,7 @@ matmul: +1 = add, -1 = subtract, 0 = skip.
 
 ## vocab
 
-full vocabulary in TOML. 151K tokens = ~6MB, parses in 91ms. empty `{}` for non-text models (YOLO, BEATs, piper).
+full vocabulary in TOML. 151K tokens = ~6MB, parses in 91ms. empty `{}` for non-text models (YOLO, BEATs).
 
 ## eval
 
@@ -320,13 +317,7 @@ live benchmark results. user updates after testing. routing reads eval to pick t
 
 ## lineage
 
-```toml
-[cyb.lineage]
-source = "huihui-ai/Qwen3-0.6B-abliterated"
-method = "abliteration + q4"
-```
-
-when stored as [[particles]] in [[hemera]], each step is content-addressable and verifiable.
+in config `[lineage]` section. tracks provenance: where the model came from, what was done to it. when stored as [[particles]] in [[hemera]], each step is content-addressable and verifiable.
 
 ## runtime load
 
