@@ -1,12 +1,10 @@
-[cyb]
-types = ["document"]
-alias = [".cyb", "cyb format", "cyb container"]
+---
+tags: cyber, cyb, core, spec
+crystal-type: spec
+crystal-domain: cyber
+alias: .cyb, cyb format, cyb container
+---
 
-[[files]]
-name = "spec"
-format = "md"
-
-~~~spec
 # .cyb — universal knowledge container
 
 one file. self-describing. human-readable index. editable as text. native [[particle]] format for [[hemera]].
