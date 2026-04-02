@@ -2,14 +2,16 @@
 tags: cyber, cyb, core, soma, spec
 crystal-type: spec
 crystal-domain: cyber
-alias: .cyb model, model format, cyb model spec
+alias: .model, model format, cyb model spec
 ---
 
-# cyb-model — neural network in a [[cyb-format]] container
+# .model — neural network in [[cyb-format]]
 
-a complete neural network: architecture, weights, vocabulary, chat template, benchmarks — in one .cyb file ready for inference.
+.model is a [[cyb-format]]-compatible extension. a .model file IS a .cyb file — same three rules, same parsing, same CLI. the extension tells tools and humans: this container holds a neural network.
 
-## required parts
+one file = architecture + weights + vocabulary + chat template + benchmarks. ready for inference.
+
+## required files
 
 | part | format | content |
 |------|--------|---------|
@@ -17,7 +19,7 @@ a complete neural network: architecture, weights, vocabulary, chat template, ben
 | program | nox | forward pass (compiles to hardware) |
 | weights | safetensors | tensor data |
 
-## optional parts
+## optional files
 
 | part | format | content |
 |------|--------|---------|
@@ -40,42 +42,42 @@ name = "qwen3-0.6b-abliterated"
 source = "huihui-ai/Qwen3-0.6B-abliterated"
 method = "abliteration"
 
-[[parts]]
+[[files]]
 name = "config"
 type = "model"
 format = "toml"
 
-[[parts]]
+[[files]]
 name = "program"
 type = "model"
 format = "nox"
 
-[[parts]]
+[[files]]
 name = "vocab"
 type = "model"
 format = "toml"
 
-[[parts]]
+[[files]]
 name = "chat"
 type = "model"
 format = "toml"
 
-[[parts]]
+[[files]]
 name = "sampling"
 type = "model"
 format = "toml"
 
-[[parts]]
+[[files]]
 name = "eval"
 type = "model"
 format = "toml"
 
-[[parts]]
+[[files]]
 name = "card"
 type = "model"
 format = "md"
 
-[[parts]]
+[[files]]
 name = "weights"
 type = "model"
 format = "safetensors"

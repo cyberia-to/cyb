@@ -7,9 +7,24 @@ alias: cyb registry, format registry, type registry
 
 # cyb-registry — formats and types for [[cyb-format]]
 
-living catalog of part formats and container types supported in the cyber ecosystem. not exhaustive — any format can be stored in .cyb. this registry tracks what tools understand natively.
+living catalog of file formats and .cyb-compatible extensions supported in the cyber ecosystem. any format can be embedded in .cyb — this registry tracks what tools understand natively.
 
-## part formats
+## .cyb-compatible extensions
+
+extensions that follow the [[cyb-format]] three rules (TOML frontmatter + `~~~name` delimiters + size for binary). a .model file IS a .cyb file.
+
+| extension | type | spec | description |
+|-----------|------|------|-------------|
+| .cyb | any | [[cyb-format]] | generic container |
+| .model | model | [[cyb-model]] | neural network (config + nox + weights) |
+
+adding an extension: follow the three rules, create a spec page, add to this table.
+
+## non-.cyb formats (embedded inside .cyb as files)
+
+formats that do NOT follow the three rules. stored inside .cyb containers as binary or text files.
+
+## file formats
 
 ### text (human-readable, editable)
 
@@ -55,29 +70,8 @@ any string is valid as `format` in .cyb parts. tools that encounter an unknown f
 
 to register a format for ecosystem-wide support: add it to this page and implement handling in the relevant tool.
 
-## container types
+### adding a format
 
-| type | description | spec | required parts |
-|------|-------------|------|----------------|
-| model | neural network | [[cyb-model]] | config, program, weights |
-| dataset | training/eval data | — | schema, data |
-| document | text, media, mixed | — | any |
-| graph | knowledge subgraph | — | pages, links |
-| checkpoint | training state | — | weights, optimizer, step |
-| executable | runnable program | — | manifest, code |
-| package | collection of files | — | manifest, contents |
+any string is valid as `format` in .cyb `[[files]]`. tools that encounter an unknown format treat it as raw bytes (binary) or UTF-8 text (based on `size` presence).
 
-### adding a type
-
-any string is valid as `types` entry in .cyb. tools that encounter an unknown type inspect parts individually.
-
-to register a type: add it to this table, optionally create a spec page (like [[cyb-model]]) defining required and optional parts.
-
-## model type — format details
-
-see [[cyb-model]] for the full specification of the model type, including:
-- nox program (replaces ONNX)
-- tensor naming convention
-- quantization methods
-- model lineage (CID chain)
-- supported architectures
+to register a format for ecosystem-wide support: add it to this page and implement handling in the relevant tool.
