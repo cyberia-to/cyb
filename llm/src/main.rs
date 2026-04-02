@@ -113,6 +113,18 @@ enum Commands {
         name: String,
     },
 
+    /// Extract tensors.toml from .cyb files
+    ExtractTensors {
+        /// Model name or "all"
+        name: String,
+    },
+
+    /// Pack all 7 files into .model format (new spec)
+    ModelPack {
+        /// Model name or "all"
+        name: String,
+    },
+
     /// Full status report: formats, sizes, loadability, config completeness
     Status,
 
@@ -140,29 +152,67 @@ fn main() {
             max_tokens,
             temperature,
         } => {
-            // Resolve: .cyb file or model directory containing .cyb
+            // Resolve: .model file, .cyb file, or model directory
             let model_path = std::path::PathBuf::from(&model);
-            let (cyb_path, model_dir) = if ext_is(&model_path, "cyb") && model_path.exists() {
+            let (cyb_path, model_dir) = if ext_is(&model_path, "model") && model_path.exists() {
+                let dir = model_path.parent().unwrap_or(std::path::Path::new("."));
+                (model_path.clone(), dir.to_path_buf())
+            } else if ext_is(&model_path, "cyb") && model_path.exists() {
                 let dir = model_path.parent().unwrap_or(std::path::Path::new("."));
                 (model_path.clone(), dir.to_path_buf())
             } else if model_path.is_dir() {
-                match std::fs::read_dir(&model_path).into_iter().flatten().flatten()
-                    .find(|e| ext_is(&e.path(), "cyb")).map(|e| e.path())
-                {
+                // Prefer .model over .cyb
+                let model_file = std::fs::read_dir(&model_path).into_iter().flatten().flatten()
+                    .find(|e| ext_is(&e.path(), "model")).map(|e| e.path());
+                let cyb_file = std::fs::read_dir(&model_path).into_iter().flatten().flatten()
+                    .find(|e| ext_is(&e.path(), "cyb")).map(|e| e.path());
+                match model_file.or(cyb_file) {
                     Some(p) => (p, model_path.clone()),
-                    None => { eprintln!("No .cyb file in {}. Run: cyb-llm import + pack", model_path.display()); return; }
+                    None => { eprintln!("No .model or .cyb file in {}. Run: cyb-llm model-pack", model_path.display()); return; }
                 }
             } else {
-                eprintln!("Expected .cyb file or model directory. Got: {model}");
+                eprintln!("Expected .model file or model directory. Got: {model}");
                 return;
             };
 
+            // Find tokenizer: model_dir, or model-name subdirectory (for flat .model files)
             let tokenizer_path = match find_tokenizer(&model_dir) {
                 Some(p) => p,
-                None => { eprintln!("No tokenizer.json in {}", model_dir.display()); return; }
+                None => {
+                    // For ~/llm/name.model, check ~/llm/name/tokenizer.json
+                    let stem = cyb_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+                    let subdir = model_dir.join(stem);
+                    match find_tokenizer(&subdir) {
+                        Some(p) => p,
+                        None => { eprintln!("No tokenizer.json in {} or {}", model_dir.display(), subdir.display()); return; }
+                    }
+                }
             };
 
             println!("Loading: {}", cyb_path.display());
+
+            // Use Metal on macOS when available, wgpu as fallback
+            let use_metal = cli.backend == "metal" || (cli.backend == "auto" && cfg!(target_os = "macos"));
+            if use_metal {
+                #[cfg(target_os = "macos")]
+                {
+                    // Metal needs safetensors/gguf weights, not .cyb directly
+                    let weights_path = {
+                        let st = model_dir.join("weights.safetensors");
+                        let gguf = model_dir.join("weights.gguf");
+                        if st.exists() { Some(st) }
+                        else if gguf.exists() { Some(gguf) }
+                        else { None }
+                    };
+                    if let Some(wp) = weights_path {
+                        run_metal(&wp, &tokenizer_path, &prompt, max_tokens, temperature, cli.precision == "f16");
+                        return;
+                    }
+                    // No separate weights — fall through to wgpu
+                    log::info!("No weights.safetensors/gguf alongside .cyb, falling back to wgpu");
+                }
+            }
+
             let backend = cyb_llm::backend::create_wgpu_backend();
             let load_start = std::time::Instant::now();
             let mut generator = match cyb_llm::generate::TextGenerator::new(
@@ -274,6 +324,14 @@ fn main() {
 
         Commands::Pack { name } => {
             run_pack(&name);
+        }
+
+        Commands::ExtractTensors { name } => {
+            run_extract_tensors(&name);
+        }
+
+        Commands::ModelPack { name } => {
+            run_model_pack(&name);
         }
     }
 }
@@ -960,7 +1018,6 @@ fn quick_bench(model_dir: &std::path::Path) -> (String, String) {
         return ("—".into(), "—".into());
     }
 
-    // Find .cyb file
     let cyb_path = match std::fs::read_dir(model_dir).into_iter().flatten().flatten()
         .find(|e| ext_is(&e.path(), "cyb")).map(|e| e.path())
     {
@@ -968,29 +1025,37 @@ fn quick_bench(model_dir: &std::path::Path) -> (String, String) {
         None => return ("—".into(), "—".into()),
     };
 
+    // Suppress verbose logs during bench
+    let prev = log::max_level();
+    log::set_max_level(log::LevelFilter::Error);
+
     let backend = cyb_llm::backend::create_wgpu_backend();
     let mut generator = match cyb_llm::generate::TextGenerator::new(
         &cyb_path, &tokenizer_path, backend.pipelines,
     ) {
         Ok(g) => g,
-        Err(e) => { eprintln!("  load: {e}"); return ("fail".into(), "—".into());
+        Err(e) => {
+            log::set_max_level(prev);
+            return ("fail".into(), format!("\x1b[31m{e}\x1b[0m"));
         },
     };
 
-    // Generate
     let prompt = cyb_llm::generate::apply_chat_template("What is 2+2?", model_dir);
-    let start = std::time::Instant::now();
-    let result = generator.generate(&prompt, 32, 0.0); // greedy, 32 tokens max
-    let elapsed = start.elapsed().as_secs_f64();
+    let result = generator.generate_quiet(&prompt, 16, 0.0);
+
+    log::set_max_level(prev);
 
     match result {
         Ok(text) => {
             let text = text.trim().to_string();
-            // Count tokens approximately (words * 1.3)
-            let approx_tokens = text.split_whitespace().count().max(1) as f64 * 1.3;
-            let tok_s = if elapsed > 0.01 { approx_tokens / elapsed } else { 0.0 };
+            let stats = generator.last_stats();
 
-            // Quality check: does the output contain "4" or "four"?
+            let tok_s = if stats.decode_tokens > 0 && stats.decode_ms > 10 {
+                stats.decode_tokens as f64 / (stats.decode_ms as f64 / 1000.0)
+            } else {
+                0.0
+            };
+
             let has_answer = text.contains('4') || text.to_lowercase().contains("four");
             let is_garbage = text.len() < 2 || text.chars().filter(|c| c.is_alphanumeric()).count() < 3;
 
@@ -1002,7 +1067,7 @@ fn quick_bench(model_dir: &std::path::Path) -> (String, String) {
                 "\x1b[33m??\x1b[0m"
             };
 
-            (format!("{:.0}", tok_s), quality.into())
+            (format!("{:.1}", tok_s), quality.into())
         }
         Err(_) => ("err".into(), "\x1b[31mfail\x1b[0m".into()),
     }
@@ -1484,7 +1549,17 @@ fn run_import(name: &str) {
 
         let before = import::dir_size_pub(&model_dir);
         let result = import::canonicalize(&model_dir);
-        let after = result.final_bytes;
+
+        // Repack .cyb files: normalize names + quantize to Q4
+        for entry in std::fs::read_dir(&model_dir).into_iter().flatten().flatten() {
+            if entry.path().extension().map(|e| e == "cyb").unwrap_or(false) {
+                if let Err(e) = import::repack_cyb(&entry.path()) {
+                    eprintln!("  repack {}: {e}", entry.path().display());
+                }
+            }
+        }
+
+        let after = import::dir_size_pub(&model_dir);
 
         total_deleted += result.files_deleted;
         total_converted += result.configs_converted;
@@ -1724,4 +1799,106 @@ fn find_tokenizer(dir: &std::path::Path) -> Option<std::path::PathBuf> {
         current = d.parent();
     }
     None
+}
+
+// ── extract-tensors command ─────────────────────────────────────
+
+fn run_extract_tensors(name: &str) {
+    use cyb_llm::manifest::{self, MANIFEST};
+    use cyb_llm::cyb_format;
+
+    let base = manifest::models_dir();
+    let targets: Vec<&manifest::ModelSpec> = if name == "all" {
+        MANIFEST.iter().filter(|s| base.join(s.name).exists()).collect()
+    } else {
+        MANIFEST.iter().filter(|s| s.name.contains(name)).collect()
+    };
+
+    for spec in &targets {
+        let dir = base.join(spec.name);
+        let cyb_path = dir.join(format!("{}.cyb", spec.name));
+        if !cyb_path.exists() {
+            eprintln!("SKIP {:<28} no .cyb file", spec.name);
+            continue;
+        }
+
+        match cyb_format::extract_tensor_index(&cyb_path) {
+            Ok(tensors) => {
+                let toml = cyb_format::tensor_index_to_toml(&tensors);
+                let out_path = dir.join("tensors.toml");
+                if let Err(e) = std::fs::write(&out_path, &toml) {
+                    eprintln!("FAIL {:<28} write tensors.toml: {e}", spec.name);
+                    continue;
+                }
+                println!("OK   {:<28} {} tensors → tensors.toml", spec.name, tensors.len());
+            }
+            Err(e) => {
+                eprintln!("FAIL {:<28} {e}", spec.name);
+            }
+        }
+    }
+}
+
+// ── model-pack command ──────────────────────────────────────────
+
+fn run_model_pack(name: &str) {
+    use cyb_llm::manifest::{self, format_size, MANIFEST};
+    use cyb_llm::cyb_format;
+
+    let base = manifest::models_dir();
+    let targets: Vec<&manifest::ModelSpec> = if name == "all" {
+        MANIFEST.iter().filter(|s| base.join(s.name).exists()).collect()
+    } else {
+        MANIFEST.iter().filter(|s| s.name.contains(name)).collect()
+    };
+
+    for spec in &targets {
+        let dir = base.join(spec.name);
+
+        // Read all 7 required files
+        let read = |filename: &str| -> String {
+            let p = dir.join(filename);
+            std::fs::read_to_string(&p).unwrap_or_else(|_| {
+                eprintln!("  WARN: missing {filename}");
+                String::new()
+            })
+        };
+
+        let card = read("card.md");
+        let config = read("config.toml");
+        let program = read("program.rs");
+        let tensors_toml = read("tensors.toml");
+        let vocab = read("vocab.toml");
+        let eval = read("eval.toml");
+
+        // Read weights from .cyb binary
+        let cyb_path = dir.join(format!("{}.cyb", spec.name));
+        let weights = if cyb_path.exists() {
+            match cyb_format::extract_tensor_data(&cyb_path) {
+                Ok(data) => data,
+                Err(e) => {
+                    eprintln!("FAIL {:<28} read weights: {e}", spec.name);
+                    continue;
+                }
+            }
+        } else {
+            eprintln!("SKIP {:<28} no .cyb file", spec.name);
+            continue;
+        };
+
+        let output_path = base.join(format!("{}.model", spec.name));
+        match cyb_format::write_model_file(
+            &output_path, spec.name,
+            &card, &config, &program, "rs",
+            &tensors_toml, &vocab, &eval, &weights,
+        ) {
+            Ok(()) => {
+                let size = output_path.metadata().map(|m| m.len()).unwrap_or(0);
+                println!("PACK {:<28} → {}.model ({})", spec.name, spec.name, format_size(size));
+            }
+            Err(e) => {
+                eprintln!("FAIL {:<28} {e}", spec.name);
+            }
+        }
+    }
 }

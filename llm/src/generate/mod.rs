@@ -78,12 +78,20 @@ pub fn detect_eos_tokens(tokenizer: &tokenizers::Tokenizer, model_dir: &Path) ->
     eos
 }
 
+/// Stats from the last generate() call
+#[derive(Default, Clone)]
+pub struct GenerateStats {
+    pub decode_tokens: u32,
+    pub decode_ms: u64,
+    pub total_ms: u64,
+}
+
 /// Text generator — model + tokenizer + generation loop
 pub struct TextGenerator {
     model: NativeModel,
     tokenizer: tokenizers::Tokenizer,
-    /// EOS token IDs (model-specific)
     eos_tokens: Vec<u32>,
+    stats: GenerateStats,
 }
 
 impl TextGenerator {
@@ -105,69 +113,7 @@ impl TextGenerator {
             model,
             tokenizer,
             eos_tokens,
-        })
-    }
-
-    /// Create a new text generator from GGUF model + tokenizer paths
-    pub fn new_gguf(
-        model_path: &Path,
-        tokenizer_path: &Path,
-        pipelines: Arc<Pipelines>,
-    ) -> Result<Self, String> {
-        let model = NativeModel::load_from_gguf(model_path, pipelines)?;
-
-        let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path)
-            .map_err(|e| format!("Tokenizer load failed: {e}"))?;
-
-        let model_dir = model_path.parent().unwrap_or(Path::new("."));
-        let eos_tokens = detect_eos_tokens(&tokenizer, model_dir);
-
-        Ok(Self {
-            model,
-            tokenizer,
-            eos_tokens,
-        })
-    }
-
-    /// Create a new text generator from safetensors model + tokenizer paths
-    pub fn new_safetensors(
-        model_path: &Path,
-        tokenizer_path: &Path,
-        pipelines: Arc<Pipelines>,
-    ) -> Result<Self, String> {
-        let model = NativeModel::load_from_safetensors(model_path, pipelines)?;
-
-        let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path)
-            .map_err(|e| format!("Tokenizer load failed: {e}"))?;
-
-        let model_dir = model_path.parent().unwrap_or(Path::new("."));
-        let eos_tokens = detect_eos_tokens(&tokenizer, model_dir);
-
-        Ok(Self {
-            model,
-            tokenizer,
-            eos_tokens,
-        })
-    }
-
-    /// Create a new text generator from .cyb model file
-    pub fn new_cyb(
-        cyb_path: &Path,
-        tokenizer_path: &Path,
-        pipelines: Arc<Pipelines>,
-    ) -> Result<Self, String> {
-        let model = NativeModel::load_from_cyb(cyb_path, pipelines)?;
-
-        let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path)
-            .map_err(|e| format!("Tokenizer load failed: {e}"))?;
-
-        let model_dir = cyb_path.parent().unwrap_or(Path::new("."));
-        let eos_tokens = detect_eos_tokens(&tokenizer, model_dir);
-
-        Ok(Self {
-            model,
-            tokenizer,
-            eos_tokens,
+            stats: GenerateStats::default(),
         })
     }
 
@@ -178,6 +124,7 @@ impl TextGenerator {
         max_tokens: usize,
         temperature: f32,
     ) -> Result<String, String> {
+        self.stats = GenerateStats::default();
         // Enable GPU argmax for greedy decoding
         if temperature <= 0.0 {
             self.model.greedy_mode = true;
@@ -251,7 +198,60 @@ impl TextGenerator {
             prefill_ms
         );
 
+        self.stats = GenerateStats {
+            decode_tokens: gen_count as u32,
+            decode_ms: (decode_s * 1000.0) as u64,
+            total_ms: (total_s * 1000.0) as u64,
+        };
+
         Ok(generated)
+    }
+
+    /// Generate without printing to stdout — for benchmarks/status
+    pub fn generate_quiet(
+        &mut self,
+        prompt: &str,
+        max_tokens: usize,
+        temperature: f32,
+    ) -> Result<String, String> {
+        self.stats = GenerateStats::default();
+        if temperature <= 0.0 {
+            self.model.greedy_mode = true;
+        }
+
+        let encoding = self.tokenizer.encode(prompt, true)
+            .map_err(|e| format!("Tokenization failed: {e}"))?;
+        let mut token_ids: Vec<u32> = encoding.get_ids().to_vec();
+
+        let mut logits = Vec::new();
+        for t in 0..token_ids.len() {
+            logits = self.model.forward(&[token_ids[t]]);
+        }
+
+        let decode_start = std::time::Instant::now();
+        let mut generated = String::new();
+        for _step in 0..max_tokens {
+            let next_token = if temperature <= 0.0 { argmax(&logits) } else { sample_top_p(&logits, temperature, 0.9) };
+            if self.eos_tokens.contains(&next_token) { break; }
+            token_ids.push(next_token);
+            let decoded = self.tokenizer.decode(&[next_token], false).unwrap_or_default();
+            generated.push_str(&decoded);
+            logits = self.model.forward(&[next_token]);
+        }
+
+        let decode_s = decode_start.elapsed().as_secs_f64();
+        let gen_count = token_ids.len() - encoding.get_ids().len();
+        self.stats = GenerateStats {
+            decode_tokens: gen_count as u32,
+            decode_ms: (decode_s * 1000.0) as u64,
+            total_ms: (decode_s * 1000.0) as u64,
+        };
+        Ok(generated)
+    }
+
+    /// Stats from the last generate() call
+    pub fn last_stats(&self) -> &GenerateStats {
+        &self.stats
     }
 
     /// Reset the KV cache for a new conversation

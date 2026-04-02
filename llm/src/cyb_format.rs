@@ -756,6 +756,350 @@ fn deserialize_attrs(data: &[u8], pos: &mut usize) -> io::Result<Attrs> {
     Ok(attrs)
 }
 
+// ── Tensor index extraction (lightweight, no weight loading) ─────
+
+/// Metadata for a single tensor in the .cyb file
+#[derive(Debug)]
+pub struct TensorMeta {
+    pub name: String,
+    pub shape: Vec<usize>,
+    pub dtype: DType,
+    pub offset: usize,
+    pub size: usize,
+}
+
+/// Read only the tensor index from a .cyb file (fast, no weight data loaded)
+pub fn extract_tensor_index(path: &Path) -> io::Result<Vec<TensorMeta>> {
+    let file_data = std::fs::read(path)?;
+    if file_data.len() < 16 || file_data[..4] != CYB_MAGIC {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "not a .cyb file"));
+    }
+    let section_count = read_u32(&file_data, 12) as usize;
+
+    let mut index_offset = 0usize;
+    let mut index_size = 0usize;
+
+    for i in 0..section_count {
+        let base = 16 + i * 20;
+        let id = read_u32(&file_data, base);
+        if id == SECTION_TENSOR_INDEX {
+            index_offset = read_u64(&file_data, base + 4) as usize;
+            index_size = read_u64(&file_data, base + 12) as usize;
+        }
+    }
+
+    if index_size == 0 {
+        return Ok(Vec::new());
+    }
+
+    let idx = &file_data[index_offset..index_offset + index_size];
+    let mut pos = 0;
+    let count = read_u64_at(idx, &mut pos) as usize;
+    let mut tensors = Vec::with_capacity(count);
+
+    for _ in 0..count {
+        let name = read_string_at(idx, &mut pos)?;
+        let n_dims = read_u32_at(idx, &mut pos) as usize;
+        let shape: Vec<usize> = (0..n_dims).map(|_| read_u64_at(idx, &mut pos) as usize).collect();
+        let dtype = u8_to_dtype(idx[pos]).ok_or_else(|| {
+            io::Error::new(io::ErrorKind::InvalidData, format!("unknown dtype {}", idx[pos]))
+        })?;
+        pos += 1;
+        let data_offset = read_u64_at(idx, &mut pos) as usize;
+        let data_size = read_u64_at(idx, &mut pos) as usize;
+
+        tensors.push(TensorMeta { name, shape, dtype, offset: data_offset, size: data_size });
+    }
+
+    Ok(tensors)
+}
+
+/// Map CYB v1 DType to .model spec encoding name
+pub fn dtype_to_encoding(dtype: &DType) -> &'static str {
+    match dtype {
+        DType::F32 => "u32",
+        DType::F16 | DType::BF16 => "u16",
+        DType::Q8 | DType::Q6_K => "q8",
+        DType::Q4 | DType::Q4_1 | DType::Q4_K | DType::Q5_K | DType::Q2_K | DType::Q3_K => "q4",
+        DType::Ternary => "ternary",
+        DType::I8 | DType::U8 | DType::Bool => "q8",
+    }
+}
+
+/// Write tensor index as TOML (tensors.toml format per .model spec)
+pub fn tensor_index_to_toml(tensors: &[TensorMeta]) -> String {
+    let mut out = String::new();
+    for t in tensors {
+        let shape_str = t.shape.iter().map(|d| d.to_string()).collect::<Vec<_>>().join(", ");
+        out.push_str(&format!("[\"{name}\"]\n", name = t.name));
+        out.push_str(&format!("shape    = [{shape_str}]\n"));
+        out.push_str(&format!("encoding = \"{enc}\"\n", enc = dtype_to_encoding(&t.dtype)));
+        out.push_str(&format!("offset   = {off}\n", off = t.offset));
+        out.push_str(&format!("size     = {sz}\n\n", sz = t.size));
+    }
+    out
+}
+
+/// Read raw tensor data section from .cyb (for repacking)
+pub fn extract_tensor_data(path: &Path) -> io::Result<Vec<u8>> {
+    let file_data = std::fs::read(path)?;
+    if file_data.len() < 16 || file_data[..4] != CYB_MAGIC {
+        return Err(io::Error::new(io::ErrorKind::InvalidData, "not a .cyb file"));
+    }
+    let section_count = read_u32(&file_data, 12) as usize;
+
+    for i in 0..section_count {
+        let base = 16 + i * 20;
+        let id = read_u32(&file_data, base);
+        if id == SECTION_TENSOR_DATA {
+            let offset = read_u64(&file_data, base + 4) as usize;
+            let size = read_u64(&file_data, base + 12) as usize;
+            return Ok(file_data[offset..offset + size].to_vec());
+        }
+    }
+    Ok(Vec::new())
+}
+
+/// Write a .model file (new spec format with ~~~name delimiters)
+pub fn write_model_file(
+    output_path: &Path,
+    name: &str,
+    card: &str,
+    config: &str,
+    program: &str,
+    program_format: &str,
+    tensors_toml: &str,
+    vocab: &str,
+    eval: &str,
+    weights: &[u8],
+) -> io::Result<()> {
+    let mut f = std::fs::File::create(output_path)?;
+
+    // TOML frontmatter
+    writeln!(f, "[cyb]")?;
+    writeln!(f, "types = [\"model\"]")?;
+    writeln!(f, "name = \"{name}\"")?;
+    writeln!(f)?;
+    writeln!(f, "[[files]]")?;
+    writeln!(f, "name = \"card\"")?;
+    writeln!(f, "format = \"md\"")?;
+    writeln!(f)?;
+    writeln!(f, "[[files]]")?;
+    writeln!(f, "name = \"config\"")?;
+    writeln!(f, "format = \"toml\"")?;
+    writeln!(f)?;
+    writeln!(f, "[[files]]")?;
+    writeln!(f, "name = \"program\"")?;
+    writeln!(f, "format = \"{program_format}\"")?;
+    writeln!(f)?;
+    writeln!(f, "[[files]]")?;
+    writeln!(f, "name = \"tensors\"")?;
+    writeln!(f, "format = \"toml\"")?;
+    writeln!(f)?;
+    writeln!(f, "[[files]]")?;
+    writeln!(f, "name = \"vocab\"")?;
+    writeln!(f, "format = \"toml\"")?;
+    writeln!(f)?;
+    writeln!(f, "[[files]]")?;
+    writeln!(f, "name = \"eval\"")?;
+    writeln!(f, "format = \"toml\"")?;
+    writeln!(f)?;
+    writeln!(f, "[[files]]")?;
+    writeln!(f, "name = \"weights\"")?;
+    writeln!(f, "format = \"tensors\"")?;
+    writeln!(f, "size = {}", weights.len())?;
+
+    // Text files with ~~~name delimiters
+    writeln!(f, "~~~card")?;
+    f.write_all(card.as_bytes())?;
+    if !card.ends_with('\n') { writeln!(f)?; }
+
+    writeln!(f, "~~~config")?;
+    f.write_all(config.as_bytes())?;
+    if !config.ends_with('\n') { writeln!(f)?; }
+
+    writeln!(f, "~~~program")?;
+    f.write_all(program.as_bytes())?;
+    if !program.ends_with('\n') { writeln!(f)?; }
+
+    writeln!(f, "~~~tensors")?;
+    f.write_all(tensors_toml.as_bytes())?;
+    if !tensors_toml.ends_with('\n') { writeln!(f)?; }
+
+    writeln!(f, "~~~vocab")?;
+    f.write_all(vocab.as_bytes())?;
+    if !vocab.ends_with('\n') { writeln!(f)?; }
+
+    writeln!(f, "~~~eval")?;
+    f.write_all(eval.as_bytes())?;
+    if !eval.ends_with('\n') { writeln!(f)?; }
+
+    // Binary weights (last, with size in frontmatter)
+    writeln!(f, "~~~weights")?;
+    f.write_all(weights)?;
+
+    Ok(())
+}
+
+// ── .model format reader ────────────────────────────────────────
+
+/// Parsed .model file — all 7 sections
+pub struct ModelFile {
+    pub card: String,
+    pub config: String,
+    pub program: String,
+    pub tensors_toml: String,
+    pub vocab: String,
+    pub eval: String,
+    pub weights: Vec<u8>,
+}
+
+/// Read a .model file (new spec: TOML frontmatter + ~~~name delimiters)
+pub fn read_model_file(path: &Path) -> io::Result<ModelFile> {
+    let data = std::fs::read(path)?;
+
+    // Find weights size from frontmatter (needed to know where binary starts)
+    let text_part = {
+        // Scan for ~~~weights\n — everything before the line after it is text
+        let marker = b"~~~weights\n";
+        let pos = data.windows(marker.len()).position(|w| w == marker)
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "no ~~~weights section"))?;
+        std::str::from_utf8(&data[..pos])
+            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
+    };
+
+    // Find weights size from frontmatter
+    let weights_size: usize = text_part.lines()
+        .find(|l| l.starts_with("size = "))
+        .and_then(|l| l.strip_prefix("size = "))
+        .and_then(|s| s.trim().parse().ok())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "no size field for weights"))?;
+
+    // Split text into sections by ~~~name
+    let mut sections: HashMap<String, String> = HashMap::new();
+    let mut current_name: Option<String> = None;
+    let mut current_content = String::new();
+    let mut in_frontmatter = true;
+
+    for line in text_part.lines() {
+        if line.starts_with("~~~") {
+            // Save previous section
+            if let Some(name) = current_name.take() {
+                sections.insert(name, current_content.clone());
+            }
+            in_frontmatter = false;
+            current_name = Some(line[3..].to_string());
+            current_content.clear();
+        } else if in_frontmatter {
+            // Skip frontmatter
+        } else {
+            if !current_content.is_empty() {
+                current_content.push('\n');
+            }
+            current_content.push_str(line);
+        }
+    }
+    // Save last text section
+    if let Some(name) = current_name.take() {
+        sections.insert(name, current_content);
+    }
+
+    // Extract binary weights
+    let marker = b"~~~weights\n";
+    let weights_start = data.windows(marker.len()).position(|w| w == marker)
+        .map(|p| p + marker.len())
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "no ~~~weights"))?;
+    let weights_end = (weights_start + weights_size).min(data.len());
+    let weights = data[weights_start..weights_end].to_vec();
+
+    Ok(ModelFile {
+        card: sections.remove("card").unwrap_or_default(),
+        config: sections.remove("config").unwrap_or_default(),
+        program: sections.remove("program").unwrap_or_default(),
+        tensors_toml: sections.remove("tensors").unwrap_or_default(),
+        vocab: sections.remove("vocab").unwrap_or_default(),
+        eval: sections.remove("eval").unwrap_or_default(),
+        weights,
+    })
+}
+
+/// Parse tensors.toml content into TensorMeta entries
+pub fn parse_tensors_toml(toml_str: &str) -> io::Result<Vec<TensorMeta>> {
+    let table: toml::Value = toml::from_str(toml_str)
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, format!("tensors.toml parse: {e}")))?;
+
+    let map = table.as_table()
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "tensors.toml: expected table"))?;
+
+    let mut tensors = Vec::with_capacity(map.len());
+
+    for (name, entry) in map {
+        let t = entry.as_table()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, format!("tensor {name}: expected table")))?;
+
+        let shape: Vec<usize> = t.get("shape")
+            .and_then(|v| v.as_array())
+            .map(|a| a.iter().filter_map(|v| v.as_integer().map(|i| i as usize)).collect())
+            .unwrap_or_default();
+
+        let encoding = t.get("encoding")
+            .and_then(|v| v.as_str())
+            .unwrap_or("q4");
+
+        let dtype = encoding_to_dtype(encoding);
+
+        let offset = t.get("offset")
+            .and_then(|v| v.as_integer())
+            .unwrap_or(0) as usize;
+
+        let size = t.get("size")
+            .and_then(|v| v.as_integer())
+            .unwrap_or(0) as usize;
+
+        tensors.push(TensorMeta { name: name.clone(), shape, dtype, offset, size });
+    }
+
+    // Sort by offset for sequential reading
+    tensors.sort_by_key(|t| t.offset);
+    Ok(tensors)
+}
+
+/// Map .model spec encoding name back to DType
+fn encoding_to_dtype(enc: &str) -> DType {
+    match enc {
+        "u32" => DType::F32,
+        "u16" => DType::F16,
+        "q8" => DType::Q8,
+        "q4" => DType::Q4,
+        "ternary" => DType::Ternary,
+        _ => DType::U8,
+    }
+}
+
+/// Load weights from a .model file into a HashMap (for NativeModel)
+pub fn load_weights_from_model(path: &Path) -> io::Result<(String, HashMap<String, WeightData>)> {
+    let mf = read_model_file(path)?;
+    let tensor_index = parse_tensors_toml(&mf.tensors_toml)?;
+
+    let mut weights = HashMap::with_capacity(tensor_index.len());
+    for t in &tensor_index {
+        let end = (t.offset + t.size).min(mf.weights.len());
+        let data = if t.offset < mf.weights.len() {
+            mf.weights[t.offset..end].to_vec()
+        } else {
+            Vec::new()
+        };
+        weights.insert(t.name.clone(), WeightData {
+            data,
+            shape: t.shape.clone(),
+            dtype: t.dtype.clone(),
+            needs_transpose: false,
+        });
+    }
+
+    Ok((mf.config, weights))
+}
+
 // ── Weight deserialization ───────────────────────────────────────
 
 fn deserialize_weights(index: &[u8], data: &[u8]) -> io::Result<HashMap<String, WeightData>> {

@@ -407,12 +407,14 @@ struct RmsNormParams {
 #[repr(C)]
 #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
 struct FusedNormQ4Params {
-    hidden: u32,
-    eps: f32,
     n: u32,
     k: u32,
     num_blocks: u32,
     u32s_per_row: u32,
+    eps: f32,
+    _pad0: u32,
+    _pad1: u32,
+    _pad2: u32,
 }
 
 fn precompute_fused_norm_q4(
@@ -424,12 +426,14 @@ fn precompute_fused_norm_q4(
 ) -> (wgpu::Buffer, (u32, u32, u32)) {
     let num_blocks = k / block_size;
     let params = FusedNormQ4Params {
-        hidden: k,
-        eps,
         n,
         k,
         num_blocks,
         u32s_per_row: num_blocks * (block_size / 2) / 4,
+        eps,
+        _pad0: 0,
+        _pad1: 0,
+        _pad2: 0,
     };
     let buf = p.upload_uniform_permanent(bytemuck::bytes_of(&params));
     let num_wg = (n + 3) / 4;
@@ -600,611 +604,90 @@ fn precompute_argmax(p: &Pipelines, n: u32) -> (wgpu::Buffer, (u32, u32, u32)) {
 }
 
 impl NativeModel {
-    /// Load model from .cyb file — the canonical runtime entry point.
-    pub fn load(cyb_path: &Path, pipelines: Arc<Pipelines>) -> Result<Self, String> {
-        Self::load_from_cyb(cyb_path, pipelines)
-    }
+    /// Load model from .model file — the only runtime entry point.
+    pub fn load(path: &Path, pipelines: Arc<Pipelines>) -> Result<Self, String> {
+        use crate::cyb_format;
 
-    /// Load model from ONNX file (legacy — use .cyb via load())
-    #[allow(dead_code)]
-    pub fn load_from_onnx(path: &Path, pipelines: Arc<Pipelines>) -> Result<Self, String> {
-        let model = load_model_proto(path)?;
-        let graph = model.graph.ok_or("No graph in model")?;
-        let model_dir = path.parent().unwrap_or(Path::new("."));
+        let (config_str, weights) = cyb_format::load_weights_from_model(path)
+            .map_err(|e| format!("Cannot read .model file: {e}"))?;
 
-        log::info!(
-            "ONNX model: {} initializers, {} nodes",
-            graph.initializer.len(),
-            graph.node.len()
-        );
+        let toml_val: toml::Value = toml::from_str(&config_str)
+            .map_err(|e| format!("Invalid config in .model: {e}"))?;
+        let config_json = toml_to_json(&toml_val);
+        let arch = config_json.get("architecture").unwrap_or(&config_json);
 
-        // Index all initializers by name
-        let mut tensors: HashMap<String, &crate::onnx_proto::onnx::TensorProto> = HashMap::new();
-        for init in &graph.initializer {
-            tensors.insert(init.name.clone(), init);
-        }
-
-        // Rename onnx::MatMul_* weights to HF-style names by tracing graph nodes
-        for node in &graph.node {
-            if node.op_type == "MatMul" || node.op_type == "Gemm" {
-                if let (Some(weight_input), Some(out)) = (
-                    node.input.iter().find(|i| i.starts_with("onnx::")),
-                    node.output.first(),
-                ) {
-                    let path = out.trim_start_matches('/')
-                        .replace("/MatMul_output_0", "").replace("/Gemm_output_0", "")
-                        .replace('/', ".");
-                    let new_name = format!("{path}.weight");
-                    if let Some(tp) = tensors.remove(weight_input.as_str()) {
-                        tensors.insert(new_name, tp);
-                    }
-                }
-            }
-        }
-        // Also normalize .attn. → .self_attn.
-        let attn_keys: Vec<String> = tensors.keys()
-            .filter(|k| k.contains(".attn.") && !k.contains(".self_attn."))
-            .cloned().collect();
-        for key in &attn_keys {
-            if let Some(tp) = tensors.remove(key.as_str()) {
-                tensors.insert(key.replace(".attn.", ".self_attn."), tp);
-            }
-        }
-
-        // Detect model config from known weight shapes
-        let embed_tp = tensors
-            .get("model.embed_tokens.weight")
-            .ok_or("Missing model.embed_tokens.weight")?;
-        let vocab_size = embed_tp.dims[0] as usize;
-        let hidden_size = embed_tp.dims[1] as usize;
-
-        let num_layers = (0..)
-            .take_while(|i| {
-                tensors.contains_key(&format!("model.layers.{i}.input_layernorm.weight"))
-            })
-            .count();
-
-        let has_qk_norm = tensors.contains_key("model.layers.0.attn.q_norm.layernorm.weight");
-        let head_dim = if has_qk_norm {
-            tensors["model.layers.0.attn.q_norm.layernorm.weight"].dims[0] as usize
-        } else if let Some(cos_tp) = tensors.get("cos_cache") {
-            (cos_tp.dims[1] as usize) * 2
-        } else {
-            // Fallback: read from config.toml/config.json in model directory
-            let model_dir = path.parent().unwrap_or(Path::new("."));
-            let cfg_path = model_dir.join("config.toml");
-            if cfg_path.exists() {
-                let s = std::fs::read_to_string(&cfg_path).unwrap_or_default();
-                let tv: toml::Value = toml::from_str(&s).unwrap_or(toml::Value::Table(Default::default()));
-                let cj = toml_to_json(&tv);
-                let h = cj.get("hidden_size").and_then(|v| v.as_u64()).unwrap_or(768) as usize;
-                let n = cj.get("num_attention_heads").and_then(|v| v.as_u64()).unwrap_or(12) as usize;
-                h / n
-            } else { 64 } // default head_dim
-        };
-
-        let block_size = graph
-            .node
-            .iter()
-            .find(|n| n.op_type == "MatMulNBits")
-            .and_then(|n| {
-                n.attribute
-                    .iter()
-                    .find(|a| a.name == "block_size")
-                    .map(|a| a.i as usize)
-            })
-            .unwrap_or(32);
-
-        let q_n = graph
-            .node
-            .iter()
-            .find(|n| {
-                n.op_type == "MatMulNBits"
-                    && n.name.contains("layers.0")
-                    && n.name.contains("q_proj")
-            })
-            .and_then(|n| {
-                n.attribute
-                    .iter()
-                    .find(|a| a.name == "N")
-                    .map(|a| a.i as usize)
-            })
-            .unwrap_or(hidden_size);
-        let num_heads = q_n / head_dim;
-
-        let k_n = graph
-            .node
-            .iter()
-            .find(|n| {
-                n.op_type == "MatMulNBits"
-                    && n.name.contains("layers.0")
-                    && n.name.contains("k_proj")
-            })
-            .and_then(|n| {
-                n.attribute
-                    .iter()
-                    .find(|a| a.name == "N")
-                    .map(|a| a.i as usize)
-            })
-            .unwrap_or(hidden_size);
-        let kv_num_heads = k_n / head_dim;
-
-        let config = ModelConfig {
-            hidden_size,
-            num_heads,
-            kv_num_heads,
-            head_dim,
-            num_layers,
-            vocab_size,
-            block_size,
-            has_qk_norm,
-        };
-
-        log::info!(
-            "Model config: hidden={}, heads={}, kv_heads={}, head_dim={}, layers={}, vocab={}, block_size={}",
-            config.hidden_size, config.num_heads, config.kv_num_heads,
-            config.head_dim, config.num_layers, config.vocab_size, config.block_size,
-        );
-
-        // Load embedding table
-        let embed_raw = read_tensor_raw(embed_tp, model_dir)?;
-        let embed_f32 = raw_to_f32(&embed_raw, embed_tp.data_type);
-        let embed_table = pipelines.upload_f32(&embed_f32);
-        log::info!("Loaded embedding table: [{vocab_size}, {hidden_size}]");
-
-        // Helper closures
-        let load_f32_weight = |name: &str| -> Result<wgpu::Buffer, String> {
-            let tp = tensors.get(name).ok_or(format!("Missing {name}"))?;
-            let raw = read_tensor_raw(tp, model_dir)?;
-            let f32_data = raw_to_f32(&raw, tp.data_type);
-            Ok(pipelines.upload_f32(&f32_data))
-        };
-
-        let load_q4_packed = |name: &str| -> Result<wgpu::Buffer, String> {
-            let tp = tensors.get(name).ok_or(format!("Missing {name}"))?;
-            let raw = read_tensor_raw(tp, model_dir)?;
-            let packed = pack_bytes_to_u32(&raw);
-            Ok(pipelines.upload_u32(&packed))
-        };
-
-        let load_scales = |name: &str| -> Result<wgpu::Buffer, String> {
-            let tp = tensors.get(name).ok_or(format!("Missing {name}"))?;
-            let raw = read_tensor_raw(tp, model_dir)?;
-            let f32_data = raw_to_f32(&raw, tp.data_type);
-            Ok(pipelines.upload_f32(&f32_data))
-        };
-
-        let get_matmul_n = |layer: usize, proj: &str| -> u32 {
-            graph
-                .node
-                .iter()
-                .find(|n| {
-                    n.op_type == "MatMulNBits"
-                        && n.name.contains(&format!("layers.{layer}"))
-                        && n.name.contains(proj)
-                })
-                .and_then(|n| {
-                    n.attribute
-                        .iter()
-                        .find(|a| a.name == "N")
-                        .map(|a| a.i as u32)
-                })
-                .unwrap_or(0)
-        };
-
-        // Load layers
-        let mut layers = Vec::with_capacity(num_layers);
-        for i in 0..num_layers {
-            log::info!("Loading layer {i}/{num_layers}...");
-
-            let input_norm_weight =
-                load_f32_weight(&format!("model.layers.{i}.input_layernorm.weight"))?;
-            let q_proj_packed =
-                load_q4_packed(&format!("model.layers.{i}.attn.q_proj.MatMul.weight_Q4"))?;
-            let q_proj_scales =
-                load_scales(&format!("model.layers.{i}.attn.q_proj.MatMul.weight_scales"))?;
-            let layer_q_n = get_matmul_n(i, "q_proj");
-
-            let k_proj_packed =
-                load_q4_packed(&format!("model.layers.{i}.attn.k_proj.MatMul.weight_Q4"))?;
-            let k_proj_scales =
-                load_scales(&format!("model.layers.{i}.attn.k_proj.MatMul.weight_scales"))?;
-            let layer_k_n = get_matmul_n(i, "k_proj");
-
-            let v_proj_packed =
-                load_q4_packed(&format!("model.layers.{i}.attn.v_proj.MatMul.weight_Q4"))?;
-            let v_proj_scales =
-                load_scales(&format!("model.layers.{i}.attn.v_proj.MatMul.weight_scales"))?;
-            let layer_v_n = get_matmul_n(i, "v_proj");
-
-            let q_norm_weight = if has_qk_norm {
-                Some(load_f32_weight(&format!(
-                    "model.layers.{i}.attn.q_norm.layernorm.weight"
-                ))?)
-            } else {
-                None
-            };
-            let k_norm_weight = if has_qk_norm {
-                Some(load_f32_weight(&format!(
-                    "model.layers.{i}.attn.k_norm.layernorm.weight"
-                ))?)
-            } else {
-                None
-            };
-
-            let o_proj_packed =
-                load_q4_packed(&format!("model.layers.{i}.attn.o_proj.MatMul.weight_Q4"))?;
-            let o_proj_scales =
-                load_scales(&format!("model.layers.{i}.attn.o_proj.MatMul.weight_scales"))?;
-            let layer_o_n = get_matmul_n(i, "o_proj");
-
-            let post_norm_weight =
-                load_f32_weight(&format!("model.layers.{i}.post_attention_layernorm.weight"))?;
-
-            let gate_proj_packed =
-                load_q4_packed(&format!("model.layers.{i}.mlp.gate_proj.MatMul.weight_Q4"))?;
-            let gate_proj_scales =
-                load_scales(&format!("model.layers.{i}.mlp.gate_proj.MatMul.weight_scales"))?;
-            let layer_gate_n = get_matmul_n(i, "gate_proj");
-
-            let up_proj_packed =
-                load_q4_packed(&format!("model.layers.{i}.mlp.up_proj.MatMul.weight_Q4"))?;
-            let up_proj_scales =
-                load_scales(&format!("model.layers.{i}.mlp.up_proj.MatMul.weight_scales"))?;
-            let layer_up_n = get_matmul_n(i, "up_proj");
-
-            let down_proj_packed =
-                load_q4_packed(&format!("model.layers.{i}.mlp.down_proj.MatMul.weight_Q4"))?;
-            let down_proj_scales = load_scales(&format!(
-                "model.layers.{i}.mlp.down_proj.MatMul.weight_scales"
-            ))?;
-            let layer_down_n = get_matmul_n(i, "down_proj");
-
-            // Pre-compute param buffers
-            let hs = hidden_size as u32;
-            let hd = head_dim as u32;
-            let bs = block_size as u32;
-            let (input_norm_params, input_norm_wg) =
-                precompute_rms_norm(&pipelines, 1, hs, 1e-6);
-            let (q_matmul_params, q_matmul_wg) =
-                precompute_q4_matmul(&pipelines, layer_q_n, hs, bs);
-            let (k_matmul_params, k_matmul_wg) =
-                precompute_q4_matmul(&pipelines, layer_k_n, hs, bs);
-            let (v_matmul_params, v_matmul_wg) =
-                precompute_q4_matmul(&pipelines, layer_v_n, hs, bs);
-            let (q_norm_params, q_norm_wg) = if has_qk_norm {
-                let (p2, w) = precompute_rms_norm(&pipelines, num_heads as u32, hd, 1e-6);
-                (Some(p2), w)
-            } else {
-                (None, (0, 0, 0))
-            };
-            let (k_norm_params, k_norm_wg) = if has_qk_norm {
-                let (p2, w) = precompute_rms_norm(&pipelines, kv_num_heads as u32, hd, 1e-6);
-                (Some(p2), w)
-            } else {
-                (None, (0, 0, 0))
-            };
-            let (q_rope_params, q_rope_wg) = precompute_rope(&pipelines, layer_q_n, hd, 1);
-            let (k_rope_params, k_rope_wg) = precompute_rope(&pipelines, layer_k_n, hd, 1);
-            let (o_matmul_params, o_matmul_wg) =
-                precompute_q4_matmul(&pipelines, layer_o_n, layer_q_n, bs);
-            let (post_norm_params, post_norm_wg) =
-                precompute_rms_norm(&pipelines, 1, hs, 1e-6);
-            let (gate_matmul_params, gate_matmul_wg) =
-                precompute_q4_matmul(&pipelines, layer_gate_n, hs, bs);
-            let (up_matmul_params, up_matmul_wg) =
-                precompute_q4_matmul(&pipelines, layer_up_n, hs, bs);
-            let (down_matmul_params, down_matmul_wg) =
-                precompute_q4_matmul(&pipelines, layer_down_n, layer_gate_n, bs);
-
-            let (fused_q_params, fused_q_wg) = {
-                let (b, w) = precompute_fused_norm_q4(&pipelines, layer_q_n, hs, bs, 1e-6);
-                (Some(b), w)
-            };
-            let (fused_k_params, fused_k_wg) = {
-                let (b, w) = precompute_fused_norm_q4(&pipelines, layer_k_n, hs, bs, 1e-6);
-                (Some(b), w)
-            };
-            let (fused_v_params, fused_v_wg) = {
-                let (b, w) = precompute_fused_norm_q4(&pipelines, layer_v_n, hs, bs, 1e-6);
-                (Some(b), w)
-            };
-
-            layers.push(LayerWeights {
-                input_norm_weight,
-                q_proj_packed,
-                q_proj_scales,
-                q_proj_quant: QuantFormat::Q4,
-                q_n: layer_q_n,
-                k_proj_packed,
-                k_proj_scales,
-                k_proj_quant: QuantFormat::Q4,
-                k_n: layer_k_n,
-                v_proj_packed,
-                v_proj_scales,
-                v_proj_quant: QuantFormat::Q4,
-                v_n: layer_v_n,
-                q_proj_bias: None,
-                k_proj_bias: None,
-                v_proj_bias: None,
-                q_norm_weight,
-                k_norm_weight,
-                o_proj_packed,
-                o_proj_scales,
-                o_proj_quant: QuantFormat::Q4,
-                o_n: layer_o_n,
-                post_norm_weight,
-                gate_proj_packed,
-                gate_proj_scales,
-                gate_proj_quant: QuantFormat::Q4,
-                gate_n: layer_gate_n,
-                up_proj_packed,
-                up_proj_scales,
-                up_proj_quant: QuantFormat::Q4,
-                up_n: layer_up_n,
-                down_proj_packed,
-                down_proj_scales,
-                down_proj_quant: QuantFormat::Q4,
-                down_n: layer_down_n,
-                params: LayerParamBuffers {
-                    input_norm_params,
-                    input_norm_wg,
-                    q_norm_params,
-                    q_norm_wg,
-                    k_norm_params,
-                    k_norm_wg,
-                    post_norm_params,
-                    post_norm_wg,
-                    q_matmul_params,
-                    q_matmul_wg,
-                    k_matmul_params,
-                    k_matmul_wg,
-                    v_matmul_params,
-                    v_matmul_wg,
-                    o_matmul_params,
-                    o_matmul_wg,
-                    gate_matmul_params,
-                    gate_matmul_wg,
-                    up_matmul_params,
-                    up_matmul_wg,
-                    down_matmul_params,
-                    down_matmul_wg,
-                    q_rope_params,
-                    q_rope_wg,
-                    k_rope_params,
-                    k_rope_wg,
-                    fused_q_params,
-                    fused_q_wg,
-                    fused_k_params,
-                    fused_k_wg,
-                    fused_v_params,
-                    fused_v_wg,
-                },
-            });
-        }
-
-        // Final norm
-        let final_norm_name = format!("model.layers.{num_layers}.final_norm_layernorm.weight");
-        let final_norm_weight = load_f32_weight(&final_norm_name)?;
-
-        // RoPE caches — from ONNX or generated
-        let (cos_cache, sin_cache) = if let Some(cos_tp) = tensors.get("cos_cache") {
-            let cos_raw = read_tensor_raw(cos_tp, model_dir)?;
-            let sin_tp = tensors.get("sin_cache").ok_or("Missing sin_cache")?;
-            let sin_raw = read_tensor_raw(sin_tp, model_dir)?;
-            (raw_to_f32(&cos_raw, cos_tp.data_type), raw_to_f32(&sin_raw, sin_tp.data_type))
-        } else {
-            // Generate RoPE cache (cos_cache not baked into this ONNX export)
-            let rope_theta = {
-                let md = path.parent().unwrap_or(Path::new("."));
-                let cfg = md.join("config.toml");
-                if cfg.exists() {
-                    let s = std::fs::read_to_string(&cfg).unwrap_or_default();
-                    let tv: toml::Value = toml::from_str(&s).unwrap_or(toml::Value::Table(Default::default()));
-                    let cj = toml_to_json(&tv);
-                    cj.get("rope_theta").and_then(|v| v.as_f64()).unwrap_or(10000.0) as f32
-                } else { 10000.0f32 }
-            };
-            log::info!("Generating RoPE cache (not found in model, theta={rope_theta})");
-            let half_dim = head_dim / 2;
-            let max_seq = 2048;
-            let mut cos = vec![0.0f32; max_seq * half_dim];
-            let mut sin = vec![0.0f32; max_seq * half_dim];
-            for pos in 0..max_seq {
-                for i in 0..half_dim {
-                    let freq = 1.0 / (rope_theta as f64).powf(2.0 * i as f64 / head_dim as f64);
-                    let angle = pos as f64 * freq;
-                    cos[pos * half_dim + i] = angle.cos() as f32;
-                    sin[pos * half_dim + i] = angle.sin() as f32;
-                }
-            }
-            (cos, sin)
-        };
-
-        let kv_cache = (0..num_layers)
-            .map(|_| KVCache {
-                key: None,
-                value: None,
-            })
-            .collect();
-
-        let (final_norm_params, final_norm_wg) =
-            precompute_rms_norm(&pipelines, 1, hidden_size as u32, 1e-6);
-        let (f32_matmul_params, f32_matmul_wg) =
-            precompute_f32_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
-        let (argmax_params, argmax_wg) = precompute_argmax(&pipelines, vocab_size as u32);
-
-        log::info!("Model loaded successfully");
-
-        Ok(Self {
-            config,
-            pipelines,
-            embed_table,
-            lm_head: None,
-            layers,
-            final_norm_weight,
-            cos_cache,
-            sin_cache,
-            kv_cache,
-            past_seq_len: 0,
-            greedy_mode: false,
-            quant_format: QuantFormat::Q4,
-            model_params: ModelParamBuffers {
-                final_norm_params,
-                final_norm_wg,
-                f32_matmul_params,
-                f32_matmul_wg,
-                argmax_params,
-                argmax_wg,
-            },
-            kv_compressor: None,
-        })
-    }
-
-    /// Load model from safetensors file (f32/bf16/f16 weights)
-    pub fn load_from_safetensors(path: &Path, pipelines: Arc<Pipelines>) -> Result<Self, String> {
-        // Read config from config.json or config.toml
-        let model_dir = path.parent().unwrap_or(Path::new("."));
-        let config_json_path = model_dir.join("config.json");
-        let config_toml_path = model_dir.join("config.toml");
-        let config_json_root: serde_json::Value = if config_json_path.exists() {
-            let s = std::fs::read_to_string(&config_json_path)
-                .map_err(|e| format!("Cannot read config.json: {e}"))?;
-            serde_json::from_str(&s).map_err(|e| format!("Invalid config.json: {e}"))?
-        } else if config_toml_path.exists() {
-            // Parse TOML and convert to serde_json::Value for uniform access
-            let s = std::fs::read_to_string(&config_toml_path)
-                .map_err(|e| format!("Cannot read config.toml: {e}"))?;
-            let toml_val: toml::Value = toml::from_str(&s)
-                .map_err(|e| format!("Invalid config.toml: {e}"))?;
-            toml_to_json(&toml_val)
-        } else {
-            return Err("No config.json or config.toml found".to_string());
-        };
-        // VLM models nest LLM config under "text_config"
-        let config_json = config_json_root.get("text_config").unwrap_or(&config_json_root);
-
-        let hidden_size = config_json.get("hidden_size")
-            .and_then(|v| v.as_u64())
-            .ok_or("Missing hidden_size in config.json")? as usize;
-        let num_heads = config_json.get("num_attention_heads")
-            .and_then(|v| v.as_u64())
-            .ok_or("Missing num_attention_heads in config.json")? as usize;
-        let kv_num_heads = config_json.get("num_key_value_heads")
-            .and_then(|v| v.as_u64())
+        let hidden_size = arch.get("hidden_size").and_then(|v| v.as_u64())
+            .ok_or("Missing hidden_size in config")? as usize;
+        let num_heads = arch.get("num_attention_heads").and_then(|v| v.as_u64())
+            .ok_or("Missing num_attention_heads in config")? as usize;
+        let kv_num_heads = arch.get("num_key_value_heads").and_then(|v| v.as_u64())
             .unwrap_or(num_heads as u64) as usize;
-        let num_layers = config_json.get("num_hidden_layers")
-            .and_then(|v| v.as_u64())
-            .ok_or("Missing num_hidden_layers in config.json")? as usize;
-        let vocab_size = config_json.get("vocab_size")
-            .and_then(|v| v.as_u64())
-            .ok_or("Missing vocab_size in config.json")? as usize;
-        let intermediate_size = config_json.get("intermediate_size")
-            .and_then(|v| v.as_u64())
+        let num_layers = arch.get("num_hidden_layers").and_then(|v| v.as_u64())
+            .ok_or("Missing num_hidden_layers in config")? as usize;
+        let vocab_size = arch.get("vocab_size").and_then(|v| v.as_u64())
+            .ok_or("Missing vocab_size in config")? as usize;
+        let intermediate_size = arch.get("intermediate_size").and_then(|v| v.as_u64())
             .unwrap_or((hidden_size * 4) as u64) as usize;
-        let rope_theta = config_json.get("rope_theta")
-            .and_then(|v| v.as_f64())
+
+        let rope_theta = arch.get("rope_theta")
+            .and_then(|v| v.as_f64().or_else(|| v.as_i64().map(|i| i as f64)))
             .unwrap_or(10000.0) as f32;
-        let rms_norm_eps = config_json.get("rms_norm_eps")
-            .and_then(|v| v.as_f64())
-            .unwrap_or(1e-6) as f32;
+
+        // rms_norm_eps: stored as 1/ε in .model spec (1000000 → 1e-6)
+        let rms_norm_eps_raw = arch.get("rms_norm_eps")
+            .and_then(|v| v.as_f64().or_else(|| v.as_i64().map(|i| i as f64)))
+            .unwrap_or(1e-6);
+        let rms_norm_eps = if rms_norm_eps_raw >= 1.0 {
+            (1.0 / rms_norm_eps_raw) as f32
+        } else {
+            rms_norm_eps_raw as f32
+        };
+
         let tie_word_embeddings = config_json.get("tie_word_embeddings")
+            .or_else(|| arch.get("tie_word_embeddings"))
             .and_then(|v| v.as_bool())
             .unwrap_or(true);
 
-        // Load weights first (needed for head_dim auto-detection)
-        let mut graph = crate::loader::load_model(path)?;
-
-        // head_dim: from config, or auto-detect from q_proj weight shape
-        let head_dim = config_json.get("head_dim")
-            .and_then(|v| v.as_u64())
-            .map(|v| v as usize)
+        let head_dim = arch.get("head_dim").and_then(|v| v.as_u64()).map(|v| v as usize)
             .unwrap_or_else(|| {
-                if let Some(w) = graph.get_weight("model.layers.0.self_attn.q_proj.weight") {
-                    let q_dim = w.shape[0];
-                    log::info!("Auto-detected head_dim from q_proj: q_dim={q_dim} / {num_heads} = {}", q_dim / num_heads);
-                    q_dim / num_heads
+                if let Some(w) = weights.get("model.layers.0.self_attn.q_proj.weight") {
+                    w.shape[0] / num_heads
                 } else {
                     hidden_size / num_heads
                 }
             });
 
-        // Normalize .attn. → .self_attn. for ONNX weights in decoder models
-        let attn_renames: Vec<String> = graph.weights.keys()
-            .filter(|k| k.contains(".attn.") && !k.contains(".self_attn.") && k.contains("layers."))
-            .cloned().collect();
-        for key in attn_renames {
-            if let Some(w) = graph.weights.remove(&key) {
-                graph.weights.insert(key.replace(".attn.", ".self_attn."), w);
-            }
-        }
-
-        // Detect QK norm from weight names
-        let has_qk_norm = graph.get_weight("model.layers.0.self_attn.q_norm.weight").is_some();
-
-        // Detect attention biases
-        let has_attn_bias = graph.get_weight("model.layers.0.self_attn.q_proj.bias").is_some();
-
-        if has_qk_norm {
-            log::info!("Detected QK normalization (Qwen3-style)");
-        }
-        if has_attn_bias {
-            log::info!("Detected attention biases (Qwen2-style)");
-        }
+        let has_qk_norm = weights.contains_key("model.layers.0.self_attn.q_norm.weight");
+        let has_attn_bias = weights.contains_key("model.layers.0.self_attn.q_proj.bias");
 
         let config = ModelConfig {
-            hidden_size,
-            num_heads,
-            kv_num_heads,
-            head_dim,
-            num_layers,
-            vocab_size,
-            block_size: 32, // not used for f32
-            has_qk_norm,
+            hidden_size, num_heads, kv_num_heads, head_dim, num_layers, vocab_size,
+            block_size: 32, has_qk_norm,
         };
 
         log::info!(
-            "Safetensors config: hidden={}, heads={}, kv_heads={}, head_dim={}, layers={}, vocab={}, ffn={}, rope_theta={}",
-            hidden_size, num_heads, kv_num_heads, head_dim, num_layers, vocab_size, intermediate_size, rope_theta,
+            ".model: hidden={}, heads={}/{}, head_dim={}, layers={}, vocab={}, ffn={}, rope={}, eps={}",
+            hidden_size, num_heads, kv_num_heads, head_dim, num_layers, vocab_size,
+            intermediate_size, rope_theta, rms_norm_eps,
         );
 
-        // Helper: convert weight data to f32 Vec
         let weight_to_f32 = |name: &str| -> Result<Vec<f32>, String> {
-            let w = graph.get_weight(name)
-                .ok_or_else(|| format!("Missing weight: {name}"))?;
-            let mut f32s = safetensors_to_f32(&w.data, w.dtype);
-            // Q4/Q8 GGUF dequant produces column-major f32 — transpose to row-major
-            // (F16/F32 GGUF: stored in HF-order, no transpose needed — wgpu matmul
-            //  accidentally handles column-major F16 correctly via W^T read pattern)
-            if w.needs_transpose && w.shape.len() == 2 {
-                let (rows, cols) = (w.shape[0], w.shape[1]);
-                f32s = transpose_f32(&f32s, cols, rows); // stored as [cols, rows], transpose to [rows, cols]
-            }
-            Ok(f32s)
+            let w = weights.get(name).ok_or_else(|| format!("Missing weight: {name}"))?;
+            Ok(safetensors_to_f32(&w.data, w.dtype))
         };
 
-        // Load embedding table
         let embed_f32 = weight_to_f32("model.embed_tokens.weight")?;
         let embed_table = pipelines.upload_f32(&embed_f32);
-        log::info!("Loaded embedding table: [{vocab_size}, {hidden_size}]");
 
-        // Load LM head (separate or tied)
         let lm_head = if !tie_word_embeddings {
-            if let Some(lm_w) = graph.get_weight("lm_head.weight") {
-                let lm_f32 = safetensors_to_f32(&lm_w.data, lm_w.dtype);
-                Some(pipelines.upload_f32(&lm_f32))
-            } else {
-                log::warn!("tie_word_embeddings=false but no lm_head.weight found, using embed_tokens");
-                None
-            }
-        } else {
-            None
-        };
+            weights.get("lm_head.weight").map(|lm_w| {
+                pipelines.upload_f32(&safetensors_to_f32(&lm_w.data, lm_w.dtype))
+            })
+        } else { None };
 
         let q_dim = num_heads * head_dim;
         let kv_dim = kv_num_heads * head_dim;
 
-        // Load layers
         let mut layers = Vec::with_capacity(num_layers);
         for i in 0..num_layers {
             log::info!("Loading layer {i}/{num_layers}...");
@@ -1213,14 +696,7 @@ impl NativeModel {
             let input_norm_weight = pipelines.upload_f32(&input_norm_f32);
 
             let quantize_upload = |name: &str, n: usize, k: usize| -> Result<(wgpu::Buffer, wgpu::Buffer), String> {
-                let mut f32_data = weight_to_f32(name)?;
-                let scale_name = format!("{name}_scale");
-                if let Ok(scale_data) = weight_to_f32(&scale_name) {
-                    if !scale_data.is_empty() {
-                        let s = scale_data[0];
-                        for v in &mut f32_data { *v *= s; }
-                    }
-                }
+                let f32_data = weight_to_f32(name)?;
                 let (packed, scales) = quantize_f32_to_q4(&f32_data, n, k);
                 Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
             };
@@ -1244,56 +720,37 @@ impl NativeModel {
             let (down_proj_packed, down_proj_scales) = quantize_upload(
                 &format!("model.layers.{i}.mlp.down_proj.weight"), hidden_size, intermediate_size)?;
 
-            // Load attention biases (Qwen2-style)
             let q_proj_bias = if has_attn_bias {
-                let b = weight_to_f32(&format!("model.layers.{i}.self_attn.q_proj.bias"))?;
-                Some(pipelines.upload_f32(&b))
+                Some(pipelines.upload_f32(&weight_to_f32(&format!("model.layers.{i}.self_attn.q_proj.bias"))?))
             } else { None };
             let k_proj_bias = if has_attn_bias {
-                let b = weight_to_f32(&format!("model.layers.{i}.self_attn.k_proj.bias"))?;
-                Some(pipelines.upload_f32(&b))
+                Some(pipelines.upload_f32(&weight_to_f32(&format!("model.layers.{i}.self_attn.k_proj.bias"))?))
             } else { None };
             let v_proj_bias = if has_attn_bias {
-                let b = weight_to_f32(&format!("model.layers.{i}.self_attn.v_proj.bias"))?;
-                Some(pipelines.upload_f32(&b))
+                Some(pipelines.upload_f32(&weight_to_f32(&format!("model.layers.{i}.self_attn.v_proj.bias"))?))
             } else { None };
 
-            // Load QK norm weights (Qwen3-style)
             let q_norm_w = if has_qk_norm {
-                let w = weight_to_f32(&format!("model.layers.{i}.self_attn.q_norm.weight"))?;
-                Some(pipelines.upload_f32(&w))
+                Some(pipelines.upload_f32(&weight_to_f32(&format!("model.layers.{i}.self_attn.q_norm.weight"))?))
             } else { None };
             let k_norm_w = if has_qk_norm {
-                let w = weight_to_f32(&format!("model.layers.{i}.self_attn.k_norm.weight"))?;
-                Some(pipelines.upload_f32(&w))
+                Some(pipelines.upload_f32(&weight_to_f32(&format!("model.layers.{i}.self_attn.k_norm.weight"))?))
             } else { None };
 
-            // Pre-compute param buffers (Q4 matmul + norms)
             let hs = hidden_size as u32;
             let hd = head_dim as u32;
-            let bs = 32u32; // Q4 block size
-            let (input_norm_params, input_norm_wg) =
-                precompute_rms_norm(&pipelines, 1, hs, rms_norm_eps);
-            let (q_matmul_params, q_matmul_wg) =
-                precompute_q4_matmul(&pipelines, q_dim as u32, hs, bs);
-            let (k_matmul_params, k_matmul_wg) =
-                precompute_q4_matmul(&pipelines, kv_dim as u32, hs, bs);
-            let (v_matmul_params, v_matmul_wg) =
-                precompute_q4_matmul(&pipelines, kv_dim as u32, hs, bs);
-            let (q_rope_params, q_rope_wg) =
-                precompute_rope(&pipelines, q_dim as u32, hd, 1);
-            let (k_rope_params, k_rope_wg) =
-                precompute_rope(&pipelines, kv_dim as u32, hd, 1);
-            let (o_matmul_params, o_matmul_wg) =
-                precompute_q4_matmul(&pipelines, hs, q_dim as u32, bs);
-            let (post_norm_params, post_norm_wg) =
-                precompute_rms_norm(&pipelines, 1, hs, rms_norm_eps);
-            let (gate_matmul_params, gate_matmul_wg) =
-                precompute_q4_matmul(&pipelines, intermediate_size as u32, hs, bs);
-            let (up_matmul_params, up_matmul_wg) =
-                precompute_q4_matmul(&pipelines, intermediate_size as u32, hs, bs);
-            let (down_matmul_params, down_matmul_wg) =
-                precompute_q4_matmul(&pipelines, hs, intermediate_size as u32, bs);
+            let bs = 32u32;
+            let (input_norm_params, input_norm_wg) = precompute_rms_norm(&pipelines, 1, hs, rms_norm_eps);
+            let (q_matmul_params, q_matmul_wg) = precompute_q4_matmul(&pipelines, q_dim as u32, hs, bs);
+            let (k_matmul_params, k_matmul_wg) = precompute_q4_matmul(&pipelines, kv_dim as u32, hs, bs);
+            let (v_matmul_params, v_matmul_wg) = precompute_q4_matmul(&pipelines, kv_dim as u32, hs, bs);
+            let (q_rope_params, q_rope_wg) = precompute_rope(&pipelines, q_dim as u32, hd, 1);
+            let (k_rope_params, k_rope_wg) = precompute_rope(&pipelines, kv_dim as u32, hd, 1);
+            let (o_matmul_params, o_matmul_wg) = precompute_q4_matmul(&pipelines, hs, q_dim as u32, bs);
+            let (post_norm_params, post_norm_wg) = precompute_rms_norm(&pipelines, 1, hs, rms_norm_eps);
+            let (gate_matmul_params, gate_matmul_wg) = precompute_q4_matmul(&pipelines, intermediate_size as u32, hs, bs);
+            let (up_matmul_params, up_matmul_wg) = precompute_q4_matmul(&pipelines, intermediate_size as u32, hs, bs);
+            let (down_matmul_params, down_matmul_wg) = precompute_q4_matmul(&pipelines, hs, intermediate_size as u32, bs);
 
             let (fused_q_params, fused_q_wg) = {
                 let (b, w) = precompute_fused_norm_q4(&pipelines, q_dim as u32, hs, bs, rms_norm_eps);
@@ -1310,1115 +767,67 @@ impl NativeModel {
 
             layers.push(LayerWeights {
                 input_norm_weight,
-                q_proj_packed,
-                q_proj_scales,
-                q_proj_quant: QuantFormat::Q4,
-                q_n: q_dim as u32,
-                k_proj_packed,
-                k_proj_scales,
-                k_proj_quant: QuantFormat::Q4,
-                k_n: kv_dim as u32,
-                v_proj_packed,
-                v_proj_scales,
-                v_proj_quant: QuantFormat::Q4,
-                v_n: kv_dim as u32,
-                q_proj_bias,
-                k_proj_bias,
-                v_proj_bias,
-                q_norm_weight: q_norm_w,
-                k_norm_weight: k_norm_w,
-                o_proj_packed,
-                o_proj_scales,
-                o_proj_quant: QuantFormat::Q4,
-                o_n: hidden_size as u32,
+                q_proj_packed, q_proj_scales, q_proj_quant: QuantFormat::Q4, q_n: q_dim as u32,
+                k_proj_packed, k_proj_scales, k_proj_quant: QuantFormat::Q4, k_n: kv_dim as u32,
+                v_proj_packed, v_proj_scales, v_proj_quant: QuantFormat::Q4, v_n: kv_dim as u32,
+                q_proj_bias, k_proj_bias, v_proj_bias,
+                q_norm_weight: q_norm_w, k_norm_weight: k_norm_w,
+                o_proj_packed, o_proj_scales, o_proj_quant: QuantFormat::Q4, o_n: hidden_size as u32,
                 post_norm_weight,
-                gate_proj_packed,
-                gate_proj_scales,
-                gate_proj_quant: QuantFormat::Q4,
-                gate_n: intermediate_size as u32,
-                up_proj_packed,
-                up_proj_scales,
-                up_proj_quant: QuantFormat::Q4,
-                up_n: intermediate_size as u32,
-                down_proj_packed,
-                down_proj_scales,
-                down_proj_quant: QuantFormat::Q4,
-                down_n: hidden_size as u32,
+                gate_proj_packed, gate_proj_scales, gate_proj_quant: QuantFormat::Q4, gate_n: intermediate_size as u32,
+                up_proj_packed, up_proj_scales, up_proj_quant: QuantFormat::Q4, up_n: intermediate_size as u32,
+                down_proj_packed, down_proj_scales, down_proj_quant: QuantFormat::Q4, down_n: hidden_size as u32,
                 params: LayerParamBuffers {
-                    input_norm_params,
-                    input_norm_wg,
-                    q_norm_params: if has_qk_norm {
-                        let (p, _) = precompute_rms_norm(&pipelines, num_heads as u32, hd, rms_norm_eps);
-                        Some(p)
-                    } else { None },
-                    q_norm_wg: if has_qk_norm {
-                        let (_, w) = precompute_rms_norm(&pipelines, num_heads as u32, hd, rms_norm_eps);
-                        w
-                    } else { (0, 0, 0) },
-                    k_norm_params: if has_qk_norm {
-                        let (p, _) = precompute_rms_norm(&pipelines, kv_num_heads as u32, hd, rms_norm_eps);
-                        Some(p)
-                    } else { None },
-                    k_norm_wg: if has_qk_norm {
-                        let (_, w) = precompute_rms_norm(&pipelines, kv_num_heads as u32, hd, rms_norm_eps);
-                        w
-                    } else { (0, 0, 0) },
-                    post_norm_params,
-                    post_norm_wg,
-                    q_matmul_params,
-                    q_matmul_wg,
-                    k_matmul_params,
-                    k_matmul_wg,
-                    v_matmul_params,
-                    v_matmul_wg,
-                    o_matmul_params,
-                    o_matmul_wg,
-                    gate_matmul_params,
-                    gate_matmul_wg,
-                    up_matmul_params,
-                    up_matmul_wg,
-                    down_matmul_params,
-                    down_matmul_wg,
-                    q_rope_params,
-                    q_rope_wg,
-                    k_rope_params,
-                    k_rope_wg,
-                    fused_q_params,
-                    fused_q_wg,
-                    fused_k_params,
-                    fused_k_wg,
-                    fused_v_params,
-                    fused_v_wg,
+                    input_norm_params, input_norm_wg,
+                    q_norm_params: if has_qk_norm { Some(precompute_rms_norm(&pipelines, num_heads as u32, hd, rms_norm_eps).0) } else { None },
+                    q_norm_wg: if has_qk_norm { precompute_rms_norm(&pipelines, num_heads as u32, hd, rms_norm_eps).1 } else { (0,0,0) },
+                    k_norm_params: if has_qk_norm { Some(precompute_rms_norm(&pipelines, kv_num_heads as u32, hd, rms_norm_eps).0) } else { None },
+                    k_norm_wg: if has_qk_norm { precompute_rms_norm(&pipelines, kv_num_heads as u32, hd, rms_norm_eps).1 } else { (0,0,0) },
+                    post_norm_params, post_norm_wg,
+                    q_matmul_params, q_matmul_wg, k_matmul_params, k_matmul_wg,
+                    v_matmul_params, v_matmul_wg, o_matmul_params, o_matmul_wg,
+                    gate_matmul_params, gate_matmul_wg, up_matmul_params, up_matmul_wg,
+                    down_matmul_params, down_matmul_wg,
+                    q_rope_params, q_rope_wg, k_rope_params, k_rope_wg,
+                    fused_q_params, fused_q_wg, fused_k_params, fused_k_wg, fused_v_params, fused_v_wg,
                 },
             });
         }
 
-        // Final norm
         let final_norm_f32 = weight_to_f32("model.norm.weight")?;
         let final_norm_weight = pipelines.upload_f32(&final_norm_f32);
 
-        // Compute RoPE cos/sin cache
         let max_seq_len = 2048;
         let half_dim = head_dim / 2;
         let mut cos_cache = vec![0.0f32; max_seq_len * half_dim];
         let mut sin_cache = vec![0.0f32; max_seq_len * half_dim];
         for pos in 0..max_seq_len {
-            for i in 0..half_dim {
-                let theta = (pos as f32) / rope_theta.powf(2.0 * i as f32 / head_dim as f32);
-                cos_cache[pos * half_dim + i] = theta.cos();
-                sin_cache[pos * half_dim + i] = theta.sin();
+            for j in 0..half_dim {
+                let theta = (pos as f32) / rope_theta.powf(2.0 * j as f32 / head_dim as f32);
+                cos_cache[pos * half_dim + j] = theta.cos();
+                sin_cache[pos * half_dim + j] = theta.sin();
             }
         }
-        log::info!("Computed RoPE cache: max_seq={max_seq_len}, half_dim={half_dim}");
 
-        let kv_cache = (0..num_layers)
-            .map(|_| KVCache {
-                key: None,
-                value: None,
-            })
-            .collect();
+        let kv_cache = (0..num_layers).map(|_| KVCache { key: None, value: None }).collect();
 
-        let (final_norm_params, final_norm_wg) =
-            precompute_rms_norm(&pipelines, 1, hidden_size as u32, rms_norm_eps);
-        let (f32_matmul_params, f32_matmul_wg) =
-            precompute_f32_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
+        let (final_norm_params, final_norm_wg) = precompute_rms_norm(&pipelines, 1, hidden_size as u32, rms_norm_eps);
+        let (f32_matmul_params, f32_matmul_wg) = precompute_f32_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
         let (argmax_params, argmax_wg) = precompute_argmax(&pipelines, vocab_size as u32);
 
-        log::info!("Safetensors model loaded successfully (Q4 quantize-on-load)");
+        log::info!(".model loaded: {} layers, Q4 quantize-on-load", num_layers);
 
         Ok(Self {
-            config,
-            pipelines,
-            embed_table,
-            lm_head,
-            layers,
-            final_norm_weight,
-            cos_cache,
-            sin_cache,
-            kv_cache,
-            past_seq_len: 0,
-            greedy_mode: false,
+            config, pipelines, embed_table, lm_head, layers, final_norm_weight,
+            cos_cache, sin_cache, kv_cache, past_seq_len: 0, greedy_mode: false,
             quant_format: QuantFormat::Q4,
             model_params: ModelParamBuffers {
-                final_norm_params,
-                final_norm_wg,
-                f32_matmul_params,
-                f32_matmul_wg,
-                argmax_params,
-                argmax_wg,
+                final_norm_params, final_norm_wg,
+                f32_matmul_params, f32_matmul_wg,
+                argmax_params, argmax_wg,
             },
             kv_compressor: None,
         })
-    }
-
-    /// Load model from GGUF file (Q4_0, Q8_0, F16, F32 weights)
-    /// Load from GGUF file on disk
-    pub fn load_from_gguf(path: &Path, pipelines: Arc<Pipelines>) -> Result<Self, String> {
-        use crate::loader::gguf::load_gguf_with_metadata;
-        use crate::ir::DType;
-
-        let (graph, metadata) = load_gguf_with_metadata(path)?;
-
-        let arch = metadata.get("general.architecture")
-            .and_then(|v| v.as_str()).unwrap_or("llama");
-
-        let hidden_size = metadata.get(&format!("{arch}.embedding_length"))
-            .and_then(|v| v.as_u32()).ok_or("Missing embedding_length")? as usize;
-        let num_heads = metadata.get(&format!("{arch}.attention.head_count"))
-            .and_then(|v| v.as_u32()).ok_or("Missing head_count")? as usize;
-        let kv_num_heads = metadata.get(&format!("{arch}.attention.head_count_kv"))
-            .and_then(|v| v.as_u32()).unwrap_or(num_heads as u32) as usize;
-        let num_layers = metadata.get(&format!("{arch}.block_count"))
-            .and_then(|v| v.as_u32()).ok_or("Missing block_count")? as usize;
-        let rope_theta = metadata.get(&format!("{arch}.rope.freq_base"))
-            .and_then(|v| v.as_f32()).unwrap_or(10000.0);
-        let rms_norm_eps = metadata.get(&format!("{arch}.attention.layer_norm_rms_epsilon"))
-            .and_then(|v| v.as_f32()).unwrap_or(1e-5);
-        let head_dim = hidden_size / num_heads;
-
-        let vocab_size = graph.get_weight("model.embed_tokens.weight")
-            .map(|w| if w.shape.len() >= 2 { w.shape[1] } else { w.shape[0] })
-            .unwrap_or(32000);
-
-        let intermediate_size = metadata.get(&format!("{arch}.feed_forward_length"))
-            .and_then(|v| v.as_u32()).map(|v| v as usize)
-            .unwrap_or_else(|| graph.get_weight("model.layers.0.mlp.gate_proj.weight")
-                .map(|w| if w.shape.len() >= 2 { w.shape[1] } else { w.shape[0] })
-                .unwrap_or(hidden_size * 4));
-
-        let first_weight_dtype = graph.get_weight("model.layers.0.self_attn.q_proj.weight")
-            .map(|w| w.dtype).unwrap_or(DType::F32);
-        let quant_format = match first_weight_dtype {
-            DType::Q4 | DType::Q4_K | DType::Q4_1 | DType::Q2_K | DType::Q3_K | DType::Q5_K | DType::Q6_K => QuantFormat::Q4,
-            DType::Q8 => QuantFormat::Q8,
-            DType::F16 => QuantFormat::F16,
-            DType::Ternary => QuantFormat::Ternary,
-            _ => QuantFormat::F32,
-        };
-
-        let has_qk_norm = graph.weights.keys().any(|k| k.contains("q_norm") || k.contains("k_norm"));
-
-        log::info!("GGUF: hidden={hidden_size}, heads={num_heads}, kv={kv_num_heads}, layers={num_layers}, vocab={vocab_size}, ffn={intermediate_size}, quant={quant_format:?}");
-
-        let config = ModelConfig {
-            hidden_size, num_heads, kv_num_heads, head_dim,
-            num_layers, vocab_size, block_size: 32, has_qk_norm,
-        };
-
-        Self::load_from_graph(graph, config, quant_format, rope_theta, rms_norm_eps, pipelines)
-    }
-
-    /// Core: load a Graph with GGUF-style weight names into GPU.
-    /// Shared between load_from_gguf and load_from_cyb.
-    fn load_from_graph(
-        graph: crate::ir::Graph,
-        config: ModelConfig,
-        quant_format: QuantFormat,
-        rope_theta: f32,
-        rms_norm_eps: f32,
-        pipelines: Arc<Pipelines>,
-    ) -> Result<Self, String> {
-        use crate::ir::DType;
-
-        let ModelConfig { hidden_size, num_heads, kv_num_heads, head_dim,
-            num_layers, vocab_size, block_size, has_qk_norm } = config;
-
-        let intermediate_size = graph.get_weight("model.layers.0.mlp.gate_proj.weight")
-            .map(|w| if w.shape.len() >= 2 { w.shape[1] } else { w.shape[0] })
-            .unwrap_or(hidden_size * 4);
-
-        // Convert GGUF Q4_0 block format to our format: packed u32[] + f32 scales[]
-        let convert_gguf_q4_0 = |data: &[u8], shape: &[usize]| -> (Vec<u32>, Vec<f32>) {
-            let block_bytes = 18; // 2 (f16 scale) + 16 (packed nibbles)
-            let num_elements: usize = shape.iter().product();
-            let num_blocks = num_elements / 32;
-
-            let mut packed_u32s = Vec::with_capacity(num_blocks * 4);
-            let mut scales = Vec::with_capacity(num_blocks);
-
-            for b in 0..num_blocks {
-                let offset = b * block_bytes;
-                if offset + block_bytes > data.len() {
-                    break;
-                }
-                let scale_f16 = half::f16::from_le_bytes([data[offset], data[offset + 1]]);
-                scales.push(scale_f16.to_f32());
-
-                for chunk in data[offset + 2..offset + 18].chunks(4) {
-                    let mut val = 0u32;
-                    for (i, &byte) in chunk.iter().enumerate() {
-                        val |= (byte as u32) << (i * 8);
-                    }
-                    packed_u32s.push(val);
-                }
-            }
-
-            (packed_u32s, scales)
-        };
-
-        // Convert GGUF Q8_0 block format to our format: packed u32[] (4 int8 per u32) + f32 scales[]
-        let convert_gguf_q8_0 = |data: &[u8], shape: &[usize]| -> (Vec<u32>, Vec<f32>) {
-            let block_bytes = 34; // 2 (f16 scale) + 32 (int8 values)
-            let num_elements: usize = shape.iter().product();
-            let num_blocks = num_elements / 32;
-
-            let mut packed_u32s = Vec::with_capacity(num_blocks * 8);
-            let mut scales = Vec::with_capacity(num_blocks);
-
-            for b in 0..num_blocks {
-                let offset = b * block_bytes;
-                if offset + block_bytes > data.len() {
-                    break;
-                }
-                let scale_f16 = half::f16::from_le_bytes([data[offset], data[offset + 1]]);
-                scales.push(scale_f16.to_f32());
-
-                // Pack 32 int8 values into 8 u32s
-                for chunk in data[offset + 2..offset + 34].chunks(4) {
-                    let mut val = 0u32;
-                    for (i, &byte) in chunk.iter().enumerate() {
-                        val |= (byte as u32) << (i * 8);
-                    }
-                    packed_u32s.push(val);
-                }
-            }
-
-            (packed_u32s, scales)
-        };
-
-        // Convert GGUF Q4_K block format to our Q4_0 format via dequant + requant
-        // Q4_K: super block of 256 elements (8 sub-blocks of 32), 144 bytes
-        // Layout: d(f16) | dmin(f16) | scales[12] | qs[128]
-        let convert_gguf_q4k = |data: &[u8], shape: &[usize]| -> (Vec<u32>, Vec<f32>) {
-            let super_block_bytes = 144;
-            let num_elements: usize = shape.iter().product();
-            let num_super_blocks = num_elements / 256;
-            let total_blocks = num_super_blocks * 8; // 8 blocks of 32 per super block
-
-            let mut packed_u32s = Vec::with_capacity(total_blocks * 4);
-            let mut scales_out = Vec::with_capacity(total_blocks);
-
-            for sb in 0..num_super_blocks {
-                let offset = sb * super_block_bytes;
-                if offset + super_block_bytes > data.len() { break; }
-
-                let d = half::f16::from_le_bytes([data[offset], data[offset + 1]]).to_f32();
-                let dmin = half::f16::from_le_bytes([data[offset + 2], data[offset + 3]]).to_f32();
-
-                // Unpack 6-bit sub-block scales and mins from scales[12] at offset+4
-                let sc = &data[offset + 4..offset + 16];
-
-                let mut local_scales = [0u8; 8];
-                let mut local_mins = [0u8; 8];
-
-                for j in 0..8 {
-                    if j < 4 {
-                        local_scales[j] = sc[j] & 63;
-                        local_mins[j] = sc[j + 4] & 63;
-                    } else {
-                        local_scales[j] = (sc[j + 4] & 0xF) | ((sc[j - 4] >> 6) << 4);
-                        local_mins[j] = (sc[j + 4] >> 4) | ((sc[j] >> 6) << 4);
-                    }
-                }
-
-                // Dequantize all 256 elements to f32
-                // Q4_K qs: 128 bytes = 256 4-bit values (2 nibbles per byte)
-                let qs = &data[offset + 16..offset + 144];
-                let mut dequantized = [0.0f32; 256];
-
-                for i in 0..256usize {
-                    let sub_block = i / 32;
-                    let qs_byte_idx = i / 2;
-                    let nibble = if i % 2 == 0 {
-                        qs[qs_byte_idx] & 0xF
-                    } else {
-                        (qs[qs_byte_idx] >> 4) & 0xF
-                    };
-
-                    dequantized[i] = d * local_scales[sub_block] as f32 * nibble as f32
-                        - dmin * local_mins[sub_block] as f32;
-                }
-
-                // Requantize into our Q4 format (32-element blocks)
-                for blk in 0..8usize {
-                    let start = blk * 32;
-                    let block_vals = &dequantized[start..start + 32];
-
-                    let max_abs = block_vals.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
-                    let scale = if max_abs > 0.0 { max_abs / 7.0 } else { 0.0 };
-                    scales_out.push(scale);
-
-                    let inv_scale = if scale > 0.0 { 1.0 / scale } else { 0.0 };
-                    let mut nibbles = [0u8; 32];
-                    for (k, &val) in block_vals.iter().enumerate() {
-                        let q = (val * inv_scale + 8.0).round().clamp(0.0, 15.0) as u8;
-                        nibbles[k] = q;
-                    }
-
-                    // Pack 32 nibbles into 16 bytes (4 u32s)
-                    for chunk_idx in 0..4 {
-                        let base = chunk_idx * 8;
-                        let mut val = 0u32;
-                        for b in 0..4 {
-                            let lo = nibbles[base + b * 2];
-                            let hi = nibbles[base + b * 2 + 1];
-                            let byte = lo | (hi << 4);
-                            val |= (byte as u32) << (b * 8);
-                        }
-                        packed_u32s.push(val);
-                    }
-                }
-            }
-
-            (packed_u32s, scales_out)
-        };
-
-        // Convert GGUF Q6_K to our Q4_0 format via dequant + requant
-        // Q6_K: super block of 256 elements, 210 bytes
-        // Layout: ql[128] | qh[64] | scales[16] (int8) | d(f16)
-        let convert_gguf_q6k = |data: &[u8], shape: &[usize]| -> (Vec<u32>, Vec<f32>) {
-            let super_block_bytes = 210;
-            let num_elements: usize = shape.iter().product();
-            let num_super_blocks = num_elements / 256;
-            let total_blocks = num_super_blocks * 8; // 8 blocks of 32 per super block
-
-            let mut packed_u32s = Vec::with_capacity(total_blocks * 4);
-            let mut scales_out = Vec::with_capacity(total_blocks);
-
-            for sb in 0..num_super_blocks {
-                let offset = sb * super_block_bytes;
-                if offset + super_block_bytes > data.len() { break; }
-
-                let ql = &data[offset..offset + 128];
-                let qh = &data[offset + 128..offset + 192];
-                let sc = &data[offset + 192..offset + 208];
-                let d = half::f16::from_le_bytes([data[offset + 208], data[offset + 209]]).to_f32();
-
-                // Dequantize all 256 elements to f32
-                let mut dequantized = [0.0f32; 256];
-
-                for i in 0..256usize {
-                    // Lower 4 bits from ql
-                    let ql_byte_idx = i / 2;
-                    let ql_val = if i % 2 == 0 {
-                        ql[ql_byte_idx] & 0xF
-                    } else {
-                        (ql[ql_byte_idx] >> 4) & 0xF
-                    };
-
-                    // Upper 2 bits from qh
-                    let qh_byte_idx = i / 4;
-                    let qh_shift = (i % 4) * 2;
-                    let qh_val = (qh[qh_byte_idx] >> qh_shift) & 0x3;
-
-                    // 6-bit value: 0..63, subtract 32 for signed
-                    let q6 = ((ql_val | (qh_val << 4)) as i32) - 32;
-
-                    // Per-16-element sub-block scale
-                    let sub_block = i / 16;
-                    let local_scale = sc[sub_block] as i8;
-                    dequantized[i] = d * local_scale as f32 * q6 as f32;
-                }
-
-                // Requantize into Q4 format (32-element blocks)
-                for blk in 0..8usize {
-                    let start = blk * 32;
-                    let block_vals = &dequantized[start..start + 32];
-
-                    let max_abs = block_vals.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
-                    let scale = if max_abs > 0.0 { max_abs / 7.0 } else { 0.0 };
-                    scales_out.push(scale);
-
-                    let inv_scale = if scale > 0.0 { 1.0 / scale } else { 0.0 };
-                    let mut nibbles = [0u8; 32];
-                    for (k, &val) in block_vals.iter().enumerate() {
-                        let q = (val * inv_scale + 8.0).round().clamp(0.0, 15.0) as u8;
-                        nibbles[k] = q;
-                    }
-
-                    for chunk_idx in 0..4 {
-                        let base = chunk_idx * 8;
-                        let mut val = 0u32;
-                        for b in 0..4 {
-                            let lo = nibbles[base + b * 2];
-                            let hi = nibbles[base + b * 2 + 1];
-                            let byte = lo | (hi << 4);
-                            val |= (byte as u32) << (b * 8);
-                        }
-                        packed_u32s.push(val);
-                    }
-                }
-            }
-
-            (packed_u32s, scales_out)
-        };
-
-        // Convert GGUF Q2_K to our Q4_0 format: packed u32[] + f32 scales[]
-        // Q2_K: super block of 256 elements, 84 bytes
-        // Layout: scales[16] | qs[64] | d(f16) | dmin(f16)
-        let convert_gguf_q2k = |data: &[u8], shape: &[usize]| -> (Vec<u32>, Vec<f32>) {
-            let super_block_bytes = 84;
-            let num_elements: usize = shape.iter().product();
-            let num_super_blocks = num_elements / 256;
-            // Dequant to f32, then requantize to our Q4 format
-            let total_blocks = num_super_blocks * 8; // 8 blocks of 32 per super block
-
-            let mut packed_u32s = Vec::with_capacity(total_blocks * 4);
-            let mut scales_out = Vec::with_capacity(total_blocks);
-
-            for sb in 0..num_super_blocks {
-                let offset = sb * super_block_bytes;
-                if offset + super_block_bytes > data.len() { break; }
-
-                let sc = &data[offset..offset + 16];
-                let qs = &data[offset + 16..offset + 80];
-                let d = half::f16::from_le_bytes([data[offset + 80], data[offset + 81]]).to_f32();
-                let dmin = half::f16::from_le_bytes([data[offset + 82], data[offset + 83]]).to_f32();
-
-                // Dequantize all 256 elements to f32
-                let mut dequantized = [0.0f32; 256];
-                for i in 0..256usize {
-                    let sub_block = i / 16; // 16 sub-blocks of 16 elements
-                    let local_scale = (sc[sub_block] & 0xF) as f32;
-                    let local_min = (sc[sub_block] >> 4) as f32;
-
-                    // Each byte in qs contains 4 2-bit values
-                    let byte_idx = i / 4;
-                    let bit_shift = (i % 4) * 2;
-                    let q2 = ((qs[byte_idx] >> bit_shift) & 0x3) as f32;
-
-                    dequantized[i] = d * local_scale * q2 - dmin * local_min;
-                }
-
-                // Requantize into our Q4 format (32-element blocks)
-                for blk in 0..8usize {
-                    let start = blk * 32;
-                    let block_vals = &dequantized[start..start + 32];
-
-                    // Find range to compute scale
-                    let max_abs = block_vals.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
-                    let scale = if max_abs > 0.0 { max_abs / 7.0 } else { 0.0 };
-                    scales_out.push(scale);
-
-                    // Quantize to 4-bit (0-15 range, zero point 8)
-                    let inv_scale = if scale > 0.0 { 1.0 / scale } else { 0.0 };
-                    let mut nibbles = [0u8; 32];
-                    for (k, &val) in block_vals.iter().enumerate() {
-                        let q = (val * inv_scale + 8.0).round().clamp(0.0, 15.0) as u8;
-                        nibbles[k] = q;
-                    }
-
-                    // Pack 32 nibbles into 16 bytes (4 u32s)
-                    // Each byte holds 2 nibbles: lo = even index, hi = odd index
-                    for chunk_idx in 0..4 {
-                        let base = chunk_idx * 8;
-                        let mut val = 0u32;
-                        for b in 0..4 {
-                            let lo = nibbles[base + b * 2];
-                            let hi = nibbles[base + b * 2 + 1];
-                            let byte = lo | (hi << 4);
-                            val |= (byte as u32) << (b * 8);
-                        }
-                        packed_u32s.push(val);
-                    }
-                }
-            }
-
-            (packed_u32s, scales_out)
-        };
-
-        // Convert GGUF Q3_K to our Q4_0 format via dequant + requant
-        // Q3_K: super block of 256 elements, 110 bytes
-        // Layout: hmask[32] | qs[64] | scales[12] | d(f16)
-        let convert_gguf_q3k = |data: &[u8], shape: &[usize]| -> (Vec<u32>, Vec<f32>) {
-            let super_block_bytes = 110;
-            let num_elements: usize = shape.iter().product();
-            let num_super_blocks = num_elements / 256;
-            let total_blocks = num_super_blocks * 8;
-
-            let mut packed_u32s = Vec::with_capacity(total_blocks * 4);
-            let mut scales_out = Vec::with_capacity(total_blocks);
-
-            for sb in 0..num_super_blocks {
-                let offset = sb * super_block_bytes;
-                if offset + super_block_bytes > data.len() { break; }
-
-                let hmask = &data[offset..offset + 32];
-                let qs = &data[offset + 32..offset + 96];
-                let sc_raw = &data[offset + 96..offset + 108];
-                let d = half::f16::from_le_bytes([data[offset + 108], data[offset + 109]]).to_f32();
-
-                // Unpack scales (12 bytes -> 16 6-bit values)
-                // Based on llama.cpp: each group of 16 elements has a scale
-                let mut local_scales = [0i32; 16];
-                for j in 0..16 {
-                    if j < 8 {
-                        local_scales[j] = (sc_raw[j] as i32) - 32;
-                    } else {
-                        // Upper scales packed in remaining bytes
-                        let idx = j - 8;
-                        let byte_val = if idx < 4 {
-                            ((sc_raw[8 + idx] & 0xF) as i32) | (((sc_raw[idx] >> 4) as i32 & 3) << 4)
-                        } else {
-                            ((sc_raw[4 + idx] >> 4) as i32) | (((sc_raw[idx] >> 4) as i32 & 3) << 4)
-                        };
-                        local_scales[j] = byte_val - 32;
-                    }
-                }
-
-                // Dequantize: each element has 2 bits from qs + 1 bit from hmask = 3 bits
-                let mut dequantized = [0.0f32; 256];
-                for i in 0..256usize {
-                    let sub_block = i / 16;
-
-                    // 2 low bits from qs (64 bytes = 256 2-bit values)
-                    let byte_idx = i / 4;
-                    let bit_shift = (i % 4) * 2;
-                    let q_low = ((qs[byte_idx] >> bit_shift) & 0x3) as i32;
-
-                    // High bit from hmask (32 bytes = 256 bits)
-                    let hm_byte = i / 8;
-                    let hm_bit = i % 8;
-                    let q_high = ((hmask[hm_byte] >> hm_bit) & 1) as i32;
-
-                    // 3-bit value, subtract 4 for zero point
-                    let q3 = q_low | (q_high << 2);
-                    let q_signed = q3 - 4;
-
-                    dequantized[i] = d * local_scales[sub_block] as f32 * q_signed as f32;
-                }
-
-                // Requantize into Q4 format
-                for blk in 0..8usize {
-                    let start = blk * 32;
-                    let block_vals = &dequantized[start..start + 32];
-
-                    let max_abs = block_vals.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
-                    let scale = if max_abs > 0.0 { max_abs / 7.0 } else { 0.0 };
-                    scales_out.push(scale);
-
-                    let inv_scale = if scale > 0.0 { 1.0 / scale } else { 0.0 };
-                    let mut nibbles = [0u8; 32];
-                    for (k, &val) in block_vals.iter().enumerate() {
-                        let q = (val * inv_scale + 8.0).round().clamp(0.0, 15.0) as u8;
-                        nibbles[k] = q;
-                    }
-
-                    for chunk_idx in 0..4 {
-                        let base = chunk_idx * 8;
-                        let mut val = 0u32;
-                        for b in 0..4 {
-                            let lo = nibbles[base + b * 2];
-                            let hi = nibbles[base + b * 2 + 1];
-                            let byte = lo | (hi << 4);
-                            val |= (byte as u32) << (b * 8);
-                        }
-                        packed_u32s.push(val);
-                    }
-                }
-            }
-
-            (packed_u32s, scales_out)
-        };
-
-        // Convert GGUF Q5_K to our Q4_0 format via dequant + requant
-        // Q5_K: super block of 256 elements, 176 bytes
-        // Layout: d(f16) | dmin(f16) | scales[12] | qh[32] | qs[128]
-        let convert_gguf_q5k = |data: &[u8], shape: &[usize]| -> (Vec<u32>, Vec<f32>) {
-            let super_block_bytes = 176;
-            let num_elements: usize = shape.iter().product();
-            let num_super_blocks = num_elements / 256;
-            let total_blocks = num_super_blocks * 8;
-
-            let mut packed_u32s = Vec::with_capacity(total_blocks * 4);
-            let mut scales_out = Vec::with_capacity(total_blocks);
-
-            for sb in 0..num_super_blocks {
-                let offset = sb * super_block_bytes;
-                if offset + super_block_bytes > data.len() { break; }
-
-                let d = half::f16::from_le_bytes([data[offset], data[offset + 1]]).to_f32();
-                let dmin = half::f16::from_le_bytes([data[offset + 2], data[offset + 3]]).to_f32();
-
-                let sc = &data[offset + 4..offset + 16];
-                let qh = &data[offset + 16..offset + 48];
-                let qs = &data[offset + 48..offset + 176];
-
-                // Unpack 6-bit sub-block scales and mins (same packing as Q4_K)
-                let mut local_s = [0u8; 8];
-                let mut local_m = [0u8; 8];
-                for j in 0..8 {
-                    if j < 4 {
-                        local_s[j] = sc[j] & 63;
-                        local_m[j] = sc[j + 4] & 63;
-                    } else {
-                        local_s[j] = (sc[j + 4] & 0xF) | ((sc[j - 4] >> 6) << 4);
-                        local_m[j] = (sc[j + 4] >> 4) | ((sc[j] >> 6) << 4);
-                    }
-                }
-
-                // Dequantize all 256 elements
-                let mut dequantized = [0.0f32; 256];
-                for i in 0..256usize {
-                    let sub_block = i / 32;
-
-                    // Low 4 bits from qs (128 bytes, 2 nibbles per byte)
-                    let qs_byte_idx = i / 2;
-                    let q_low = if i % 2 == 0 {
-                        qs[qs_byte_idx] & 0xF
-                    } else {
-                        (qs[qs_byte_idx] >> 4) & 0xF
-                    };
-
-                    // High bit from qh (32 bytes = 256 bits)
-                    let qh_byte = i / 8;
-                    let qh_bit = i % 8;
-                    let q_high = (qh[qh_byte] >> qh_bit) & 1;
-
-                    // 5-bit quantized value
-                    let q5 = (q_low | (q_high << 4)) as f32;
-
-                    dequantized[i] = d * local_s[sub_block] as f32 * q5 - dmin * local_m[sub_block] as f32;
-                }
-
-                // Requantize into Q4 format
-                for blk in 0..8usize {
-                    let start = blk * 32;
-                    let block_vals = &dequantized[start..start + 32];
-
-                    let max_abs = block_vals.iter().map(|v| v.abs()).fold(0.0f32, f32::max);
-                    let scale = if max_abs > 0.0 { max_abs / 7.0 } else { 0.0 };
-                    scales_out.push(scale);
-
-                    let inv_scale = if scale > 0.0 { 1.0 / scale } else { 0.0 };
-                    let mut nibbles = [0u8; 32];
-                    for (k, &val) in block_vals.iter().enumerate() {
-                        let q = (val * inv_scale + 8.0).round().clamp(0.0, 15.0) as u8;
-                        nibbles[k] = q;
-                    }
-
-                    for chunk_idx in 0..4 {
-                        let base = chunk_idx * 8;
-                        let mut val = 0u32;
-                        for b in 0..4 {
-                            let lo = nibbles[base + b * 2];
-                            let hi = nibbles[base + b * 2 + 1];
-                            let byte = lo | (hi << 4);
-                            val |= (byte as u32) << (b * 8);
-                        }
-                        packed_u32s.push(val);
-                    }
-                }
-            }
-
-            (packed_u32s, scales_out)
-        };
-
-        // Convert weight data to f32 (for F32/F16 weights and norm weights)
-        let gguf_to_f32 = |data: &[u8], dtype: DType| -> Vec<f32> {
-            match dtype {
-                DType::F32 => data
-                    .chunks_exact(4)
-                    .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-                    .collect(),
-                DType::F16 => data
-                    .chunks_exact(2)
-                    .map(|c| half::f16::from_le_bytes([c[0], c[1]]).to_f32())
-                    .collect(),
-                DType::Q8 => {
-                    // Q8_0: blocks of 34 bytes = 2 (f16 scale) + 32 (int8 data), 32 elements each
-                    let block_size = 34;
-                    let mut out = Vec::new();
-                    for block in data.chunks_exact(block_size) {
-                        let scale = half::f16::from_le_bytes([block[0], block[1]]).to_f32();
-                        for &byte in &block[2..34] {
-                            out.push((byte as i8) as f32 * scale);
-                        }
-                    }
-                    out
-                }
-                DType::Q4 | DType::Q4_1 => {
-                    // Q4_0: blocks of 18 bytes = 2 (f16 scale) + 16 (4-bit data), 32 elements each
-                    let block_bytes = if dtype == DType::Q4 { 18 } else { 20 };
-                    let mut out = Vec::new();
-                    for block in data.chunks_exact(block_bytes) {
-                        let scale = half::f16::from_le_bytes([block[0], block[1]]).to_f32();
-                        let data_start = if dtype == DType::Q4 { 2 } else { 4 };
-                        for i in 0..16 {
-                            let byte = block[data_start + i];
-                            let lo = (byte & 0x0F) as i8 - 8;
-                            let hi = ((byte >> 4) & 0x0F) as i8 - 8;
-                            out.push(lo as f32 * scale);
-                            out.push(hi as f32 * scale);
-                        }
-                    }
-                    out
-                }
-                DType::Q4_K | DType::Q6_K | DType::Q2_K | DType::Q3_K | DType::Q5_K => {
-                    // K-quant types: dequantize to f32 via our Q4 intermediate
-                    log::debug!("Dequantizing {:?} to f32 ({} bytes)", dtype, data.len());
-                    // Compute num_elements from data size + block format
-                    let (super_block_bytes, elements_per_sb) = match dtype {
-                        DType::Q6_K => (210, 256),
-                        DType::Q4_K => (144, 256),
-                        DType::Q5_K => (176, 256),
-                        DType::Q3_K => (110, 256),
-                        DType::Q2_K => (84, 256),
-                        DType::Q4_1 => (20, 32),  // not a K-quant but handled here
-                        _ => (1, 1),
-                    };
-                    let num_elements = (data.len() / super_block_bytes) * elements_per_sb;
-                    let inferred_shape = vec![num_elements];
-                    let (packed, scales) = match dtype {
-                        DType::Q4_K => convert_gguf_q4k(data, &inferred_shape),
-                        DType::Q6_K => convert_gguf_q6k(data, &inferred_shape),
-                        DType::Q2_K => convert_gguf_q2k(data, &inferred_shape),
-                        DType::Q3_K => convert_gguf_q3k(data, &inferred_shape),
-                        DType::Q5_K => convert_gguf_q5k(data, &inferred_shape),
-                        _ => (Vec::new(), Vec::new()),
-                    };
-                    // Dequant Q4 packed → f32: each scale covers 32 elements
-                    let block_size = 32usize;
-                    let mut out = Vec::with_capacity(scales.len() * block_size);
-                    for (bi, &scale) in scales.iter().enumerate() {
-                        // Each block: 32 elements packed as 16 bytes = 4 u32s
-                        let u32_start = bi * (block_size / 2) / 4;
-                        for j in 0..block_size {
-                            let u32_idx = u32_start + j / 8;
-                            let nibble_idx = j % 8;
-                            if u32_idx < packed.len() {
-                                let nibble = ((packed[u32_idx] >> (nibble_idx * 4)) & 0xF) as i8 - 8;
-                                out.push(nibble as f32 * scale);
-                            } else {
-                                out.push(0.0);
-                            }
-                        }
-                    }
-                    out
-                }
-                _ => {
-                    log::warn!("Unexpected dtype {:?} for f32 conversion", dtype);
-                    data.chunks_exact(4)
-                        .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
-                        .collect()
-                }
-            }
-        };
-
-        // Load a quantized weight: returns (packed_buf, scales_buf)
-        let load_quantized_weight = |name: &str| -> Result<(wgpu::Buffer, wgpu::Buffer), String> {
-            let w = graph.get_weight(name).ok_or_else(|| format!("Missing weight: {name}"))?;
-            match w.dtype {
-                DType::Q4 => {
-                    let (packed, scales) = convert_gguf_q4_0(&w.data, &w.shape);
-                    Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
-                }
-                DType::Q8 => {
-                    let (packed, scales) = convert_gguf_q8_0(&w.data, &w.shape);
-                    Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
-                }
-                // K-quant types: convert at load time to our simple Q4/Q8 format
-                DType::Q4_K => {
-                    log::debug!("Converting Q4_K -> Q4 for {name}");
-                    let (packed, scales) = convert_gguf_q4k(&w.data, &w.shape);
-                    Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
-                }
-                DType::Q6_K => {
-                    log::debug!("Converting Q6_K -> Q4 for {name}");
-                    let (packed, scales) = convert_gguf_q6k(&w.data, &w.shape);
-                    Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
-                }
-                DType::Q2_K => {
-                    log::debug!("Converting Q2_K -> Q4 for {name}");
-                    let (packed, scales) = convert_gguf_q2k(&w.data, &w.shape);
-                    Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
-                }
-                DType::Q3_K => {
-                    log::debug!("Converting Q3_K -> Q4 for {name}");
-                    let (packed, scales) = convert_gguf_q3k(&w.data, &w.shape);
-                    Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
-                }
-                DType::Q5_K => {
-                    log::debug!("Converting Q5_K -> Q4 for {name}");
-                    let (packed, scales) = convert_gguf_q5k(&w.data, &w.shape);
-                    Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
-                }
-                DType::F32 | DType::F16 => {
-                    // Convert to f32 and use f32 path
-                    let f32_data = gguf_to_f32(&w.data, w.dtype);
-                    let buf = pipelines.upload_f32(&f32_data);
-                    let dummy_scales = pipelines.upload_f32(&[0.0]);
-                    Ok((buf, dummy_scales))
-                }
-                _ => Err(format!("Unsupported weight dtype {:?} for {}", w.dtype, name)),
-            }
-        };
-
-        // Load an f32 weight (for norm weights which are always f32/f16)
-        let load_f32_weight = |name: &str| -> Result<wgpu::Buffer, String> {
-            let w = graph.get_weight(name).ok_or_else(|| format!("Missing weight: {name}"))?;
-            let f32_data = gguf_to_f32(&w.data, w.dtype);
-            Ok(pipelines.upload_f32(&f32_data))
-        };
-
-        // Load embedding table — stored as [hidden, vocab], transpose to [vocab, hidden]
-        let embed_w = graph.get_weight("token_embd.weight")
-            .ok_or("Missing token_embd.weight")?;
-        let embed_raw = gguf_to_f32(&embed_w.data, embed_w.dtype);
-        let mut embed_f32 = vec![0.0f32; vocab_size * hidden_size];
-        for v in 0..vocab_size {
-            for h in 0..hidden_size {
-                embed_f32[v * hidden_size + h] = embed_raw[h * vocab_size + v];
-            }
-        }
-        let embed_table = pipelines.upload_f32(&embed_f32);
-        log::info!("Loaded embedding table: [{vocab_size}, {hidden_size}]");
-
-        // LM head — may be tied to embed or separate
-        let lm_head = if let Some(output_w) = graph.get_weight("output.weight") {
-            let out_f32 = gguf_to_f32(&output_w.data, output_w.dtype);
-            Some(pipelines.upload_f32(&out_f32))
-        } else {
-            None // tied to embed_table
-        };
-
-        let q_dim = num_heads * head_dim;
-        let kv_dim = kv_num_heads * head_dim;
-
-        // Precompute function selector based on quant format
-        let precompute_matmul_fn = |n: u32, k: u32| -> (wgpu::Buffer, (u32, u32, u32)) {
-            match quant_format {
-                QuantFormat::Q4 => precompute_q4_matmul(&pipelines, n, k, block_size as u32),
-                QuantFormat::Q8 => precompute_q8_matmul(&pipelines, n, k, block_size as u32),
-                QuantFormat::F32 => precompute_f32_matmul(&pipelines, n, k),
-                QuantFormat::F16 => precompute_f16_matmul(&pipelines, n, k),
-                QuantFormat::Ternary => precompute_ternary_matmul(&pipelines, n, k),
-            }
-        };
-
-        // Load layers
-        let mut layers = Vec::with_capacity(num_layers);
-        for i in 0..num_layers {
-            log::info!("Loading layer {i}/{num_layers}...");
-
-            let input_norm_weight = load_f32_weight(&format!("model.layers.{i}.input_layernorm.weight"))?;
-
-            let (q_proj_packed, q_proj_scales) = load_quantized_weight(&format!("model.layers.{i}.self_attn.q_proj.weight"))?;
-            let (k_proj_packed, k_proj_scales) = load_quantized_weight(&format!("model.layers.{i}.self_attn.k_proj.weight"))?;
-            let (v_proj_packed, v_proj_scales) = load_quantized_weight(&format!("model.layers.{i}.self_attn.v_proj.weight"))?;
-            let (o_proj_packed, o_proj_scales) = load_quantized_weight(&format!("model.layers.{i}.self_attn.o_proj.weight"))?;
-
-            let post_norm_weight = load_f32_weight(&format!("model.layers.{i}.post_attention_layernorm.weight"))?;
-
-            let (gate_proj_packed, gate_proj_scales) = load_quantized_weight(&format!("model.layers.{i}.mlp.gate_proj.weight"))?;
-            let (up_proj_packed, up_proj_scales) = load_quantized_weight(&format!("model.layers.{i}.mlp.up_proj.weight"))?;
-            let (down_proj_packed, down_proj_scales) = load_quantized_weight(&format!("model.layers.{i}.mlp.down_proj.weight"))?;
-
-            // Pre-compute param buffers
-            let hs = hidden_size as u32;
-            let hd = head_dim as u32;
-            let (input_norm_params, input_norm_wg) =
-                precompute_rms_norm(&pipelines, 1, hs, rms_norm_eps);
-            let (q_matmul_params, q_matmul_wg) = precompute_matmul_fn(q_dim as u32, hs);
-            let (k_matmul_params, k_matmul_wg) = precompute_matmul_fn(kv_dim as u32, hs);
-            let (v_matmul_params, v_matmul_wg) = precompute_matmul_fn(kv_dim as u32, hs);
-            let (q_rope_params, q_rope_wg) = precompute_rope(&pipelines, q_dim as u32, hd, 1);
-            let (k_rope_params, k_rope_wg) = precompute_rope(&pipelines, kv_dim as u32, hd, 1);
-            let (o_matmul_params, o_matmul_wg) = precompute_matmul_fn(hs, q_dim as u32);
-            let (post_norm_params, post_norm_wg) =
-                precompute_rms_norm(&pipelines, 1, hs, rms_norm_eps);
-            let (gate_matmul_params, gate_matmul_wg) = precompute_matmul_fn(intermediate_size as u32, hs);
-            let (up_matmul_params, up_matmul_wg) = precompute_matmul_fn(intermediate_size as u32, hs);
-            let (down_matmul_params, down_matmul_wg) = precompute_matmul_fn(hs, intermediate_size as u32);
-
-            let fused_q_params: Option<wgpu::Buffer> = None;
-            let fused_q_wg = (0u32, 0, 0);
-            let fused_k_params: Option<wgpu::Buffer> = None;
-            let fused_k_wg = (0u32, 0, 0);
-            let fused_v_params: Option<wgpu::Buffer> = None;
-            let fused_v_wg = (0u32, 0, 0);
-
-            layers.push(LayerWeights {
-                input_norm_weight,
-                q_proj_packed,
-                q_proj_scales,
-                q_proj_quant: quant_format,
-                q_n: q_dim as u32,
-                k_proj_packed,
-                k_proj_scales,
-                k_proj_quant: quant_format,
-                k_n: kv_dim as u32,
-                v_proj_packed,
-                v_proj_scales,
-                v_proj_quant: quant_format,
-                v_n: kv_dim as u32,
-                q_proj_bias: None,
-                k_proj_bias: None,
-                v_proj_bias: None,
-                q_norm_weight: None,
-                k_norm_weight: None,
-                o_proj_packed,
-                o_proj_scales,
-                o_proj_quant: quant_format,
-                o_n: hidden_size as u32,
-                post_norm_weight,
-                gate_proj_packed,
-                gate_proj_scales,
-                gate_proj_quant: quant_format,
-                gate_n: intermediate_size as u32,
-                up_proj_packed,
-                up_proj_scales,
-                up_proj_quant: quant_format,
-                up_n: intermediate_size as u32,
-                down_proj_packed,
-                down_proj_scales,
-                down_proj_quant: quant_format,
-                down_n: hidden_size as u32,
-                params: LayerParamBuffers {
-                    input_norm_params,
-                    input_norm_wg,
-                    q_norm_params: None,
-                    q_norm_wg: (0, 0, 0),
-                    k_norm_params: None,
-                    k_norm_wg: (0, 0, 0),
-                    post_norm_params,
-                    post_norm_wg,
-                    q_matmul_params,
-                    q_matmul_wg,
-                    k_matmul_params,
-                    k_matmul_wg,
-                    v_matmul_params,
-                    v_matmul_wg,
-                    o_matmul_params,
-                    o_matmul_wg,
-                    gate_matmul_params,
-                    gate_matmul_wg,
-                    up_matmul_params,
-                    up_matmul_wg,
-                    down_matmul_params,
-                    down_matmul_wg,
-                    q_rope_params,
-                    q_rope_wg,
-                    k_rope_params,
-                    k_rope_wg,
-                    fused_q_params,
-                    fused_q_wg,
-                    fused_k_params,
-                    fused_k_wg,
-                    fused_v_params,
-                    fused_v_wg,
-                },
-            });
-        }
-
-        // Final norm
-        let final_norm_weight = load_f32_weight("model.norm.weight")?;
-
-        // Compute RoPE cos/sin cache
-        let max_seq_len = 2048;
-        let half_dim = head_dim / 2;
-        let mut cos_cache = vec![0.0f32; max_seq_len * half_dim];
-        let mut sin_cache = vec![0.0f32; max_seq_len * half_dim];
-        for pos in 0..max_seq_len {
-            for d in 0..half_dim {
-                let theta = (pos as f32) / rope_theta.powf(2.0 * d as f32 / head_dim as f32);
-                cos_cache[pos * half_dim + d] = theta.cos();
-                sin_cache[pos * half_dim + d] = theta.sin();
-            }
-        }
-        log::info!("Computed RoPE cache: max_seq={max_seq_len}, half_dim={half_dim}");
-
-        let kv_cache = (0..num_layers)
-            .map(|_| KVCache {
-                key: None,
-                value: None,
-            })
-            .collect();
-
-        let (final_norm_params, final_norm_wg) =
-            precompute_rms_norm(&pipelines, 1, hidden_size as u32, rms_norm_eps);
-        let (f32_matmul_params, f32_matmul_wg) =
-            precompute_f32_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
-        let (argmax_params, argmax_wg) = precompute_argmax(&pipelines, vocab_size as u32);
-
-        log::info!("GGUF model loaded successfully ({:?} projections)", quant_format);
-
-        Ok(Self {
-            config,
-            pipelines,
-            embed_table,
-            lm_head,
-            layers,
-            final_norm_weight,
-            cos_cache,
-            sin_cache,
-            kv_cache,
-            past_seq_len: 0,
-            greedy_mode: false,
-            quant_format,
-            model_params: ModelParamBuffers {
-                final_norm_params,
-                final_norm_wg,
-                f32_matmul_params,
-                f32_matmul_wg,
-                argmax_params,
-                argmax_wg,
-            },
-            kv_compressor: None,
-        })
-    }
-
-    /// Load model from .cyb format — native path, no temp files.
-    /// Reads .cyb → Graph + config → directly to GPU via load_from_graph.
-    pub fn load_from_cyb(cyb_path: &Path, pipelines: Arc<Pipelines>) -> Result<Self, String> {
-        use crate::ir::DType;
-
-        let (graph, config_str) = crate::cyb_format::read_cyb(cyb_path)
-            .map_err(|e| format!("read .cyb failed: {e}"))?;
-
-        if graph.weights.is_empty() {
-            return Err("No weights in .cyb file".into());
-        }
-
-        // Parse config from embedded TOML
-        let get = |key: &str| -> Option<String> {
-            config_str.lines()
-                .find(|l| l.starts_with(key))
-                .and_then(|l| l.split('=').nth(1))
-                .map(|v| v.trim().trim_matches('"').to_string())
-        };
-        let get_usize = |key: &str| -> Option<usize> { get(key).and_then(|v| v.parse().ok()) };
-        let get_f32 = |key: &str| -> Option<f32> { get(key).and_then(|v| v.parse().ok()) };
-
-        let hidden_size = get_usize("hidden_size").ok_or("Missing hidden_size in .cyb config")?;
-        let num_heads = get_usize("num_attention_heads").ok_or("Missing num_attention_heads")?;
-        let kv_num_heads = get_usize("num_key_value_heads").unwrap_or(num_heads);
-        let num_layers = get_usize("num_hidden_layers").ok_or("Missing num_hidden_layers")?;
-        let head_dim = hidden_size / num_heads;
-        let rope_theta = get_f32("rope_theta").unwrap_or(10000.0);
-        let rms_norm_eps = get_f32("rms_norm_eps").unwrap_or(1e-5);
-        let vocab_size = get_usize("vocab_size").unwrap_or(32000);
-        let has_qk_norm = graph.weights.keys().any(|k| k.contains("q_norm") || k.contains("k_norm"));
-
-        let first_weight_dtype = graph.weights.values()
-            .find(|w| w.shape.len() >= 2 && w.data.len() > 1000)
-            .map(|w| w.dtype).unwrap_or(DType::F32);
-        let quant_format = match first_weight_dtype {
-            DType::Q4 | DType::Q4_K | DType::Q4_1 | DType::Q2_K | DType::Q3_K | DType::Q5_K | DType::Q6_K => QuantFormat::Q4,
-            DType::Q8 => QuantFormat::Q8,
-            DType::F16 => QuantFormat::F16,
-            DType::Ternary => QuantFormat::Ternary,
-            _ => QuantFormat::F32,
-        };
-
-        log::info!("CYB: hidden={hidden_size}, heads={num_heads}, kv={kv_num_heads}, layers={num_layers}, vocab={vocab_size}, quant={quant_format:?}");
-
-        let config = ModelConfig {
-            hidden_size, num_heads, kv_num_heads, head_dim,
-            num_layers, vocab_size, block_size: 32, has_qk_norm,
-        };
-
-        Self::load_from_graph(graph, config, quant_format, rope_theta, rms_norm_eps, pipelines)
     }
 
     /// Enable TurboQuant KV cache compression.
