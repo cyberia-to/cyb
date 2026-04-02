@@ -35,7 +35,7 @@ program is [[trident]] source code. describes the ENTIRE pipeline — not just f
 [cyb]
 types = ["model"]
 name = "qwen3-0.6b-abliterated"
-parameters = "0.6B"
+parameters = 600000000
 license = "Apache-2.0"
 languages = ["en", "zh", "ru"]
 
@@ -187,7 +187,7 @@ metadata about the model. NOT architecture — architecture is in the nox progra
 |-------|------|-------------|
 | model_type | string | qwen3, llama, bitnet, mimo, whisper, yolo |
 | architecture | string | HF class: Qwen3ForCausalLM, LlamaForCausalLM |
-| parameters | string | model size: "0.6B", "7B", "14B" |
+| parameters | u64 | parameter count: 600000000, 7000000000 |
 | license | string | SPDX: Apache-2.0, MIT |
 | languages | string[] | supported languages |
 | context_length | u32 | recommended working context |
