@@ -190,8 +190,8 @@ metadata about the model. NOT architecture — architecture is in the nox progra
 | parameters | field | parameter count: 600000000, 7000000000 |
 | license | string | SPDX: Apache-2.0, MIT |
 | languages | string[] | supported languages |
-| context_length | u32 | recommended working context |
-| max_position_embeddings | u32 | architectural max (RoPE limit) |
+| context_length | field | recommended working context |
+| max_position_embeddings | field | architectural max (RoPE limit) |
 
 config is pure metadata. architecture params (hidden_size, heads, layers) are in the nox program. if you need them for display — parse the nox.
 
