@@ -23,7 +23,7 @@ one file. ready for inference.
 | eval | toml | benchmark results (updatable by user for routing) |
 | weights | tensors | raw weight data (binary, page-aligned) |
 
-no optional files. everything is required. vocab is empty `{}` for models without tokenizer (YOLO, BEATs).
+no optional files. everything is required. vocab is empty `{}` for models without tokenizer.
 
 program reads all params from config — one program works for any model of the same architecture. change config → different model, same program.
 
@@ -31,8 +31,8 @@ two supported program languages:
 
 | format | path | use for |
 |--------|------|---------|
-| tri ([[trident]]) | trident → [[nox]] → [[zheng]] proof | provable inference, field arithmetic |
-| rs (Rust) | Rust → native binary | fast inference, [[acpu]]/[[aruminium]]/[[rane]] |
+| [[trident]] | trident → [[nox]] → [[zheng]] proof | provable inference, field arithmetic |
+| Rust | Rust → native binary | fast inference, [[acpu]]/[[aruminium]]/[[rane]] |
 
 ## frontmatter
 
