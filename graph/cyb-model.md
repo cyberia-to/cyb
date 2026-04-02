@@ -254,17 +254,31 @@ overhead: ~4KB padding per tensor × ~300 tensors = ~1.2MB. negligible vs GB of 
 
 ## encodings
 
-| encoding | bits/value | block_size | description |
-|-------|:-:|:-:|-------------|
-| f32 | 32 | 1 | full precision (norms, biases) |
-| f16 | 16 | 1 | half precision (small critical models) |
-| bf16 | 16 | 1 | brain float |
-| q8_0 | 8.5 | 32 | 8-bit block quantized (math, vision) |
-| q4_0 | 4.5 | 32 | 4-bit block quantized (general LLMs) |
-| q4_k | 4.5 | 256 | 4-bit K-quant (better quality) |
-| ternary | 1.58 | — | 1.58-bit (bitnet native) |
+no floats. all weights are integers. float models are converted to fixed-point integers at import time. this is not a lossy compromise — production inference already runs on integers (Q4/Q8 quantization IS integer arithmetic). we make it explicit.
 
-block quantization (q4_0, q8_0): each block of `block_size` values has one f16 scale factor + packed integers.
+integers are [[nox]] field elements. field arithmetic on GPU int tensor cores = provable inference at native hardware speed. no sixth algebra needed — integer inference IS [[nebu]] (F_p).
+
+| encoding | bits/value | block_size | type | description |
+|----------|:-:|:-:|------|-------------|
+| u32 | 32 | 1 | integer | full precision (norms, biases) |
+| u16 | 16 | 1 | integer | half precision (small critical models) |
+| q8 | 8.5 | 32 | block int | 8-bit quantized (math, vision sensitive) |
+| q4 | 4.5 | 32 | block int | 4-bit quantized (general LLMs) |
+| ternary | 1.58 | — | trit | 1.58-bit (bitnet, [[kuro]] native) |
+
+block quantization (q4, q8): each block of `block_size` values has one u16 scale factor + packed integers.
+
+### float → integer conversion at import
+
+| source | target | conversion |
+|--------|--------|-----------|
+| float32 | u32 | fixed-point: multiply by 2^16, round, store as u32 |
+| float16 | u16 | reinterpret mantissa + exponent as fixed-point u16 |
+| bfloat16 | u16 | same as float16 |
+| Q4_0 (GGUF) | q4 | already integers, copy directly |
+| Q8_0 (GGUF) | q8 | already integers, copy directly |
+
+quantized weights (Q4/Q8) are already integers — zero conversion needed. only norms and biases (originally float32) need fixed-point conversion. ~300 tensors out of ~300 for a typical model are already integer.
 
 ## tensor naming
 
