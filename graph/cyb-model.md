@@ -17,7 +17,7 @@ one file. ready for inference.
 |------|--------|-------------|
 | card | md | what this model is, how to use |
 | config | toml | all parameters: architecture, tokenizer, sampling, lineage |
-| program | trident or rs | entire pipeline: input → output (reads params from config) |
+| program | tri or rs | entire pipeline: input → output (reads params from config) |
 | tensors | toml | tensor index: names, shapes, encodings, offsets |
 | vocab | toml | full vocabulary: tokens + merge rules (empty for non-text models) |
 | eval | toml | benchmark results (updatable by user for routing) |
@@ -31,8 +31,8 @@ two supported program languages:
 
 | format | path | use for |
 |--------|------|---------|
-| trident | trident → [[nox]] → STARK proof | provable inference, field arithmetic |
-| rs | Rust → native binary | fast inference, [[acpu]]/[[aruminium]]/[[rane]] |
+| tri ([[trident]]) | trident → [[nox]] → STARK proof | provable inference, field arithmetic |
+| rs (Rust) | Rust → native binary | fast inference, [[acpu]]/[[aruminium]]/[[rane]] |
 
 a .model can contain both programs (as `program` and `program-native`). runtime picks based on need. two implementations = correctness verification.
 
@@ -53,7 +53,7 @@ format = "toml"
 
 [[files]]
 name = "program"
-format = "trident"
+format = "tri"
 
 [[files]]
 name = "tensors"
