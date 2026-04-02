@@ -309,7 +309,7 @@ matmul: +1 = add, -1 = subtract, 0 = skip.
 
 ## vocab
 
-full vocabulary in TOML. 151K tokens = ~6MB, parses in 91ms. empty `{}` for non-text models (YOLO, BEATs).
+full vocabulary in TOML. fast to parse. empty `{}` for non-text models.
 
 ## eval
 
