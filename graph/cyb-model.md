@@ -15,11 +15,10 @@ one file = architecture + weights + vocabulary + chat template + benchmarks. rea
 
 | name | format | content |
 |------|--------|---------|
-| config | toml | architecture parameters |
+| config | toml | architecture + tokenizer metadata |
 | program | nox | forward pass (compiles to hardware via [[trident]]) |
 | index | toml | tensor index (names, shapes, dtypes, offsets) |
-| vocab | toml | tokenizer metadata (type, special tokens) |
-| vocab-data | raw | full vocabulary (token strings + merge rules, binary) |
+| vocab | toml | full vocabulary: tokens + merge rules (~6MB, 91ms parse) |
 | weights | tensors | raw weight data (binary) |
 
 ## optional files
@@ -96,6 +95,14 @@ max_position_embeddings = 40960
 rope_theta = 1000000.0
 rms_norm_eps = 0.000001
 tie_word_embeddings = true
+context_length = 32768
+
+[tokenizer]
+type = "bpe"
+vocab_size = 151936
+bos_id = 151643
+eos_id = 151645
+pad_id = 151643
 
 ~~~program
 transformer_decoder {
@@ -119,12 +126,18 @@ transformer_decoder {
 "model.layers.0.input_layernorm.weight" = { shape = [1024], dtype = "f32", offset = 313131008, size = 4096 }
 
 ~~~vocab
-type = "bpe"
-vocab_size = 151936
-merges_count = 151387
-bos_id = 151643
-eos_id = 151645
-pad_id = 151643
+[tokens]
+0 = "<unk>"
+1 = "<s>"
+2 = "</s>"
+3 = "▁the"
+4 = "▁of"
+# ... 151936 tokens total
+
+[merges]
+0 = ["▁", "t"]
+1 = ["▁t", "h"]
+# ... 151387 merges total
 
 ~~~chat
 format = "chatml"
@@ -305,16 +318,30 @@ import converts GGUF names to HF at pack time:
 
 ## vocab
 
-metadata in `~~~vocab` (TOML, text):
+full vocabulary in TOML. human-readable, grep-able. 151K tokens = ~6MB, parses in 91ms.
 
 ```toml
 type = "bpe"
 vocab_size = 151936
 bos_id = 151643
 eos_id = 151645
+pad_id = 151643
+
+[tokens]
+0 = "<unk>"
+1 = "<s>"
+2 = "</s>"
+3 = "▁the"
+4 = "▁of"
+151935 = "▁сверхразум"
+
+[merges]
+0 = ["▁", "t"]
+1 = ["▁t", "h"]
+2 = ["th", "e"]
 ```
 
-full vocabulary data (token strings + merge rules) in `~~~vocab-data` (binary). loaded by tokenizer at runtime.
+`grep "сверхразум" model.model` → finds token ID. try that with tokenizer.json.
 
 ## lineage
 
