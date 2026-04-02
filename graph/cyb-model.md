@@ -17,7 +17,7 @@ one file = program + weights + vocabulary + documentation. ready for inference.
 |------|--------|-------------|
 | card | md | what this model is, how to use |
 | config | toml | metadata: name, license, parameters, languages |
-| program | trident | entire pipeline: input → output (compiles to [[nox]]) |
+| program | trident or rs | entire pipeline: input → output |
 | tensors | toml | tensor index: names, shapes, encodings, offsets |
 | vocab | toml | full vocabulary: tokens + merge rules |
 | eval | toml | benchmark results (updatable by user) |
@@ -25,9 +25,18 @@ one file = program + weights + vocabulary + documentation. ready for inference.
 
 seven files. model runs. first thing you see is the card. eval is live — user updates it with real benchmarks, routing uses it to pick the best model for the task.
 
-program is [[trident]] source code. describes the ENTIRE pipeline — not just forward pass. input formatting, tokenization, embedding, forward, sampling, decoding — all in one program. no separate chat template, no separate sampling config, no separate preprocessor. the program IS the behavior.
+program describes the ENTIRE pipeline — not just forward pass. input formatting, tokenization, embedding, forward, sampling, decoding — all in one program. no separate chat template, no separate sampling config, no separate preprocessor. the program IS the behavior.
 
-[[trident]] compiles to [[nox]] (18-instruction VM) which executes on any hardware. trident has `std.nn.tensor` (dot, matvec, relu, scale), type system (Field, U32, Bool, Digest), generics, modules. every execution produces a STARK proof.
+two supported languages:
+
+| format | path | use for |
+|--------|------|---------|
+| trident | trident → [[nox]] → STARK proof | provable inference, field arithmetic |
+| rs | Rust → native binary | fast inference, [[acpu]]/[[aruminium]]/[[rane]] |
+
+both describe the same pipeline. both produce the same result. trident proves it. rs runs it fast. a .model can contain both — runtime picks based on need.
+
+two implementations also enable correctness verification: if trident and rs produce the same output for the same input, the implementation is correct.
 
 ## example
 
