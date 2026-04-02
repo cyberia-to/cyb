@@ -18,14 +18,14 @@ one file = architecture + weights + vocabulary + chat template + benchmarks. rea
 | config | toml | architecture parameters |
 | program | nox | forward pass (compiles to hardware via [[trident]]) |
 | index | toml | tensor index (names, shapes, dtypes, offsets) |
+| vocab | toml | tokenizer metadata (type, special tokens) |
+| vocab-data | raw | full vocabulary (token strings + merge rules, binary) |
 | weights | tensors | raw weight data (binary) |
 
 ## optional files
 
 | name | format | content |
 |------|--------|---------|
-| vocab | toml | tokenizer metadata (type, special tokens) |
-| vocab-data | raw | full vocabulary (token strings + merge rules, binary) |
 | chat | toml | chat template + special tokens |
 | sampling | toml | default inference parameters |
 | preprocess | toml | image/audio/video preprocessing |
@@ -179,15 +179,20 @@ architecture parameters:
 |-------|------|-------------|
 | model_type | string | runtime dispatch: qwen3, llama, bitnet, mimo, whisper, yolo |
 | architecture | string | HF class: Qwen3ForCausalLM, LlamaForCausalLM |
-| hidden_size | u32 | embedding dimension |
+| hidden_size | u32 | embedding/hidden dimension |
 | num_attention_heads | u32 | query heads |
 | num_key_value_heads | u32 | KV heads (GQA) |
 | num_hidden_layers | u32 | transformer layers |
 | intermediate_size | u32 | FFN hidden dimension |
 | vocab_size | u32 | vocabulary size |
-| max_position_embeddings | u32 | maximum context length |
+| max_position_embeddings | u32 | architectural max context (RoPE limit) |
+| context_length | u32 | recommended working context |
 | rope_theta | f32 | rotary position embedding base |
 | rms_norm_eps | f32 | normalization epsilon |
+
+`max_position_embeddings` is what the architecture supports. `context_length` is the tested working range. with TurboQuant KV compression, effective context at runtime can exceed `context_length` — that is a runtime property, not a model property.
+
+embedding lookup and output projection are defined by the nox program (`embed: token_embed`, `output: linear`). the runtime maps these to tensors by HF naming convention (`model.embed_tokens.weight`, `model.lm_head.weight`).
 
 ## nox program
 
