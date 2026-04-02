@@ -19,9 +19,10 @@ one file = architecture + weights + vocabulary + chat template + benchmarks. rea
 | program | nox | entire pipeline: input → output (18 instructions, asm) |
 | tensors | toml | tensor index: names, shapes, dtypes, offsets |
 | vocab | toml | full vocabulary: tokens + merge rules |
+| card | md | model documentation: what it does, how to use, benchmarks |
 | weights | tensors | raw weight data (binary, page-aligned) |
 
-five files. that is it. model runs.
+six files. model runs. anyone can understand what it is.
 
 program is [[nox]] assembly (18 instructions). describes the ENTIRE pipeline — not just forward pass. input formatting, tokenization, embedding, forward, sampling, decoding — all in one program. no separate chat template, no separate sampling config, no separate preprocessor. the program IS the behavior.
 
@@ -33,7 +34,6 @@ program is [[nox]] assembly (18 instructions). describes the ENTIRE pipeline —
 |------|--------|-------------|
 | source | trident | human-readable source of the nox program |
 | eval | toml | benchmark results |
-| card | md | model documentation |
 
 ## example
 
