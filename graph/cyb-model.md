@@ -31,7 +31,7 @@ two supported program languages:
 
 | format | path | use for |
 |--------|------|---------|
-| tri ([[trident]]) | trident → [[nox]] → STARK proof | provable inference, field arithmetic |
+| tri ([[trident]]) | trident → [[nox]] → [[zheng]] proof | provable inference, field arithmetic |
 | rs (Rust) | Rust → native binary | fast inference, [[acpu]]/[[aruminium]]/[[rane]] |
 
 a .model can contain both programs (as `program` and `program-native`). runtime picks based on need. two implementations = correctness verification.
@@ -194,7 +194,7 @@ pub fn forward(input: Field, output: Field, seq: Field, cfg: Config) {
 | | trident | rs |
 |--|---------|-----|
 | compiles to | [[nox]] (18 instructions) | native binary |
-| proof | STARK witness every execution | none |
+| proof | [[zheng]] witness every execution | none |
 | speed | field arithmetic | native hardware ([[acpu]]/[[aruminium]]/[[rane]]) |
 | std lib | `std.nn.tensor` | full Rust ecosystem |
 
@@ -205,7 +205,7 @@ pub fn forward(input: Field, output: Field, seq: Field, cfg: Config) {
 | size | millions of nodes | ~30 lines |
 | flash attention | cannot express | `tensor.flash_attention()` |
 | parametric | no (frozen shapes) | yes (reads config) |
-| proof | not possible | every trident execution = STARK |
+| proof | not possible | every trident execution = [[zheng]] proof |
 | hardware | runtime rewrites graph | compiles to 28 targets |
 
 ### behavior is code
