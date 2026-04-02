@@ -841,205 +841,113 @@ fn run_status() {
 
     let base = manifest::models_dir();
 
-    // Parse config.toml for each model to get architecture info
-    #[allow(dead_code)]
-    struct ModelInfo {
-        model_type: String,
-        hidden: String,
-        layers: String,
-        ctx: String,
-        quant: String,
-    }
-
-    fn read_model_info(dir: &std::path::Path) -> ModelInfo {
-        let config_path = dir.join("config.toml");
-        let content = std::fs::read_to_string(&config_path).unwrap_or_default();
-
-        let get = |key: &str| -> String {
-            content.lines()
-                .find(|l| l.starts_with(key))
-                .and_then(|l| l.split('=').nth(1))
-                .map(|v| v.trim().trim_matches('"').to_string())
-                .unwrap_or_default()
-        };
-
-        let model_type = get("model_type");
-        let hidden = get("hidden_size");
-        let layers = get("num_hidden_layers");
-        let ctx = get("max_position_embeddings");
-
-        // Detect quant from weights file
-        let quant = if dir.join("weights.gguf").exists()
-            || std::fs::read_dir(dir).into_iter().flatten().flatten()
-                .any(|e| e.path().extension().map(|x| x == "cyb").unwrap_or(false))
-        {
-            // Read from manifest spec
-            "cyb".to_string()
-        } else {
-            "—".to_string()
-        };
-
-        ModelInfo { model_type, hidden, layers, ctx, quant }
-    }
-
     println!();
-    println!("  \x1b[1mcyb-llm model status\x1b[0m — {}", base.display());
+    println!("  \x1b[1mcyb-llm status\x1b[0m — {}", base.display());
     println!();
 
-    // Header
-    println!("  {:<22} {:<5} {:<10} {:>5} {:>3} {:>5} {:>6} {:>6} {:>4} {}",
-        "MODEL", "TIER", "TYPE", "DISK", "L", "CTX", "LOAD", "TOK/S", "GEN", "NOTES");
-    println!("  {}", "─".repeat(90));
+    println!("  {:<28} {:<5} {:<8} {:>6} {:>3} {:>6} {:>5} {:>6} {:>4}",
+        "MODEL", "TIER", "TYPE", "SIZE", "L", "CTX", "LOAD", "TOK/S", "GEN");
+    println!("  {}", "─".repeat(80));
 
     let mut total_disk = 0u64;
     let mut total_ok = 0usize;
-    let mut total_models = 0usize;
 
     for spec in MANIFEST {
-        let dir = base.join(spec.name);
-        total_models += 1;
+        let model_path = base.join(format!("{}.model", spec.name));
 
-        if !dir.exists() {
-            println!("  {:<22} {:<5} {:<10} {:>5} {:>3} {:>5} {:>6} {:>6} {:>4} \x1b[31mMISSING\x1b[0m",
-                spec.name, spec.tier, "—", "—", "—", "—", "—", "—", "—");
+        if !model_path.exists() {
+            println!("  {:<28} {:<5} {:>8} \x1b[31mMISSING\x1b[0m",
+                spec.name, spec.tier, "—");
             continue;
         }
 
-        let info = read_model_info(&dir);
-
-        // Disk size
-        let disk_bytes = dir_size_status(&dir);
+        let disk_bytes = model_path.metadata().map(|m| m.len()).unwrap_or(0);
         total_disk += disk_bytes;
 
-        // Has .cyb?
-        let has_cyb = std::fs::read_dir(&dir).into_iter().flatten().flatten()
-            .any(|e| ext_is(&e.path(), "cyb"));
-
-        // Load test
-        let (load_ok, load_ms) = if has_cyb {
-            let cyb_path = std::fs::read_dir(&dir).into_iter().flatten().flatten()
-                .find(|e| ext_is(&e.path(), "cyb"))
-                .map(|e| e.path());
-            match cyb_path {
-                Some(p) => {
-                    let start = std::time::Instant::now();
-                    match cyb_llm::cyb_format::read_cyb_config(&p) {
-                        Ok(cfg) => (!cfg.is_empty(), start.elapsed().as_millis() as u64),
-                        Err(_) => (false, 0),
-                    }
-                }
-                None => (false, 0),
+        // Read config from .model file (fast — only parses text, skips weights)
+        let (model_type, hidden, layers, ctx) = match cyb_llm::cyb_format::read_model_file(&model_path) {
+            Ok(mf) => {
+                let get = |section: &str, key: &str| -> String {
+                    section.lines()
+                        .find(|l| l.starts_with(key))
+                        .and_then(|l| l.split('=').nth(1))
+                        .map(|v| v.trim().trim_matches('"').to_string())
+                        .unwrap_or_default()
+                };
+                let mt = get(&mf.config, "model_type");
+                // Try [architecture] section values
+                let h = get(&mf.config, "hidden_size");
+                let l = get(&mf.config, "num_hidden_layers");
+                let c = {
+                    let v = get(&mf.config, "max_position_embeddings");
+                    if v.is_empty() { get(&mf.config, "context_length") } else { v }
+                };
+                (mt, h, l, c)
             }
-        } else {
-            (false, 0)
+            Err(_) => (String::new(), String::new(), String::new(), String::new()),
         };
 
-        // Format columns
-        let type_str = if info.model_type.is_empty() { "—".to_string() } else { info.model_type.clone() };
-        let layers_str = if info.layers.is_empty() { "—".to_string() } else { info.layers.clone() };
-        let ctx_str = if info.ctx.is_empty() {
+        // Load test: parse config section
+        let start = std::time::Instant::now();
+        let load_ok = cyb_llm::cyb_format::read_model_file(&model_path).is_ok();
+        let load_ms = start.elapsed().as_millis() as u64;
+
+        let type_str = if model_type.is_empty() { "—" } else { &model_type };
+        let layers_str = if layers.is_empty() { "—".to_string() } else { layers.clone() };
+        let ctx_str = if ctx.is_empty() {
             "—".to_string()
-        } else if let Ok(n) = info.ctx.parse::<u64>() {
-            if n >= 1000 { format!("{}K", n / 1000) } else { info.ctx.clone() }
-        } else {
-            info.ctx.clone()
-        };
-        let load_str = if load_ms > 0 { format!("{load_ms}ms") } else { "—".to_string() };
+        } else if let Ok(n) = ctx.parse::<u64>() {
+            if n >= 1000 { format!("{}K", n / 1000) } else { ctx }
+        } else { ctx };
+        let load_str = if load_ms > 0 { format!("{}ms", load_ms) } else { "—".to_string() };
 
-        if load_ok && has_cyb {
-            total_ok += 1;
-        }
+        if load_ok { total_ok += 1; }
 
-        // Bench: tok/s + quality (only for decoder LLMs with weights.gguf + tokenizer)
-        let is_decoder = matches!(info.model_type.as_str(),
-            "qwen2" | "qwen3" | "qwen3_5_vl" | "qwen2_vl" | "llama" | "phi3"
-            | "bitnet" | "mimo" | "moondream");
-        let has_weights = has_cyb
-            || dir.join("weights.gguf").exists()
-            || dir.join("weights.safetensors").exists()
-            || std::fs::read_dir(&dir).into_iter().flatten().flatten()
-                .any(|e| ext_is(&e.path(), "gguf"));
-        let (tok_s_str, quality_str) = if is_decoder && has_weights
-            && dir.join("tokenizer.json").exists()
-        {
+        // Bench: tok/s + quality for decoder LLMs
+        let is_decoder = matches!(model_type.as_str(),
+            "qwen2" | "qwen3" | "llama" | "phi3" | "bitnet" | "mimo");
+        let tokenizer_path = base.join(spec.name).join("tokenizer.json");
+        let (tok_s_str, quality_str) = if is_decoder && tokenizer_path.exists() {
             eprint!("  bench {}...\r", spec.name);
-            quick_bench(&dir)
+            quick_bench_model(&model_path, &tokenizer_path)
         } else {
             ("—".into(), "—".into())
         };
 
-        // Notes
-        let mut notes = Vec::new();
-        if !has_cyb { notes.push("no .cyb"); }
-        if !dir.join("config.toml").exists() { notes.push("no config"); }
-        let notes_str = if notes.is_empty() {
-            if !info.hidden.is_empty() { format!("h={}", info.hidden) } else { String::new() }
-        } else {
-            format!("\x1b[33m{}\x1b[0m", notes.join(", "))
-        };
-
-        println!("  {:<22} {:<5} {:<10} {:>5} {:>3} {:>5} {:>6} {:>6} {:>4} {}",
+        println!("  {:<28} {:<5} {:<8} {:>6} {:>3} {:>6} {:>5} {:>6} {:>4}",
             spec.name, spec.tier, type_str,
             format_size(disk_bytes), layers_str, ctx_str,
-            load_str, tok_s_str, quality_str, notes_str);
+            load_str, tok_s_str, quality_str);
     }
 
-    println!("  {}", "─".repeat(82));
+    println!("  {}", "─".repeat(80));
     println!();
-    println!("  \x1b[1m{}\x1b[0m models  ·  \x1b[32m{}\x1b[0m/\x1b[1m{}\x1b[0m ready  ·  {} on disk",
-        total_models, total_ok, total_models, format_size(total_disk));
+    println!("  \x1b[1m{}\x1b[0m models  ·  \x1b[32m{}\x1b[0m ready  ·  {} on disk",
+        MANIFEST.len(), total_ok, format_size(total_disk));
     println!();
-}
-
-fn dir_size_status(path: &std::path::Path) -> u64 {
-    let mut total = 0u64;
-    if let Ok(entries) = std::fs::read_dir(path) {
-        for entry in entries.flatten() {
-            let p = entry.path();
-            if p.is_dir() {
-                total += dir_size_status(&p);
-            } else {
-                total += p.metadata().map(|m| m.len()).unwrap_or(0);
-            }
-        }
-    }
-    total
 }
 
 fn ext_is(path: &std::path::Path, ext: &str) -> bool {
     path.extension().and_then(|e| e.to_str()).map(|e| e == ext).unwrap_or(false)
 }
 
-/// Quick bench: load model, generate a few tokens, measure tok/s + check sanity.
-/// Returns (tok_per_sec, quality) where quality is "ok"/"bad"/"—"
-fn quick_bench(model_dir: &std::path::Path) -> (String, String) {
-    let tokenizer_path = model_dir.join("tokenizer.json");
-    if !tokenizer_path.exists() {
-        return ("—".into(), "—".into());
-    }
-
-    let cyb_path = match std::fs::read_dir(model_dir).into_iter().flatten().flatten()
-        .find(|e| ext_is(&e.path(), "cyb")).map(|e| e.path())
-    {
-        Some(p) => p,
-        None => return ("—".into(), "—".into()),
-    };
-
-    // Suppress verbose logs during bench
+/// Quick bench: load .model, generate a few tokens, measure tok/s + check sanity.
+fn quick_bench_model(model_path: &std::path::Path, tokenizer_path: &std::path::Path) -> (String, String) {
     let prev = log::max_level();
     log::set_max_level(log::LevelFilter::Error);
 
     let backend = cyb_llm::backend::create_wgpu_backend();
     let mut generator = match cyb_llm::generate::TextGenerator::new(
-        &cyb_path, &tokenizer_path, backend.pipelines,
+        model_path, tokenizer_path, backend.pipelines,
     ) {
         Ok(g) => g,
         Err(e) => {
             log::set_max_level(prev);
-            return ("fail".into(), format!("\x1b[31m{e}\x1b[0m"));
+            return ("fail".into(), format!("\x1b[31m{}\x1b[0m", &e[..e.len().min(40)]));
         },
     };
 
+    let model_dir = model_path.parent().unwrap_or(std::path::Path::new("."));
     let prompt = cyb_llm::generate::apply_chat_template("What is 2+2?", model_dir);
     let result = generator.generate_quiet(&prompt, 16, 0.0);
 
@@ -1052,20 +960,14 @@ fn quick_bench(model_dir: &std::path::Path) -> (String, String) {
 
             let tok_s = if stats.decode_tokens > 0 && stats.decode_ms > 10 {
                 stats.decode_tokens as f64 / (stats.decode_ms as f64 / 1000.0)
-            } else {
-                0.0
-            };
+            } else { 0.0 };
 
             let has_answer = text.contains('4') || text.to_lowercase().contains("four");
             let is_garbage = text.len() < 2 || text.chars().filter(|c| c.is_alphanumeric()).count() < 3;
 
-            let quality = if is_garbage {
-                "\x1b[31mbad\x1b[0m"
-            } else if has_answer {
-                "\x1b[32mok\x1b[0m"
-            } else {
-                "\x1b[33m??\x1b[0m"
-            };
+            let quality = if is_garbage { "\x1b[31mbad\x1b[0m" }
+                else if has_answer { "\x1b[32mok\x1b[0m" }
+                else { "\x1b[33m??\x1b[0m" };
 
             (format!("{:.1}", tok_s), quality.into())
         }
