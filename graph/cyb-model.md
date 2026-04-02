@@ -17,7 +17,7 @@ one file = architecture + weights + vocabulary + chat template + benchmarks. rea
 |------|--------|---------|
 | config | toml | architecture parameters |
 | program | nox | forward pass (compiles to hardware) |
-| weights | safetensors | tensor data |
+| weights | tensors | weight data (own format, see below) |
 
 ## optional files
 
@@ -80,8 +80,12 @@ format = "md"
 [[files]]
 name = "weights"
 type = "model"
-format = "safetensors"
+format = "tensors"
 size = 1200000000
+
+[files.tensors]
+"model.embed_tokens.weight" = { shape = [151936, 1024], dtype = "f16", offset = 0, size = 311361536 }
+"model.layers.0.self_attn.q_proj.weight" = { shape = [2048, 1024], dtype = "q4_0", offset = 311361536, size = 1179648 }
 
 ~~~config
 model_type = "qwen3"
@@ -249,9 +253,52 @@ hop_length = 160
 n_mels = 80
 ```
 
-## weight tensor naming
+## weights format: tensors
 
-HuggingFace convention (canonical):
+own binary format. tensor index in TOML frontmatter, raw data in binary zone. no dependency on GGUF or safetensors parsers.
+
+### tensor index
+
+each tensor declared in frontmatter under `[files.tensors]`:
+
+```toml
+[[files]]
+name = "weights"
+format = "tensors"
+size = 1200000000
+
+[files.tensors]
+"model.embed_tokens.weight" = { shape = [151936, 1024], dtype = "f16", offset = 0, size = 311361536 }
+"model.layers.0.self_attn.q_proj.weight" = { shape = [2048, 1024], dtype = "q4_0", offset = 311361536, size = 1179648 }
+"model.layers.0.self_attn.k_proj.weight" = { shape = [1024, 1024], dtype = "q4_0", offset = 312541184, size = 589824 }
+"model.layers.0.input_layernorm.weight" = { shape = [1024], dtype = "f32", offset = 313131008, size = 4096 }
+```
+
+per-tensor fields:
+- `shape` — dimensions
+- `dtype` — data type (see table below)
+- `offset` — byte offset from start of `~~~weights` binary zone
+- `size` — byte count
+
+binary zone after `~~~weights` is raw concatenated tensor data. 64-byte aligned per tensor (for AMX/DMA).
+
+### dtypes
+
+| dtype | bits/value | block_size | description |
+|-------|:-:|:-:|-------------|
+| f32 | 32 | 1 | full precision (norms, biases) |
+| f16 | 16 | 1 | half precision (small critical models) |
+| bf16 | 16 | 1 | brain float |
+| q8_0 | 8.5 | 32 | 8-bit quantized (math, vision) |
+| q4_0 | 4.5 | 32 | 4-bit quantized (general LLMs) |
+| q4_k | 4.5 | 256 | 4-bit K-quant (better quality) |
+| ternary | 1.58 | — | 1.58-bit (bitnet native) |
+
+block quantization (q4_0, q8_0): each block of `block_size` values has one f16 scale factor + packed integers. byte layout matches GGUF block format for compatibility.
+
+### tensor naming
+
+HuggingFace convention is canonical. this is the only naming scheme .model files use:
 
 ```
 model.embed_tokens.weight
@@ -259,29 +306,45 @@ model.layers.{i}.self_attn.q_proj.weight
 model.layers.{i}.self_attn.k_proj.weight
 model.layers.{i}.self_attn.v_proj.weight
 model.layers.{i}.self_attn.o_proj.weight
+model.layers.{i}.self_attn.q_norm.weight
+model.layers.{i}.self_attn.k_norm.weight
 model.layers.{i}.mlp.gate_proj.weight
 model.layers.{i}.mlp.up_proj.weight
 model.layers.{i}.mlp.down_proj.weight
 model.layers.{i}.input_layernorm.weight
 model.layers.{i}.post_attention_layernorm.weight
 model.norm.weight
-lm_head.weight
+model.lm_head.weight
 ```
 
-import pipeline normalizes GGUF names (`blk.{i}.attn_q.weight`) to HF convention during .cyb creation.
+import pipeline converts other naming conventions (GGUF `blk.{i}.attn_q`, ONNX paths) to HF at pack time. runtime only sees HF names.
 
-## quantization
+### import conversion table (GGUF → HF)
 
-per-tensor quantization declared in tensor_index within the weights:
+| GGUF | HF |
+|------|-----|
+| token_embd.weight | model.embed_tokens.weight |
+| output_norm.weight | model.norm.weight |
+| output.weight | model.lm_head.weight |
+| blk.{i}.attn_norm.weight | model.layers.{i}.input_layernorm.weight |
+| blk.{i}.attn_q.weight | model.layers.{i}.self_attn.q_proj.weight |
+| blk.{i}.attn_k.weight | model.layers.{i}.self_attn.k_proj.weight |
+| blk.{i}.attn_v.weight | model.layers.{i}.self_attn.v_proj.weight |
+| blk.{i}.attn_output.weight | model.layers.{i}.self_attn.o_proj.weight |
+| blk.{i}.ffn_norm.weight | model.layers.{i}.post_attention_layernorm.weight |
+| blk.{i}.ffn_gate.weight | model.layers.{i}.mlp.gate_proj.weight |
+| blk.{i}.ffn_up.weight | model.layers.{i}.mlp.up_proj.weight |
+| blk.{i}.ffn_down.weight | model.layers.{i}.mlp.down_proj.weight |
 
-| method | bits/weight | use for |
-|--------|:-:|---------|
-| f16 | 16 | small critical models (router, intent) |
-| q8_0 | 8.5 | math, vision (quality sensitive) |
-| q4_0 | 4.5 | general LLMs (standard) |
-| ternary | 1.58 | bitnet (native) |
+### why own format instead of safetensors/GGUF
 
-KV cache compression via [[TurboQuant]] (PolarQuant + QJL) at runtime — not stored in .cyb.
+safetensors does not support block quantization (Q4, Q8). storing quantized tensors in safetensors loses dtype metadata — runtime cannot distinguish Q4 from raw U8.
+
+GGUF supports quantization but brings its own naming convention, metadata format, and architectural assumptions. dependency on GGUF = dependency on llama.cpp decisions.
+
+own format: tensor index in TOML (readable, editable), binary data with per-tensor dtype and alignment, HF naming canonical, zero external dependencies.
+
+KV cache compression via TurboQuant (PolarQuant + QJL) happens at runtime — not stored in model file.
 
 ## model lineage
 
