@@ -5,9 +5,9 @@ crystal-domain: cyber
 alias: .model, model format, cyb model spec
 ---
 
-# .model — neural network in [[format]]
+# .model — neural network in [[.cyb|format]]
 
-.model is a [[format]]-compatible extension. a .model file IS a .cyb file — same three rules, same parsing. the extension tells tools and humans: this container holds a neural network.
+.model follows the [[.cyb|format]] three rules. a .model file IS a .cyb file — same parsing, same tools. the extension tells humans and tools: this container holds a neural network.
 
 one file. ready for inference.
 
@@ -33,8 +33,6 @@ two supported program languages:
 |--------|------|---------|
 | tri ([[trident]]) | trident → [[nox]] → [[zheng]] proof | provable inference, field arithmetic |
 | rs (Rust) | Rust → native binary | fast inference, [[acpu]]/[[aruminium]]/[[rane]] |
-
-a .model can contain both programs (as `program` and `program-native`). runtime picks based on need. two implementations = correctness verification.
 
 ## frontmatter
 
@@ -113,7 +111,7 @@ vocab_size = 151936
 context_length = 32768
 max_position_embeddings = 40960
 rope_theta = 1000000
-rms_norm_eps = 1
+rms_norm_eps = 1000000
 
 [tokenizer]
 type = "bpe"
@@ -139,9 +137,11 @@ method = "abliteration"
 | [sampling] | integers with scale (700/1000 = 0.7) |
 | [lineage] | provenance ([[hemera]] verifiable) |
 
+integer conventions: rms_norm_eps stores 1/ε (1000000 → ε = one millionth). sampling uses explicit scale (700/1000 = 0.7). eval scores are per-mille (991 = 99.1%).
+
 ## program
 
-the entire inference pipeline as source code. reads all params from config — NOT hardcoded. change config → different model, same program. ALL behavior lives in the program — chat formatting, sampling strategy, tokenization. to change how the model talks, change the program, not a config file.
+the entire inference pipeline as source code. reads all params from config — not hardcoded. change config → different model, same program. all behavior lives here — chat formatting, sampling strategy, tokenization. to change how the model talks, change the program, not a config file.
 
 ```trident
 ~~~program
@@ -150,6 +150,17 @@ module model.pipeline
 use vm.io.io
 use vm.core.convert
 use std.nn.tensor
+
+// chat formatting — behavior is code, not config
+pub fn format_chatml(messages: &[Message], cfg: Config) {
+    for msg in messages {
+        io.write_token(cfg.tokenizer.bos_id)
+        io.write_string(msg.role)
+        io.write_string("\n")
+        io.write_string(msg.content)
+        io.write_token(cfg.tokenizer.eos_id)
+    }
+}
 
 pub fn forward(input: Field, output: Field, seq: Field, cfg: Config) {
     let a = cfg.architecture
@@ -208,43 +219,6 @@ pub fn forward(input: Field, output: Field, seq: Field, cfg: Config) {
 | proof | not possible | every trident execution = [[zheng]] proof |
 | hardware | runtime rewrites graph | compiles to 28 targets |
 
-### behavior is code
-
-chat formatting, sampling, preprocessing — all in the program, not in config files. examples of what program controls:
-
-```trident
-// chat formatting — chatml style
-pub fn format_chatml(messages: &[Message], cfg: Config) {
-    for msg in messages {
-        io.write_token(cfg.tokenizer.bos_id)
-        io.write_string(msg.role)
-        io.write_string("\n")
-        io.write_string(msg.content)
-        io.write_token(cfg.tokenizer.eos_id)
-    }
-}
-
-// different model, different formatting — just change the program:
-// llama3 style
-pub fn format_llama3(messages: &[Message], cfg: Config) {
-    io.write_string("<|begin_of_text|>")
-    for msg in messages {
-        io.write_string("<|start_header_id|>")
-        io.write_string(msg.role)
-        io.write_string("<|end_header_id|>\n\n")
-        io.write_string(msg.content)
-        io.write_string("<|eot_id|>")
-    }
-}
-
-// sampling — want greedy instead of top_p? change one line:
-let token: Field = tensor.argmax(logits, a.vocab_size)
-// instead of:
-let token: Field = tensor.sample_top_p(logits, a.vocab_size, cfg.sampling.top_p, cfg.sampling.temperature)
-```
-
-same weights, same config, different behavior. the program is the model's personality.
-
 ## tensors
 
 TOML index. one entry per tensor. tensor names follow HuggingFace convention.
@@ -276,7 +250,7 @@ full vocabulary in TOML. fast to parse. empty `{}` for non-text models.
 
 ## eval
 
-live benchmark results. user updates after testing. routing reads eval to pick the best model.
+live benchmark results. scores are per-mille (0–1000). user updates after testing. routing reads eval to pick the best model.
 
 ```toml
 ~~~eval
@@ -358,7 +332,7 @@ file.model
   → read ~~~tensors → tensor map
   → read ~~~vocab → tokenizer
   → read ~~~eval → routing data
-  → mmap ~~~weights into unimem (zero-copy)
+  → load ~~~weights into unimem (zero-copy)
   → inference ready
 ```
 
