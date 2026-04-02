@@ -36,9 +36,9 @@ two supported program languages:
 
 a .model can contain both programs (as `program` and `program-native`). runtime picks based on need. two implementations = correctness verification.
 
-## example
+## frontmatter
 
-```
+```toml
 [cyb]
 types = ["model"]
 name = "qwen3-0.6b-abliterated"
@@ -71,7 +71,13 @@ format = "toml"
 name = "weights"
 format = "tensors"
 size = 1200000000
+```
 
+## card
+
+first thing you see. markdown.
+
+```markdown
 ~~~card
 # qwen3-0.6b-abliterated
 
@@ -83,7 +89,13 @@ abliterated: refusal vectors removed from weights.
 
 source: huihui-ai/Qwen3-0.6B-abliterated
 license: Apache 2.0
+```
 
+## config
+
+everything about the model. program reads params from config — one program works for any model of the same architecture. all numeric values are integers. no floats.
+
+```toml
 ~~~config
 model_type = "qwen3"
 parameters = 600000000
@@ -117,7 +129,21 @@ scale = 1000
 [lineage]
 source = "huihui-ai/Qwen3-0.6B-abliterated"
 method = "abliteration"
+```
 
+| section | what it holds |
+|---------|---------------|
+| top-level | model_type, parameters, license, languages |
+| [architecture] | what program reads (hidden_size, heads, layers, etc.) |
+| [tokenizer] | type, bos_id, eos_id, pad_id |
+| [sampling] | integers with scale (700/1000 = 0.7) |
+| [lineage] | provenance ([[hemera]] verifiable) |
+
+## program
+
+the entire inference pipeline as source code. reads all params from config — NOT hardcoded. change config → different model, same program.
+
+```trident
 ~~~program
 module model.pipeline
 
@@ -129,108 +155,32 @@ pub fn forward(input_addr: Field, output_addr: Field, seq_len: Field,
                cfg: Config) {
     let a: Architecture = cfg.architecture
     let tokens: Field = io.bpe_encode(input_addr, seq_len, a.vocab_size)
-    let hidden: Field = tensor.embed(tokens, seq_len, a.hidden_size,
-                                     a.vocab_size)
+    let hidden: Field = tensor.embed(tokens, seq_len, a.hidden_size, a.vocab_size)
 
     for layer in 0..a.num_hidden_layers bounded 128 {
         let l: Field = convert.as_field(layer)
         hidden = tensor.rmsnorm(hidden, seq_len, a.hidden_size, a.rms_norm_eps)
-        let q: Field = tensor.matvec(hidden, l,
-                                     a.num_attention_heads * a.head_dim,
-                                     a.hidden_size)
-        let k: Field = tensor.matvec(hidden, l,
-                                     a.num_key_value_heads * a.head_dim,
-                                     a.hidden_size)
-        let v: Field = tensor.matvec(hidden, l,
-                                     a.num_key_value_heads * a.head_dim,
-                                     a.hidden_size)
-        let attn: Field = tensor.flash_attention(q, k, v,
-                                                 a.num_attention_heads,
-                                                 a.num_key_value_heads,
-                                                 a.head_dim, seq_len)
+        let q: Field = tensor.matvec(hidden, l, a.num_attention_heads * a.head_dim, a.hidden_size)
+        let k: Field = tensor.matvec(hidden, l, a.num_key_value_heads * a.head_dim, a.hidden_size)
+        let v: Field = tensor.matvec(hidden, l, a.num_key_value_heads * a.head_dim, a.hidden_size)
+        let attn: Field = tensor.flash_attention(q, k, v, a.num_attention_heads, a.num_key_value_heads, a.head_dim, seq_len)
         hidden = tensor.residual_add(hidden, attn, a.hidden_size)
         hidden = tensor.rmsnorm(hidden, seq_len, a.hidden_size, a.rms_norm_eps)
         hidden = tensor.swiglu(hidden, l, a.intermediate_size, a.hidden_size)
     }
 
     let logits: Field = tensor.linear(hidden, a.vocab_size, a.hidden_size)
-    let token: Field = tensor.sample_top_p(logits, a.vocab_size,
-                                           cfg.sampling.top_p,
-                                           cfg.sampling.temperature)
+    let token: Field = tensor.sample_top_p(logits, a.vocab_size, cfg.sampling.top_p, cfg.sampling.temperature)
     io.bpe_decode(token, output_addr)
 }
-
-~~~tensors
-"model.embed_tokens.weight" = { shape = [151936, 1024], encoding = "u16", offset = 0, size = 311361536 }
-"model.layers.0.self_attn.q_proj.weight" = { shape = [2048, 1024], encoding = "q4", offset = 311361536, size = 1179648 }
-"model.layers.0.self_attn.k_proj.weight" = { shape = [1024, 1024], encoding = "q4", offset = 312541184, size = 589824 }
-"model.layers.0.input_layernorm.weight" = { shape = [1024], encoding = "u32", offset = 313131008, size = 4096 }
-
-~~~vocab
-[tokens]
-0 = "<unk>"
-1 = "<s>"
-2 = "</s>"
-3 = "▁the"
-4 = "▁of"
-# ... 151936 tokens total
-
-[merges]
-0 = ["▁", "t"]
-1 = ["▁t", "h"]
-# ... 151387 merges total
-
-~~~eval
-[needle_in_haystack]
-context = 104000
-score = 0.991
-
-[mmlu_pro]
-score = 0.724
-
-[humaneval]
-pass_at_1 = 0.652
-
-~~~weights
-<1.2GB tensor binary data>
 ```
-
-## card
-
-first thing you see. markdown. what the model is, how to use it, where it came from.
-
-## config
-
-everything about the model in structured TOML. program reads params from config — one program works for any model of the same architecture.
-
-frontmatter `[cyb]` = minimal container metadata (types, name). config = everything else.
-
-| top-level | type | description |
-|-----------|------|-------------|
-| model_type | string | qwen3, llama, bitnet, mimo, whisper, yolo |
-| parameters | field | parameter count |
-| license | string | SPDX identifier |
-| languages | string[] | supported languages |
-
-| section | fields | description |
-|---------|--------|-------------|
-| [architecture] | hidden_size, num_attention_heads, num_key_value_heads, head_dim, num_hidden_layers, intermediate_size, vocab_size, context_length, max_position_embeddings, rope_theta, rms_norm_eps | what program reads |
-| [tokenizer] | type, bos_id, eos_id, pad_id | tokenizer params |
-| [sampling] | temperature, top_p, scale | integers with scale (700/1000 = 0.7) |
-| [lineage] | source, method | provenance ([[hemera]] verifiable) |
-
-all numeric values are integers (field elements). no floats.
-
-## program
-
-the entire inference pipeline as source code. reads all params from config — NOT hardcoded.
 
 | | trident | rs |
 |--|---------|-----|
 | compiles to | [[nox]] (18 instructions) | native binary |
 | proof | STARK witness every execution | none |
 | speed | field arithmetic | native hardware ([[acpu]]/[[aruminium]]/[[rane]]) |
-| std lib | `std.nn.tensor` (dot, matvec, relu) | full Rust ecosystem |
+| std lib | `std.nn.tensor` | full Rust ecosystem |
 
 ### why not ONNX
 
@@ -238,29 +188,55 @@ the entire inference pipeline as source code. reads all params from config — N
 |--|------|-----------|
 | size | millions of nodes | ~30 lines |
 | flash attention | cannot express | `tensor.flash_attention()` |
-| type system | none | Field, U32, Bool / Rust types |
-| pipeline | forward pass only | entire input → output |
 | parametric | no (frozen shapes) | yes (reads config) |
 | proof | not possible | every trident execution = STARK |
 | hardware | runtime rewrites graph | compiles to 28 targets |
 
 ## tensors
 
-TOML index. one entry per tensor:
+TOML index. one entry per tensor. tensor names follow HuggingFace convention.
 
 ```toml
+~~~tensors
+"model.embed_tokens.weight" = { shape = [151936, 1024], encoding = "u16", offset = 0, size = 311361536 }
 "model.layers.0.self_attn.q_proj.weight" = { shape = [2048, 1024], encoding = "q4", offset = 311361536, size = 1179648 }
+"model.layers.0.input_layernorm.weight" = { shape = [1024], encoding = "u32", offset = 313131008, size = 4096 }
 ```
-
-fields: `shape`, `encoding`, `offset` (bytes from `~~~weights`), `size` (bytes). tensor names follow HuggingFace convention.
 
 ## vocab
 
 full vocabulary in TOML. fast to parse. empty `{}` for non-text models.
 
+```toml
+~~~vocab
+[tokens]
+0 = "<unk>"
+1 = "<s>"
+2 = "</s>"
+3 = "▁the"
+4 = "▁of"
+
+[merges]
+0 = ["▁", "t"]
+1 = ["▁t", "h"]
+```
+
 ## eval
 
 live benchmark results. user updates after testing. routing reads eval to pick the best model.
+
+```toml
+~~~eval
+[needle_in_haystack]
+context = 104000
+score = 991
+
+[mmlu_pro]
+score = 724
+
+[humaneval]
+pass_at_1 = 652
+```
 
 ## weights
 
