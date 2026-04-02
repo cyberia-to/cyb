@@ -293,7 +293,7 @@ pass_at_1 = 652
 
 ## weights
 
-raw concatenated tensor data. page-aligned per tensor (4096 bytes) for zero-copy mmap via [[unimem]].
+raw concatenated tensor data. page-aligned per tensor (4096 bytes) for zero-copy load, e.g. via [[unimem]].
 
 no floats. all weights are integers. float models are converted at import time.
 
