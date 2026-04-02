@@ -589,106 +589,16 @@ max_tokens = 2048
 stop = ["<|im_end|>", "<|end|>"]
 ```
 
-### .cyb — the target format
+### .cyb — the model format
 
-after import, every model is packed into a single `.cyb` file. this is the native format for cyb-llm.
+one file = complete model. CBOR header + [[nox]] program + vocabulary + BAO-chunked tensor data. content-addressable via CIDs.
 
-```
-model_name.cyb
-├── [header]         magic CYB\x01, version, flags, section table
-├── [config]         embedded TOML (architecture + tokenizer + chat + sampling)
-├── [graph]          serialized Graph IR nodes (optional, for ONNX-origin models)
-├── [tensor index]   per-tensor: name, shape, dtype, offset
-└── [tensor data]    raw weight bytes, 64-byte aligned for mmap/GPU
-```
-
-one file. zero external dependencies. runtime does `mmap → read header → done`.
-
-the pipeline: HuggingFace repo → canonicalize (TOML configs) → pack → `.cyb`
+see [[cyb-format]] for full specification.
 
 ```
-cyb-llm import <name>     # download + canonicalize
-cyb-llm pack <name>       # weights + config → .cyb
+cyb-llm import <source>   # download + convert → .cyb
+cyb-llm run model.cyb     # inference
 ```
-
-### intermediate weight formats (before .cyb packing)
-
-during import, weights are stored in the best available format before packing:
-
-| format | extension | when used | notes |
-|--------|-----------|-----------|-------|
-| GGUF | weights.gguf | quantized LLMs (Q4/Q8) | block quantization, native loader |
-| safetensors | weights.safetensors | native formats (bitnet) | safe, zero-copy mmap |
-| ONNX | weights.onnx | encoder/classifier models | graph embedded in protobuf |
-| PyTorch | weights.pt | external models (YOLO, BEATs) | legacy, packed into .cyb |
-| binary | weights.bin | fasttext, GGML whisper | custom binary formats |
-
-after `cyb-llm pack`, all formats converge into `.cyb`. the intermediate format is an implementation detail of the import pipeline.
-
-### import pipeline
-
-```
-cyb-llm import <source> [--name <name>]
-```
-
-```
-source (HF repo, local dir, URL)
-    │
-    ▼
-download (if remote)
-    │
-    ▼
-detect: find weight files, configs, tokenizer
-    │
-    ▼
-select weights: safetensors > gguf > onnx > pt > bin
-    │   if multiple quantizations: keep Q4_K_M, delete rest
-    │   if multiple formats: keep best, delete rest
-    │
-    ▼
-convert configs: JSON → TOML
-    │   config.json       → config.toml
-    │   tokenizer.json    → vocab.toml
-    │   tokenizer_config  → chat.toml
-    │   generation_config → sampling.toml
-    │
-    ▼
-clean: delete everything not in canonical layout
-    │   pytorch_model.bin, training artifacts, images,
-    │   old model versions, HF cache, README, .gitattributes
-    │
-    ▼
-verify: config.toml exists, weights file exists, vocab.toml parseable
-    │
-    ▼
-report: final size, savings percentage
-```
-
-```
-$ cyb-llm import huihui-ai/Qwen3-0.6B-abliterated --name qwen3-0.6b-abl
-  download:  1.1GB from huggingface
-  select:    weights.safetensors (583MB)
-  delete:    pytorch_model.bin (521MB, duplicate)
-  delete:    TestPassed-abliterated.jsonl (test artifact)
-  convert:   config.json → config.toml
-  convert:   tokenizer.json → vocab.toml
-  convert:   tokenizer_config.json → chat.toml
-  convert:   generation_config.json → sampling.toml
-  verify:    config.toml ✓  vocab.toml ✓  weights.safetensors ✓
-  result:    ~/llm/qwen3-0.6b-abl — 583MB (saved 47%)
-```
-
-### observed waste from naive download
-
-| source repo | raw | after import | waste eliminated |
-|-------------|-----|-------------|-----------------|
-| jina-embeddings-v5-nano | 3.8GB | 280MB | 93% |
-| ModernBERT-base | 2.9GB | 210MB | 93% |
-| SmolLM2-360M | 4.7GB | 700MB | 85% |
-| glotlid | 6.0GB | 1.6GB | 73% |
-| Qwen3-0.6B-abliterated | 1.1GB | 583MB | 47% |
-
-average HuggingFace repo wastes 70-93% of disk. the import pipeline eliminates this.
 
 ## quantization as a first-class concept
 
