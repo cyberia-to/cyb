@@ -7,7 +7,7 @@ alias: .cyb format, cyb container
 
 # .cyb — universal knowledge container
 
-one file. self-describing. human-readable index. editable in vim. content-addressable.
+one file. self-describing. human-readable index. editable in vim. native [[particle]] format for [[hemera]].
 
 ## structure
 
@@ -29,12 +29,10 @@ TOML. UTF-8. at the start. ends at first `~~~`.
 version = 2
 types = ["model", "dataset"]
 name = "qwen3-0.6b-abliterated"
-cid = "bafy...abc"
 created = 2026-04-02T00:00:00Z
 
 [cyb.lineage]
 source = "huihui-ai/Qwen3-0.6B-abliterated"
-base_cid = "bafy...base"
 
 [[parts]]
 name = "config"
@@ -82,11 +80,11 @@ binary parts must come after all text parts. within binary zone, parser reads by
 
 `types` array in `[cyb]` declares what the file contains. a single file can have multiple types. types and formats are not hardcoded in this spec — see [[cyb-registry]] for the ecosystem catalog of supported formats and types.
 
-## content addressing
+## hemera integration
 
-every .cyb file has CID = BLAKE3 hash. large binary parts are BAO-chunked (256KB). each chunk has its own CID.
+every .cyb file is a [[particle]] — the native content unit of the [[hemera]] network. hemera computes the CID (content identifier), handles chunking, verification, deduplication, and distribution. the .cyb format itself does not define how addressing works — that is hemera's responsibility.
 
-enables: integrity verification, deduplication, parallel download, partial load, [[hemera]] network integration.
+what .cyb provides to hemera: a self-describing container with a readable index. hemera can inspect the frontmatter to understand what the particle contains without parsing binary data.
 
 ## parsing
 

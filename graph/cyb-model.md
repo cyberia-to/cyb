@@ -35,11 +35,9 @@ a complete neural network: architecture, weights, vocabulary, chat template, ben
 version = 2
 types = ["model"]
 name = "qwen3-0.6b-abliterated"
-cid = "bafy...abc"
 
 [cyb.lineage]
 source = "huihui-ai/Qwen3-0.6B-abliterated"
-base_cid = "bafy...base"
 method = "abliteration"
 
 [[parts]]
@@ -82,8 +80,6 @@ name = "weights"
 type = "model"
 format = "safetensors"
 size = 1200000000
-cid = "bafy...weights"
-chunks = 4688
 
 ~~~config
 model_type = "qwen3"
@@ -292,11 +288,10 @@ content-addressable provenance chain:
 ```toml
 [cyb.lineage]
 source = "huihui-ai/Qwen3-0.6B-abliterated"
-base_cid = "bafy...base"         # original unquantized
-method = "abliteration + q4_0"   # what was done
+method = "abliteration + q4_0"
 ```
 
-the full chain: base model → fine-tune → quantize → abliterate. every step has a CID. verifiable without trust.
+the full chain: base model → fine-tune → quantize → abliterate. when stored as [[particles]] in [[hemera]], each step is content-addressable and verifiable.
 
 ## runtime load
 
