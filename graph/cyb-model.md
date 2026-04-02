@@ -16,7 +16,7 @@ one file. ready for inference.
 | name | format | what it does |
 |------|--------|-------------|
 | card | md | what this model is, how to use |
-| config | toml | all parameters: architecture, tokenizer, sampling, chat |
+| config | toml | all parameters: architecture, tokenizer, sampling, lineage |
 | program | trident or rs | entire pipeline: input → output (reads params from config) |
 | tensors | toml | tensor index: names, shapes, encodings, offsets |
 | vocab | toml | full vocabulary: tokens + merge rules (empty for non-text models) |
@@ -113,11 +113,6 @@ pad_id = 151643
 temperature = 700
 top_p = 900
 scale = 1000
-
-[chat]
-format = "chatml"
-bos_token = "<|endoftext|>"
-eos_token = "<|im_end|>"
 
 [lineage]
 source = "huihui-ai/Qwen3-0.6B-abliterated"
@@ -222,7 +217,6 @@ frontmatter `[cyb]` = minimal container metadata (types, name). config = everyth
 | [architecture] | hidden_size, num_attention_heads, num_key_value_heads, head_dim, num_hidden_layers, intermediate_size, vocab_size, context_length, max_position_embeddings, rope_theta, rms_norm_eps | what program reads |
 | [tokenizer] | type, bos_id, eos_id, pad_id | tokenizer params |
 | [sampling] | temperature, top_p, scale | integers with scale (700/1000 = 0.7) |
-| [chat] | format, bos_token, eos_token | chat formatting |
 | [lineage] | source, method | provenance ([[hemera]] verifiable) |
 
 all numeric values are integers (field elements). no floats.
