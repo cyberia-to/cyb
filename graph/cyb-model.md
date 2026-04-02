@@ -15,14 +15,14 @@ one file = architecture + weights + vocabulary + chat template + benchmarks. rea
 
 | name | format | what it does |
 |------|--------|-------------|
+| card | md | what this model is, how to use, benchmarks |
 | config | toml | metadata: name, license, parameters, languages |
 | program | nox | entire pipeline: input → output (18 instructions, asm) |
 | tensors | toml | tensor index: names, shapes, dtypes, offsets |
 | vocab | toml | full vocabulary: tokens + merge rules |
-| card | md | model documentation: what it does, how to use, benchmarks |
 | weights | tensors | raw weight data (binary, page-aligned) |
 
-six files. model runs. anyone can understand what it is.
+six files. model runs. first thing you see is the card.
 
 program is [[nox]] assembly (18 instructions). describes the ENTIRE pipeline — not just forward pass. input formatting, tokenization, embedding, forward, sampling, decoding — all in one program. no separate chat template, no separate sampling config, no separate preprocessor. the program IS the behavior.
 
