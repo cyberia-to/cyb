@@ -17,7 +17,7 @@ one file = architecture + weights + vocabulary + chat template + benchmarks. rea
 |------|--------|---------|
 | config | toml | architecture + tokenizer metadata |
 | program | nox | forward pass (compiles to hardware via [[trident]]) |
-| index | toml | tensor index (names, shapes, dtypes, offsets) |
+| tensors | toml | tensor index (names, shapes, dtypes, offsets) |
 | vocab | toml | full vocabulary: tokens + merge rules (~6MB, 91ms parse) |
 | weights | tensors | raw weight data (binary) |
 
@@ -54,7 +54,7 @@ name = "program"
 format = "nox"
 
 [[files]]
-name = "index"
+name = "tensors"
 format = "toml"
 
 [[files]]
@@ -119,7 +119,7 @@ transformer_decoder {
   output: linear(vocab=151936)
 }
 
-~~~index
+~~~tensors
 "model.embed_tokens.weight" = { shape = [151936, 1024], dtype = "f16", offset = 0, size = 311361536 }
 "model.layers.0.self_attn.q_proj.weight" = { shape = [2048, 1024], dtype = "q4_0", offset = 311361536, size = 1179648 }
 "model.layers.0.self_attn.k_proj.weight" = { shape = [1024, 1024], dtype = "q4_0", offset = 312541184, size = 589824 }
@@ -234,7 +234,7 @@ supported architectures:
 
 ## tensor index
 
-separate `~~~index` file inside the container. TOML format. one entry per tensor:
+separate `~~~tensors` file inside the container. TOML format. one entry per tensor:
 
 ```toml
 "model.layers.0.self_attn.q_proj.weight" = { shape = [2048, 1024], dtype = "q4_0", offset = 311361536, size = 1179648 }
@@ -359,7 +359,7 @@ when stored as [[particles]] in [[hemera]], each step in the chain (base → fin
 file.model
   → parse frontmatter (TOML)
   → compile nox program via trident → hardware kernels (cached)
-  → read ~~~index → tensor map
+  → read ~~~tensors → tensor map
   → mmap ~~~weights into unimem Layout (zero-copy)
   → inference ready
 ```
