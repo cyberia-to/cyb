@@ -9,23 +9,23 @@ alias: .model, model format, cyb model spec
 
 .model is a [[format]]-compatible extension. a .model file IS a .cyb file — same three rules, same parsing. the extension tells tools and humans: this container holds a neural network.
 
-one file. seven required parts. ready for inference.
+one file. ready for inference.
 
 ## required files
 
 | name | format | what it does |
 |------|--------|-------------|
 | card | md | what this model is, how to use |
-| config | toml | all model parameters: architecture, tokenizer, context |
-| program | trident or rs | entire pipeline: input → output |
+| config | toml | all parameters: architecture, tokenizer, sampling, chat |
+| program | trident or rs | entire pipeline: input → output (reads params from config) |
 | tensors | toml | tensor index: names, shapes, encodings, offsets |
-| vocab | toml | full vocabulary: tokens + merge rules |
+| vocab | toml | full vocabulary: tokens + merge rules (empty for non-text models) |
 | eval | toml | benchmark results (updatable by user for routing) |
 | weights | tensors | raw weight data (binary, page-aligned) |
 
-no optional files. everything in .model is required.
+no optional files. everything is required. vocab is empty `{}` for models without tokenizer (YOLO, BEATs).
 
-program describes the ENTIRE pipeline — tokenization, embedding, forward, sampling, decoding — all in one program. no separate chat template. no separate sampling config. the program IS the behavior. program reads architecture params from config — one program works for any model size.
+program reads all params from config — one program works for any model of the same architecture. change config → different model, same program.
 
 two supported program languages:
 
@@ -34,7 +34,7 @@ two supported program languages:
 | trident | trident → [[nox]] → STARK proof | provable inference, field arithmetic |
 | rs | Rust → native binary | fast inference, [[acpu]]/[[aruminium]]/[[rane]] |
 
-both describe the same pipeline. both produce the same result. trident proves it. rs runs it fast. a .model can contain both — runtime picks based on need. two implementations = correctness verification.
+a .model can contain both programs (as `program` and `program-native`). runtime picks based on need. two implementations = correctness verification.
 
 ## example
 
@@ -96,12 +96,13 @@ model_type = "qwen3"
 hidden_size = 1024
 num_attention_heads = 16
 num_key_value_heads = 8
+head_dim = 64
 num_hidden_layers = 28
 intermediate_size = 3072
 vocab_size = 151936
 context_length = 32768
 max_position_embeddings = 40960
-rope_theta = 1000000.0
+rope_theta = 1000000
 rms_norm_eps = 0.000001
 
 [tokenizer]
@@ -126,17 +127,12 @@ use vm.io.io
 use vm.core.convert
 use std.nn.tensor
 
-// reads all params from ~~~config at runtime
 pub fn forward(input_addr: Field, output_addr: Field, seq_len: Field,
                cfg: Config) {
-    // tokenize
     let tokens: Field = io.bpe_encode(input_addr, seq_len, cfg.vocab_size)
-
-    // embed
     let hidden: Field = tensor.embed(tokens, seq_len, cfg.hidden_size,
                                      cfg.vocab_size)
 
-    // transformer layers
     for layer in 0..cfg.num_hidden_layers bounded 128 {
         let l: Field = convert.as_field(layer)
         hidden = tensor.rmsnorm(hidden, seq_len, cfg.hidden_size,
@@ -161,7 +157,6 @@ pub fn forward(input_addr: Field, output_addr: Field, seq_len: Field,
                                cfg.hidden_size)
     }
 
-    // sample + decode
     let logits: Field = tensor.linear(hidden, cfg.vocab_size, cfg.hidden_size)
     let token: Field = tensor.sample_top_p(logits, cfg.vocab_size,
                                            cfg.sampling.top_p,
@@ -206,7 +201,7 @@ pass_at_1 = 0.652
 
 ## config
 
-all model parameters in one place. program reads from config — one program works for any model size.
+all model parameters. program reads from config — one program works for any model of the same architecture.
 
 | field | type | description |
 |-------|------|-------------|
@@ -214,6 +209,7 @@ all model parameters in one place. program reads from config — one program wor
 | hidden_size | field | embedding dimension |
 | num_attention_heads | field | query heads |
 | num_key_value_heads | field | KV heads (GQA) |
+| head_dim | field | dimension per head |
 | num_hidden_layers | field | transformer layers |
 | intermediate_size | field | FFN hidden dimension |
 | vocab_size | field | vocabulary size |
@@ -222,19 +218,17 @@ all model parameters in one place. program reads from config — one program wor
 | rope_theta | field | rotary position embedding base |
 | rms_norm_eps | field | normalization epsilon |
 
-nested sections:
-
 | section | fields | purpose |
 |---------|--------|---------|
-| [tokenizer] | type, bos_id, eos_id, pad_id | tokenizer metadata |
-| [sampling] | temperature, top_p | default inference params |
-| [chat] | format, bos_token, eos_token | chat template |
+| [tokenizer] | type, bos_id, eos_id, pad_id | tokenizer params |
+| [sampling] | temperature, top_p | default sampling params |
+| [chat] | format, bos_token, eos_token | chat formatting |
 
-frontmatter `[cyb]` holds: name, parameters, license, languages, lineage — metadata about the .model file itself. config holds: model architecture + runtime params — what the program needs to execute.
+frontmatter `[cyb]` = file metadata (name, parameters, license, languages, lineage). config = model parameters (what the program needs to execute).
 
 ## program
 
-the entire inference pipeline as source code. reads architecture params from config — NOT hardcoded. change config → different model, same program.
+the entire inference pipeline as source code. reads all params from config — NOT hardcoded.
 
 | | trident | rs |
 |--|---------|-----|
@@ -257,15 +251,13 @@ the entire inference pipeline as source code. reads architecture params from con
 
 ## tensors
 
-`~~~tensors` file. TOML format. one entry per tensor:
+`~~~tensors` file. TOML. one entry per tensor:
 
 ```toml
 "model.layers.0.self_attn.q_proj.weight" = { shape = [2048, 1024], encoding = "q4", offset = 311361536, size = 1179648 }
 ```
 
-fields: `shape`, `encoding`, `offset` (bytes from `~~~weights`), `size` (bytes).
-
-tensor names follow HuggingFace convention. import converts GGUF names at pack time.
+fields: `shape`, `encoding`, `offset` (bytes from `~~~weights`), `size` (bytes). tensor names follow HuggingFace convention. import converts GGUF names at pack time.
 
 ## weights
 
@@ -320,11 +312,11 @@ matmul: +1 = add, -1 = subtract, 0 = skip.
 
 ## vocab
 
-full vocabulary in TOML. 151K tokens = ~6MB, parses in 91ms.
+full vocabulary in TOML. 151K tokens = ~6MB, parses in 91ms. empty `{}` for non-text models (YOLO, BEATs, piper).
 
 ## eval
 
-live benchmark results. user updates after testing. routing reads eval to pick the best model for each task.
+live benchmark results. user updates after testing. routing reads eval to pick the best model.
 
 ## lineage
 
@@ -342,7 +334,7 @@ when stored as [[particles]] in [[hemera]], each step is content-addressable and
 file.model
   → parse frontmatter
   → read ~~~card (display)
-  → read ~~~config → architecture params
+  → read ~~~config → params
   → compile ~~~program(config) → hardware kernels (cached)
   → read ~~~tensors → tensor map
   → mmap ~~~weights into unimem (zero-copy)
