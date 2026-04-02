@@ -200,14 +200,18 @@ pass_at_1 = 0.652
 <1.2GB tensor binary data>
 ```
 
+## card
+
+first thing you see. markdown. what the model is, how to use it, where it came from.
+
 ## config
 
-everything about the model. program reads from config — one program works for any model of the same architecture.
+everything about the model in structured TOML. program reads params from config — one program works for any model of the same architecture.
 
 frontmatter `[cyb]` = minimal container metadata (types, name). config = everything else.
 
-| top-level field | type | description |
-|-------|------|-------------|
+| top-level | type | description |
+|-----------|------|-------------|
 | model_type | string | qwen3, llama, bitnet, mimo, whisper, yolo |
 | parameters | field | parameter count |
 | license | string | SPDX identifier |
@@ -217,11 +221,11 @@ frontmatter `[cyb]` = minimal container metadata (types, name). config = everyth
 |---------|--------|-------------|
 | [architecture] | hidden_size, num_attention_heads, num_key_value_heads, head_dim, num_hidden_layers, intermediate_size, vocab_size, context_length, max_position_embeddings, rope_theta, rms_norm_eps | what program reads |
 | [tokenizer] | type, bos_id, eos_id, pad_id | tokenizer params |
-| [sampling] | temperature, top_p, scale | default sampling (integers, scale=1000) |
+| [sampling] | temperature, top_p, scale | integers with scale (700/1000 = 0.7) |
 | [chat] | format, bos_token, eos_token | chat formatting |
-| [lineage] | source, method | provenance |
+| [lineage] | source, method | provenance ([[hemera]] verifiable) |
 
-all numeric values are integers (field elements). sampling uses integer representation: `temperature = 700` with `scale = 1000` means 0.7. no floats anywhere.
+all numeric values are integers (field elements). no floats.
 
 ## program
 
@@ -248,19 +252,25 @@ the entire inference pipeline as source code. reads all params from config — N
 
 ## tensors
 
-`~~~tensors` file. TOML. one entry per tensor:
+TOML index. one entry per tensor:
 
 ```toml
 "model.layers.0.self_attn.q_proj.weight" = { shape = [2048, 1024], encoding = "q4", offset = 311361536, size = 1179648 }
 ```
 
-fields: `shape`, `encoding`, `offset` (bytes from `~~~weights`), `size` (bytes). tensor names follow HuggingFace convention. import converts GGUF names at pack time.
+fields: `shape`, `encoding`, `offset` (bytes from `~~~weights`), `size` (bytes). tensor names follow HuggingFace convention.
+
+## vocab
+
+full vocabulary in TOML. fast to parse. empty `{}` for non-text models.
+
+## eval
+
+live benchmark results. user updates after testing. routing reads eval to pick the best model.
 
 ## weights
 
-raw concatenated tensor data after `~~~weights`. page-aligned per tensor (4096 bytes) for zero-copy mmap via [[unimem]].
-
-## encodings
+raw concatenated tensor data. page-aligned per tensor (4096 bytes) for zero-copy mmap via [[unimem]].
 
 no floats. all weights are integers. float models are converted at import time.
 
@@ -307,18 +317,6 @@ matmul: +1 = add, -1 = subtract, 0 = skip.
 | GGUF Q4_0 | q4 | direct copy |
 | GGUF Q8_0 | q8 | direct copy |
 
-## vocab
-
-full vocabulary in TOML. fast to parse. empty `{}` for non-text models.
-
-## eval
-
-live benchmark results. user updates after testing. routing reads eval to pick the best model.
-
-## lineage
-
-in config `[lineage]` section. tracks provenance: where the model came from, what was done to it. when stored as [[particles]] in [[hemera]], each step is content-addressable and verifiable.
-
 ## runtime load
 
 ```
@@ -328,6 +326,8 @@ file.model
   → read ~~~config → params
   → compile ~~~program(config) → hardware kernels (cached)
   → read ~~~tensors → tensor map
+  → read ~~~vocab → tokenizer
+  → read ~~~eval → routing data
   → mmap ~~~weights into unimem (zero-copy)
   → inference ready
 ```
