@@ -151,27 +151,43 @@ use vm.io.io
 use vm.core.convert
 use std.nn.tensor
 
-pub fn forward(input_addr: Field, output_addr: Field, seq_len: Field,
-               cfg: Config) {
-    let a: Architecture = cfg.architecture
-    let tokens: Field = io.bpe_encode(input_addr, seq_len, a.vocab_size)
-    let hidden: Field = tensor.embed(tokens, seq_len, a.hidden_size, a.vocab_size)
+pub fn forward(input: Field, output: Field, seq: Field, cfg: Config) {
+    let a = cfg.architecture
+    let s = cfg.sampling
 
-    for layer in 0..a.num_hidden_layers bounded 128 {
-        let l: Field = convert.as_field(layer)
-        hidden = tensor.rmsnorm(hidden, seq_len, a.hidden_size, a.rms_norm_eps)
-        let q: Field = tensor.matvec(hidden, l, a.num_attention_heads * a.head_dim, a.hidden_size)
-        let k: Field = tensor.matvec(hidden, l, a.num_key_value_heads * a.head_dim, a.hidden_size)
-        let v: Field = tensor.matvec(hidden, l, a.num_key_value_heads * a.head_dim, a.hidden_size)
-        let attn: Field = tensor.flash_attention(q, k, v, a.num_attention_heads, a.num_key_value_heads, a.head_dim, seq_len)
-        hidden = tensor.residual_add(hidden, attn, a.hidden_size)
-        hidden = tensor.rmsnorm(hidden, seq_len, a.hidden_size, a.rms_norm_eps)
-        hidden = tensor.swiglu(hidden, l, a.intermediate_size, a.hidden_size)
+    // tokenize + embed
+    let tok = io.bpe_encode(input, seq, a.vocab_size)
+    let h   = tensor.embed(tok, seq, a.hidden_size, a.vocab_size)
+
+    // transformer layers
+    for i in 0..a.num_hidden_layers bounded 128 {
+        let l = convert.as_field(i)
+
+        h = tensor.rmsnorm(h, seq, a.hidden_size, a.rms_norm_eps)
+
+        let qd = a.num_attention_heads * a.head_dim
+        let kd = a.num_key_value_heads * a.head_dim
+
+        let q = tensor.matvec(h, l, qd, a.hidden_size)
+        let k = tensor.matvec(h, l, kd, a.hidden_size)
+        let v = tensor.matvec(h, l, kd, a.hidden_size)
+
+        let att = tensor.flash_attention(
+            q, k, v,
+            a.num_attention_heads,
+            a.num_key_value_heads,
+            a.head_dim, seq
+        )
+
+        h = tensor.residual_add(h, att, a.hidden_size)
+        h = tensor.rmsnorm(h, seq, a.hidden_size, a.rms_norm_eps)
+        h = tensor.swiglu(h, l, a.intermediate_size, a.hidden_size)
     }
 
-    let logits: Field = tensor.linear(hidden, a.vocab_size, a.hidden_size)
-    let token: Field = tensor.sample_top_p(logits, a.vocab_size, cfg.sampling.top_p, cfg.sampling.temperature)
-    io.bpe_decode(token, output_addr)
+    // output + sample + decode
+    let logits = tensor.linear(h, a.vocab_size, a.hidden_size)
+    let token  = tensor.sample_top_p(logits, a.vocab_size, s.top_p, s.temperature)
+    io.bpe_decode(token, output)
 }
 ```
 
