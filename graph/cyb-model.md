@@ -11,23 +11,27 @@ alias: .model, model format, cyb model spec
 
 one file = architecture + weights + vocabulary + chat template + benchmarks. ready for inference.
 
-## required files
+## five files
 
-| name | format | content |
-|------|--------|---------|
-| config | toml | architecture + tokenizer metadata |
-| program | nox | forward pass (compiles to hardware via [[trident]]) |
-| tensors | toml | tensor index (names, shapes, dtypes, offsets) |
-| vocab | toml | full vocabulary: tokens + merge rules (~6MB, 91ms parse) |
-| weights | tensors | raw weight data (binary) |
+| name | format | what it does |
+|------|--------|-------------|
+| config | toml | metadata: name, license, parameters, languages |
+| program | nox | entire pipeline: input → output (18 instructions, asm) |
+| tensors | toml | tensor index: names, shapes, dtypes, offsets |
+| vocab | toml | full vocabulary: tokens + merge rules |
+| weights | tensors | raw weight data (binary, page-aligned) |
+
+five files. that is it. model runs.
+
+program is [[nox]] assembly (18 instructions). describes the ENTIRE pipeline — not just forward pass. input formatting, tokenization, embedding, forward, sampling, decoding — all in one program. no separate chat template, no separate sampling config, no separate preprocessor. the program IS the behavior.
+
+[[trident]] compiles high-level architecture descriptions into nox. human writes trident, compiler produces nox, .model stores nox. like C → compiler → machine code → .exe.
 
 ## optional files
 
-| name | format | content |
-|------|--------|---------|
-| chat | toml | chat template + special tokens |
-| sampling | toml | default inference parameters |
-| preprocess | toml | image/audio/video preprocessing |
+| name | format | what it adds |
+|------|--------|-------------|
+| source | trident | human-readable source of the nox program |
 | eval | toml | benchmark results |
 | card | md | model documentation |
 
@@ -59,14 +63,6 @@ format = "toml"
 
 [[files]]
 name = "vocab"
-format = "toml"
-
-[[files]]
-name = "chat"
-format = "toml"
-
-[[files]]
-name = "sampling"
 format = "toml"
 
 [[files]]
@@ -105,19 +101,28 @@ eos_id = 151645
 pad_id = 151643
 
 ~~~program
-transformer_decoder {
-  layers: 28
-  hidden: 1024
-  heads: 16
-  kv_heads: 8
-  head_dim: 64
-  rope_theta: 1e6
-  norm: rmsnorm(eps=1e-6)
-  attn: flash_attention
-  ffn: swiglu(intermediate=3072)
-  embed: token_embed(vocab=151936)
-  output: linear(vocab=151936)
-}
+; qwen3-0.6b-abliterated — full inference pipeline
+; compiled from trident, 18 nox instructions
+
+; input: raw text → output: generated text
+
+; step 1: format input
+chatml_format bos=151643 eos=151645
+
+; step 2: tokenize
+bpe_encode vocab=151936
+
+; step 3: embed + forward (28 layers)
+token_embed dim=1024 vocab=151936
+rope theta=1e6 head_dim=64
+transformer_decode layers=28 hidden=1024 heads=16 kv_heads=8 ffn=swiglu:3072 norm=rmsnorm:1e-6 attn=flash
+
+; step 4: sample
+linear vocab=151936
+sample top_p=0.9 temperature=0.7
+
+; step 5: decode
+bpe_decode
 
 ~~~tensors
 "model.embed_tokens.weight" = { shape = [151936, 1024], dtype = "f16", offset = 0, size = 311361536 }
@@ -186,51 +191,83 @@ license: Apache 2.0
 
 ## config
 
-architecture parameters:
+metadata about the model. NOT architecture — architecture is in the nox program.
 
 | field | type | description |
 |-------|------|-------------|
-| model_type | string | runtime dispatch: qwen3, llama, bitnet, mimo, whisper, yolo |
+| model_type | string | qwen3, llama, bitnet, mimo, whisper, yolo |
 | architecture | string | HF class: Qwen3ForCausalLM, LlamaForCausalLM |
-| hidden_size | u32 | embedding/hidden dimension |
-| num_attention_heads | u32 | query heads |
-| num_key_value_heads | u32 | KV heads (GQA) |
-| num_hidden_layers | u32 | transformer layers |
-| intermediate_size | u32 | FFN hidden dimension |
-| vocab_size | u32 | vocabulary size |
-| max_position_embeddings | u32 | architectural max context (RoPE limit) |
+| parameters | string | model size: "0.6B", "7B", "14B" |
+| license | string | SPDX: Apache-2.0, MIT |
+| languages | string[] | supported languages |
 | context_length | u32 | recommended working context |
-| rope_theta | f32 | rotary position embedding base |
-| rms_norm_eps | f32 | normalization epsilon |
+| max_position_embeddings | u32 | architectural max (RoPE limit) |
 
-`max_position_embeddings` is what the architecture supports. `context_length` is the tested working range. with TurboQuant KV compression, effective context at runtime can exceed `context_length` — that is a runtime property, not a model property.
-
-embedding lookup and output projection are defined by the nox program (`embed: token_embed`, `output: linear`). the runtime maps these to tensors by HF naming convention (`model.embed_tokens.weight`, `model.lm_head.weight`).
+config is pure metadata. architecture params (hidden_size, heads, layers) are in the nox program. if you need them for display — parse the nox.
 
 ## nox program
 
-the forward pass as a [[nox]] program. [[trident]] compiles it to 28 hardware targets. replaces ONNX graph.
+the entire inference pipeline as [[nox]] assembly. 18 instructions. input → output in one program.
 
-| | ONNX | nox program |
-|--|------|-------------|
-| size | millions of nodes | ~50 lines |
-| flash attention | cannot express | `attn: flash_attention` |
-| dynamic shapes | limited | native |
-| hardware targets | runtime rewrites graph | [[trident]] compiles to 28 targets |
-| human readable | no (protobuf) | yes |
+[[trident]] compiles high-level descriptions into nox. human writes trident, compiler outputs nox, .model stores nox.
 
-supported architectures:
+```
+human writes trident → trident compiler → nox assembly → stored in .model → runtime executes
+```
 
-| nox construct | models |
-|--------------|--------|
-| transformer_decoder | qwen, llama, mistral, deepseek, phi, bitnet |
-| transformer_encoder | bert, deberta, modernbert, jina |
-| encoder_decoder | whisper |
-| cnn_detector | yolo |
-| diffusion_dit | flux, wan2.2 |
-| tts_vits | piper |
-| tts_autoregressive | xtts |
-| moe_decoder | mimo, mixtral |
+the nox program defines EVERYTHING: input formatting, tokenization, embedding, forward pass, sampling, decoding. no separate chat template file. no separate sampling config. the program IS the behavior.
+
+### why nox, not ONNX
+
+| | ONNX | nox |
+|--|------|-----|
+| abstraction | static graph (nodes + edges) | assembly (18 instructions) |
+| size | millions of nodes | ~15 instructions |
+| flash attention | cannot express | native instruction |
+| pipeline | forward pass only | entire input → output |
+| change sampling | rewrite application code | edit one instruction in program |
+| new architecture | new ONNX operators (committee) | new nox program (anyone) |
+| hardware | runtime rewrites graph | [[trident]] compiles to 28 targets |
+
+### example programs
+
+LLM (text → text):
+```nox
+chatml_format bos=151643 eos=151645
+bpe_encode vocab=151936
+token_embed dim=1024 vocab=151936
+rope theta=1e6 head_dim=64
+transformer_decode layers=28 hidden=1024 heads=16 kv_heads=8 ffn=swiglu:3072 norm=rmsnorm:1e-6 attn=flash
+linear vocab=151936
+sample top_p=0.9 temperature=0.7
+bpe_decode
+```
+
+YOLO (image → detections):
+```nox
+image_resize 640
+image_normalize mean=0.485,0.456,0.406 std=0.229,0.224,0.225
+cnn_detect backbone=yolov11_nano classes=80
+nms threshold=0.45
+bbox_decode
+```
+
+whisper (audio → text):
+```nox
+audio_resample rate=16000
+mel_spectrogram n_fft=400 n_mels=80
+transformer_encode layers=12 hidden=768 heads=12
+transformer_decode layers=12 hidden=768 heads=12 search=beam:5
+bpe_decode
+```
+
+flux (text → image):
+```nox
+clip_tokenize
+clip_encode hidden=768
+diffusion_dit steps=50 scheduler=flow_matching layers=24 hidden=3072
+vae_decode channels=3 spatial=1024
+```
 
 ## tensor index
 
