@@ -845,13 +845,17 @@ fn run_status() {
 
         if load_ok { total_ok += 1; }
 
-        // Bench: tok/s + quality for decoder LLMs (catch panics so one bad model doesn't kill the table)
+        // Bench: tok/s + quality for decoder LLMs (catch panics silently)
         let is_decoder = matches!(model_type.as_str(),
             "qwen2" | "qwen3" | "llama" | "phi3" | "bitnet" | "mimo");
         let (tok_s_str, quality_str) = if is_decoder {
             eprint!("  bench {}...\r", spec.name);
             let mp = model_path.clone();
-            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| quick_bench_model(&mp))) {
+            let prev_hook = std::panic::take_hook();
+            std::panic::set_hook(Box::new(|_| {})); // silence panic output
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| quick_bench_model(&mp)));
+            std::panic::set_hook(prev_hook);
+            match result {
                 Ok(r) => r,
                 Err(_) => ("err".into(), "\x1b[31mpanic\x1b[0m".into()),
             }
