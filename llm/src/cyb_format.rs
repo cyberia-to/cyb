@@ -1253,28 +1253,22 @@ fn parse_toml_merge_pair(s: &str) -> Option<(String, String)> {
         return None;
     }
     let inner = &s[1..s.len()-1];
-    // Find the comma separating the two strings
-    // Need to handle commas inside quoted strings
-    let mut depth = 0;
+    // Find the comma separating the two strings (use byte offsets for slicing)
     let mut in_str = false;
     let mut escape = false;
-    let mut comma_pos = None;
-    for (i, c) in inner.chars().enumerate() {
+    let mut comma_byte = None;
+    for (byte_pos, c) in inner.char_indices() {
         if escape { escape = false; continue; }
         if c == '\\' { escape = true; continue; }
         if c == '"' { in_str = !in_str; continue; }
-        if !in_str && c == ',' && depth == 0 {
-            comma_pos = Some(i);
+        if !in_str && c == ',' {
+            comma_byte = Some(byte_pos);
             break;
         }
-        if !in_str {
-            if c == '[' { depth += 1; }
-            if c == ']' { depth -= 1; }
-        }
     }
-    let comma = comma_pos?;
-    let a = parse_toml_string(inner[..comma].trim())?;
-    let b = parse_toml_string(inner[comma+1..].trim())?;
+    let cb = comma_byte?;
+    let a = parse_toml_string(inner[..cb].trim())?;
+    let b = parse_toml_string(inner[cb+1..].trim())?;
     Some((a, b))
 }
 
