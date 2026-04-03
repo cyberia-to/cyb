@@ -791,9 +791,9 @@ fn run_status() {
     println!("  \x1b[1mcyb-llm status\x1b[0m — {}", base.display());
     println!();
 
-    println!("  {:<26} {:<6} {:<11} {:>6} {:>3} {:>6} {:>6} {:>6} {:>6} {:>6} {:>5}",
-        "MODEL", "TIER", "TYPE", "SIZE", "L", "CTX", "LOAD", "WGPU", "METAL", "LLAMA", "SANE");
-    println!("  {}", "─".repeat(97));
+    println!("  {:<26} {:<6} {:<11} {:>6} {:>3} {:>6} {:>6}  {:>8}  {:>8} {:>6}",
+        "MODEL", "TIER", "TYPE", "SIZE", "L", "CTX", "LOAD", "WGPU", "METAL", "LLAMA");
+    println!("  {}", "─".repeat(95));
 
     let mut total_disk = 0u64;
     let mut total_ok = 0usize;
@@ -845,29 +845,30 @@ fn run_status() {
         // Bench: tok/s for decoder LLMs (catch panics silently)
         let is_decoder = matches!(model_type.as_str(),
             "qwen2" | "qwen3" | "llama" | "phi3" | "bitnet" | "mimo");
-        let (wgpu_str, sane_str) = if is_decoder {
-            eprint!("  bench {}...\r", spec.name);
+        let wgpu_str = if is_decoder {
+            eprint!("  bench wgpu {}...\r", spec.name);
             let mp = model_path.clone();
             let prev_hook = std::panic::take_hook();
             std::panic::set_hook(Box::new(|_| {}));
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| quick_bench_model(&mp)));
             std::panic::set_hook(prev_hook);
             match result {
-                Ok(r) => r,
-                Err(_) => ("\x1b[31merr\x1b[0m".into(), "—".into()),
+                Ok((ts, sane)) => format!("{} {}", ts, sane),
+                Err(_) => "\x1b[31merr\x1b[0m".into(),
             }
         } else {
-            ("—".into(), "—".into())
+            "—".into()
         };
         #[cfg(target_os = "macos")]
         let metal_str: String = if is_decoder {
+            eprint!("  bench metal {}...\r", spec.name);
             let mp = model_path.clone();
             let prev_hook = std::panic::take_hook();
             std::panic::set_hook(Box::new(|_| {}));
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| quick_bench_metal(&mp)));
             std::panic::set_hook(prev_hook);
             match result {
-                Ok(s) => s,
+                Ok((ts, sane)) => format!("{} {}", ts, sane),
                 Err(_) => "\x1b[31merr\x1b[0m".into(),
             }
         } else {
@@ -899,13 +900,13 @@ fn run_status() {
             "—".into()
         };
 
-        println!("  {:<26} {:<6} {:<11} {:>6} {:>3} {:>6} {:>6} {:>6} {:>6} {:>6} {:>5}",
+        println!("  {:<26} {:<6} {:<11} {:>6} {:>3} {:>6} {:>6}  {:>8}  {:>8} {:>6}",
             spec.name, spec.tier, type_str,
             format_size(disk_bytes), layers_str, ctx_str,
-            load_str, wgpu_str, metal_str, llama_str, sane_str);
+            load_str, wgpu_str, metal_str, llama_str);
     }
 
-    println!("  {}", "─".repeat(97));
+    println!("  {}", "─".repeat(95));
     println!();
     println!("  \x1b[1m{}\x1b[0m models  ·  \x1b[32m{}\x1b[0m ready  ·  {} on disk",
         MANIFEST.len(), total_ok, format_size(total_disk));
@@ -968,9 +969,9 @@ fn quick_bench_model(model_path: &std::path::Path) -> (String, String) {
     }
 }
 
-/// Quick bench Metal: load .model, generate tokens, return tok/s string.
+/// Quick bench Metal: load .model, generate tokens, return (tok/s, sane) strings.
 #[cfg(target_os = "macos")]
-fn quick_bench_metal(model_path: &std::path::Path) -> String {
+fn quick_bench_metal(model_path: &std::path::Path) -> (String, String) {
     use cyb_llm::backend::metal::MetalModel;
 
     let prev = log::max_level();
@@ -980,14 +981,13 @@ fn quick_bench_metal(model_path: &std::path::Path) -> String {
         Ok(m) => m,
         Err(e) => {
             log::set_max_level(prev);
-            return format!("\x1b[31m{}\x1b[0m", &e[..e.len().min(30)]);
+            return (format!("\x1b[31m{}\x1b[0m", &e[..e.len().min(30)]), "—".into());
         }
     };
 
-    // Build tokenizer from .model vocab
     let tokenizer = match cyb_llm::cyb_format::build_tokenizer(model_path) {
         Ok(t) => t,
-        Err(_) => { log::set_max_level(prev); return "—".into(); }
+        Err(_) => { log::set_max_level(prev); return ("—".into(), "—".into()); }
     };
 
     let config_toml = cyb_llm::cyb_format::read_model_config(model_path)
@@ -995,7 +995,7 @@ fn quick_bench_metal(model_path: &std::path::Path) -> String {
     let prompt = cyb_llm::generate::apply_chat_template("What is 2+2? /no_think", &config_toml);
     let encoding = match tokenizer.encode(prompt.as_str(), true) {
         Ok(e) => e,
-        Err(_) => { log::set_max_level(prev); return "err".into(); }
+        Err(_) => { log::set_max_level(prev); return ("err".into(), "—".into()); }
     };
     let token_ids = encoding.get_ids();
 
@@ -1005,24 +1005,36 @@ fn quick_bench_metal(model_path: &std::path::Path) -> String {
         next_token = model.forward_decode(tid);
     }
 
-    // Decode 64 tokens
+    // Decode 64 tokens, collect text
     let decode_start = std::time::Instant::now();
     let mut count = 0u32;
+    let mut generated_ids = Vec::new();
     let eos = cyb_llm::generate::detect_eos_tokens(&tokenizer, &config_toml);
     for _ in 0..64 {
         if eos.contains(&next_token) { break; }
         count += 1;
+        generated_ids.push(next_token);
         next_token = model.forward_decode(next_token);
     }
     let elapsed = decode_start.elapsed().as_secs_f64();
 
     log::set_max_level(prev);
 
-    if count > 0 && elapsed > 0.01 {
+    let tok_s = if count > 0 && elapsed > 0.01 {
         format!("{:.0}", count as f64 / elapsed)
+    } else { "0".into() };
+
+    let text = tokenizer.decode(&generated_ids, true).unwrap_or_default().to_lowercase();
+    let check = if let Some(pos) = text.find("</think>") { &text[pos+8..] } else { &text };
+    let sane = if check.contains('4') || check.contains("four") {
+        "\x1b[32m✓\x1b[0m"
+    } else if text.len() < 2 {
+        "\x1b[31m✗\x1b[0m"
     } else {
-        "0".into()
-    }
+        "\x1b[33m?\x1b[0m"
+    };
+
+    (tok_s, sane.into())
 }
 
 /// Bench ollama: call API, return tok/s string
