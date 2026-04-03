@@ -92,20 +92,21 @@ pub struct TextGenerator {
 }
 
 impl TextGenerator {
-    /// Create a text generator from .model file — tokenizer built from embedded vocab.
+    /// Create a text generator from .model file. Single parse: model + tokenizer + config.
     pub fn new(
         model_path: &Path,
         pipelines: Arc<Pipelines>,
     ) -> Result<Self, String> {
-        let (model, _vocab_str) = NativeModel::load(model_path, pipelines)?;
+        use crate::cyb_format::LoadedModel;
 
-        let tokenizer = crate::cyb_format::build_tokenizer(model_path)?;
+        let lm = LoadedModel::load(model_path)
+            .map_err(|e| format!("Cannot read .model: {e}"))?;
 
-        // Read config for EOS detection (fast text-only read)
-        let config_toml = crate::cyb_format::read_model_config(model_path)
-            .map(|(_, cfg)| cfg)
-            .unwrap_or_default();
-        let eos_tokens = detect_eos_tokens(&tokenizer, &config_toml);
+        let tokenizer = lm.tokenizer()?;
+        let eos_tokens = detect_eos_tokens(&tokenizer, &lm.config);
+
+        // Build wgpu model from loaded weights
+        let model = NativeModel::from_loaded(lm, pipelines)?;
 
         Ok(Self {
             model,

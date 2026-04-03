@@ -1117,33 +1117,73 @@ fn encoding_to_dtype(enc: &str) -> DType {
     }
 }
 
-/// Load weights from a .model file into a HashMap (for NativeModel)
-/// Returns (config_toml, weights, vocab_toml)
-pub fn load_weights_from_model(path: &Path) -> io::Result<(String, HashMap<String, WeightData>, String)> {
-    let mf = read_model_file(path)?;
-    let tensor_index = parse_tensors_toml(&mf.tensors_toml)?;
+/// Loaded .model — parsed config + weights + vocab, ready for any backend.
+pub struct LoadedModel {
+    pub config: String,
+    pub vocab: String,
+    pub weights: HashMap<String, WeightData>,
+}
 
-    let mut weights = HashMap::with_capacity(tensor_index.len());
-    for t in &tensor_index {
-        let end = (t.offset + t.size).min(mf.weights.len());
-        let data = if t.offset < mf.weights.len() {
-            mf.weights[t.offset..end].to_vec()
-        } else {
-            Vec::new()
-        };
-        weights.insert(t.name.clone(), WeightData {
-            data,
-            shape: t.shape.clone(),
-            dtype: t.dtype.clone(),
-            needs_transpose: false,
-        });
+impl LoadedModel {
+    /// Load from a .model file. One parse, any backend can consume.
+    pub fn load(path: &Path) -> io::Result<Self> {
+        let mf = read_model_file(path)?;
+        let tensor_index = parse_tensors_toml(&mf.tensors_toml)?;
+
+        let mut weights = HashMap::with_capacity(tensor_index.len());
+        for t in &tensor_index {
+            let end = (t.offset + t.size).min(mf.weights.len());
+            let data = if t.offset < mf.weights.len() {
+                mf.weights[t.offset..end].to_vec()
+            } else {
+                Vec::new()
+            };
+            weights.insert(t.name.clone(), WeightData {
+                data,
+                shape: t.shape.clone(),
+                dtype: t.dtype.clone(),
+                needs_transpose: false,
+            });
+        }
+
+        Ok(LoadedModel { config: mf.config, vocab: mf.vocab, weights })
     }
 
-    Ok((mf.config, weights, mf.vocab))
+    /// Parse config TOML into serde_json::Value for easy field access
+    pub fn config_json(&self) -> serde_json::Value {
+        let tv: toml::Value = toml::from_str(&self.config).unwrap_or(toml::Value::Table(Default::default()));
+        toml_to_json_value(&tv)
+    }
+
+    /// Build tokenizer from embedded vocab
+    pub fn tokenizer(&self) -> Result<tokenizers::Tokenizer, String> {
+        build_tokenizer_from_vocab(&self.vocab)
+    }
+
+    /// Get weight by name
+    pub fn weight(&self, name: &str) -> Option<&WeightData> {
+        self.weights.get(name)
+    }
+
+    /// Get weight as f32 slice
+    pub fn weight_f32(&self, name: &str) -> Result<Vec<f32>, String> {
+        let w = self.weights.get(name).ok_or_else(|| format!("Missing weight: {name}"))?;
+        Ok(crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype))
+    }
+}
+
+/// Legacy wrapper — returns (config, weights, vocab) tuple
+pub fn load_weights_from_model(path: &Path) -> io::Result<(String, HashMap<String, WeightData>, String)> {
+    let m = LoadedModel::load(path)?;
+    Ok((m.config, m.weights, m.vocab))
 }
 
 /// Build a tokenizer from .model file's embedded ~~~vocab section
 pub fn build_tokenizer(model_path: &Path) -> Result<tokenizers::Tokenizer, String> {
+    // Fast path: read only text sections (no binary weights)
+    let (_, config) = read_model_config(model_path)
+        .map_err(|e| format!("Cannot read .model: {e}"))?;
+    // But we need vocab... read full file
     let mf = read_model_file(model_path)
         .map_err(|e| format!("Cannot read .model: {e}"))?;
     build_tokenizer_from_vocab(&mf.vocab)

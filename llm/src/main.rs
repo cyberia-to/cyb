@@ -721,11 +721,8 @@ fn run_metal(model_path: &std::path::Path, tokenizer_path: &std::path::Path, pro
     use cyb_llm::backend::metal::MetalModel;
 
     let load_start = std::time::Instant::now();
-    let mut model = match if use_f16 {
-        MetalModel::load_from_safetensors_f16(model_path)
-    } else {
-        MetalModel::load_from_safetensors(model_path)
-    } {
+    let _ = use_f16; // TODO: precision control
+    let mut model = match MetalModel::load(model_path) {
         Ok(m) => m,
         Err(e) => {
             eprintln!("Metal model load failed: {e}");
@@ -862,7 +859,22 @@ fn run_status() {
         } else {
             ("—".into(), "—".into())
         };
-        let metal_str = "—";
+        #[cfg(target_os = "macos")]
+        let metal_str: String = if is_decoder {
+            let mp = model_path.clone();
+            let prev_hook = std::panic::take_hook();
+            std::panic::set_hook(Box::new(|_| {}));
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| quick_bench_metal(&mp)));
+            std::panic::set_hook(prev_hook);
+            match result {
+                Ok(s) => s,
+                Err(_) => "\x1b[31merr\x1b[0m".into(),
+            }
+        } else {
+            "—".into()
+        };
+        #[cfg(not(target_os = "macos"))]
+        let metal_str = "—".to_string();
         // Ollama bench — map model names to ollama tags
         let llama_str = if is_decoder {
             let ollama_tag = match spec.name {
@@ -949,6 +961,63 @@ fn quick_bench_model(model_path: &std::path::Path) -> (String, String) {
             (tok_s, sane.into())
         }
         Err(_) => ("\x1b[31merr\x1b[0m".into(), "—".into()),
+    }
+}
+
+/// Quick bench Metal: load .model, generate tokens, return tok/s string.
+#[cfg(target_os = "macos")]
+fn quick_bench_metal(model_path: &std::path::Path) -> String {
+    use cyb_llm::backend::metal::MetalModel;
+
+    let prev = log::max_level();
+    log::set_max_level(log::LevelFilter::Error);
+
+    let mut model = match MetalModel::load(model_path) {
+        Ok(m) => m,
+        Err(e) => {
+            log::set_max_level(prev);
+            return format!("\x1b[31m{}\x1b[0m", &e[..e.len().min(30)]);
+        }
+    };
+
+    // Build tokenizer from .model vocab
+    let tokenizer = match cyb_llm::cyb_format::build_tokenizer(model_path) {
+        Ok(t) => t,
+        Err(_) => { log::set_max_level(prev); return "—".into(); }
+    };
+
+    let config_toml = cyb_llm::cyb_format::read_model_config(model_path)
+        .map(|(_, cfg)| cfg).unwrap_or_default();
+    let prompt = cyb_llm::generate::apply_chat_template("What is 2+2?", &config_toml);
+    let encoding = match tokenizer.encode(prompt.as_str(), true) {
+        Ok(e) => e,
+        Err(_) => { log::set_max_level(prev); return "err".into(); }
+    };
+    let token_ids = encoding.get_ids();
+
+    // Prefill
+    let mut next_token = 0u32;
+    for &tid in token_ids {
+        next_token = model.forward_decode(tid);
+    }
+
+    // Decode 16 tokens
+    let decode_start = std::time::Instant::now();
+    let mut count = 0u32;
+    let eos = cyb_llm::generate::detect_eos_tokens(&tokenizer, &config_toml);
+    for _ in 0..16 {
+        if eos.contains(&next_token) { break; }
+        count += 1;
+        next_token = model.forward_decode(next_token);
+    }
+    let elapsed = decode_start.elapsed().as_secs_f64();
+
+    log::set_max_level(prev);
+
+    if count > 0 && elapsed > 0.01 {
+        format!("{:.0}", count as f64 / elapsed)
+    } else {
+        "0".into()
     }
 }
 

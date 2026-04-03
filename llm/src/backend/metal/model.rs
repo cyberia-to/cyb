@@ -88,33 +88,19 @@ fn div_ceil(a: usize, b: usize) -> usize {
 }
 
 impl MetalModel {
-    /// Load model from safetensors (Q4 quantized by default).
-    pub fn load_from_safetensors(path: &Path) -> Result<Self, String> {
-        Self::load_from_safetensors_with_precision(path, false)
+    /// Load from .model file via LoadedModel abstraction
+    pub fn load(path: &Path) -> Result<Self, String> {
+        let lm = crate::cyb_format::LoadedModel::load(path)
+            .map_err(|e| format!("Cannot read .model: {e}"))?;
+        Self::from_loaded(lm)
     }
 
-    /// Load model from safetensors with explicit precision choice.
-    pub fn load_from_safetensors_f16(path: &Path) -> Result<Self, String> {
-        Self::load_from_safetensors_with_precision(path, true)
-    }
-
-    fn load_from_safetensors_with_precision(path: &Path, use_f16: bool) -> Result<Self, String> {
+    /// Build from pre-parsed LoadedModel — shared with other backends
+    pub fn from_loaded(lm: crate::cyb_format::LoadedModel) -> Result<Self, String> {
         let pipelines = MetalPipelines::new().map_err(|e| format!("Metal init: {e}"))?;
 
-        let model_dir = path.parent().unwrap_or(Path::new("."));
-        let json_path = model_dir.join("config.json");
-        let toml_path = model_dir.join("config.toml");
-        let cj_root: serde_json::Value = if json_path.exists() {
-            let s = std::fs::read_to_string(&json_path).map_err(|e| format!("config.json: {e}"))?;
-            serde_json::from_str(&s).map_err(|e| format!("config parse: {e}"))?
-        } else if toml_path.exists() {
-            let s = std::fs::read_to_string(&toml_path).map_err(|e| format!("config.toml: {e}"))?;
-            let tv: toml::Value = toml::from_str(&s).map_err(|e| format!("toml parse: {e}"))?;
-            crate::cyb_format::toml_to_json_value(&tv)
-        } else {
-            return Err("No config.json or config.toml found".to_string());
-        };
-        let cj = cj_root.get("text_config").unwrap_or(&cj_root);
+        let cj_root = lm.config_json();
+        let cj = cj_root.get("architecture").unwrap_or(&cj_root);
 
         let hidden_size = cj["hidden_size"].as_u64().ok_or("missing hidden_size")? as usize;
         let num_heads = cj["num_attention_heads"].as_u64().ok_or("missing num_attention_heads")? as usize;
@@ -122,29 +108,32 @@ impl MetalModel {
         let num_layers = cj["num_hidden_layers"].as_u64().ok_or("missing num_hidden_layers")? as usize;
         let vocab_size = cj["vocab_size"].as_u64().ok_or("missing vocab_size")? as usize;
         let intermediate_size = cj["intermediate_size"].as_u64().unwrap_or((hidden_size * 4) as u64) as usize;
-        let rope_theta = cj["rope_theta"].as_f64().unwrap_or(10000.0) as f32;
+        let rope_theta = cj_root.get("architecture")
+            .and_then(|a| a["rope_theta"].as_f64())
+            .or_else(|| cj_root["rope_theta"].as_f64())
+            .unwrap_or(10000.0) as f32;
         let _rms_norm_eps = cj["rms_norm_eps"].as_f64().unwrap_or(1e-6) as f32;
-        let tie_word_embeddings = cj["tie_word_embeddings"].as_bool().unwrap_or(true);
+        let tie_word_embeddings = cj_root.get("tie_word_embeddings")
+            .or_else(|| cj.get("tie_word_embeddings"))
+            .and_then(|v| v.as_bool()).unwrap_or(true);
         let max_seq = cj["max_position_embeddings"].as_u64()
+            .or_else(|| cj["context_length"].as_u64())
             .map(|v| (v as usize).min(8192))
             .unwrap_or(DEFAULT_MAX_SEQ);
 
-        // Load weights first (needed for head_dim auto-detection)
-        let graph = crate::loader::load_model(path)?;
+        let use_f16 = false; // Q4 by default
 
-        // head_dim: from config, or auto-detect from q_proj weight shape
         let head_dim = cj["head_dim"].as_u64().map(|v| v as usize).unwrap_or_else(|| {
-            if let Some(w) = graph.get_weight("model.layers.0.self_attn.q_proj.weight") {
+            if let Some(w) = lm.weights.get("model.layers.0.self_attn.q_proj.weight") {
                 let q_dim = w.shape[0];
-                log::info!("Auto-detected head_dim: q_dim={q_dim} / {num_heads} = {}", q_dim / num_heads);
                 q_dim / num_heads
             } else { hidden_size / num_heads }
         });
 
-        let has_qk_norm = graph.get_weight("model.layers.0.self_attn.q_norm.weight").is_some();
-        let has_attn_bias = graph.get_weight("model.layers.0.self_attn.q_proj.bias").is_some();
+        let has_qk_norm = lm.weights.contains_key("model.layers.0.self_attn.q_norm.weight");
+        let has_attn_bias = lm.weights.contains_key("model.layers.0.self_attn.q_proj.bias");
 
-        let is_ternary = cj.get("model_type").and_then(|v| v.as_str()) == Some("bitnet");
+        let is_ternary = cj_root.get("model_type").and_then(|v| v.as_str()) == Some("bitnet");
         if is_ternary {
             log::info!("BitNet model detected — using native ternary weights");
         }
@@ -156,11 +145,11 @@ impl MetalModel {
 
         log::info!("Metal model: hidden={hidden_size}, heads={num_heads}, kv_heads={kv_num_heads}, layers={num_layers}, vocab={vocab_size}");
 
-        // Helper: load weight as f32
+        let weights = &lm.weights;
+
         let weight_to_f32 = |name: &str| -> Result<Vec<f32>, String> {
-            let w = graph.get_weight(name).ok_or_else(|| format!("Missing: {name}"))?;
+            let w = weights.get(name).ok_or_else(|| format!("Missing: {name}"))?;
             let mut f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
-            // Q4/Q8 GGUF dequant produces column-major — transpose to row-major
             if w.needs_transpose && w.shape.len() == 2 {
                 f32s = crate::backend::wgpu::model::transpose_f32(&f32s, w.shape[1], w.shape[0]);
             }
@@ -168,7 +157,7 @@ impl MetalModel {
         };
 
         let weight_to_f16 = |name: &str| -> Result<Vec<u16>, String> {
-            let w = graph.get_weight(name).ok_or_else(|| format!("Missing: {name}"))?;
+            let w = weights.get(name).ok_or_else(|| format!("Missing: {name}"))?;
             let mut f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
             if w.needs_transpose && w.shape.len() == 2 {
                 f32s = crate::backend::wgpu::model::transpose_f32(&f32s, w.shape[1], w.shape[0]);
@@ -182,7 +171,7 @@ impl MetalModel {
 
         // LM head — Q4 quantized for speed (vocab is huge, memory-bound)
         let lm_head_q4 = if !tie_word_embeddings {
-            if let Some(w) = graph.get_weight("lm_head.weight") {
+            if let Some(w) = weights.get("lm_head.weight") {
                 let f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
                 let packed = quantize_f32_to_block_q4_0(&f32s, vocab_size, hidden_size);
                 pipelines.upload_bytes(&packed).map_err(|e| format!("{e}"))?
@@ -224,11 +213,11 @@ impl MetalModel {
 
         // Quantize projection weights to block_q4_0 and upload
         let quantize_upload = |name: &str, n: usize, k: usize| -> Result<Buffer, String> {
-            let w = graph.get_weight(name).ok_or_else(|| format!("Missing: {name}"))?;
+            let w = weights.get(name).ok_or_else(|| format!("Missing: {name}"))?;
             let mut f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
             // Apply weight_scale if present (BitNet ternary models)
             let scale_name = format!("{name}_scale");
-            if let Some(sw) = graph.get_weight(&scale_name) {
+            if let Some(sw) = weights.get(&scale_name) {
                 let scale_f32 = crate::backend::wgpu::model::safetensors_to_f32(&sw.data, sw.dtype);
                 if !scale_f32.is_empty() {
                     let s = scale_f32[0];
@@ -241,10 +230,10 @@ impl MetalModel {
 
         // Helper: load raw ternary bytes + extract weight_scale
         let ternary_upload = |name: &str| -> Result<(Buffer, f32), String> {
-            let w = graph.get_weight(name).ok_or_else(|| format!("Missing: {name}"))?;
+            let w = weights.get(name).ok_or_else(|| format!("Missing: {name}"))?;
             let buf = pipelines.upload_bytes(&w.data).map_err(|e| format!("{e}"))?;
             let scale_name = format!("{name}_scale");
-            let scale = if let Some(sw) = graph.get_weight(&scale_name) {
+            let scale = if let Some(sw) = weights.get(&scale_name) {
                 let sv = crate::backend::wgpu::model::safetensors_to_f32(&sw.data, sw.dtype);
                 if !sv.is_empty() { sv[0] } else { 1.0 }
             } else { 1.0 };

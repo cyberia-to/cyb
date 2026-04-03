@@ -605,15 +605,19 @@ fn precompute_argmax(p: &Pipelines, n: u32) -> (wgpu::Buffer, (u32, u32, u32)) {
 
 impl NativeModel {
     /// Load model from .model file — the only runtime entry point.
+    /// Load from .model file path (convenience)
     pub fn load(path: &Path, pipelines: Arc<Pipelines>) -> Result<(Self, String), String> {
-        use crate::cyb_format;
+        use crate::cyb_format::LoadedModel;
+        let lm = LoadedModel::load(path).map_err(|e| format!("Cannot read .model: {e}"))?;
+        let vocab = lm.vocab.clone();
+        let model = Self::from_loaded(lm, pipelines)?;
+        Ok((model, vocab))
+    }
 
-        let (config_str, weights, vocab_str) = cyb_format::load_weights_from_model(path)
-            .map_err(|e| format!("Cannot read .model file: {e}"))?;
-
-        let toml_val: toml::Value = toml::from_str(&config_str)
-            .map_err(|e| format!("Invalid config in .model: {e}"))?;
-        let config_json = toml_to_json(&toml_val);
+    /// Build from pre-parsed LoadedModel — shared loader, any backend can use
+    pub fn from_loaded(lm: crate::cyb_format::LoadedModel, pipelines: Arc<Pipelines>) -> Result<Self, String> {
+        let config_json = lm.config_json();
+        let weights = lm.weights;
         let arch = config_json.get("architecture").unwrap_or(&config_json);
 
         let hidden_size = arch.get("hidden_size").and_then(|v| v.as_u64())
@@ -817,7 +821,7 @@ impl NativeModel {
 
         log::info!(".model loaded: {} layers, Q4 quantize-on-load", num_layers);
 
-        let model = Self {
+        Ok(Self {
             config, pipelines, embed_table, lm_head, layers, final_norm_weight,
             cos_cache, sin_cache, kv_cache, past_seq_len: 0, greedy_mode: false,
             quant_format: QuantFormat::Q4,
@@ -827,8 +831,7 @@ impl NativeModel {
                 argmax_params, argmax_wg,
             },
             kv_compressor: None,
-        };
-        Ok((model, vocab_str))
+        })
     }
 
     /// Enable TurboQuant KV cache compression.
