@@ -574,14 +574,10 @@ fn run_embed(model_path: &str, text: &str) {
     };
     println!("Graph template: {} nodes", graph.len());
 
-    // Build tokenizer: from .model vocab or fallback to tokenizer.json
+    // Build tokenizer: .model → name.tokenizer.json or embedded vocab
     let tokenizer = if ext_is(path, "model") {
-        let (_card, _config) = cyb_llm::cyb_format::read_model_config(path)
-            .expect("Cannot read .model");
-        let mf = cyb_llm::cyb_format::read_model_file(path)
-            .expect("Cannot read .model file");
-        cyb_llm::cyb_format::build_tokenizer_from_vocab(&mf.vocab)
-            .expect("Cannot build tokenizer from vocab")
+        cyb_llm::cyb_format::build_tokenizer(path)
+            .expect("Cannot build tokenizer")
     } else {
         let tok_path = model_dir.join("tokenizer.json");
         tokenizers::Tokenizer::from_file(&tok_path)

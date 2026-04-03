@@ -97,9 +97,9 @@ impl TextGenerator {
         model_path: &Path,
         pipelines: Arc<Pipelines>,
     ) -> Result<Self, String> {
-        let (model, vocab_str) = NativeModel::load(model_path, pipelines)?;
+        let (model, _vocab_str) = NativeModel::load(model_path, pipelines)?;
 
-        let tokenizer = crate::cyb_format::build_tokenizer_from_vocab(&vocab_str)?;
+        let tokenizer = crate::cyb_format::build_tokenizer(model_path)?;
 
         // Read config for EOS detection (fast text-only read)
         let config_toml = crate::cyb_format::read_model_config(model_path)
