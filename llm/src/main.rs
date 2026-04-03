@@ -794,9 +794,9 @@ fn run_status() {
     println!("  \x1b[1mcyb-llm status\x1b[0m — {}", base.display());
     println!();
 
-    println!("  {:<26} {:<6}{:<12} {:>6} {:>3} {:>6} {:>6} {:>6} {:>4}",
+    println!("  {:<26} {:<6} {:<11} {:>6} {:>3} {:>6} {:>6} {:>6} {:>4}",
         "MODEL", "TIER", "TYPE", "SIZE", "L", "CTX", "LOAD", "T/S", "GEN");
-    println!("  {}", "─".repeat(82));
+    println!("  {}", "─".repeat(83));
 
     let mut total_disk = 0u64;
     let mut total_ok = 0usize;
@@ -805,7 +805,7 @@ fn run_status() {
         let model_path = base.join(format!("{}.model", spec.name));
 
         if !model_path.exists() {
-            println!("  {:<26} {:<6}{:<12} \x1b[31mMISSING\x1b[0m",
+            println!("  {:<26} {:<6} {:<11} \x1b[31mMISSING\x1b[0m",
                 spec.name, spec.tier, "—");
             continue;
         }
@@ -845,23 +845,27 @@ fn run_status() {
 
         if load_ok { total_ok += 1; }
 
-        // Bench: tok/s + quality for decoder LLMs
+        // Bench: tok/s + quality for decoder LLMs (catch panics so one bad model doesn't kill the table)
         let is_decoder = matches!(model_type.as_str(),
             "qwen2" | "qwen3" | "llama" | "phi3" | "bitnet" | "mimo");
         let (tok_s_str, quality_str) = if is_decoder {
             eprint!("  bench {}...\r", spec.name);
-            quick_bench_model(&model_path)
+            let mp = model_path.clone();
+            match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| quick_bench_model(&mp))) {
+                Ok(r) => r,
+                Err(_) => ("err".into(), "\x1b[31mpanic\x1b[0m".into()),
+            }
         } else {
             ("—".into(), "—".into())
         };
 
-        println!("  {:<26} {:<6}{:<12} {:>6} {:>3} {:>6} {:>6} {:>6} {:>4}",
+        println!("  {:<26} {:<6} {:<11} {:>6} {:>3} {:>6} {:>6} {:>6} {:>4}",
             spec.name, spec.tier, type_str,
             format_size(disk_bytes), layers_str, ctx_str,
             load_str, tok_s_str, quality_str);
     }
 
-    println!("  {}", "─".repeat(82));
+    println!("  {}", "─".repeat(83));
     println!();
     println!("  \x1b[1m{}\x1b[0m models  ·  \x1b[32m{}\x1b[0m ready  ·  {} on disk",
         MANIFEST.len(), total_ok, format_size(total_disk));
