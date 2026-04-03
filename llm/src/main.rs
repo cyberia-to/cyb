@@ -574,15 +574,9 @@ fn run_embed(model_path: &str, text: &str) {
     };
     println!("Graph template: {} nodes", graph.len());
 
-    // Build tokenizer: .model → name.tokenizer.json or embedded vocab
-    let tokenizer = if ext_is(path, "model") {
-        cyb_llm::cyb_format::build_tokenizer(path)
-            .expect("Cannot build tokenizer")
-    } else {
-        let tok_path = model_dir.join("tokenizer.json");
-        tokenizers::Tokenizer::from_file(&tok_path)
-            .expect("No tokenizer.json found — use .model format")
-    };
+    // Build tokenizer from .model embedded vocab
+    let tokenizer = cyb_llm::cyb_format::build_tokenizer(path)
+        .expect("Cannot build tokenizer from .model vocab");
 
     // Tokenize input — add special tokens (BOS/EOS) only when the model expects them
     // ModernBERT and some encoders don't need special tokens and produce NaN with them
@@ -800,9 +794,9 @@ fn run_status() {
     println!("  \x1b[1mcyb-llm status\x1b[0m — {}", base.display());
     println!();
 
-    println!("  {:<26} {:>5} {:<10} {:>5} {:>3} {:>5} {:>5} {:>5} {:>3}",
+    println!("  {:<26} {:<6}{:<12} {:>6} {:>3} {:>6} {:>6} {:>6} {:>4}",
         "MODEL", "TIER", "TYPE", "SIZE", "L", "CTX", "LOAD", "T/S", "GEN");
-    println!("  {}", "─".repeat(76));
+    println!("  {}", "─".repeat(82));
 
     let mut total_disk = 0u64;
     let mut total_ok = 0usize;
@@ -811,7 +805,7 @@ fn run_status() {
         let model_path = base.join(format!("{}.model", spec.name));
 
         if !model_path.exists() {
-            println!("  {:<28} {:<5} {:>8} \x1b[31mMISSING\x1b[0m",
+            println!("  {:<26} {:<6}{:<12} \x1b[31mMISSING\x1b[0m",
                 spec.name, spec.tier, "—");
             continue;
         }
@@ -861,13 +855,13 @@ fn run_status() {
             ("—".into(), "—".into())
         };
 
-        println!("  {:<28} {:<5} {:<8} {:>6} {:>3} {:>6} {:>5} {:>6} {:>4}",
+        println!("  {:<26} {:<6}{:<12} {:>6} {:>3} {:>6} {:>6} {:>6} {:>4}",
             spec.name, spec.tier, type_str,
             format_size(disk_bytes), layers_str, ctx_str,
             load_str, tok_s_str, quality_str);
     }
 
-    println!("  {}", "─".repeat(80));
+    println!("  {}", "─".repeat(82));
     println!();
     println!("  \x1b[1m{}\x1b[0m models  ·  \x1b[32m{}\x1b[0m ready  ·  {} on disk",
         MANIFEST.len(), total_ok, format_size(total_disk));

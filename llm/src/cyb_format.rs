@@ -1142,28 +1142,8 @@ pub fn load_weights_from_model(path: &Path) -> io::Result<(String, HashMap<Strin
     Ok((mf.config, weights, mf.vocab))
 }
 
-/// Build a tokenizer for a .model file.
-/// Priority: name.tokenizer.json alongside .model → embedded ~~~vocab TOML
+/// Build a tokenizer from .model file's embedded ~~~vocab section
 pub fn build_tokenizer(model_path: &Path) -> Result<tokenizers::Tokenizer, String> {
-    // 1. Try name.tokenizer.json next to the .model file
-    let stem = model_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-    let dir = model_path.parent().unwrap_or(Path::new("."));
-    let tok_json_path = dir.join(format!("{stem}.tokenizer.json"));
-    if tok_json_path.exists() {
-        log::info!("Loading tokenizer from {}", tok_json_path.display());
-        return tokenizers::Tokenizer::from_file(&tok_json_path)
-            .map_err(|e| format!("Tokenizer JSON load failed: {e}"));
-    }
-
-    // 2. Try tokenizer.json in same directory
-    let fallback = dir.join("tokenizer.json");
-    if fallback.exists() {
-        log::info!("Loading tokenizer from {}", fallback.display());
-        return tokenizers::Tokenizer::from_file(&fallback)
-            .map_err(|e| format!("Tokenizer JSON load failed: {e}"));
-    }
-
-    // 3. Build from embedded vocab.toml
     let mf = read_model_file(model_path)
         .map_err(|e| format!("Cannot read .model: {e}"))?;
     build_tokenizer_from_vocab(&mf.vocab)
