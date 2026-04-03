@@ -794,9 +794,9 @@ fn run_status() {
     println!("  \x1b[1mcyb-llm status\x1b[0m — {}", base.display());
     println!();
 
-    println!("  {:<26} {:<6} {:<11} {:>6} {:>3} {:>6} {:>6} {:>6} {:>4}",
-        "MODEL", "TIER", "TYPE", "SIZE", "L", "CTX", "LOAD", "T/S", "GEN");
-    println!("  {}", "─".repeat(83));
+    println!("  {:<26} {:<6} {:<11} {:>6} {:>3} {:>6} {:>6} {:>6} {:>6} {:>6}",
+        "MODEL", "TIER", "TYPE", "SIZE", "L", "CTX", "LOAD", "WGPU", "METAL", "LLAMA");
+    println!("  {}", "─".repeat(92));
 
     let mut total_disk = 0u64;
     let mut total_ok = 0usize;
@@ -845,31 +845,33 @@ fn run_status() {
 
         if load_ok { total_ok += 1; }
 
-        // Bench: tok/s + quality for decoder LLMs (catch panics silently)
+        // Bench: tok/s for decoder LLMs (catch panics silently)
         let is_decoder = matches!(model_type.as_str(),
             "qwen2" | "qwen3" | "llama" | "phi3" | "bitnet" | "mimo");
-        let (tok_s_str, quality_str) = if is_decoder {
+        let wgpu_str = if is_decoder {
             eprint!("  bench {}...\r", spec.name);
             let mp = model_path.clone();
             let prev_hook = std::panic::take_hook();
-            std::panic::set_hook(Box::new(|_| {})); // silence panic output
+            std::panic::set_hook(Box::new(|_| {}));
             let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| quick_bench_model(&mp)));
             std::panic::set_hook(prev_hook);
             match result {
-                Ok(r) => r,
-                Err(_) => ("err".into(), "\x1b[31mpanic\x1b[0m".into()),
+                Ok(s) => s,
+                Err(_) => "\x1b[31merr\x1b[0m".into(),
             }
         } else {
-            ("—".into(), "—".into())
+            "—".into()
         };
+        let metal_str = "—";
+        let llama_str = "—";
 
-        println!("  {:<26} {:<6} {:<11} {:>6} {:>3} {:>6} {:>6} {:>6} {:>4}",
+        println!("  {:<26} {:<6} {:<11} {:>6} {:>3} {:>6} {:>6} {:>6} {:>6} {:>6}",
             spec.name, spec.tier, type_str,
             format_size(disk_bytes), layers_str, ctx_str,
-            load_str, tok_s_str, quality_str);
+            load_str, wgpu_str, metal_str, llama_str);
     }
 
-    println!("  {}", "─".repeat(83));
+    println!("  {}", "─".repeat(92));
     println!();
     println!("  \x1b[1m{}\x1b[0m models  ·  \x1b[32m{}\x1b[0m ready  ·  {} on disk",
         MANIFEST.len(), total_ok, format_size(total_disk));
@@ -880,8 +882,8 @@ fn ext_is(path: &std::path::Path, ext: &str) -> bool {
     path.extension().and_then(|e| e.to_str()).map(|e| e == ext).unwrap_or(false)
 }
 
-/// Quick bench: load .model, generate a few tokens, measure tok/s + check sanity.
-fn quick_bench_model(model_path: &std::path::Path) -> (String, String) {
+/// Quick bench: load .model, generate tokens, return tok/s string.
+fn quick_bench_model(model_path: &std::path::Path) -> String {
     let prev = log::max_level();
     log::set_max_level(log::LevelFilter::Error);
 
@@ -892,7 +894,7 @@ fn quick_bench_model(model_path: &std::path::Path) -> (String, String) {
         Ok(g) => g,
         Err(e) => {
             log::set_max_level(prev);
-            return ("fail".into(), format!("\x1b[31m{}\x1b[0m", &e[..e.len().min(40)]));
+            return format!("\x1b[31m{}\x1b[0m", &e[..e.len().min(30)]);
         },
     };
 
@@ -904,24 +906,16 @@ fn quick_bench_model(model_path: &std::path::Path) -> (String, String) {
     log::set_max_level(prev);
 
     match result {
-        Ok(text) => {
-            let text = text.trim().to_string();
+        Ok(_) => {
             let stats = generator.last_stats();
-
-            let tok_s = if stats.decode_tokens > 0 && stats.decode_ms > 10 {
-                stats.decode_tokens as f64 / (stats.decode_ms as f64 / 1000.0)
-            } else { 0.0 };
-
-            let has_answer = text.contains('4') || text.to_lowercase().contains("four");
-            let is_garbage = text.len() < 2 || text.chars().filter(|c| c.is_alphanumeric()).count() < 3;
-
-            let quality = if is_garbage { "\x1b[31mbad\x1b[0m" }
-                else if has_answer { "\x1b[32mok\x1b[0m" }
-                else { "\x1b[33m??\x1b[0m" };
-
-            (format!("{:.1}", tok_s), quality.into())
+            if stats.decode_tokens > 0 && stats.decode_ms > 10 {
+                let tok_s = stats.decode_tokens as f64 / (stats.decode_ms as f64 / 1000.0);
+                format!("{:.1}", tok_s)
+            } else {
+                "0".into()
+            }
         }
-        Err(_) => ("err".into(), "\x1b[31mfail\x1b[0m".into()),
+        Err(_) => "\x1b[31merr\x1b[0m".into(),
     }
 }
 
