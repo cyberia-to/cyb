@@ -1210,65 +1210,23 @@ pub fn build_tokenizer_from_vocab(vocab_toml: &str) -> Result<tokenizers::Tokeni
     Ok(tokenizer)
 }
 
-/// Parse a TOML quoted string value like `"hello\"world"`
+/// Parse a TOML value string — delegates to toml crate for correct escaping
 fn parse_toml_string(s: &str) -> Option<String> {
     let s = s.trim();
-    if s.len() < 2 || !s.starts_with('"') || !s.ends_with('"') {
-        return None;
-    }
-    let inner = &s[1..s.len()-1];
-    let mut result = String::with_capacity(inner.len());
-    let mut chars = inner.chars();
-    while let Some(c) = chars.next() {
-        if c == '\\' {
-            match chars.next() {
-                Some('"') => result.push('"'),
-                Some('\\') => result.push('\\'),
-                Some('n') => result.push('\n'),
-                Some('t') => result.push('\t'),
-                Some('r') => result.push('\r'),
-                Some('u') => {
-                    // \uXXXX
-                    let hex: String = chars.by_ref().take(4).collect();
-                    if let Ok(n) = u32::from_str_radix(&hex, 16) {
-                        if let Some(ch) = char::from_u32(n) {
-                            result.push(ch);
-                        }
-                    }
-                }
-                Some(other) => { result.push('\\'); result.push(other); }
-                None => result.push('\\'),
-            }
-        } else {
-            result.push(c);
-        }
-    }
-    Some(result)
+    let kv = format!("k = {s}");
+    let table: toml::Value = toml::from_str(&kv).ok()?;
+    table.get("k")?.as_str().map(|s| s.to_string())
 }
 
 /// Parse a TOML merge pair like `["hello", "world"]`
 fn parse_toml_merge_pair(s: &str) -> Option<(String, String)> {
     let s = s.trim();
-    if !s.starts_with('[') || !s.ends_with(']') {
-        return None;
-    }
-    let inner = &s[1..s.len()-1];
-    // Find the comma separating the two strings (use byte offsets for slicing)
-    let mut in_str = false;
-    let mut escape = false;
-    let mut comma_byte = None;
-    for (byte_pos, c) in inner.char_indices() {
-        if escape { escape = false; continue; }
-        if c == '\\' { escape = true; continue; }
-        if c == '"' { in_str = !in_str; continue; }
-        if !in_str && c == ',' {
-            comma_byte = Some(byte_pos);
-            break;
-        }
-    }
-    let cb = comma_byte?;
-    let a = parse_toml_string(inner[..cb].trim())?;
-    let b = parse_toml_string(inner[cb+1..].trim())?;
+    let kv = format!("k = {s}");
+    let table: toml::Value = toml::from_str(&kv).ok()?;
+    let arr = table.get("k")?.as_array()?;
+    if arr.len() != 2 { return None; }
+    let a = arr[0].as_str()?.to_string();
+    let b = arr[1].as_str()?.to_string();
     Some((a, b))
 }
 
