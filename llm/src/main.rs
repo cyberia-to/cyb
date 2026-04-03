@@ -934,8 +934,8 @@ fn quick_bench_model(model_path: &std::path::Path) -> (String, String) {
 
     let config_toml = cyb_llm::cyb_format::read_model_config(model_path)
         .map(|(_, cfg)| cfg).unwrap_or_default();
-    let prompt = cyb_llm::generate::apply_chat_template("What is 2+2?", &config_toml);
-    let result = generator.generate_quiet(&prompt, 16, 0.0);
+    let prompt = cyb_llm::generate::apply_chat_template("What is 2+2? /no_think", &config_toml);
+    let result = generator.generate_quiet(&prompt, 64, 0.0);
 
     log::set_max_level(prev);
 
@@ -949,8 +949,12 @@ fn quick_bench_model(model_path: &std::path::Path) -> (String, String) {
                 "0".into()
             };
 
+            // Strip <think>...</think> tags for sanity check
             let text = text.trim().to_lowercase();
-            let sane = if text.contains('4') || text.contains("four") {
+            let check_text = if let Some(pos) = text.find("</think>") {
+                &text[pos+8..]
+            } else { &text };
+            let sane = if check_text.contains('4') || check_text.contains("four") {
                 "\x1b[32m✓\x1b[0m"
             } else if text.len() < 2 {
                 "\x1b[31m✗\x1b[0m"
@@ -988,7 +992,7 @@ fn quick_bench_metal(model_path: &std::path::Path) -> String {
 
     let config_toml = cyb_llm::cyb_format::read_model_config(model_path)
         .map(|(_, cfg)| cfg).unwrap_or_default();
-    let prompt = cyb_llm::generate::apply_chat_template("What is 2+2?", &config_toml);
+    let prompt = cyb_llm::generate::apply_chat_template("What is 2+2? /no_think", &config_toml);
     let encoding = match tokenizer.encode(prompt.as_str(), true) {
         Ok(e) => e,
         Err(_) => { log::set_max_level(prev); return "err".into(); }
@@ -1001,11 +1005,11 @@ fn quick_bench_metal(model_path: &std::path::Path) -> String {
         next_token = model.forward_decode(tid);
     }
 
-    // Decode 16 tokens
+    // Decode 64 tokens
     let decode_start = std::time::Instant::now();
     let mut count = 0u32;
     let eos = cyb_llm::generate::detect_eos_tokens(&tokenizer, &config_toml);
-    for _ in 0..16 {
+    for _ in 0..64 {
         if eos.contains(&next_token) { break; }
         count += 1;
         next_token = model.forward_decode(next_token);
@@ -1026,7 +1030,7 @@ fn bench_ollama(tag: &str) -> String {
     use std::io::Read;
 
     let body = format!(
-        r#"{{"model":"{}","prompt":"What is 2+2?","stream":false,"options":{{"num_predict":16,"temperature":0}}}}"#,
+        r#"{{"model":"{}","prompt":"What is 2+2? /no_think","stream":false,"options":{{"num_predict":64,"temperature":0}}}}"#,
         tag
     );
 
