@@ -253,26 +253,22 @@ fn main() {
 
 fn bench_cyb(
     name: &str,
-    safetensors: &Path,
-    tokenizer_path: &Path,
+    model_path: &Path,
+    _tokenizer_path: &Path,
     max_tokens: usize,
 ) -> Result<BenchResult, String> {
     // Init wgpu
     let backend = cyb_llm::backend::create_wgpu_backend();
     let pipelines = backend.pipelines;
 
-    // Load model
+    // Load model from .model file (tokenizer embedded in vocab section)
     let load_start = Instant::now();
     let mut generator =
-        cyb_llm::generate::TextGenerator::new_safetensors(safetensors, tokenizer_path, pipelines)?;
+        cyb_llm::generate::TextGenerator::new(model_path, pipelines)?;
     let load_s = load_start.elapsed().as_secs_f64();
 
-    // Tokenize
-    let encoding = tokenizers::Tokenizer::from_file(tokenizer_path)
-        .map_err(|e| format!("{e}"))?
-        .encode(PROMPT, false)
-        .map_err(|e| format!("{e}"))?;
-    let prompt_tokens = encoding.get_ids().len();
+    // Prompt tokens (approximate)
+    let prompt_tokens = PROMPT.split_whitespace().count();
 
     // Generate (greedy for reproducibility)
     let gen_start = Instant::now();

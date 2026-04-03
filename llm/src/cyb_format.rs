@@ -954,6 +954,47 @@ pub struct ModelFile {
     pub weights: Vec<u8>,
 }
 
+/// Fast config read — only text sections, stops before ~~~weights (no binary loading)
+pub fn read_model_config(path: &Path) -> io::Result<(String, String)> {
+    use std::io::{BufRead, BufReader};
+    let file = std::fs::File::open(path)?;
+    let reader = BufReader::new(file);
+
+    let mut current_section: Option<String> = None;
+    let mut sections: HashMap<String, String> = HashMap::new();
+    let mut in_frontmatter = true;
+    let mut buf = String::new();
+
+    for line in reader.lines() {
+        let line = line?;
+        if line.starts_with("~~~weights") {
+            // Stop — everything after is binary
+            if let Some(name) = current_section.take() {
+                sections.insert(name, buf.clone());
+            }
+            break;
+        }
+        if line.starts_with("~~~") {
+            if let Some(name) = current_section.take() {
+                sections.insert(name, buf.clone());
+            }
+            in_frontmatter = false;
+            current_section = Some(line[3..].to_string());
+            buf.clear();
+        } else if !in_frontmatter {
+            if !buf.is_empty() { buf.push('\n'); }
+            buf.push_str(&line);
+        }
+    }
+    if let Some(name) = current_section {
+        sections.insert(name, buf);
+    }
+
+    let card = sections.remove("card").unwrap_or_default();
+    let config = sections.remove("config").unwrap_or_default();
+    Ok((card, config))
+}
+
 /// Read a .model file (new spec: TOML frontmatter + ~~~name delimiters)
 pub fn read_model_file(path: &Path) -> io::Result<ModelFile> {
     let data = std::fs::read(path)?;
@@ -1077,7 +1118,8 @@ fn encoding_to_dtype(enc: &str) -> DType {
 }
 
 /// Load weights from a .model file into a HashMap (for NativeModel)
-pub fn load_weights_from_model(path: &Path) -> io::Result<(String, HashMap<String, WeightData>)> {
+/// Returns (config_toml, weights, vocab_toml)
+pub fn load_weights_from_model(path: &Path) -> io::Result<(String, HashMap<String, WeightData>, String)> {
     let mf = read_model_file(path)?;
     let tensor_index = parse_tensors_toml(&mf.tensors_toml)?;
 
@@ -1097,7 +1139,143 @@ pub fn load_weights_from_model(path: &Path) -> io::Result<(String, HashMap<Strin
         });
     }
 
-    Ok((mf.config, weights))
+    Ok((mf.config, weights, mf.vocab))
+}
+
+/// Build a tokenizers::Tokenizer from vocab.toml content (BPE: [tokens] + [merges])
+pub fn build_tokenizer_from_vocab(vocab_toml: &str) -> Result<tokenizers::Tokenizer, String> {
+    if vocab_toml.trim().is_empty() || vocab_toml.trim() == "{}" {
+        return Err("Empty vocab — model has no tokenizer".into());
+    }
+
+    // Parse [tokens] and [merges] sections line-by-line (fast for 300K+ lines)
+    let mut in_tokens = false;
+    let mut in_merges = false;
+    let mut tokens = tokenizers::models::bpe::Vocab::default();
+    let mut merges: Vec<(String, String)> = Vec::new();
+
+    for line in vocab_toml.lines() {
+        let trimmed = line.trim();
+        if trimmed == "[tokens]" { in_tokens = true; in_merges = false; continue; }
+        if trimmed == "[merges]" { in_merges = true; in_tokens = false; continue; }
+        if trimmed.is_empty() || trimmed.starts_with('#') { continue; }
+
+        if in_tokens {
+            // Format: 0 = "token_string"
+            if let Some((id_str, rest)) = trimmed.split_once('=') {
+                let id: u32 = match id_str.trim().parse() {
+                    Ok(v) => v,
+                    Err(_) => continue,
+                };
+                let val = rest.trim();
+                // Parse TOML string value
+                if let Some(s) = parse_toml_string(val) {
+                    tokens.insert(s, id);
+                }
+            }
+        } else if in_merges {
+            // Format: 0 = ["a", "b"]
+            if let Some((_id_str, rest)) = trimmed.split_once('=') {
+                let val = rest.trim();
+                if let Some((a, b)) = parse_toml_merge_pair(val) {
+                    merges.push((a, b));
+                }
+            }
+        }
+    }
+
+    if tokens.is_empty() {
+        return Err("No tokens found in vocab.toml".into());
+    }
+
+    log::info!("Building tokenizer: {} tokens, {} merges", tokens.len(), merges.len());
+
+    let bpe = tokenizers::models::bpe::BPE::builder()
+        .vocab_and_merges(tokens, merges)
+        .byte_fallback(false)
+        .build()
+        .map_err(|e| format!("BPE build failed: {e}"))?;
+
+    let mut tokenizer = tokenizers::Tokenizer::new(bpe);
+
+    // ByteLevel pre-tokenizer + decoder (GPT-2/Qwen/SmolLM style)
+    let byte_level = tokenizers::pre_tokenizers::byte_level::ByteLevel::new(
+        false, // add_prefix_space
+        false, // trim_offsets
+        true,  // use_regex
+    );
+    tokenizer.with_pre_tokenizer(Some(byte_level.clone()));
+    tokenizer.with_decoder(Some(byte_level));
+
+    Ok(tokenizer)
+}
+
+/// Parse a TOML quoted string value like `"hello\"world"`
+fn parse_toml_string(s: &str) -> Option<String> {
+    let s = s.trim();
+    if s.len() < 2 || !s.starts_with('"') || !s.ends_with('"') {
+        return None;
+    }
+    let inner = &s[1..s.len()-1];
+    let mut result = String::with_capacity(inner.len());
+    let mut chars = inner.chars();
+    while let Some(c) = chars.next() {
+        if c == '\\' {
+            match chars.next() {
+                Some('"') => result.push('"'),
+                Some('\\') => result.push('\\'),
+                Some('n') => result.push('\n'),
+                Some('t') => result.push('\t'),
+                Some('r') => result.push('\r'),
+                Some('u') => {
+                    // \uXXXX
+                    let hex: String = chars.by_ref().take(4).collect();
+                    if let Ok(n) = u32::from_str_radix(&hex, 16) {
+                        if let Some(ch) = char::from_u32(n) {
+                            result.push(ch);
+                        }
+                    }
+                }
+                Some(other) => { result.push('\\'); result.push(other); }
+                None => result.push('\\'),
+            }
+        } else {
+            result.push(c);
+        }
+    }
+    Some(result)
+}
+
+/// Parse a TOML merge pair like `["hello", "world"]`
+fn parse_toml_merge_pair(s: &str) -> Option<(String, String)> {
+    let s = s.trim();
+    if !s.starts_with('[') || !s.ends_with(']') {
+        return None;
+    }
+    let inner = &s[1..s.len()-1];
+    // Find the comma separating the two strings
+    // Need to handle commas inside quoted strings
+    let mut depth = 0;
+    let mut in_str = false;
+    let mut escape = false;
+    let mut comma_pos = None;
+    for (i, c) in inner.chars().enumerate() {
+        if escape { escape = false; continue; }
+        if c == '\\' { escape = true; continue; }
+        if c == '"' { in_str = !in_str; continue; }
+        if !in_str && c == ',' && depth == 0 {
+            comma_pos = Some(i);
+            break;
+        }
+        if !in_str {
+            if c == '[' { depth += 1; }
+            if c == ']' { depth -= 1; }
+        }
+    }
+    let comma = comma_pos?;
+    let a = parse_toml_string(inner[..comma].trim())?;
+    let b = parse_toml_string(inner[comma+1..].trim())?;
+    Some((a, b))
 }
 
 // ── Weight deserialization ───────────────────────────────────────

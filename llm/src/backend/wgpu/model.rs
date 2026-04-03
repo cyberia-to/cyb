@@ -605,10 +605,10 @@ fn precompute_argmax(p: &Pipelines, n: u32) -> (wgpu::Buffer, (u32, u32, u32)) {
 
 impl NativeModel {
     /// Load model from .model file — the only runtime entry point.
-    pub fn load(path: &Path, pipelines: Arc<Pipelines>) -> Result<Self, String> {
+    pub fn load(path: &Path, pipelines: Arc<Pipelines>) -> Result<(Self, String), String> {
         use crate::cyb_format;
 
-        let (config_str, weights) = cyb_format::load_weights_from_model(path)
+        let (config_str, weights, vocab_str) = cyb_format::load_weights_from_model(path)
             .map_err(|e| format!("Cannot read .model file: {e}"))?;
 
         let toml_val: toml::Value = toml::from_str(&config_str)
@@ -817,7 +817,7 @@ impl NativeModel {
 
         log::info!(".model loaded: {} layers, Q4 quantize-on-load", num_layers);
 
-        Ok(Self {
+        let model = Self {
             config, pipelines, embed_table, lm_head, layers, final_norm_weight,
             cos_cache, sin_cache, kv_cache, past_seq_len: 0, greedy_mode: false,
             quant_format: QuantFormat::Q4,
@@ -827,7 +827,8 @@ impl NativeModel {
                 argmax_params, argmax_wg,
             },
             kv_compressor: None,
-        })
+        };
+        Ok((model, vocab_str))
     }
 
     /// Enable TurboQuant KV cache compression.

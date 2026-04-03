@@ -152,78 +152,36 @@ fn main() {
             max_tokens,
             temperature,
         } => {
-            // Resolve: .model file, .cyb file, or model directory
+            // Resolve: .model file or directory containing one
             let model_path = std::path::PathBuf::from(&model);
-            let (cyb_path, model_dir) = if ext_is(&model_path, "model") && model_path.exists() {
-                let dir = model_path.parent().unwrap_or(std::path::Path::new("."));
-                (model_path.clone(), dir.to_path_buf())
-            } else if ext_is(&model_path, "cyb") && model_path.exists() {
-                let dir = model_path.parent().unwrap_or(std::path::Path::new("."));
-                (model_path.clone(), dir.to_path_buf())
+            let model_file = if ext_is(&model_path, "model") && model_path.exists() {
+                model_path.clone()
             } else if model_path.is_dir() {
-                // Prefer .model over .cyb
-                let model_file = std::fs::read_dir(&model_path).into_iter().flatten().flatten()
-                    .find(|e| ext_is(&e.path(), "model")).map(|e| e.path());
-                let cyb_file = std::fs::read_dir(&model_path).into_iter().flatten().flatten()
-                    .find(|e| ext_is(&e.path(), "cyb")).map(|e| e.path());
-                match model_file.or(cyb_file) {
-                    Some(p) => (p, model_path.clone()),
-                    None => { eprintln!("No .model or .cyb file in {}. Run: cyb-llm model-pack", model_path.display()); return; }
+                match std::fs::read_dir(&model_path).into_iter().flatten().flatten()
+                    .find(|e| ext_is(&e.path(), "model")).map(|e| e.path()) {
+                    Some(p) => p,
+                    None => { eprintln!("No .model file in {}", model_path.display()); return; }
                 }
             } else {
-                eprintln!("Expected .model file or model directory. Got: {model}");
+                eprintln!("Expected .model file or directory. Got: {model}");
                 return;
             };
 
-            // Find tokenizer: model_dir, or model-name subdirectory (for flat .model files)
-            let tokenizer_path = match find_tokenizer(&model_dir) {
-                Some(p) => p,
-                None => {
-                    // For ~/llm/name.model, check ~/llm/name/tokenizer.json
-                    let stem = cyb_path.file_stem().and_then(|s| s.to_str()).unwrap_or("");
-                    let subdir = model_dir.join(stem);
-                    match find_tokenizer(&subdir) {
-                        Some(p) => p,
-                        None => { eprintln!("No tokenizer.json in {} or {}", model_dir.display(), subdir.display()); return; }
-                    }
-                }
-            };
-
-            println!("Loading: {}", cyb_path.display());
-
-            // Use Metal on macOS when available, wgpu as fallback
-            let use_metal = cli.backend == "metal" || (cli.backend == "auto" && cfg!(target_os = "macos"));
-            if use_metal {
-                #[cfg(target_os = "macos")]
-                {
-                    // Metal needs safetensors/gguf weights, not .cyb directly
-                    let weights_path = {
-                        let st = model_dir.join("weights.safetensors");
-                        let gguf = model_dir.join("weights.gguf");
-                        if st.exists() { Some(st) }
-                        else if gguf.exists() { Some(gguf) }
-                        else { None }
-                    };
-                    if let Some(wp) = weights_path {
-                        run_metal(&wp, &tokenizer_path, &prompt, max_tokens, temperature, cli.precision == "f16");
-                        return;
-                    }
-                    // No separate weights — fall through to wgpu
-                    log::info!("No weights.safetensors/gguf alongside .cyb, falling back to wgpu");
-                }
-            }
+            println!("Loading: {}", model_file.display());
 
             let backend = cyb_llm::backend::create_wgpu_backend();
             let load_start = std::time::Instant::now();
             let mut generator = match cyb_llm::generate::TextGenerator::new(
-                &cyb_path, &tokenizer_path, backend.pipelines,
+                &model_file, backend.pipelines,
             ) {
                 Ok(g) => g,
                 Err(e) => { eprintln!("Load failed: {e}"); return; }
             };
             println!("Loaded in {:.1}s", load_start.elapsed().as_secs_f64());
 
-            let formatted = cyb_llm::generate::apply_chat_template(&prompt, &model_dir);
+            let config_toml = cyb_llm::cyb_format::read_model_config(&model_file)
+                .map(|(_, cfg)| cfg).unwrap_or_default();
+            let formatted = cyb_llm::generate::apply_chat_template(&prompt, &config_toml);
             println!("---");
             match generator.generate(&formatted, max_tokens, temperature) {
                 Ok(_) => {}
@@ -616,18 +574,19 @@ fn run_embed(model_path: &str, text: &str) {
     };
     println!("Graph template: {} nodes", graph.len());
 
-    // Find tokenizer
-    let tokenizer_path = find_tokenizer(model_dir);
-    let tokenizer_path = match tokenizer_path {
-        Some(p) => p,
-        None => {
-            eprintln!("No tokenizer.json found in {} or parent directories", model_dir.display());
-            return;
-        }
+    // Build tokenizer: from .model vocab or fallback to tokenizer.json
+    let tokenizer = if ext_is(path, "model") {
+        let (_card, _config) = cyb_llm::cyb_format::read_model_config(path)
+            .expect("Cannot read .model");
+        let mf = cyb_llm::cyb_format::read_model_file(path)
+            .expect("Cannot read .model file");
+        cyb_llm::cyb_format::build_tokenizer_from_vocab(&mf.vocab)
+            .expect("Cannot build tokenizer from vocab")
+    } else {
+        let tok_path = model_dir.join("tokenizer.json");
+        tokenizers::Tokenizer::from_file(&tok_path)
+            .expect("No tokenizer.json found — use .model format")
     };
-
-    let tokenizer = tokenizers::Tokenizer::from_file(&tokenizer_path)
-        .expect("Failed to load tokenizer");
 
     // Tokenize input — add special tokens (BOS/EOS) only when the model expects them
     // ModernBERT and some encoders don't need special tokens and produce NaN with them
@@ -765,8 +724,9 @@ fn run_transcribe(model_path: &str, audio_path: &str) {
     }
 }
 
-/// Run inference on Metal backend (macOS)
+/// Run inference on Metal backend (macOS) — legacy, uses safetensors directly
 #[cfg(target_os = "macos")]
+#[allow(dead_code)]
 fn run_metal(model_path: &std::path::Path, tokenizer_path: &std::path::Path, prompt: &str, max_tokens: usize, _temperature: f32, use_f16: bool) {
     use cyb_llm::backend::metal::MetalModel;
 
@@ -792,9 +752,8 @@ fn run_metal(model_path: &std::path::Path, tokenizer_path: &std::path::Path, pro
         }
     };
 
-    // Apply chat template if instruction-tuned
-    let model_dir = model_path.parent().unwrap_or(std::path::Path::new("."));
-    let formatted = cyb_llm::generate::apply_chat_template(prompt, model_dir);
+    // Apply chat template if instruction-tuned (legacy Metal path — no .model config)
+    let formatted = prompt.to_string();
 
     let encoding = match tokenizer.encode(formatted.as_str(), true) {
         Ok(e) => e,
@@ -805,7 +764,7 @@ fn run_metal(model_path: &std::path::Path, tokenizer_path: &std::path::Path, pro
     };
     let token_ids = encoding.get_ids();
     eprintln!("Tokens ({}): {:?}", token_ids.len(), &token_ids[..token_ids.len().min(20)]);
-    let eos = cyb_llm::generate::detect_eos_tokens(&tokenizer, model_dir);
+    let eos = cyb_llm::generate::detect_eos_tokens(&tokenizer, "");
 
     // Prefill
     let prefill_start = std::time::Instant::now();
@@ -845,9 +804,9 @@ fn run_status() {
     println!("  \x1b[1mcyb-llm status\x1b[0m — {}", base.display());
     println!();
 
-    println!("  {:<28} {:<5} {:<8} {:>6} {:>3} {:>6} {:>5} {:>6} {:>4}",
-        "MODEL", "TIER", "TYPE", "SIZE", "L", "CTX", "LOAD", "TOK/S", "GEN");
-    println!("  {}", "─".repeat(80));
+    println!("  {:<26} {:>5} {:<10} {:>5} {:>3} {:>5} {:>5} {:>5} {:>3}",
+        "MODEL", "TIER", "TYPE", "SIZE", "L", "CTX", "LOAD", "T/S", "GEN");
+    println!("  {}", "─".repeat(76));
 
     let mut total_disk = 0u64;
     let mut total_ok = 0usize;
@@ -864,32 +823,25 @@ fn run_status() {
         let disk_bytes = model_path.metadata().map(|m| m.len()).unwrap_or(0);
         total_disk += disk_bytes;
 
-        // Read config from .model file (fast — only parses text, skips weights)
-        let (model_type, hidden, layers, ctx) = match cyb_llm::cyb_format::read_model_file(&model_path) {
-            Ok(mf) => {
-                let get = |section: &str, key: &str| -> String {
-                    section.lines()
+        // Read config from .model file (fast — reads text only, stops at ~~~weights)
+        let start = std::time::Instant::now();
+        let (model_type, hidden, layers, ctx, load_ok) = match cyb_llm::cyb_format::read_model_config(&model_path) {
+            Ok((_card, config)) => {
+                let get = |key: &str| -> String {
+                    config.lines()
                         .find(|l| l.starts_with(key))
                         .and_then(|l| l.split('=').nth(1))
                         .map(|v| v.trim().trim_matches('"').to_string())
                         .unwrap_or_default()
                 };
-                let mt = get(&mf.config, "model_type");
-                // Try [architecture] section values
-                let h = get(&mf.config, "hidden_size");
-                let l = get(&mf.config, "num_hidden_layers");
-                let c = {
-                    let v = get(&mf.config, "max_position_embeddings");
-                    if v.is_empty() { get(&mf.config, "context_length") } else { v }
-                };
-                (mt, h, l, c)
+                let mt = get("model_type");
+                let h = get("hidden_size");
+                let l = get("num_hidden_layers");
+                let c = { let v = get("max_position_embeddings"); if v.is_empty() { get("context_length") } else { v } };
+                (mt, h, l, c, true)
             }
-            Err(_) => (String::new(), String::new(), String::new(), String::new()),
+            Err(_) => (String::new(), String::new(), String::new(), String::new(), false),
         };
-
-        // Load test: parse config section
-        let start = std::time::Instant::now();
-        let load_ok = cyb_llm::cyb_format::read_model_file(&model_path).is_ok();
         let load_ms = start.elapsed().as_millis() as u64;
 
         let type_str = if model_type.is_empty() { "—" } else { &model_type };
@@ -906,10 +858,9 @@ fn run_status() {
         // Bench: tok/s + quality for decoder LLMs
         let is_decoder = matches!(model_type.as_str(),
             "qwen2" | "qwen3" | "llama" | "phi3" | "bitnet" | "mimo");
-        let tokenizer_path = base.join(spec.name).join("tokenizer.json");
-        let (tok_s_str, quality_str) = if is_decoder && tokenizer_path.exists() {
+        let (tok_s_str, quality_str) = if is_decoder {
             eprint!("  bench {}...\r", spec.name);
-            quick_bench_model(&model_path, &tokenizer_path)
+            quick_bench_model(&model_path)
         } else {
             ("—".into(), "—".into())
         };
@@ -932,13 +883,13 @@ fn ext_is(path: &std::path::Path, ext: &str) -> bool {
 }
 
 /// Quick bench: load .model, generate a few tokens, measure tok/s + check sanity.
-fn quick_bench_model(model_path: &std::path::Path, tokenizer_path: &std::path::Path) -> (String, String) {
+fn quick_bench_model(model_path: &std::path::Path) -> (String, String) {
     let prev = log::max_level();
     log::set_max_level(log::LevelFilter::Error);
 
     let backend = cyb_llm::backend::create_wgpu_backend();
     let mut generator = match cyb_llm::generate::TextGenerator::new(
-        model_path, tokenizer_path, backend.pipelines,
+        model_path, backend.pipelines,
     ) {
         Ok(g) => g,
         Err(e) => {
@@ -947,8 +898,9 @@ fn quick_bench_model(model_path: &std::path::Path, tokenizer_path: &std::path::P
         },
     };
 
-    let model_dir = model_path.parent().unwrap_or(std::path::Path::new("."));
-    let prompt = cyb_llm::generate::apply_chat_template("What is 2+2?", model_dir);
+    let config_toml = cyb_llm::cyb_format::read_model_config(model_path)
+        .map(|(_, cfg)| cfg).unwrap_or_default();
+    let prompt = cyb_llm::generate::apply_chat_template("What is 2+2?", &config_toml);
     let result = generator.generate_quiet(&prompt, 16, 0.0);
 
     log::set_max_level(prev);
@@ -1688,19 +1640,6 @@ fn resolve_model_path(path: &std::path::Path) -> std::path::PathBuf {
     // Don't canonicalize — HF cache uses symlinks from snapshots/ to blobs/
     // We want the snapshot directory for finding config.json and tokenizer.json
     path.to_path_buf()
-}
-
-/// Find tokenizer.json in the model directory or parent directories
-fn find_tokenizer(dir: &std::path::Path) -> Option<std::path::PathBuf> {
-    let mut current = Some(dir);
-    while let Some(d) = current {
-        let candidate = d.join("tokenizer.json");
-        if candidate.exists() {
-            return Some(candidate);
-        }
-        current = d.parent();
-    }
-    None
 }
 
 // ── extract-tensors command ─────────────────────────────────────

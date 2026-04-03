@@ -9,50 +9,47 @@ use crate::backend::wgpu::model::{NativeModel, argmax, sample_top_p};
 use crate::backend::wgpu::pipelines::Pipelines;
 
 /// Apply chat template if the model is instruction-tuned.
-/// Returns the formatted prompt or the original if no template applies.
-pub fn apply_chat_template(prompt: &str, model_dir: &Path) -> String {
-    // Read tokenizer_config.json for chat_template
-    let tc_path = model_dir.join("tokenizer_config.json");
-    if let Ok(data) = std::fs::read_to_string(&tc_path) {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) {
-            if json.get("chat_template").and_then(|v| v.as_str()).is_some() {
-                // Model has a chat template — apply ChatML format
-                // (covers Qwen2/2.5, SmolLM2-Instruct, Llama3, BitNet)
-                let formatted = format!(
-                    "<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
-                );
-                log::info!("Chat template applied (ChatML format)");
-                return formatted;
-            }
-        }
+/// Reads [tokenizer] from config TOML to detect instruction models.
+pub fn apply_chat_template(prompt: &str, config_toml: &str) -> String {
+    // Instruction-tuned models with ChatML: eos_token = "<|im_end|>"
+    let has_chatml = config_toml.lines().any(|l| {
+        let t = l.trim();
+        t.starts_with("eos_token") && t.contains("<|im_end|>")
+    });
+    if has_chatml {
+        let formatted = format!(
+            "<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+        );
+        log::info!("Chat template applied (ChatML format)");
+        return formatted;
     }
     // No chat template — base model, use raw prompt
     prompt.to_string()
 }
 
-/// Detect EOS tokens from tokenizer + generation_config.json
-pub fn detect_eos_tokens(tokenizer: &tokenizers::Tokenizer, model_dir: &Path) -> Vec<u32> {
+/// Detect EOS tokens from config TOML [tokenizer] section + tokenizer vocab
+pub fn detect_eos_tokens(tokenizer: &tokenizers::Tokenizer, config_toml: &str) -> Vec<u32> {
     let mut eos = Vec::new();
 
-    // 1. Read generation_config.json (authoritative source)
-    let gen_config_path = model_dir.join("generation_config.json");
-    if let Ok(data) = std::fs::read_to_string(&gen_config_path) {
-        if let Ok(json) = serde_json::from_str::<serde_json::Value>(&data) {
-            if let Some(eos_id) = json.get("eos_token_id") {
-                match eos_id {
-                    serde_json::Value::Number(n) => {
-                        if let Some(id) = n.as_u64() {
-                            eos.push(id as u32);
-                        }
+    // 1. Read from config TOML [tokenizer] section
+    // eos_id = 151645 or eos_token_ids = [151645, 151643]
+    for line in config_toml.lines() {
+        let t = line.trim();
+        if t.starts_with("eos_id") && !t.starts_with("eos_id ") || t.starts_with("eos_id =") {
+            if let Some(val) = t.split('=').nth(1) {
+                if let Ok(id) = val.trim().parse::<u32>() {
+                    if !eos.contains(&id) { eos.push(id); }
+                }
+            }
+        }
+        if t.starts_with("eos_token_ids") {
+            // Parse array like [151645, 151643]
+            if let Some(arr) = t.split('=').nth(1) {
+                let arr = arr.trim().trim_start_matches('[').trim_end_matches(']');
+                for part in arr.split(',') {
+                    if let Ok(id) = part.trim().parse::<u32>() {
+                        if !eos.contains(&id) { eos.push(id); }
                     }
-                    serde_json::Value::Array(arr) => {
-                        for v in arr {
-                            if let Some(id) = v.as_u64() {
-                                eos.push(id as u32);
-                            }
-                        }
-                    }
-                    _ => {}
                 }
             }
         }
@@ -95,19 +92,20 @@ pub struct TextGenerator {
 }
 
 impl TextGenerator {
-    /// Create a text generator from .cyb file — the canonical constructor.
+    /// Create a text generator from .model file — tokenizer built from embedded vocab.
     pub fn new(
-        cyb_path: &Path,
-        tokenizer_path: &Path,
+        model_path: &Path,
         pipelines: Arc<Pipelines>,
     ) -> Result<Self, String> {
-        let model = NativeModel::load(cyb_path, pipelines)?;
+        let (model, vocab_str) = NativeModel::load(model_path, pipelines)?;
 
-        let tokenizer = tokenizers::Tokenizer::from_file(tokenizer_path)
-            .map_err(|e| format!("Tokenizer load failed: {e}"))?;
+        let tokenizer = crate::cyb_format::build_tokenizer_from_vocab(&vocab_str)?;
 
-        let model_dir = cyb_path.parent().unwrap_or(Path::new("."));
-        let eos_tokens = detect_eos_tokens(&tokenizer, model_dir);
+        // Read config for EOS detection (fast text-only read)
+        let config_toml = crate::cyb_format::read_model_config(model_path)
+            .map(|(_, cfg)| cfg)
+            .unwrap_or_default();
+        let eos_tokens = detect_eos_tokens(&tokenizer, &config_toml);
 
         Ok(Self {
             model,
