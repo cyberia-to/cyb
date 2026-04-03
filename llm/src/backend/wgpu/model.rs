@@ -149,6 +149,8 @@ pub struct NativeModel {
     model_params: ModelParamBuffers,
     /// TurboQuant KV cache compressor (None = standard uncompressed cache)
     pub kv_compressor: Option<crate::kv_compress::KvCompressor>,
+    /// Persistent staging buffer for greedy argmax readback (avoids alloc per token)
+    argmax_staging: wgpu::Buffer,
 }
 
 /// Convert model-level QuantFormat to dispatch::QuantFormat
@@ -819,6 +821,14 @@ impl NativeModel {
         let (f32_matmul_params, f32_matmul_wg) = precompute_f32_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
         let (argmax_params, argmax_wg) = precompute_argmax(&pipelines, vocab_size as u32);
 
+        // Persistent staging buffer for greedy argmax readback (4 bytes = 1 f32)
+        let argmax_staging = pipelines.device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("argmax_staging"),
+            size: 4,
+            usage: wgpu::BufferUsages::MAP_READ | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
         log::info!(".model loaded: {} layers, Q4 quantize-on-load", num_layers);
 
         Ok(Self {
@@ -831,6 +841,7 @@ impl NativeModel {
                 argmax_params, argmax_wg,
             },
             kv_compressor: None,
+            argmax_staging,
         })
     }
 
@@ -1135,11 +1146,21 @@ impl NativeModel {
                         p.dispatch_in_pass(&mut pass, cmd.shader, &cmd.bg, cmd.wg);
                     }
                 }
+                // Merge copy into same encoder — single submission, no second encoder
+                enc.copy_buffer_to_buffer(&argmax_buf, 0, &self.argmax_staging, 0, 4);
                 p.queue.submit(std::iter::once(enc.finish()));
                 self.past_seq_len = total_seq;
 
-                let bytes = p.read_f32(&argmax_buf, 1);
-                let token_id = bytes[0].to_bits();
+                // Read from persistent staging buffer (no allocation)
+                let slice = self.argmax_staging.slice(..);
+                let (tx, rx) = std::sync::mpsc::channel();
+                slice.map_async(wgpu::MapMode::Read, move |r| { tx.send(r).unwrap(); });
+                p.device.poll(wgpu::Maintain::Wait);
+                rx.recv().unwrap().unwrap();
+                let data = slice.get_mapped_range();
+                let token_id = bytemuck::cast_slice::<u8, f32>(&data)[0].to_bits();
+                drop(data);
+                self.argmax_staging.unmap();
 
                 let mut logits = vec![0.0f32; vocab as usize];
                 logits[token_id as usize] = 1.0;
