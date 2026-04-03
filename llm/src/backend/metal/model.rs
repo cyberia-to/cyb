@@ -4,7 +4,7 @@
 //! Weights: safetensors f32 → Q4 quantize-on-load (block_q4_0 format).
 
 use std::path::Path;
-use aruminium::MtlBuffer;
+use aruminium::Buffer;
 use super::pipelines::MetalPipelines;
 
 const DEFAULT_MAX_SEQ: usize = 2048;
@@ -24,60 +24,60 @@ pub struct MetalModelConfig {
 }
 
 struct MetalLayerWeights {
-    input_norm_weight: MtlBuffer,
-    q_proj: MtlBuffer,   // block_q4_0 [K/32][N] or ternary [K/4][N]
-    k_proj: MtlBuffer,
-    v_proj: MtlBuffer,
-    o_proj: MtlBuffer,
-    q_proj_bias: Option<MtlBuffer>,
-    k_proj_bias: Option<MtlBuffer>,
-    v_proj_bias: Option<MtlBuffer>,
-    q_norm_weight: Option<MtlBuffer>,
-    k_norm_weight: Option<MtlBuffer>,
-    post_norm_weight: MtlBuffer,
-    gate_proj: MtlBuffer,
-    up_proj: MtlBuffer,
-    down_proj: MtlBuffer,
+    input_norm_weight: Buffer,
+    q_proj: Buffer,   // block_q4_0 [K/32][N] or ternary [K/4][N]
+    k_proj: Buffer,
+    v_proj: Buffer,
+    o_proj: Buffer,
+    q_proj_bias: Option<Buffer>,
+    k_proj_bias: Option<Buffer>,
+    v_proj_bias: Option<Buffer>,
+    q_norm_weight: Option<Buffer>,
+    k_norm_weight: Option<Buffer>,
+    post_norm_weight: Buffer,
+    gate_proj: Buffer,
+    up_proj: Buffer,
+    down_proj: Buffer,
     // Ternary weight scales (BitNet)
     weight_scales: Option<[f32; 7]>, // q,k,v,o,gate,up,down
     // Sub-layer norms (BitNet)
-    attn_sub_norm: Option<MtlBuffer>,
-    ffn_sub_norm: Option<MtlBuffer>,
+    attn_sub_norm: Option<Buffer>,
+    ffn_sub_norm: Option<Buffer>,
 }
 
 struct MetalKVCache {
-    k: MtlBuffer, // [kv_heads, MAX_SEQ, head_dim] fp16
-    v: MtlBuffer,
+    k: Buffer, // [kv_heads, MAX_SEQ, head_dim] fp16
+    v: Buffer,
 }
 
 struct Scratch {
-    hidden: MtlBuffer,
-    hidden2: MtlBuffer,
-    q: MtlBuffer,
-    k: MtlBuffer,
-    v: MtlBuffer,
-    attn_out: MtlBuffer,
-    gate: MtlBuffer,
-    up: MtlBuffer,
-    down: MtlBuffer,
-    logits: MtlBuffer,
-    argmax_result: MtlBuffer,
-    argmax_partial_vals: MtlBuffer,
-    argmax_partial_idxs: MtlBuffer,
-    argmax_counter: MtlBuffer,
+    hidden: Buffer,
+    hidden2: Buffer,
+    q: Buffer,
+    k: Buffer,
+    v: Buffer,
+    attn_out: Buffer,
+    gate: Buffer,
+    up: Buffer,
+    down: Buffer,
+    logits: Buffer,
+    argmax_result: Buffer,
+    argmax_partial_vals: Buffer,
+    argmax_partial_idxs: Buffer,
+    argmax_counter: Buffer,
 }
 
 pub struct MetalModel {
     pipelines: MetalPipelines,
     config: MetalModelConfig,
-    embed_table: MtlBuffer,
-    lm_head_q4: MtlBuffer,    // Q4 quantized LM head (or embed_table quantized)
-    lm_head_f16: Option<MtlBuffer>, // fp16 LM head (for f16 mode)
-    final_norm_weight: MtlBuffer,
-    token_buf: MtlBuffer,      // pre-allocated, rewritten each step
+    embed_table: Buffer,
+    lm_head_q4: Buffer,    // Q4 quantized LM head (or embed_table quantized)
+    lm_head_f16: Option<Buffer>, // fp16 LM head (for f16 mode)
+    final_norm_weight: Buffer,
+    token_buf: Buffer,      // pre-allocated, rewritten each step
     layers: Vec<MetalLayerWeights>,
-    cos_cache: MtlBuffer,
-    sin_cache: MtlBuffer,
+    cos_cache: Buffer,
+    sin_cache: Buffer,
     kv_cache: Vec<MetalKVCache>,
     past_seq_len: usize,
     scratch: Scratch,
@@ -217,13 +217,13 @@ impl MetalModel {
         let kv_dim = kv_num_heads * head_dim;
 
         // Upload projection as fp16 (no quantization)
-        let f16_upload = |name: &str| -> Result<MtlBuffer, String> {
+        let f16_upload = |name: &str| -> Result<Buffer, String> {
             let f16 = weight_to_f16(name)?;
             pipelines.upload_f16(&f16).map_err(|e| format!("{e}"))
         };
 
         // Quantize projection weights to block_q4_0 and upload
-        let quantize_upload = |name: &str, n: usize, k: usize| -> Result<MtlBuffer, String> {
+        let quantize_upload = |name: &str, n: usize, k: usize| -> Result<Buffer, String> {
             let w = graph.get_weight(name).ok_or_else(|| format!("Missing: {name}"))?;
             let mut f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
             // Apply weight_scale if present (BitNet ternary models)
@@ -240,7 +240,7 @@ impl MetalModel {
         };
 
         // Helper: load raw ternary bytes + extract weight_scale
-        let ternary_upload = |name: &str| -> Result<(MtlBuffer, f32), String> {
+        let ternary_upload = |name: &str| -> Result<(Buffer, f32), String> {
             let w = graph.get_weight(name).ok_or_else(|| format!("Missing: {name}"))?;
             let buf = pipelines.upload_bytes(&w.data).map_err(|e| format!("{e}"))?;
             let scale_name = format!("{name}_scale");
@@ -358,7 +358,7 @@ impl MetalModel {
         }
 
         // Scratch buffers (fp16)
-        let alloc_f16 = |n: usize| -> Result<MtlBuffer, String> {
+        let alloc_f16 = |n: usize| -> Result<Buffer, String> {
             pipelines.alloc(n * 2).map_err(|e| format!("{e}"))
         };
         let scratch = Scratch {
@@ -400,20 +400,20 @@ impl MetalModel {
         let scale = 1.0 / (c.head_dim as f32).sqrt();
 
         // Write token ID to pre-allocated buffer (no allocation)
-        self.token_buf.with_data_mut(|d| {
+        self.token_buf.write(|d| {
             d[..4].copy_from_slice(&token_id.to_le_bytes());
         });
 
         unsafe { aruminium::autorelease_pool(|| {
-            p.dispatcher.dispatch_batch_raw(|batch| {
+            p.dispatcher.batch_raw(|batch| {
                 // ── Embed ──
                 let embed_params = [c.hidden_size as u32];
-                batch.set_pipeline(&p.embed);
-                batch.set_buffer(&self.embed_table, 0, 0);
-                batch.set_buffer(&self.token_buf, 0, 1);
-                batch.set_buffer(&self.scratch.hidden, 0, 2);
-                batch.set_bytes(bytemuck::cast_slice(&embed_params), 3);
-                batch.dispatch_threadgroups((div_ceil(c.hidden_size, 256), 1, 1), (256, 1, 1));
+                batch.bind(&p.embed);
+                batch.bind_buffer(&self.embed_table, 0, 0);
+                batch.bind_buffer(&self.token_buf, 0, 1);
+                batch.bind_buffer(&self.scratch.hidden, 0, 2);
+                batch.push(bytemuck::cast_slice(&embed_params), 3);
+                batch.launch_groups((div_ceil(c.hidden_size, 256), 1, 1), (256, 1, 1));
 
                 let norm_params_bytes = {
                     let p = [c.hidden_size as u32, 0u32]; // hidden + padding for eps
@@ -425,12 +425,12 @@ impl MetalModel {
                 };
 
                 // ── Layer 0 input norm (subsequent layers get norm from fused_add_norm) ──
-                batch.set_pipeline(&p.rms_norm);
-                batch.set_buffer(&self.scratch.hidden, 0, 0);
-                batch.set_buffer(&self.layers[0].input_norm_weight, 0, 1);
-                batch.set_buffer(&self.scratch.hidden2, 0, 2);
-                batch.set_bytes(&norm_params_bytes, 3);
-                batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
+                batch.bind(&p.rms_norm);
+                batch.bind_buffer(&self.scratch.hidden, 0, 0);
+                batch.bind_buffer(&self.layers[0].input_norm_weight, 0, 1);
+                batch.bind_buffer(&self.scratch.hidden2, 0, 2);
+                batch.push(&norm_params_bytes, 3);
+                batch.launch_groups((1, 1, 1), (256, 1, 1));
 
                 for i in 0..c.num_layers {
                     let layer = &self.layers[i];
@@ -444,14 +444,14 @@ impl MetalModel {
                         // ── Ternary Q/K/V projections (3 separate dispatches) ──
                         let ws = layer.weight_scales.unwrap_or([1.0; 7]);
 
-                        let dispatch_ternary = |batch: &aruminium::BatchEncoder, input: &MtlBuffer, w: &MtlBuffer, out: &MtlBuffer, n: u32, k: u32, scale: f32| {
+                        let dispatch_ternary = |batch: &aruminium::Batch, input: &Buffer, w: &Buffer, out: &Buffer, n: u32, k: u32, scale: f32| {
                             let params = [n, k, scale.to_bits()];
-                            batch.set_pipeline(&p.matvec_ternary);
-                            batch.set_buffer(input, 0, 0);
-                            batch.set_buffer(w, 0, 1);
-                            batch.set_buffer(out, 0, 2);
-                            batch.set_bytes(bytemuck::cast_slice(&params), 3);
-                            batch.dispatch_threadgroups((div_ceil(n as usize, 8), 1, 1), (256, 1, 1));
+                            batch.bind(&p.matvec_ternary);
+                            batch.bind_buffer(input, 0, 0);
+                            batch.bind_buffer(w, 0, 1);
+                            batch.bind_buffer(out, 0, 2);
+                            batch.push(bytemuck::cast_slice(&params), 3);
+                            batch.launch_groups((div_ceil(n as usize, 8), 1, 1), (256, 1, 1));
                         };
 
                         dispatch_ternary(batch, &self.scratch.hidden2, &layer.q_proj, &self.scratch.q, q_dim_val, c.hidden_size as u32, ws[0]);
@@ -459,14 +459,14 @@ impl MetalModel {
                         dispatch_ternary(batch, &self.scratch.hidden2, &layer.v_proj, &self.scratch.v, kv_dim_val, c.hidden_size as u32, ws[2]);
                     } else if c.use_f16 {
                         // ── f16 Q/K/V projections (3 separate dispatches) ──
-                        let dispatch_f16 = |batch: &aruminium::BatchEncoder, input: &MtlBuffer, w: &MtlBuffer, out: &MtlBuffer, n: u32, k: u32| {
+                        let dispatch_f16 = |batch: &aruminium::Batch, input: &Buffer, w: &Buffer, out: &Buffer, n: u32, k: u32| {
                             let params = [n, k];
-                            batch.set_pipeline(&p.f16_matvec);
-                            batch.set_buffer(input, 0, 0);
-                            batch.set_buffer(w, 0, 1);
-                            batch.set_buffer(out, 0, 2);
-                            batch.set_bytes(bytemuck::cast_slice(&params), 3);
-                            batch.dispatch_threadgroups((div_ceil(n as usize, 4), 1, 1), (256, 1, 1));
+                            batch.bind(&p.f16_matvec);
+                            batch.bind_buffer(input, 0, 0);
+                            batch.bind_buffer(w, 0, 1);
+                            batch.bind_buffer(out, 0, 2);
+                            batch.push(bytemuck::cast_slice(&params), 3);
+                            batch.launch_groups((div_ceil(n as usize, 4), 1, 1), (256, 1, 1));
                         };
                         dispatch_f16(batch, &self.scratch.hidden2, &layer.q_proj, &self.scratch.q, q_dim_val, c.hidden_size as u32);
                         dispatch_f16(batch, &self.scratch.hidden2, &layer.k_proj, &self.scratch.k, kv_dim_val, c.hidden_size as u32);
@@ -477,45 +477,45 @@ impl MetalModel {
                         let wg_k = div_ceil(kv_dim_val as usize, 8);
                         let wg_v = wg_k;
                         let qkv_params = [q_dim_val, kv_dim_val, kv_dim_val, c.hidden_size as u32, wg_q as u32, wg_k as u32];
-                        batch.set_pipeline(&p.fused_qkv);
-                        batch.set_buffer(&self.scratch.hidden2, 0, 0);
-                        batch.set_buffer(&layer.q_proj, 0, 1);
-                        batch.set_buffer(&layer.k_proj, 0, 2);
-                        batch.set_buffer(&layer.v_proj, 0, 3);
-                        batch.set_buffer(&self.scratch.q, 0, 4);
-                        batch.set_buffer(&self.scratch.k, 0, 5);
-                        batch.set_buffer(&self.scratch.v, 0, 6);
-                        batch.set_bytes(bytemuck::cast_slice(&qkv_params), 7);
-                        batch.dispatch_threadgroups((wg_q + wg_k + wg_v, 1, 1), (256, 1, 1));
+                        batch.bind(&p.fused_qkv);
+                        batch.bind_buffer(&self.scratch.hidden2, 0, 0);
+                        batch.bind_buffer(&layer.q_proj, 0, 1);
+                        batch.bind_buffer(&layer.k_proj, 0, 2);
+                        batch.bind_buffer(&layer.v_proj, 0, 3);
+                        batch.bind_buffer(&self.scratch.q, 0, 4);
+                        batch.bind_buffer(&self.scratch.k, 0, 5);
+                        batch.bind_buffer(&self.scratch.v, 0, 6);
+                        batch.push(bytemuck::cast_slice(&qkv_params), 7);
+                        batch.launch_groups((wg_q + wg_k + wg_v, 1, 1), (256, 1, 1));
                     }
 
                     // ── Attention biases (Qwen2: add bias to Q, K, V) ──
                     if let Some(ref qb) = layer.q_proj_bias {
                         let n = q_dim_val;
-                        batch.set_pipeline(&p.add_f16);
-                        batch.set_buffer(&self.scratch.q, 0, 0);
-                        batch.set_buffer(qb, 0, 1);
-                        batch.set_buffer(&self.scratch.q, 0, 2);
-                        batch.set_bytes(bytemuck::cast_slice(&[n]), 3);
-                        batch.dispatch_threadgroups((div_ceil(n as usize, 256), 1, 1), (256, 1, 1));
+                        batch.bind(&p.add_f16);
+                        batch.bind_buffer(&self.scratch.q, 0, 0);
+                        batch.bind_buffer(qb, 0, 1);
+                        batch.bind_buffer(&self.scratch.q, 0, 2);
+                        batch.push(bytemuck::cast_slice(&[n]), 3);
+                        batch.launch_groups((div_ceil(n as usize, 256), 1, 1), (256, 1, 1));
                     }
                     if let Some(ref kb) = layer.k_proj_bias {
                         let n = kv_dim_val;
-                        batch.set_pipeline(&p.add_f16);
-                        batch.set_buffer(&self.scratch.k, 0, 0);
-                        batch.set_buffer(kb, 0, 1);
-                        batch.set_buffer(&self.scratch.k, 0, 2);
-                        batch.set_bytes(bytemuck::cast_slice(&[n]), 3);
-                        batch.dispatch_threadgroups((div_ceil(n as usize, 256), 1, 1), (256, 1, 1));
+                        batch.bind(&p.add_f16);
+                        batch.bind_buffer(&self.scratch.k, 0, 0);
+                        batch.bind_buffer(kb, 0, 1);
+                        batch.bind_buffer(&self.scratch.k, 0, 2);
+                        batch.push(bytemuck::cast_slice(&[n]), 3);
+                        batch.launch_groups((div_ceil(n as usize, 256), 1, 1), (256, 1, 1));
                     }
                     if let Some(ref vb) = layer.v_proj_bias {
                         let n = kv_dim_val;
-                        batch.set_pipeline(&p.add_f16);
-                        batch.set_buffer(&self.scratch.v, 0, 0);
-                        batch.set_buffer(vb, 0, 1);
-                        batch.set_buffer(&self.scratch.v, 0, 2);
-                        batch.set_bytes(bytemuck::cast_slice(&[n]), 3);
-                        batch.dispatch_threadgroups((div_ceil(n as usize, 256), 1, 1), (256, 1, 1));
+                        batch.bind(&p.add_f16);
+                        batch.bind_buffer(&self.scratch.v, 0, 0);
+                        batch.bind_buffer(vb, 0, 1);
+                        batch.bind_buffer(&self.scratch.v, 0, 2);
+                        batch.push(bytemuck::cast_slice(&[n]), 3);
+                        batch.launch_groups((div_ceil(n as usize, 256), 1, 1), (256, 1, 1));
                     }
 
                     // ── QK-norm (Qwen3: per-head RMSNorm on Q and K) ──
@@ -528,54 +528,54 @@ impl MetalModel {
                             b
                         };
                         if let Some(ref qnw) = layer.q_norm_weight {
-                            batch.set_pipeline(&p.rms_norm);
-                            batch.set_buffer(&self.scratch.q, 0, 0);
-                            batch.set_buffer(qnw, 0, 1);
-                            batch.set_buffer(&self.scratch.q, 0, 2);
-                            batch.set_bytes(&head_norm_params, 3);
+                            batch.bind(&p.rms_norm);
+                            batch.bind_buffer(&self.scratch.q, 0, 0);
+                            batch.bind_buffer(qnw, 0, 1);
+                            batch.bind_buffer(&self.scratch.q, 0, 2);
+                            batch.push(&head_norm_params, 3);
                             // One workgroup per head — each normalizes head_dim elements
-                            batch.dispatch_threadgroups((c.num_heads, 1, 1), (256, 1, 1));
+                            batch.launch_groups((c.num_heads, 1, 1), (256, 1, 1));
                         }
                         if let Some(ref knw) = layer.k_norm_weight {
-                            batch.set_pipeline(&p.rms_norm);
-                            batch.set_buffer(&self.scratch.k, 0, 0);
-                            batch.set_buffer(knw, 0, 1);
-                            batch.set_buffer(&self.scratch.k, 0, 2);
-                            batch.set_bytes(&head_norm_params, 3);
-                            batch.dispatch_threadgroups((c.kv_num_heads, 1, 1), (256, 1, 1));
+                            batch.bind(&p.rms_norm);
+                            batch.bind_buffer(&self.scratch.k, 0, 0);
+                            batch.bind_buffer(knw, 0, 1);
+                            batch.bind_buffer(&self.scratch.k, 0, 2);
+                            batch.push(&head_norm_params, 3);
+                            batch.launch_groups((c.kv_num_heads, 1, 1), (256, 1, 1));
                         }
                     }
 
                     // ── Fused RoPE Q+K (1 dispatch instead of 2) ──
                     let rope_params = [half_dim as u32, c.head_dim as u32, c.num_heads as u32, c.kv_num_heads as u32];
                     let total_rope = half_dim * (c.num_heads + c.kv_num_heads);
-                    batch.set_pipeline(&p.fused_rope_qk);
-                    batch.set_buffer(&self.scratch.q, 0, 0);
-                    batch.set_buffer(&self.scratch.k, 0, 1);
-                    batch.set_buffer(&self.cos_cache, pos * half_dim * 2, 2);
-                    batch.set_buffer(&self.sin_cache, pos * half_dim * 2, 3);
-                    batch.set_bytes(bytemuck::cast_slice(&rope_params), 4);
-                    batch.dispatch_threadgroups((div_ceil(total_rope, 256), 1, 1), (256, 1, 1));
+                    batch.bind(&p.fused_rope_qk);
+                    batch.bind_buffer(&self.scratch.q, 0, 0);
+                    batch.bind_buffer(&self.scratch.k, 0, 1);
+                    batch.bind_buffer(&self.cos_cache, pos * half_dim * 2, 2);
+                    batch.bind_buffer(&self.sin_cache, pos * half_dim * 2, 3);
+                    batch.push(bytemuck::cast_slice(&rope_params), 4);
+                    batch.launch_groups((div_ceil(total_rope, 256), 1, 1), (256, 1, 1));
 
                     // ── Fused KV cache append K+V (1 dispatch instead of 2) ──
                     let append_params = [c.head_dim as u32, c.kv_num_heads as u32, pos as u32, c.max_seq as u32];
-                    batch.set_pipeline(&p.fused_kv_append);
-                    batch.set_buffer(&self.scratch.k, 0, 0);
-                    batch.set_buffer(&self.scratch.v, 0, 1);
-                    batch.set_buffer(&kv.k, 0, 2);
-                    batch.set_buffer(&kv.v, 0, 3);
-                    batch.set_bytes(bytemuck::cast_slice(&append_params), 4);
-                    batch.dispatch_threadgroups((div_ceil(c.kv_num_heads * c.head_dim, 256), 1, 1), (256, 1, 1));
+                    batch.bind(&p.fused_kv_append);
+                    batch.bind_buffer(&self.scratch.k, 0, 0);
+                    batch.bind_buffer(&self.scratch.v, 0, 1);
+                    batch.bind_buffer(&kv.k, 0, 2);
+                    batch.bind_buffer(&kv.v, 0, 3);
+                    batch.push(bytemuck::cast_slice(&append_params), 4);
+                    batch.launch_groups((div_ceil(c.kv_num_heads * c.head_dim, 256), 1, 1), (256, 1, 1));
 
                     // ── Attention decode (GQA-aware, KV cache stride = MAX_SEQ) ──
                     let attn_params = [c.head_dim as u32, total_seq as u32, c.num_heads as u32, scale.to_bits(), c.kv_num_heads as u32, c.max_seq as u32];
-                    batch.set_pipeline(&p.attention_decode);
-                    batch.set_buffer(&self.scratch.q, 0, 0);
-                    batch.set_buffer(&kv.k, 0, 1);
-                    batch.set_buffer(&kv.v, 0, 2);
-                    batch.set_buffer(&self.scratch.attn_out, 0, 3);
-                    batch.set_bytes(bytemuck::cast_slice(&attn_params), 4);
-                    batch.dispatch_threadgroups((c.num_heads, 1, 1), (256, 1, 1));
+                    batch.bind(&p.attention_decode);
+                    batch.bind_buffer(&self.scratch.q, 0, 0);
+                    batch.bind_buffer(&kv.k, 0, 1);
+                    batch.bind_buffer(&kv.v, 0, 2);
+                    batch.bind_buffer(&self.scratch.attn_out, 0, 3);
+                    batch.push(bytemuck::cast_slice(&attn_params), 4);
+                    batch.launch_groups((c.num_heads, 1, 1), (256, 1, 1));
 
                     // ── Attention sub-norm (BitNet: RMSNorm before O_proj) ──
                     if let Some(ref asn) = layer.attn_sub_norm {
@@ -585,12 +585,12 @@ impl MetalModel {
                             b[4..8].copy_from_slice(&1e-5f32.to_le_bytes());
                             b
                         };
-                        batch.set_pipeline(&p.rms_norm);
-                        batch.set_buffer(&self.scratch.attn_out, 0, 0);
-                        batch.set_buffer(asn, 0, 1);
-                        batch.set_buffer(&self.scratch.attn_out, 0, 2);
-                        batch.set_bytes(&sub_norm_params, 3);
-                        batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
+                        batch.bind(&p.rms_norm);
+                        batch.bind_buffer(&self.scratch.attn_out, 0, 0);
+                        batch.bind_buffer(asn, 0, 1);
+                        batch.bind_buffer(&self.scratch.attn_out, 0, 2);
+                        batch.push(&sub_norm_params, 3);
+                        batch.launch_groups((1, 1, 1), (256, 1, 1));
                     }
 
                     // ── O projection ──
@@ -601,102 +601,102 @@ impl MetalModel {
                         if c.is_ternary {
                             let ws = layer.weight_scales.unwrap_or([1.0; 7]);
                             let tp = [n, k, ws[3].to_bits()];
-                            batch.set_pipeline(&p.matvec_ternary);
-                            batch.set_buffer(&self.scratch.attn_out, 0, 0);
-                            batch.set_buffer(&layer.o_proj, 0, 1);
-                            batch.set_buffer(&self.scratch.down, 0, 2);
-                            batch.set_bytes(bytemuck::cast_slice(&tp), 3);
-                            batch.dispatch_threadgroups((div_ceil(n as usize, 8), 1, 1), (256, 1, 1));
+                            batch.bind(&p.matvec_ternary);
+                            batch.bind_buffer(&self.scratch.attn_out, 0, 0);
+                            batch.bind_buffer(&layer.o_proj, 0, 1);
+                            batch.bind_buffer(&self.scratch.down, 0, 2);
+                            batch.push(bytemuck::cast_slice(&tp), 3);
+                            batch.launch_groups((div_ceil(n as usize, 8), 1, 1), (256, 1, 1));
                         } else if c.use_f16 {
-                            batch.set_pipeline(&p.f16_matvec);
-                            batch.set_buffer(&self.scratch.attn_out, 0, 0);
-                            batch.set_buffer(&layer.o_proj, 0, 1);
-                            batch.set_buffer(&self.scratch.down, 0, 2);
-                            batch.set_bytes(bytemuck::cast_slice(&params), 3);
-                            batch.dispatch_threadgroups((div_ceil(n as usize, 4), 1, 1), (256, 1, 1));
+                            batch.bind(&p.f16_matvec);
+                            batch.bind_buffer(&self.scratch.attn_out, 0, 0);
+                            batch.bind_buffer(&layer.o_proj, 0, 1);
+                            batch.bind_buffer(&self.scratch.down, 0, 2);
+                            batch.push(bytemuck::cast_slice(&params), 3);
+                            batch.launch_groups((div_ceil(n as usize, 4), 1, 1), (256, 1, 1));
                         } else {
-                            batch.set_pipeline(&p.matvec_q4_fast);
-                            batch.set_buffer(&self.scratch.attn_out, 0, 0);
-                            batch.set_buffer(&layer.o_proj, 0, 1);
-                            batch.set_buffer(&self.scratch.down, 0, 2);
-                            batch.set_bytes(bytemuck::cast_slice(&params), 3);
-                            batch.dispatch_threadgroups((div_ceil(n as usize, 8), 1, 1), (256, 1, 1));
+                            batch.bind(&p.matvec_q4_fast);
+                            batch.bind_buffer(&self.scratch.attn_out, 0, 0);
+                            batch.bind_buffer(&layer.o_proj, 0, 1);
+                            batch.bind_buffer(&self.scratch.down, 0, 2);
+                            batch.push(bytemuck::cast_slice(&params), 3);
+                            batch.launch_groups((div_ceil(n as usize, 8), 1, 1), (256, 1, 1));
                         }
                     }
 
                     // ── Fused residual add + post RMS norm ──
-                    batch.set_pipeline(&p.fused_add_norm);
-                    batch.set_buffer(&self.scratch.hidden, 0, 0);
-                    batch.set_buffer(&self.scratch.down, 0, 1);
-                    batch.set_buffer(&self.scratch.hidden, 0, 2);
-                    batch.set_buffer(&layer.post_norm_weight, 0, 3);
-                    batch.set_buffer(&self.scratch.hidden2, 0, 4);
-                    batch.set_bytes(&norm_params_bytes, 5);
-                    batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
+                    batch.bind(&p.fused_add_norm);
+                    batch.bind_buffer(&self.scratch.hidden, 0, 0);
+                    batch.bind_buffer(&self.scratch.down, 0, 1);
+                    batch.bind_buffer(&self.scratch.hidden, 0, 2);
+                    batch.bind_buffer(&layer.post_norm_weight, 0, 3);
+                    batch.bind_buffer(&self.scratch.hidden2, 0, 4);
+                    batch.push(&norm_params_bytes, 5);
+                    batch.launch_groups((1, 1, 1), (256, 1, 1));
 
                     // ── FFN projections ──
                     if c.is_ternary {
                         let ws = layer.weight_scales.unwrap_or([1.0; 7]);
                         // Gate projection
                         let params_g = [c.intermediate_size as u32, c.hidden_size as u32, ws[4].to_bits()];
-                        batch.set_pipeline(&p.matvec_ternary);
-                        batch.set_buffer(&self.scratch.hidden2, 0, 0);
-                        batch.set_buffer(&layer.gate_proj, 0, 1);
-                        batch.set_buffer(&self.scratch.gate, 0, 2);
-                        batch.set_bytes(bytemuck::cast_slice(&params_g), 3);
-                        batch.dispatch_threadgroups((div_ceil(c.intermediate_size, 8), 1, 1), (256, 1, 1));
+                        batch.bind(&p.matvec_ternary);
+                        batch.bind_buffer(&self.scratch.hidden2, 0, 0);
+                        batch.bind_buffer(&layer.gate_proj, 0, 1);
+                        batch.bind_buffer(&self.scratch.gate, 0, 2);
+                        batch.push(bytemuck::cast_slice(&params_g), 3);
+                        batch.launch_groups((div_ceil(c.intermediate_size, 8), 1, 1), (256, 1, 1));
                         // Up projection
                         let params_u = [c.intermediate_size as u32, c.hidden_size as u32, ws[5].to_bits()];
-                        batch.set_pipeline(&p.matvec_ternary);
-                        batch.set_buffer(&self.scratch.hidden2, 0, 0);
-                        batch.set_buffer(&layer.up_proj, 0, 1);
-                        batch.set_buffer(&self.scratch.up, 0, 2);
-                        batch.set_bytes(bytemuck::cast_slice(&params_u), 3);
-                        batch.dispatch_threadgroups((div_ceil(c.intermediate_size, 8), 1, 1), (256, 1, 1));
+                        batch.bind(&p.matvec_ternary);
+                        batch.bind_buffer(&self.scratch.hidden2, 0, 0);
+                        batch.bind_buffer(&layer.up_proj, 0, 1);
+                        batch.bind_buffer(&self.scratch.up, 0, 2);
+                        batch.push(bytemuck::cast_slice(&params_u), 3);
+                        batch.launch_groups((div_ceil(c.intermediate_size, 8), 1, 1), (256, 1, 1));
                     } else if c.use_f16 {
                         // f16 gate + up (separate dispatches)
                         let inter = c.intermediate_size as u32;
                         let hid = c.hidden_size as u32;
                         let f16_params = [inter, hid];
-                        batch.set_pipeline(&p.f16_matvec);
-                        batch.set_buffer(&self.scratch.hidden2, 0, 0);
-                        batch.set_buffer(&layer.gate_proj, 0, 1);
-                        batch.set_buffer(&self.scratch.gate, 0, 2);
-                        batch.set_bytes(bytemuck::cast_slice(&f16_params), 3);
-                        batch.dispatch_threadgroups((div_ceil(inter as usize, 4), 1, 1), (256, 1, 1));
+                        batch.bind(&p.f16_matvec);
+                        batch.bind_buffer(&self.scratch.hidden2, 0, 0);
+                        batch.bind_buffer(&layer.gate_proj, 0, 1);
+                        batch.bind_buffer(&self.scratch.gate, 0, 2);
+                        batch.push(bytemuck::cast_slice(&f16_params), 3);
+                        batch.launch_groups((div_ceil(inter as usize, 4), 1, 1), (256, 1, 1));
 
-                        batch.set_pipeline(&p.f16_matvec);
-                        batch.set_buffer(&self.scratch.hidden2, 0, 0);
-                        batch.set_buffer(&layer.up_proj, 0, 1);
-                        batch.set_buffer(&self.scratch.up, 0, 2);
-                        batch.set_bytes(bytemuck::cast_slice(&f16_params), 3);
-                        batch.dispatch_threadgroups((div_ceil(inter as usize, 4), 1, 1), (256, 1, 1));
+                        batch.bind(&p.f16_matvec);
+                        batch.bind_buffer(&self.scratch.hidden2, 0, 0);
+                        batch.bind_buffer(&layer.up_proj, 0, 1);
+                        batch.bind_buffer(&self.scratch.up, 0, 2);
+                        batch.push(bytemuck::cast_slice(&f16_params), 3);
+                        batch.launch_groups((div_ceil(inter as usize, 4), 1, 1), (256, 1, 1));
                     } else {
                         let inter = c.intermediate_size as u32;
                         let wg_gate = div_ceil(c.intermediate_size, 8);
                         let gate_up_params = [inter, c.hidden_size as u32, wg_gate as u32];
-                        batch.set_pipeline(&p.fused_gate_up);
-                        batch.set_buffer(&self.scratch.hidden2, 0, 0);
-                        batch.set_buffer(&layer.gate_proj, 0, 1);
-                        batch.set_buffer(&layer.up_proj, 0, 2);
-                        batch.set_buffer(&self.scratch.gate, 0, 3);
-                        batch.set_buffer(&self.scratch.up, 0, 4);
-                        batch.set_bytes(bytemuck::cast_slice(&gate_up_params), 5);
-                        batch.dispatch_threadgroups((wg_gate * 2, 1, 1), (256, 1, 1));
+                        batch.bind(&p.fused_gate_up);
+                        batch.bind_buffer(&self.scratch.hidden2, 0, 0);
+                        batch.bind_buffer(&layer.gate_proj, 0, 1);
+                        batch.bind_buffer(&layer.up_proj, 0, 2);
+                        batch.bind_buffer(&self.scratch.gate, 0, 3);
+                        batch.bind_buffer(&self.scratch.up, 0, 4);
+                        batch.push(bytemuck::cast_slice(&gate_up_params), 5);
+                        batch.launch_groups((wg_gate * 2, 1, 1), (256, 1, 1));
                     }
 
                     // ── Activation: SiLU (default) or ReLU² (BitNet) ──
                     let act_params = [c.intermediate_size as u32];
                     if c.is_ternary {
-                        batch.set_pipeline(&p.relu2_mul_f16);
+                        batch.bind(&p.relu2_mul_f16);
                     } else {
-                        batch.set_pipeline(&p.silu_mul_f16);
+                        batch.bind(&p.silu_mul_f16);
                     }
-                    batch.set_buffer(&self.scratch.gate, 0, 0);
-                    batch.set_buffer(&self.scratch.up, 0, 1);
-                    batch.set_buffer(&self.scratch.gate, 0, 2);
-                    batch.set_bytes(bytemuck::cast_slice(&act_params), 3);
-                    batch.dispatch_threadgroups((div_ceil(c.intermediate_size, 256), 1, 1), (256, 1, 1));
+                    batch.bind_buffer(&self.scratch.gate, 0, 0);
+                    batch.bind_buffer(&self.scratch.up, 0, 1);
+                    batch.bind_buffer(&self.scratch.gate, 0, 2);
+                    batch.push(bytemuck::cast_slice(&act_params), 3);
+                    batch.launch_groups((div_ceil(c.intermediate_size, 256), 1, 1), (256, 1, 1));
 
                     // ── FFN sub-norm (BitNet: RMSNorm before down_proj) ──
                     if let Some(ref fsn) = layer.ffn_sub_norm {
@@ -706,40 +706,40 @@ impl MetalModel {
                             b[4..8].copy_from_slice(&1e-5f32.to_le_bytes());
                             b
                         };
-                        batch.set_pipeline(&p.rms_norm);
-                        batch.set_buffer(&self.scratch.gate, 0, 0);
-                        batch.set_buffer(fsn, 0, 1);
-                        batch.set_buffer(&self.scratch.gate, 0, 2);
-                        batch.set_bytes(&sub_norm_params, 3);
-                        batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
+                        batch.bind(&p.rms_norm);
+                        batch.bind_buffer(&self.scratch.gate, 0, 0);
+                        batch.bind_buffer(fsn, 0, 1);
+                        batch.bind_buffer(&self.scratch.gate, 0, 2);
+                        batch.push(&sub_norm_params, 3);
+                        batch.launch_groups((1, 1, 1), (256, 1, 1));
                     }
 
                     // ── Down projection ──
                     if c.is_ternary {
                         let ws = layer.weight_scales.unwrap_or([1.0; 7]);
                         let params = [c.hidden_size as u32, c.intermediate_size as u32, ws[6].to_bits()];
-                        batch.set_pipeline(&p.matvec_ternary);
-                        batch.set_buffer(&self.scratch.gate, 0, 0);
-                        batch.set_buffer(&layer.down_proj, 0, 1);
-                        batch.set_buffer(&self.scratch.down, 0, 2);
-                        batch.set_bytes(bytemuck::cast_slice(&params), 3);
-                        batch.dispatch_threadgroups((div_ceil(c.hidden_size, 8), 1, 1), (256, 1, 1));
+                        batch.bind(&p.matvec_ternary);
+                        batch.bind_buffer(&self.scratch.gate, 0, 0);
+                        batch.bind_buffer(&layer.down_proj, 0, 1);
+                        batch.bind_buffer(&self.scratch.down, 0, 2);
+                        batch.push(bytemuck::cast_slice(&params), 3);
+                        batch.launch_groups((div_ceil(c.hidden_size, 8), 1, 1), (256, 1, 1));
                     } else if c.use_f16 {
                         let params = [c.hidden_size as u32, c.intermediate_size as u32];
-                        batch.set_pipeline(&p.f16_matvec);
-                        batch.set_buffer(&self.scratch.gate, 0, 0);
-                        batch.set_buffer(&layer.down_proj, 0, 1);
-                        batch.set_buffer(&self.scratch.down, 0, 2);
-                        batch.set_bytes(bytemuck::cast_slice(&params), 3);
-                        batch.dispatch_threadgroups((div_ceil(c.hidden_size, 4), 1, 1), (256, 1, 1));
+                        batch.bind(&p.f16_matvec);
+                        batch.bind_buffer(&self.scratch.gate, 0, 0);
+                        batch.bind_buffer(&layer.down_proj, 0, 1);
+                        batch.bind_buffer(&self.scratch.down, 0, 2);
+                        batch.push(bytemuck::cast_slice(&params), 3);
+                        batch.launch_groups((div_ceil(c.hidden_size, 4), 1, 1), (256, 1, 1));
                     } else {
                         let params = [c.hidden_size as u32, c.intermediate_size as u32];
-                        batch.set_pipeline(&p.matvec_q4_fast);
-                        batch.set_buffer(&self.scratch.gate, 0, 0);
-                        batch.set_buffer(&layer.down_proj, 0, 1);
-                        batch.set_buffer(&self.scratch.down, 0, 2);
-                        batch.set_bytes(bytemuck::cast_slice(&params), 3);
-                        batch.dispatch_threadgroups((div_ceil(c.hidden_size, 8), 1, 1), (256, 1, 1));
+                        batch.bind(&p.matvec_q4_fast);
+                        batch.bind_buffer(&self.scratch.gate, 0, 0);
+                        batch.bind_buffer(&layer.down_proj, 0, 1);
+                        batch.bind_buffer(&self.scratch.down, 0, 2);
+                        batch.push(bytemuck::cast_slice(&params), 3);
+                        batch.launch_groups((div_ceil(c.hidden_size, 8), 1, 1), (256, 1, 1));
                     }
 
                     // ── FFN residual add + next layer input norm (fused) ──
@@ -748,14 +748,14 @@ impl MetalModel {
                     } else {
                         &self.final_norm_weight
                     };
-                    batch.set_pipeline(&p.fused_add_norm);
-                    batch.set_buffer(&self.scratch.hidden, 0, 0);
-                    batch.set_buffer(&self.scratch.down, 0, 1);
-                    batch.set_buffer(&self.scratch.hidden, 0, 2);
-                    batch.set_buffer(next_norm_weight, 0, 3);
-                    batch.set_buffer(&self.scratch.hidden2, 0, 4);
-                    batch.set_bytes(&norm_params_bytes, 5);
-                    batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
+                    batch.bind(&p.fused_add_norm);
+                    batch.bind_buffer(&self.scratch.hidden, 0, 0);
+                    batch.bind_buffer(&self.scratch.down, 0, 1);
+                    batch.bind_buffer(&self.scratch.hidden, 0, 2);
+                    batch.bind_buffer(next_norm_weight, 0, 3);
+                    batch.bind_buffer(&self.scratch.hidden2, 0, 4);
+                    batch.push(&norm_params_bytes, 5);
+                    batch.launch_groups((1, 1, 1), (256, 1, 1));
                 }
 
                 // hidden2 now contains final normed hidden (from last layer's fused_add_norm)
@@ -764,38 +764,38 @@ impl MetalModel {
                 let lm_params = [c.vocab_size as u32, c.hidden_size as u32];
                 if c.use_f16 {
                     if let Some(ref lm_f16) = self.lm_head_f16 {
-                        batch.set_pipeline(&p.f16_matvec);
-                        batch.set_buffer(&self.scratch.hidden2, 0, 0);
-                        batch.set_buffer(lm_f16, 0, 1);
-                        batch.set_buffer(&self.scratch.logits, 0, 2);
+                        batch.bind(&p.f16_matvec);
+                        batch.bind_buffer(&self.scratch.hidden2, 0, 0);
+                        batch.bind_buffer(lm_f16, 0, 1);
+                        batch.bind_buffer(&self.scratch.logits, 0, 2);
                     }
                 } else {
-                    batch.set_pipeline(&p.matvec_q4_fast);
-                    batch.set_buffer(&self.scratch.hidden2, 0, 0);
-                    batch.set_buffer(&self.lm_head_q4, 0, 1);
-                    batch.set_buffer(&self.scratch.logits, 0, 2);
+                    batch.bind(&p.matvec_q4_fast);
+                    batch.bind_buffer(&self.scratch.hidden2, 0, 0);
+                    batch.bind_buffer(&self.lm_head_q4, 0, 1);
+                    batch.bind_buffer(&self.scratch.logits, 0, 2);
                 }
-                batch.set_bytes(bytemuck::cast_slice(&lm_params), 3);
-                batch.dispatch_threadgroups((div_ceil(c.vocab_size, 8), 1, 1), (256, 1, 1));
+                batch.push(bytemuck::cast_slice(&lm_params), 3);
+                batch.launch_groups((div_ceil(c.vocab_size, 8), 1, 1), (256, 1, 1));
 
                 // ── Argmax (parallel multi-workgroup) ──
                 let num_argmax_groups = 64u32.min((c.vocab_size as u32 + 255) / 256);
                 let argmax_params = [c.vocab_size as u32, num_argmax_groups];
-                batch.set_pipeline(&p.argmax);
-                batch.set_buffer(&self.scratch.logits, 0, 0);
-                batch.set_buffer(&self.scratch.argmax_result, 0, 1);
-                batch.set_bytes(bytemuck::cast_slice(&argmax_params), 2);
-                batch.set_buffer(&self.scratch.argmax_partial_vals, 0, 3);
-                batch.set_buffer(&self.scratch.argmax_partial_idxs, 0, 4);
-                batch.set_buffer(&self.scratch.argmax_counter, 0, 5);
-                batch.dispatch_threadgroups((num_argmax_groups as usize, 1, 1), (256, 1, 1));
+                batch.bind(&p.argmax);
+                batch.bind_buffer(&self.scratch.logits, 0, 0);
+                batch.bind_buffer(&self.scratch.argmax_result, 0, 1);
+                batch.push(bytemuck::cast_slice(&argmax_params), 2);
+                batch.bind_buffer(&self.scratch.argmax_partial_vals, 0, 3);
+                batch.bind_buffer(&self.scratch.argmax_partial_idxs, 0, 4);
+                batch.bind_buffer(&self.scratch.argmax_counter, 0, 5);
+                batch.launch_groups((num_argmax_groups as usize, 1, 1), (256, 1, 1));
             });
         });}
 
         self.past_seq_len = total_seq;
 
         // Read argmax result from GPU (this blocks until dispatch_batch completes)
-        let result = self.scratch.argmax_result.with_data(|d| {
+        let result = self.scratch.argmax_result.read(|d| {
             u32::from_le_bytes([d[0], d[1], d[2], d[3]])
         });
 
@@ -821,21 +821,21 @@ impl MetalModel {
         let half_dim = c.head_dim / 2;
         let scale = 1.0 / (c.head_dim as f32).sqrt();
 
-        self.token_buf.with_data_mut(|d| {
+        self.token_buf.write(|d| {
             d[..4].copy_from_slice(&token_id.to_le_bytes());
         });
 
         // Phase 1: Embed + Layers
         let t0 = Instant::now();
         unsafe { aruminium::autorelease_pool(|| {
-            p.dispatcher.dispatch_batch_raw(|batch| {
+            p.dispatcher.batch_raw(|batch| {
                 let embed_params = [c.hidden_size as u32];
-                batch.set_pipeline(&p.embed);
-                batch.set_buffer(&self.embed_table, 0, 0);
-                batch.set_buffer(&self.token_buf, 0, 1);
-                batch.set_buffer(&self.scratch.hidden, 0, 2);
-                batch.set_bytes(bytemuck::cast_slice(&embed_params), 3);
-                batch.dispatch_threadgroups((div_ceil(c.hidden_size, 256), 1, 1), (256, 1, 1));
+                batch.bind(&p.embed);
+                batch.bind_buffer(&self.embed_table, 0, 0);
+                batch.bind_buffer(&self.token_buf, 0, 1);
+                batch.bind_buffer(&self.scratch.hidden, 0, 2);
+                batch.push(bytemuck::cast_slice(&embed_params), 3);
+                batch.launch_groups((div_ceil(c.hidden_size, 256), 1, 1), (256, 1, 1));
 
                 let norm_params_bytes = {
                     let p = [c.hidden_size as u32, 0u32];
@@ -843,12 +843,12 @@ impl MetalModel {
                     b[4..8].copy_from_slice(&1e-6f32.to_le_bytes());
                     b
                 };
-                batch.set_pipeline(&p.rms_norm);
-                batch.set_buffer(&self.scratch.hidden, 0, 0);
-                batch.set_buffer(&self.layers[0].input_norm_weight, 0, 1);
-                batch.set_buffer(&self.scratch.hidden2, 0, 2);
-                batch.set_bytes(&norm_params_bytes, 3);
-                batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
+                batch.bind(&p.rms_norm);
+                batch.bind_buffer(&self.scratch.hidden, 0, 0);
+                batch.bind_buffer(&self.layers[0].input_norm_weight, 0, 1);
+                batch.bind_buffer(&self.scratch.hidden2, 0, 2);
+                batch.push(&norm_params_bytes, 3);
+                batch.launch_groups((1, 1, 1), (256, 1, 1));
 
                 for i in 0..c.num_layers {
                     let layer = &self.layers[i];
@@ -860,92 +860,92 @@ impl MetalModel {
                     let wg_k = div_ceil(kv_dim_val, 8);
                     let wg_v = wg_k;
                     let qkv_params = [q_dim as u32, kv_dim_val as u32, c.hidden_size as u32, wg_q as u32, wg_k as u32];
-                    batch.set_pipeline(&p.fused_qkv);
-                    batch.set_buffer(&self.scratch.hidden2, 0, 0);
-                    batch.set_buffer(&layer.q_proj, 0, 1);
-                    batch.set_buffer(&layer.k_proj, 0, 2);
-                    batch.set_buffer(&layer.v_proj, 0, 3);
-                    batch.set_buffer(&self.scratch.q, 0, 4);
-                    batch.set_buffer(&self.scratch.k, 0, 5);
-                    batch.set_buffer(&self.scratch.v, 0, 6);
-                    batch.set_bytes(bytemuck::cast_slice(&qkv_params), 7);
-                    batch.dispatch_threadgroups((wg_q + wg_k + wg_v, 1, 1), (256, 1, 1));
+                    batch.bind(&p.fused_qkv);
+                    batch.bind_buffer(&self.scratch.hidden2, 0, 0);
+                    batch.bind_buffer(&layer.q_proj, 0, 1);
+                    batch.bind_buffer(&layer.k_proj, 0, 2);
+                    batch.bind_buffer(&layer.v_proj, 0, 3);
+                    batch.bind_buffer(&self.scratch.q, 0, 4);
+                    batch.bind_buffer(&self.scratch.k, 0, 5);
+                    batch.bind_buffer(&self.scratch.v, 0, 6);
+                    batch.push(bytemuck::cast_slice(&qkv_params), 7);
+                    batch.launch_groups((wg_q + wg_k + wg_v, 1, 1), (256, 1, 1));
 
                     let rope_params = [half_dim as u32, c.head_dim as u32, c.num_heads as u32, c.kv_num_heads as u32];
                     let total_rope = half_dim * (c.num_heads + c.kv_num_heads);
-                    batch.set_pipeline(&p.fused_rope_qk);
-                    batch.set_buffer(&self.scratch.q, 0, 0);
-                    batch.set_buffer(&self.scratch.k, 0, 1);
-                    batch.set_buffer(&self.cos_cache, pos * half_dim * 2, 2);
-                    batch.set_buffer(&self.sin_cache, pos * half_dim * 2, 3);
-                    batch.set_bytes(bytemuck::cast_slice(&rope_params), 4);
-                    batch.dispatch_threadgroups((div_ceil(total_rope, 256), 1, 1), (256, 1, 1));
+                    batch.bind(&p.fused_rope_qk);
+                    batch.bind_buffer(&self.scratch.q, 0, 0);
+                    batch.bind_buffer(&self.scratch.k, 0, 1);
+                    batch.bind_buffer(&self.cos_cache, pos * half_dim * 2, 2);
+                    batch.bind_buffer(&self.sin_cache, pos * half_dim * 2, 3);
+                    batch.push(bytemuck::cast_slice(&rope_params), 4);
+                    batch.launch_groups((div_ceil(total_rope, 256), 1, 1), (256, 1, 1));
 
                     let append_params = [c.head_dim as u32, c.kv_num_heads as u32, pos as u32, c.max_seq as u32];
-                    batch.set_pipeline(&p.fused_kv_append);
-                    batch.set_buffer(&self.scratch.k, 0, 0);
-                    batch.set_buffer(&self.scratch.v, 0, 1);
-                    batch.set_buffer(&kv.k, 0, 2);
-                    batch.set_buffer(&kv.v, 0, 3);
-                    batch.set_bytes(bytemuck::cast_slice(&append_params), 4);
-                    batch.dispatch_threadgroups((div_ceil(c.kv_num_heads * c.head_dim, 256), 1, 1), (256, 1, 1));
+                    batch.bind(&p.fused_kv_append);
+                    batch.bind_buffer(&self.scratch.k, 0, 0);
+                    batch.bind_buffer(&self.scratch.v, 0, 1);
+                    batch.bind_buffer(&kv.k, 0, 2);
+                    batch.bind_buffer(&kv.v, 0, 3);
+                    batch.push(bytemuck::cast_slice(&append_params), 4);
+                    batch.launch_groups((div_ceil(c.kv_num_heads * c.head_dim, 256), 1, 1), (256, 1, 1));
 
                     let attn_params = [c.head_dim as u32, total_seq as u32, c.num_heads as u32, scale.to_bits(), c.kv_num_heads as u32, c.max_seq as u32];
-                    batch.set_pipeline(&p.attention_decode);
-                    batch.set_buffer(&self.scratch.q, 0, 0);
-                    batch.set_buffer(&kv.k, 0, 1);
-                    batch.set_buffer(&kv.v, 0, 2);
-                    batch.set_buffer(&self.scratch.attn_out, 0, 3);
-                    batch.set_bytes(bytemuck::cast_slice(&attn_params), 4);
-                    batch.dispatch_threadgroups((c.num_heads, 1, 1), (256, 1, 1));
+                    batch.bind(&p.attention_decode);
+                    batch.bind_buffer(&self.scratch.q, 0, 0);
+                    batch.bind_buffer(&kv.k, 0, 1);
+                    batch.bind_buffer(&kv.v, 0, 2);
+                    batch.bind_buffer(&self.scratch.attn_out, 0, 3);
+                    batch.push(bytemuck::cast_slice(&attn_params), 4);
+                    batch.launch_groups((c.num_heads, 1, 1), (256, 1, 1));
 
                     {
                         let params = [c.hidden_size as u32, (c.num_heads * c.head_dim) as u32];
-                        batch.set_pipeline(&p.matvec_q4_fast);
-                        batch.set_buffer(&self.scratch.attn_out, 0, 0);
-                        batch.set_buffer(&layer.o_proj, 0, 1);
-                        batch.set_buffer(&self.scratch.down, 0, 2);
-                        batch.set_bytes(bytemuck::cast_slice(&params), 3);
-                        batch.dispatch_threadgroups((div_ceil(c.hidden_size, 8), 1, 1), (256, 1, 1));
+                        batch.bind(&p.matvec_q4_fast);
+                        batch.bind_buffer(&self.scratch.attn_out, 0, 0);
+                        batch.bind_buffer(&layer.o_proj, 0, 1);
+                        batch.bind_buffer(&self.scratch.down, 0, 2);
+                        batch.push(bytemuck::cast_slice(&params), 3);
+                        batch.launch_groups((div_ceil(c.hidden_size, 8), 1, 1), (256, 1, 1));
                     }
 
-                    batch.set_pipeline(&p.fused_add_norm);
-                    batch.set_buffer(&self.scratch.hidden, 0, 0);
-                    batch.set_buffer(&self.scratch.down, 0, 1);
-                    batch.set_buffer(&self.scratch.hidden, 0, 2);
-                    batch.set_buffer(&layer.post_norm_weight, 0, 3);
-                    batch.set_buffer(&self.scratch.hidden2, 0, 4);
-                    batch.set_bytes(&norm_params_bytes, 5);
-                    batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
+                    batch.bind(&p.fused_add_norm);
+                    batch.bind_buffer(&self.scratch.hidden, 0, 0);
+                    batch.bind_buffer(&self.scratch.down, 0, 1);
+                    batch.bind_buffer(&self.scratch.hidden, 0, 2);
+                    batch.bind_buffer(&layer.post_norm_weight, 0, 3);
+                    batch.bind_buffer(&self.scratch.hidden2, 0, 4);
+                    batch.push(&norm_params_bytes, 5);
+                    batch.launch_groups((1, 1, 1), (256, 1, 1));
 
                     let inter = c.intermediate_size as u32;
                     let wg_gate = div_ceil(c.intermediate_size, 8);
                     let gate_up_params = [inter, c.hidden_size as u32, wg_gate as u32];
-                    batch.set_pipeline(&p.fused_gate_up);
-                    batch.set_buffer(&self.scratch.hidden2, 0, 0);
-                    batch.set_buffer(&layer.gate_proj, 0, 1);
-                    batch.set_buffer(&layer.up_proj, 0, 2);
-                    batch.set_buffer(&self.scratch.gate, 0, 3);
-                    batch.set_buffer(&self.scratch.up, 0, 4);
-                    batch.set_bytes(bytemuck::cast_slice(&gate_up_params), 5);
-                    batch.dispatch_threadgroups((wg_gate * 2, 1, 1), (256, 1, 1));
+                    batch.bind(&p.fused_gate_up);
+                    batch.bind_buffer(&self.scratch.hidden2, 0, 0);
+                    batch.bind_buffer(&layer.gate_proj, 0, 1);
+                    batch.bind_buffer(&layer.up_proj, 0, 2);
+                    batch.bind_buffer(&self.scratch.gate, 0, 3);
+                    batch.bind_buffer(&self.scratch.up, 0, 4);
+                    batch.push(bytemuck::cast_slice(&gate_up_params), 5);
+                    batch.launch_groups((wg_gate * 2, 1, 1), (256, 1, 1));
 
                     let silu_params = [c.intermediate_size as u32];
-                    batch.set_pipeline(&p.silu_mul_f16);
-                    batch.set_buffer(&self.scratch.gate, 0, 0);
-                    batch.set_buffer(&self.scratch.up, 0, 1);
-                    batch.set_buffer(&self.scratch.gate, 0, 2);
-                    batch.set_bytes(bytemuck::cast_slice(&silu_params), 3);
-                    batch.dispatch_threadgroups((div_ceil(c.intermediate_size, 256), 1, 1), (256, 1, 1));
+                    batch.bind(&p.silu_mul_f16);
+                    batch.bind_buffer(&self.scratch.gate, 0, 0);
+                    batch.bind_buffer(&self.scratch.up, 0, 1);
+                    batch.bind_buffer(&self.scratch.gate, 0, 2);
+                    batch.push(bytemuck::cast_slice(&silu_params), 3);
+                    batch.launch_groups((div_ceil(c.intermediate_size, 256), 1, 1), (256, 1, 1));
 
                     {
                         let params = [c.hidden_size as u32, c.intermediate_size as u32];
-                        batch.set_pipeline(&p.matvec_q4_fast);
-                        batch.set_buffer(&self.scratch.gate, 0, 0);
-                        batch.set_buffer(&layer.down_proj, 0, 1);
-                        batch.set_buffer(&self.scratch.down, 0, 2);
-                        batch.set_bytes(bytemuck::cast_slice(&params), 3);
-                        batch.dispatch_threadgroups((div_ceil(c.hidden_size, 8), 1, 1), (256, 1, 1));
+                        batch.bind(&p.matvec_q4_fast);
+                        batch.bind_buffer(&self.scratch.gate, 0, 0);
+                        batch.bind_buffer(&layer.down_proj, 0, 1);
+                        batch.bind_buffer(&self.scratch.down, 0, 2);
+                        batch.push(bytemuck::cast_slice(&params), 3);
+                        batch.launch_groups((div_ceil(c.hidden_size, 8), 1, 1), (256, 1, 1));
                     }
 
                     let next_norm_weight = if i + 1 < c.num_layers {
@@ -953,14 +953,14 @@ impl MetalModel {
                     } else {
                         &self.final_norm_weight
                     };
-                    batch.set_pipeline(&p.fused_add_norm);
-                    batch.set_buffer(&self.scratch.hidden, 0, 0);
-                    batch.set_buffer(&self.scratch.down, 0, 1);
-                    batch.set_buffer(&self.scratch.hidden, 0, 2);
-                    batch.set_buffer(next_norm_weight, 0, 3);
-                    batch.set_buffer(&self.scratch.hidden2, 0, 4);
-                    batch.set_bytes(&norm_params_bytes, 5);
-                    batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
+                    batch.bind(&p.fused_add_norm);
+                    batch.bind_buffer(&self.scratch.hidden, 0, 0);
+                    batch.bind_buffer(&self.scratch.down, 0, 1);
+                    batch.bind_buffer(&self.scratch.hidden, 0, 2);
+                    batch.bind_buffer(next_norm_weight, 0, 3);
+                    batch.bind_buffer(&self.scratch.hidden2, 0, 4);
+                    batch.push(&norm_params_bytes, 5);
+                    batch.launch_groups((1, 1, 1), (256, 1, 1));
                 }
             });
         });}
@@ -969,14 +969,14 @@ impl MetalModel {
         // Phase 2: LM Head
         let t1 = Instant::now();
         unsafe { aruminium::autorelease_pool(|| {
-            p.dispatcher.dispatch_batch_raw(|batch| {
+            p.dispatcher.batch_raw(|batch| {
                 let lm_params = [c.vocab_size as u32, c.hidden_size as u32];
-                batch.set_pipeline(&p.matvec_q4_fast);
-                batch.set_buffer(&self.scratch.hidden2, 0, 0);
-                batch.set_buffer(&self.lm_head_q4, 0, 1);
-                batch.set_buffer(&self.scratch.logits, 0, 2);
-                batch.set_bytes(bytemuck::cast_slice(&lm_params), 3);
-                batch.dispatch_threadgroups((div_ceil(c.vocab_size, 8), 1, 1), (256, 1, 1));
+                batch.bind(&p.matvec_q4_fast);
+                batch.bind_buffer(&self.scratch.hidden2, 0, 0);
+                batch.bind_buffer(&self.lm_head_q4, 0, 1);
+                batch.bind_buffer(&self.scratch.logits, 0, 2);
+                batch.push(bytemuck::cast_slice(&lm_params), 3);
+                batch.launch_groups((div_ceil(c.vocab_size, 8), 1, 1), (256, 1, 1));
             });
         });}
         let lm_head_ms = t1.elapsed().as_secs_f64() * 1000.0;
@@ -984,20 +984,20 @@ impl MetalModel {
         // Phase 3: Argmax
         let t2 = Instant::now();
         unsafe { aruminium::autorelease_pool(|| {
-            p.dispatcher.dispatch_batch_raw(|batch| {
+            p.dispatcher.batch_raw(|batch| {
                 let argmax_params = [c.vocab_size as u32];
-                batch.set_pipeline(&p.argmax);
-                batch.set_buffer(&self.scratch.logits, 0, 0);
-                batch.set_buffer(&self.scratch.argmax_result, 0, 1);
-                batch.set_bytes(bytemuck::cast_slice(&argmax_params), 2);
-                batch.dispatch_threadgroups((1, 1, 1), (256, 1, 1));
+                batch.bind(&p.argmax);
+                batch.bind_buffer(&self.scratch.logits, 0, 0);
+                batch.bind_buffer(&self.scratch.argmax_result, 0, 1);
+                batch.push(bytemuck::cast_slice(&argmax_params), 2);
+                batch.launch_groups((1, 1, 1), (256, 1, 1));
             });
         });}
         let argmax_ms = t2.elapsed().as_secs_f64() * 1000.0;
 
         self.past_seq_len = total_seq;
 
-        let result = self.scratch.argmax_result.with_data(|d| {
+        let result = self.scratch.argmax_result.read(|d| {
             u32::from_le_bytes([d[0], d[1], d[2], d[3]])
         });
 
@@ -1007,7 +1007,7 @@ impl MetalModel {
     /// Read scratch.hidden as f32 (debug)
     pub fn debug_read_hidden(&self) -> Vec<f32> {
         let n = self.config.hidden_size;
-        self.scratch.hidden.with_data(|d| {
+        self.scratch.hidden.read(|d| {
             let f16s: &[u16] = bytemuck::cast_slice(&d[..n * 2]);
             f16s.iter().map(|&v| aruminium::fp16_to_f32(v)).collect()
         })
@@ -1025,7 +1025,7 @@ impl MetalModel {
 
     /// Read logits as f32 (debug) — first `count` elements
     pub fn debug_read_logits(&self, count: usize) -> Vec<f32> {
-        self.scratch.logits.with_data(|d| {
+        self.scratch.logits.read(|d| {
             let n = count.min(d.len() / 2);
             let f16s: &[u16] = bytemuck::cast_slice(&d[..n * 2]);
             f16s.iter().map(|&v| aruminium::fp16_to_f32(v)).collect()

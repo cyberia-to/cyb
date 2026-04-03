@@ -60,8 +60,8 @@ half = { version = "2", features = ["num-traits"] }
 
 # Apple Silicon drivers (macOS only)
 [target.'cfg(target_os = "macos")'.dependencies]
-rane = "0.1"
-aruminium = "0.1"
+rane = { path = "../../rane" }
+aruminium = { path = "../../aruminium" }
 
 [build-dependencies]
 prost-build = "0.13"
