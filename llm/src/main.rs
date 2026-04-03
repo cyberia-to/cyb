@@ -863,7 +863,29 @@ fn run_status() {
             ("—".into(), "—".into())
         };
         let metal_str = "—";
-        let llama_str = "—";
+        // Ollama bench — map model names to ollama tags
+        let llama_str = if is_decoder {
+            let ollama_tag = match spec.name {
+                "qwen3-0.6b-abl" => Some("qwen3:0.6b"),
+                "qwen2.5-0.5b-abl" => Some("qwen2.5:0.5b"),
+                "qwen2.5-coder-1.5b-abl" => Some("qwen2.5-coder:1.5b"),
+                "qwen2.5-coder-14b-abl" => Some("qwen2.5-coder:14b"),
+                "smollm2-360m" => Some("smollm2:360m"),
+                "bitnet-2b" => None, // not in ollama
+                "nuextract-1.5" => None,
+                "mimo-7b-rl" => None,
+                "deepseek-r1-8b-abl" => Some("deepseek-r1:8b"),
+                "qwen3.5-4b-abl" => Some("qwen3:4b"),
+                "qwen3.5-9b-abl" => Some("qwen3:8b"),
+                _ => None,
+            };
+            match ollama_tag {
+                Some(tag) => bench_ollama(tag),
+                None => "—".into(),
+            }
+        } else {
+            "—".into()
+        };
 
         println!("  {:<26} {:<6} {:<11} {:>6} {:>3} {:>6} {:>6} {:>6} {:>6} {:>6} {:>5}",
             spec.name, spec.tier, type_str,
@@ -928,6 +950,45 @@ fn quick_bench_model(model_path: &std::path::Path) -> (String, String) {
         }
         Err(_) => ("\x1b[31merr\x1b[0m".into(), "—".into()),
     }
+}
+
+/// Bench ollama: call API, return tok/s string
+fn bench_ollama(tag: &str) -> String {
+    use std::io::Read;
+
+    let body = format!(
+        r#"{{"model":"{}","prompt":"What is 2+2?","stream":false,"options":{{"num_predict":16,"temperature":0}}}}"#,
+        tag
+    );
+
+    let result = std::process::Command::new("curl")
+        .args(["-s", "--max-time", "30", "http://localhost:11434/api/generate", "-d", &body])
+        .output();
+
+    match result {
+        Ok(out) if out.status.success() => {
+            let text = String::from_utf8_lossy(&out.stdout);
+            // Parse eval_count and eval_duration from JSON
+            let eval_count = extract_json_u64(&text, "eval_count");
+            let eval_dur_ns = extract_json_u64(&text, "eval_duration");
+            if eval_count > 0 && eval_dur_ns > 0 {
+                let tok_s = eval_count as f64 / (eval_dur_ns as f64 / 1e9);
+                format!("{:.0}", tok_s)
+            } else {
+                "—".into()
+            }
+        }
+        _ => "—".into(),
+    }
+}
+
+fn extract_json_u64(json: &str, key: &str) -> u64 {
+    let pattern = format!("\"{}\":", key);
+    json.find(&pattern).and_then(|pos| {
+        let after = &json[pos + pattern.len()..];
+        let num_str: String = after.chars().skip_while(|c| c.is_whitespace()).take_while(|c| c.is_ascii_digit()).collect();
+        num_str.parse().ok()
+    }).unwrap_or(0)
 }
 
 #[allow(dead_code)]
