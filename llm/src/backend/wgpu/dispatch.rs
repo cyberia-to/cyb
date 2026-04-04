@@ -1889,6 +1889,60 @@ pub fn rms_norm_prepare_precomputed(
     (output, bg, wg)
 }
 
+/// Fused RMSNorm + Q4 matmul — single dispatch replaces norm + q4_matmul.
+pub fn fused_norm_q4_prepare_precomputed(
+    p: &Pipelines,
+    input: &wgpu::Buffer,
+    norm_weight: &wgpu::Buffer,
+    packed_weights: &wgpu::Buffer,
+    scales: &wgpu::Buffer,
+    params_buf: &wgpu::Buffer,
+    n: u32,
+    wg: (u32, u32, u32),
+) -> (wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32)) {
+    let output = p.alloc((n as u64) * 4);
+    let bg = p.create_bind_group(
+        &p.fused_norm_q4,
+        &[
+            input.as_entire_binding(),
+            norm_weight.as_entire_binding(),
+            packed_weights.as_entire_binding(),
+            scales.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+    );
+    (output, bg, wg)
+}
+
+/// Fused skip connection + RMSNorm — single dispatch replaces add + norm.
+pub fn fused_skip_norm_prepare_precomputed(
+    p: &Pipelines,
+    input: &wgpu::Buffer,
+    skip: &wgpu::Buffer,
+    weight: &wgpu::Buffer,
+    params_buf: &wgpu::Buffer,
+    positions: u32,
+    hidden: u32,
+    wg: (u32, u32, u32),
+) -> (wgpu::Buffer, wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32)) {
+    let size = (positions as u64) * (hidden as u64) * 4;
+    let normed_output = p.alloc(size);
+    let skip_output = p.alloc(size);
+    let bg = p.create_bind_group(
+        &p.fused_skip_norm,
+        &[
+            input.as_entire_binding(),
+            skip.as_entire_binding(),
+            weight.as_entire_binding(),
+            normed_output.as_entire_binding(),
+            skip_output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+    );
+    (normed_output, skip_output, bg, wg)
+}
+
 /// RoPE with pre-computed params buffer
 pub fn rope_prepare_precomputed(
     p: &Pipelines,

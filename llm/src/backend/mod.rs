@@ -7,11 +7,13 @@ pub mod wgpu;
 #[cfg(target_os = "macos")]
 pub mod metal;
 
-#[cfg(target_os = "macos")]
-pub mod ane;
-
-#[cfg(target_os = "macos")]
-pub mod cpu;
+// ANE/CPU/Apple backends depend on unimem/acpu — enable when those crates are ready
+// #[cfg(target_os = "macos")]
+// pub mod ane;
+// #[cfg(target_os = "macos")]
+// pub mod cpu;
+// #[cfg(target_os = "macos")]
+// pub mod apple;
 
 use std::collections::HashMap;
 

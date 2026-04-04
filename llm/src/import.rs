@@ -58,26 +58,24 @@ pub fn canonicalize(model_dir: &Path) -> ImportResult {
     result
 }
 
-/// Repack an existing .cyb file with normalized tensor names.
-/// Reads .cyb → normalizes HF→GGUF names → writes new .cyb.
+/// Repack an existing .cyb file: normalize names + quantize to Q4.
 pub fn repack_cyb(cyb_path: &Path) -> Result<(), String> {
     let (graph, config_str) = crate::cyb_format::read_cyb(cyb_path)
         .map_err(|e| format!("read .cyb: {e}"))?;
 
     let old_count = graph.weights.len();
     let graph = normalize_tensor_names(graph);
+    let graph = quantize_weights_q4(graph);
 
-    // Check if any names changed
-    let has_canonical = graph.weights.contains_key("token_embd.weight");
-    if !has_canonical && old_count > 0 {
-        return Err("normalization failed — no token_embd.weight after remap".into());
+    if old_count == 0 {
+        return Ok(()); // nothing to do
     }
 
     let include_graph = !graph.nodes.is_empty();
     crate::cyb_format::write_cyb(cyb_path, &graph, &config_str, include_graph)
         .map_err(|e| format!("write .cyb: {e}"))?;
 
-    log::info!("Repacked {} with {} canonical tensor names", cyb_path.display(), graph.weights.len());
+    log::info!("Repacked {} — {} tensors, Q4 quantized", cyb_path.display(), graph.weights.len());
     Ok(())
 }
 
@@ -115,8 +113,11 @@ pub fn convert_to_cyb(model_dir: &Path) -> Result<(std::path::PathBuf, u64, u64)
         }
     };
 
-    // Normalize tensor names to canonical (GGUF-style) before writing .cyb
+    // Normalize tensor names to canonical HF-style
     let graph = normalize_tensor_names(graph);
+
+    // Quantize F16/F32/BF16 weights → Q4_0 for compact .cyb
+    let graph = quantize_weights_q4(graph);
 
     let include_graph = !graph.nodes.is_empty();
 
@@ -262,16 +263,68 @@ fn pack_raw_weights(dir: &Path) -> Result<crate::ir::Graph, String> {
     })
 }
 
-/// Normalize tensor names to canonical GGUF-style.
+/// Quantize F16/F32/BF16 weight tensors → Q4_0 for compact .cyb storage.
+/// Norm weights (1D) stay F32. Only 2D projection weights get quantized.
+fn quantize_weights_q4(mut graph: crate::ir::Graph) -> crate::ir::Graph {
+    use crate::ir::DType;
+    use crate::backend::wgpu::model::safetensors_to_f32;
+
+    let keys: Vec<String> = graph.weights.keys().cloned().collect();
+    let mut quantized = 0usize;
+
+    for key in keys {
+        let w = graph.weights.get(&key).unwrap();
+
+        // Skip already-quantized weights
+        if matches!(w.dtype, DType::Q4 | DType::Q4_K | DType::Q8 | DType::Ternary
+            | DType::Q2_K | DType::Q3_K | DType::Q5_K | DType::Q6_K) {
+            continue;
+        }
+
+        // Skip 1D tensors (norms, biases) — keep as original precision
+        if w.shape.len() < 2 {
+            // Convert to F32 for uniform handling
+            if w.dtype != DType::F32 {
+                let f32_data = safetensors_to_f32(&w.data, w.dtype);
+                let bytes: Vec<u8> = f32_data.iter()
+                    .flat_map(|v| v.to_le_bytes())
+                    .collect();
+                let w = graph.weights.get_mut(&key).unwrap();
+                w.data = bytes;
+                w.dtype = DType::F32;
+            }
+            continue;
+        }
+
+        // 2D+ tensors: quantize F16/F32/BF16 → Q4_0
+        let f32_data = safetensors_to_f32(&w.data, w.dtype);
+        let q4_data = crate::quantize::quantize_q4_0(&f32_data);
+
+        let w = graph.weights.get_mut(&key).unwrap();
+        w.data = q4_data;
+        w.dtype = DType::Q4;
+        quantized += 1;
+    }
+
+    if quantized > 0 {
+        log::info!("Quantized {quantized} weight tensors to Q4_0");
+    }
+    graph
+}
+
+/// Normalize tensor names to canonical HF-style.
 /// HuggingFace: model.layers.0.self_attn.q_proj.weight → blk.0.attn_q.weight
 /// Already canonical names pass through unchanged.
 fn normalize_tensor_names(mut graph: crate::ir::Graph) -> crate::ir::Graph {
-    if !graph.weights.contains_key("model.embed_tokens.weight") {
-        return graph; // already canonical or unknown
+    // Canonical = HuggingFace naming. If GGUF names found, convert to HF.
+    let has_gguf = graph.weights.contains_key("token_embd.weight")
+        || graph.weights.keys().any(|k| k.starts_with("blk."));
+    if !has_gguf {
+        return graph; // already HF or unknown
     }
     let old_keys: Vec<String> = graph.weights.keys().cloned().collect();
     for key in old_keys {
-        let new_key = hf_to_gguf(&key);
+        let new_key = gguf_to_hf(&key);
         if new_key != key {
             if let Some(w) = graph.weights.remove(&key) {
                 graph.weights.insert(new_key, w);
@@ -281,7 +334,41 @@ fn normalize_tensor_names(mut graph: crate::ir::Graph) -> crate::ir::Graph {
     graph
 }
 
-/// Map a single HuggingFace tensor name to GGUF canonical name.
+/// Map GGUF tensor name → HuggingFace canonical name.
+fn gguf_to_hf(name: &str) -> String {
+    if name == "token_embd.weight" { return "model.embed_tokens.weight".into(); }
+    if name == "output_norm.weight" { return "model.norm.weight".into(); }
+    if name == "output.weight" { return "lm_head.weight".into(); }
+
+    if let Some(rest) = name.strip_prefix("blk.") {
+        if let Some(dot) = rest.find('.') {
+            let layer_num = &rest[..dot];
+            let suffix = &rest[dot + 1..];
+            let mapped = match suffix {
+                "attn_norm.weight" => "input_layernorm.weight",
+                "attn_q.weight" => "self_attn.q_proj.weight",
+                "attn_k.weight" => "self_attn.k_proj.weight",
+                "attn_v.weight" => "self_attn.v_proj.weight",
+                "attn_output.weight" => "self_attn.o_proj.weight",
+                "attn_q.bias" => "self_attn.q_proj.bias",
+                "attn_k.bias" => "self_attn.k_proj.bias",
+                "attn_v.bias" => "self_attn.v_proj.bias",
+                "attn_q_norm.weight" => "self_attn.q_norm.weight",
+                "attn_k_norm.weight" => "self_attn.k_norm.weight",
+                "ffn_norm.weight" => "post_attention_layernorm.weight",
+                "ffn_gate.weight" => "mlp.gate_proj.weight",
+                "ffn_up.weight" => "mlp.up_proj.weight",
+                "ffn_down.weight" => "mlp.down_proj.weight",
+                other => other,
+            };
+            return format!("model.layers.{layer_num}.{mapped}");
+        }
+    }
+    name.to_string()
+}
+
+/// Map HuggingFace tensor name → GGUF name (unused but kept for symmetry).
+#[allow(dead_code)]
 fn hf_to_gguf(name: &str) -> String {
     if name == "model.embed_tokens.weight" { return "token_embd.weight".into(); }
     if name == "model.norm.weight" { return "output_norm.weight".into(); }
