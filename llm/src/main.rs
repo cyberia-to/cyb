@@ -835,7 +835,6 @@ fn run_metal_model(model_path: &std::path::Path, prompt: &str, max_tokens: usize
         }
     };
     let token_ids = encoding.get_ids();
-    eprintln!("Tokens ({}): {:?}", token_ids.len(), &token_ids[..token_ids.len().min(20)]);
 
     let config_toml = cyb_llm::cyb_format::read_model_config(model_path)
         .map(|(_, cfg)| cfg).unwrap_or_default();

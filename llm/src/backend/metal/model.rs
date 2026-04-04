@@ -783,10 +783,34 @@ impl MetalModel {
 
         self.past_seq_len = total_seq;
 
+        // Debug: dump first few logits
+        if pos < 2 {
+            let logits_sample = self.scratch.logits.read(|d| {
+                let f16s: &[u16] = bytemuck::cast_slice(&d[..20]);
+                f16s.iter().map(|&v| aruminium::fp16_to_f32(v)).collect::<Vec<f32>>()
+            });
+            log::warn!("Metal logits[pos={pos}][0:10]: {:?}", logits_sample);
+        }
+
         // Read argmax result from GPU (this blocks until dispatch_batch completes)
         let result = self.scratch.argmax_result.read(|d| {
             u32::from_le_bytes([d[0], d[1], d[2], d[3]])
         });
+
+        // Debug: verify argmax by finding CPU max
+        if pos < 2 {
+            let (cpu_max_idx, cpu_max_val) = self.scratch.logits.read(|d| {
+                let f16s: &[u16] = bytemuck::cast_slice(&d[..c.vocab_size * 2]);
+                let mut max_idx = 0usize;
+                let mut max_val = f32::NEG_INFINITY;
+                for (i, &v) in f16s.iter().enumerate() {
+                    let fv = aruminium::fp16_to_f32(v);
+                    if fv > max_val { max_val = fv; max_idx = i; }
+                }
+                (max_idx, max_val)
+            });
+            log::warn!("Metal argmax[pos={pos}]: GPU={result}, CPU={cpu_max_idx} (val={cpu_max_val:.4})");
+        }
 
         // Log timing every 20 steps
         if pos > 0 && pos % 50 == 0 {
@@ -1199,4 +1223,57 @@ fn quantize_f32_to_block_q4_0(weights: &[f32], n: usize, k: usize) -> Vec<u8> {
     }
 
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_transpose_q4_nibble_repack() {
+        // One block: scale=0.5 (as f16), 16 bytes of nibbles
+        // GGUF layout: qs[j] has weight[j] in lo, weight[j+16] in hi
+        let scale_f16 = half::f16::from_f32(0.5);
+        let scale_bytes = scale_f16.to_le_bytes();
+        
+        // Set up: weight[0]=1, weight[1]=2, ..., weight[15]=15+1=0 (mod 16)
+        // weight[16]=15, weight[17]=14, ..., weight[31]=1
+        // GGUF qs[j] = weight[j] | (weight[j+16] << 4)
+        let mut qs = [0u8; 16];
+        for j in 0..16u8 {
+            let lo = (j + 1) % 16; // weight[j]
+            let hi = 15 - j;        // weight[j+16]
+            qs[j as usize] = lo | (hi << 4);
+        }
+        
+        let mut block = vec![0u8; 18];
+        block[0..2].copy_from_slice(&scale_bytes);
+        block[2..18].copy_from_slice(&qs);
+        
+        // n=1, k=32 → 1 row, 1 block, no spatial transpose needed
+        let result = transpose_q4_blocks(&block, 1, 32);
+        
+        // After repack, Metal reads qs_new[i] as:
+        // lo = weight[2i], hi = weight[2i+1]
+        // So qs_new[0] should have weight[0]=1 in lo, weight[1]=2 in hi → 1 | (2<<4) = 33
+        // qs_new[1] should have weight[2]=3 in lo, weight[3]=4 in hi → 3 | (4<<4) = 67
+        
+        // Verify
+        let qs_out = &result[2..18];
+        
+        // Build expected weights in natural order
+        let mut weights = [0u8; 32];
+        for j in 0..16 {
+            weights[j] = ((j + 1) % 16) as u8;  // GGUF lo → position j
+            weights[j + 16] = (15 - j as u8);     // GGUF hi → position j+16
+        }
+        
+        // Expected repacked bytes
+        for i in 0..16 {
+            let expected = weights[2*i] | (weights[2*i + 1] << 4);
+            assert_eq!(qs_out[i], expected, 
+                "byte {i}: got {}, expected {} (w[{}]={}, w[{}]={})", 
+                qs_out[i], expected, 2*i, weights[2*i], 2*i+1, weights[2*i+1]);
+        }
+    }
 }
