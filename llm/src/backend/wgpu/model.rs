@@ -151,6 +151,10 @@ pub struct NativeModel {
     pub kv_compressor: Option<crate::kv_compress::KvCompressor>,
     /// Persistent staging buffer for greedy argmax readback (avoids alloc per token)
     argmax_staging: wgpu::Buffer,
+    /// Persistent decode buffers (reused every token, no allocation)
+    decode_ids_buf: wgpu::Buffer,
+    decode_cos_buf: wgpu::Buffer,
+    decode_sin_buf: wgpu::Buffer,
 }
 
 /// Convert model-level QuantFormat to dispatch::QuantFormat
@@ -829,6 +833,12 @@ impl NativeModel {
             mapped_at_creation: false,
         });
 
+        // Persistent decode buffers (1 token, reused every step)
+        let half = head_dim / 2;
+        let decode_ids_buf = pipelines.upload_f32(&[0.0f32]);
+        let decode_cos_buf = pipelines.upload_f32(&vec![0.0f32; half]);
+        let decode_sin_buf = pipelines.upload_f32(&vec![0.0f32; half]);
+
         log::info!(".model loaded: {} layers, Q4 quantize-on-load", num_layers);
 
         Ok(Self {
@@ -842,6 +852,7 @@ impl NativeModel {
             },
             kv_compressor: None,
             argmax_staging,
+            decode_ids_buf, decode_cos_buf, decode_sin_buf,
         })
     }
 
@@ -891,14 +902,27 @@ impl NativeModel {
 
         let mut enc = p.device.create_command_encoder(&Default::default());
 
-        let ids_f32: Vec<f32> = token_ids.iter().map(|&id| id as f32).collect();
-        let ids_buf = p.upload_f32(&ids_f32);
-
         let half = half_dim as usize;
         let start = pos_offset * half;
         let end = start + seq_len * half;
-        let cos_buf = p.upload_f32(&self.cos_cache[start..end]);
-        let sin_buf = p.upload_f32(&self.sin_cache[start..end]);
+
+        // For decode (seq_len=1): reuse persistent buffers, no allocation
+        // For prefill: allocate fresh (variable length)
+        let prefill_ids;
+        let prefill_cos;
+        let prefill_sin;
+        let (ids_buf, cos_buf, sin_buf) = if seq_len == 1 {
+            p.queue.write_buffer(&self.decode_ids_buf, 0, bytemuck::cast_slice(&[token_ids[0] as f32]));
+            p.queue.write_buffer(&self.decode_cos_buf, 0, bytemuck::cast_slice(&self.cos_cache[start..end]));
+            p.queue.write_buffer(&self.decode_sin_buf, 0, bytemuck::cast_slice(&self.sin_cache[start..end]));
+            (&self.decode_ids_buf, &self.decode_cos_buf, &self.decode_sin_buf)
+        } else {
+            let ids_f32: Vec<f32> = token_ids.iter().map(|&id| id as f32).collect();
+            prefill_ids = p.upload_f32(&ids_f32);
+            prefill_cos = p.upload_f32(&self.cos_cache[start..end]);
+            prefill_sin = p.upload_f32(&self.sin_cache[start..end]);
+            (&prefill_ids, &prefill_cos, &prefill_sin)
+        };
 
         let num_layers = self.layers.len();
 
