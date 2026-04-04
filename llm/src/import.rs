@@ -335,7 +335,7 @@ fn normalize_tensor_names(mut graph: crate::ir::Graph) -> crate::ir::Graph {
 }
 
 /// Map GGUF tensor name → HuggingFace canonical name.
-fn gguf_to_hf(name: &str) -> String {
+pub fn gguf_to_hf(name: &str) -> String {
     if name == "token_embd.weight" { return "model.embed_tokens.weight".into(); }
     if name == "output_norm.weight" { return "model.norm.weight".into(); }
     if name == "output.weight" { return "lm_head.weight".into(); }

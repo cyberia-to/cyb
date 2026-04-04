@@ -1259,9 +1259,12 @@ print('\n'.join(lines))
         let size = w.data.len();
         let shape_str = w.shape.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", ");
 
+        // Normalize GGUF tensor names to HuggingFace convention
+        let hf_name = cyb_llm::import::gguf_to_hf(tname);
+
         tensors_lines.push(format!(
             "[\"{}\"]\nshape    = [{}]\nencoding = \"{}\"\noffset   = {}\nsize     = {}\n",
-            tname, shape_str, encoding, offset, size
+            hf_name, shape_str, encoding, offset, size
         ));
 
         weight_data.extend_from_slice(&w.data);
