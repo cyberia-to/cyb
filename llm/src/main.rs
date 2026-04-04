@@ -791,9 +791,14 @@ fn run_status() {
     println!("  \x1b[1mcyb-llm status\x1b[0m — {}", base.display());
     println!();
 
-    println!("  {:<26} {:<11} {:<11} {:>6} {:>3} {:>6} {:>6}  {:>8}  {:>8} {:>6}",
-        "MODEL", "ROLE", "TYPE", "SIZE", "L", "CTX", "LOAD", "WGPU", "METAL", "LLAMA");
-    println!("  {}", "─".repeat(100));
+    // Column widths: model=26, role=11, type=10, size=6, L=3, ctx=6, load=6, wgpu=8, metal=8, llama=6
+    let hdr = format!(
+        "  {:<26} {:<11} {:<10} {:>6} {:>3} {:>6} {:>6} {:>8} {:>8} {:>6}",
+        "MODEL", "ROLE", "TYPE", "SIZE", "L", "CTX", "LOAD", "WGPU", "METAL", "LLAMA"
+    );
+    let width = 98;
+    println!("{hdr}");
+    println!("  {}", "─".repeat(width));
 
     let mut total_disk = 0u64;
     let mut total_ok = 0usize;
@@ -802,7 +807,7 @@ fn run_status() {
         let model_path = base.join(format!("{}.model", spec.name));
 
         if !model_path.exists() {
-            println!("  {:<26} {:<11} {:<11} \x1b[31mMISSING\x1b[0m",
+            println!("  {:<26} {:<11} {:<10} \x1b[31mMISSING\x1b[0m",
                 spec.name, spec.role, "—");
             continue;
         }
@@ -844,55 +849,65 @@ fn run_status() {
 
         // Bench: tok/s for decoder LLMs (catch panics silently)
         let is_decoder = matches!(model_type.as_str(),
-            "qwen2" | "qwen3" | "llama" | "phi3" | "bitnet" | "mimo");
-        let wgpu_str = if is_decoder {
-            eprint!("  bench wgpu {}...\r", spec.name);
-            let mp = model_path.clone();
+            "qwen2" | "qwen3" | "llama" | "phi3" | "bitnet" | "mimo" | "gemma4");
+
+        let clear_line = "\x1b[2K\r"; // ANSI: clear entire line + carriage return
+
+        // Returns (visible_text, ansi_text) where ansi_text has correct padding
+        let bench_safe = |label: &str, f: &dyn Fn() -> (String, String), col_width: usize| -> String {
+            eprint!("{clear_line}  bench {label} {}...", spec.name);
             let prev_hook = std::panic::take_hook();
             std::panic::set_hook(Box::new(|_| {}));
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| quick_bench_model(&mp)));
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
             std::panic::set_hook(prev_hook);
             match result {
-                Ok((ts, sane)) => format!("{} {}", ts, sane),
-                Err(_) => "\x1b[31merr\x1b[0m".into(),
+                Ok((ts, sane)) => {
+                    // Pad the visible part (ts + space + sane_char) to col_width
+                    // sane is 1 visible char wrapped in ANSI codes
+                    let visible_len = ts.len() + 2; // "N.N ✓" = ts + " " + 1 char
+                    let pad = if visible_len < col_width { col_width - visible_len } else { 0 };
+                    format!("{:>pad$}{ts} {sane}", "", pad = pad)
+                }
+                Err(_) => {
+                    let pad = if col_width > 3 { col_width - 3 } else { 0 };
+                    format!("{:>pad$}\x1b[31merr\x1b[0m", "", pad = pad)
+                }
             }
-        } else {
-            "—".into()
-        };
-        #[cfg(target_os = "macos")]
-        let metal_str: String = if is_decoder {
-            eprint!("  bench metal {}...\r", spec.name);
-            let mp = model_path.clone();
-            let prev_hook = std::panic::take_hook();
-            std::panic::set_hook(Box::new(|_| {}));
-            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| quick_bench_metal(&mp)));
-            std::panic::set_hook(prev_hook);
-            match result {
-                Ok((ts, sane)) => format!("{} {}", ts, sane),
-                Err(_) => "\x1b[31merr\x1b[0m".into(),
-            }
-        } else {
-            "—".into()
-        };
-        #[cfg(not(target_os = "macos"))]
-        let metal_str = "—".to_string();
-        // Ollama bench — from manifest ollama_tag
-        let llama_str = if is_decoder {
-            match spec.ollama_tag {
-                Some(tag) => bench_ollama(tag),
-                None => "—".into(),
-            }
-        } else {
-            "—".into()
         };
 
-        println!("  {:<26} {:<11} {:<11} {:>6} {:>3} {:>6} {:>6}  {:>8}  {:>8} {:>6}",
+        let wgpu_str = if is_decoder {
+            let mp = model_path.clone();
+            bench_safe("wgpu", &|| quick_bench_model(&mp), 8)
+        } else { format!("{:>8}", "—") };
+
+        #[cfg(target_os = "macos")]
+        let metal_str: String = if is_decoder {
+            let mp = model_path.clone();
+            bench_safe("metal", &|| quick_bench_metal(&mp), 8)
+        } else { format!("{:>8}", "—") };
+        #[cfg(not(target_os = "macos"))]
+        let metal_str = format!("{:>8}", "—");
+
+        let llama_str: String = if is_decoder {
+            match spec.ollama_tag {
+                Some(tag) => {
+                    eprint!("{clear_line}  bench ollama {}...", spec.name);
+                    let r = bench_ollama(tag);
+                    format!("{:>6}", r)
+                }
+                None => format!("{:>6}", "—"),
+            }
+        } else { format!("{:>6}", "—") };
+
+        // Clear progress line, print final row
+        eprint!("{clear_line}");
+        println!("  {:<26} {:<11} {:<10} {:>6} {:>3} {:>6} {:>6} {} {} {}",
             spec.name, spec.role, type_str,
             format_size(disk_bytes), layers_str, ctx_str,
             load_str, wgpu_str, metal_str, llama_str);
     }
 
-    println!("  {}", "─".repeat(100));
+    println!("  {}", "─".repeat(width));
     println!();
     println!("  \x1b[1m{}\x1b[0m models  ·  \x1b[32m{}\x1b[0m ready  ·  {} on disk",
         MANIFEST.len(), total_ok, format_size(total_disk));
