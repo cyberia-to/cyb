@@ -950,8 +950,8 @@ fn quick_bench_model(model_path: &std::path::Path) -> (String, String) {
                 "0".into()
             };
 
-            // Strip <think>...</think> tags for sanity check
             let text = text.trim().to_lowercase();
+            log::debug!("WGPU output ({} tok): {:?}", stats.decode_tokens, &text[..text.len().min(200)]);
             let check_text = if let Some(pos) = text.find("</think>") {
                 &text[pos+8..]
             } else { &text };
@@ -1019,12 +1019,14 @@ fn quick_bench_metal(model_path: &std::path::Path) -> (String, String) {
     let elapsed = decode_start.elapsed().as_secs_f64();
 
     log::set_max_level(prev);
+    log::debug!("Metal IDs: {:?}", &generated_ids[..generated_ids.len().min(10)]);
 
     let tok_s = if count > 0 && elapsed > 0.01 {
         format!("{:.0}", count as f64 / elapsed)
     } else { "0".into() };
 
     let text = tokenizer.decode(&generated_ids, true).unwrap_or_default().to_lowercase();
+    log::debug!("Metal output ({count} tok): {:?}", &text[..text.len().min(200)]);
     let check = if let Some(pos) = text.find("</think>") { &text[pos+8..] } else { &text };
     let sane = if check.contains('4') || check.contains("four") {
         "\x1b[32m✓\x1b[0m"
