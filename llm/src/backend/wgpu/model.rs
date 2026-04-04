@@ -1036,14 +1036,6 @@ impl NativeModel {
             });
             let mut hidden = embed_out;
 
-            // DEBUG: limit to first N layers to diagnose zero output
-            // Flush write_buffer calls before compute dispatches.
-            // queue.write_buffer() schedules a staging copy that must complete
-            // before the compute pass reads the buffer. An explicit empty submit
-            // + poll ensures the writes are visible to the GPU.
-            p.queue.submit(std::iter::empty());
-            p.device.poll(wgpu::Maintain::Wait);
-
             for i in 0..num_layers {
                 let lp = &self.layers[i].params;
 
@@ -1269,14 +1261,14 @@ impl NativeModel {
                 }
                 // Merge copy into same encoder — single submission, no second encoder
                 enc.copy_buffer_to_buffer(&argmax_buf, 0, &self.argmax_staging, 0, 4);
-                p.queue.submit(std::iter::once(enc.finish()));
+                let sub_idx = p.queue.submit(std::iter::once(enc.finish()));
                 self.past_seq_len = total_seq;
 
-                // Read from persistent staging buffer (no allocation)
+                // Read from persistent staging buffer — wait for specific submission
                 let slice = self.argmax_staging.slice(..);
                 let (tx, rx) = std::sync::mpsc::channel();
                 slice.map_async(wgpu::MapMode::Read, move |r| { tx.send(r).unwrap(); });
-                p.device.poll(wgpu::Maintain::Wait);
+                p.device.poll(wgpu::Maintain::WaitForSubmissionIndex(sub_idx));
                 rx.recv().unwrap().unwrap();
                 let data = slice.get_mapped_range();
                 let token_id = bytemuck::cast_slice::<u8, f32>(&data)[0].to_bits();
