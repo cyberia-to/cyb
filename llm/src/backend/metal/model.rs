@@ -169,23 +169,19 @@ impl MetalModel {
         let embed_f16 = weight_to_f16("model.embed_tokens.weight")?;
         let embed_table = pipelines.upload_f16(&embed_f16).map_err(|e| format!("{e}"))?;
 
-        // LM head — Q4 quantized for speed (vocab is huge, memory-bound)
-        let lm_head_q4 = if !tie_word_embeddings {
-            if let Some(w) = weights.get("lm_head.weight") {
-                let f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
+        // LM head — Q4 transposed for Metal matvec
+        let lm_head_q4 = {
+            let lm_w = weights.get("lm_head.weight")
+                .or_else(|| weights.get("model.embed_tokens.weight"))
+                .ok_or("Missing lm_head or embed weights")?;
+            if matches!(lm_w.dtype, crate::ir::DType::Q4) {
+                let transposed = transpose_q4_blocks(&lm_w.data, vocab_size, hidden_size);
+                pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?
+            } else {
+                let f32s = crate::backend::wgpu::model::safetensors_to_f32(&lm_w.data, lm_w.dtype);
                 let packed = quantize_f32_to_block_q4_0(&f32s, vocab_size, hidden_size);
                 pipelines.upload_bytes(&packed).map_err(|e| format!("{e}"))?
-            } else {
-                // Fallback: quantize embed_table
-                let embed_f32 = weight_to_f32("model.embed_tokens.weight")?;
-                let packed = quantize_f32_to_block_q4_0(&embed_f32, vocab_size, hidden_size);
-                pipelines.upload_bytes(&packed).map_err(|e| format!("{e}"))?
             }
-        } else {
-            // Tied weights — quantize embed_table for LM head
-            let embed_f32 = weight_to_f32("model.embed_tokens.weight")?;
-            let packed = quantize_f32_to_block_q4_0(&embed_f32, vocab_size, hidden_size);
-            pipelines.upload_bytes(&packed).map_err(|e| format!("{e}"))?
         };
 
         // LM head f16 (for f16 mode)
@@ -211,21 +207,19 @@ impl MetalModel {
             pipelines.upload_f16(&f16).map_err(|e| format!("{e}"))
         };
 
-        // Quantize projection weights to block_q4_0 and upload
-        let quantize_upload = |name: &str, n: usize, k: usize| -> Result<Buffer, String> {
+        // Upload Q4 weights — transpose block layout from [N][K/32] to [K/32][N] (zero precision loss)
+        let q4_upload = |name: &str, n: usize, k: usize| -> Result<Buffer, String> {
             let w = weights.get(name).ok_or_else(|| format!("Missing: {name}"))?;
-            let mut f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
-            // Apply weight_scale if present (BitNet ternary models)
-            let scale_name = format!("{name}_scale");
-            if let Some(sw) = weights.get(&scale_name) {
-                let scale_f32 = crate::backend::wgpu::model::safetensors_to_f32(&sw.data, sw.dtype);
-                if !scale_f32.is_empty() {
-                    let s = scale_f32[0];
-                    for v in &mut f32s { *v *= s; }
-                }
+            if matches!(w.dtype, crate::ir::DType::Q4) {
+                // Direct Q4 block transpose — no dequant, zero precision loss
+                let transposed = transpose_q4_blocks(&w.data, n, k);
+                pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))
+            } else {
+                // Non-Q4: dequant → requant (lossy fallback for f32/f16 weights)
+                let f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
+                let packed = quantize_f32_to_block_q4_0(&f32s, n, k);
+                pipelines.upload_bytes(&packed).map_err(|e| format!("{e}"))
             }
-            let packed = quantize_f32_to_block_q4_0(&f32s, n, k);
-            pipelines.upload_bytes(&packed).map_err(|e| format!("{e}"))
         };
 
         // Helper: load raw ternary bytes + extract weight_scale
@@ -271,13 +265,13 @@ impl MetalModel {
                 down_proj = f16_upload(&format!("model.layers.{i}.mlp.down_proj.weight"))?;
                 weight_scales = None;
             } else {
-                q_proj = quantize_upload(&format!("model.layers.{i}.self_attn.q_proj.weight"), q_dim, hidden_size)?;
-                k_proj = quantize_upload(&format!("model.layers.{i}.self_attn.k_proj.weight"), kv_dim, hidden_size)?;
-                v_proj = quantize_upload(&format!("model.layers.{i}.self_attn.v_proj.weight"), kv_dim, hidden_size)?;
-                o_proj = quantize_upload(&format!("model.layers.{i}.self_attn.o_proj.weight"), hidden_size, q_dim)?;
-                gate_proj = quantize_upload(&format!("model.layers.{i}.mlp.gate_proj.weight"), intermediate_size, hidden_size)?;
-                up_proj = quantize_upload(&format!("model.layers.{i}.mlp.up_proj.weight"), intermediate_size, hidden_size)?;
-                down_proj = quantize_upload(&format!("model.layers.{i}.mlp.down_proj.weight"), hidden_size, intermediate_size)?;
+                q_proj = q4_upload(&format!("model.layers.{i}.self_attn.q_proj.weight"), q_dim, hidden_size)?;
+                k_proj = q4_upload(&format!("model.layers.{i}.self_attn.k_proj.weight"), kv_dim, hidden_size)?;
+                v_proj = q4_upload(&format!("model.layers.{i}.self_attn.v_proj.weight"), kv_dim, hidden_size)?;
+                o_proj = q4_upload(&format!("model.layers.{i}.self_attn.o_proj.weight"), hidden_size, q_dim)?;
+                gate_proj = q4_upload(&format!("model.layers.{i}.mlp.gate_proj.weight"), intermediate_size, hidden_size)?;
+                up_proj = q4_upload(&format!("model.layers.{i}.mlp.up_proj.weight"), intermediate_size, hidden_size)?;
+                down_proj = q4_upload(&format!("model.layers.{i}.mlp.down_proj.weight"), hidden_size, intermediate_size)?;
                 weight_scales = None;
             };
 
@@ -819,6 +813,65 @@ impl MetalModel {
         })
     }
 
+    /// Debug: run embed + norm + q_proj, return first 8 values from q output
+    pub fn debug_q_proj(&mut self, token_id: u32) -> (Vec<f32>, Vec<f32>) {
+        let p = &self.pipelines;
+        let c = &self.config;
+        self.token_buf.write(|d| { d[..4].copy_from_slice(&token_id.to_le_bytes()); });
+
+        let norm_params = {
+            let p = [c.hidden_size as u32, 0u32];
+            let mut b = bytemuck::bytes_of(&p).to_vec();
+            b[4..8].copy_from_slice(&1e-6f32.to_le_bytes());
+            b
+        };
+        let q_dim = (c.num_heads * c.head_dim) as u32;
+
+        unsafe { aruminium::autorelease_pool(|| {
+            p.dispatcher.batch_raw(|batch| {
+                // Embed
+                let embed_params = [c.hidden_size as u32];
+                batch.bind(&p.embed);
+                batch.bind_buffer(&self.embed_table, 0, 0);
+                batch.bind_buffer(&self.token_buf, 0, 1);
+                batch.bind_buffer(&self.scratch.hidden, 0, 2);
+                batch.push(bytemuck::cast_slice(&embed_params), 3);
+                batch.launch_groups((div_ceil(c.hidden_size, 256), 1, 1), (256, 1, 1));
+
+                // RMS norm
+                batch.bind(&p.rms_norm);
+                batch.bind_buffer(&self.scratch.hidden, 0, 0);
+                batch.bind_buffer(&self.layers[0].input_norm_weight, 0, 1);
+                batch.bind_buffer(&self.scratch.hidden2, 0, 2);
+                batch.push(&norm_params, 3);
+                batch.launch_groups((1, 1, 1), (256, 1, 1));
+
+                // Q proj (matvec_q4)
+                let params = [q_dim, c.hidden_size as u32];
+                batch.bind(&p.matvec_q4);
+                batch.bind_buffer(&self.scratch.hidden2, 0, 0);
+                batch.bind_buffer(&self.layers[0].q_proj, 0, 1);
+                batch.bind_buffer(&self.scratch.q, 0, 2);
+                batch.push(bytemuck::cast_slice(&params), 3);
+                batch.launch_groups((div_ceil(q_dim as usize, 256), 1, 1), (256, 1, 1));
+            });
+        }); }
+
+        // Read normed hidden (first 8 f16)
+        let normed = self.scratch.hidden2.read(|d| {
+            let f16s: &[u16] = bytemuck::cast_slice(&d[..16]);
+            f16s.iter().map(|&v| aruminium::fp16_to_f32(v)).collect::<Vec<f32>>()
+        });
+
+        // Read q_proj output (first 8 f16)
+        let q_out = self.scratch.q.read(|d| {
+            let f16s: &[u16] = bytemuck::cast_slice(&d[..16]);
+            f16s.iter().map(|&v| aruminium::fp16_to_f32(v)).collect::<Vec<f32>>()
+        });
+
+        (normed, q_out)
+    }
+
     pub fn reset_kv_cache(&mut self) {
         self.past_seq_len = 0;
     }
@@ -1047,6 +1100,26 @@ impl MetalModel {
 
 /// Quantize f32 weight matrix [N, K] to block_q4_0 format for Metal matvec_q4 kernel.
 /// Layout: [K/32][N] blocks, each block = { half scale; uint8_t qs[16]; } = 18 bytes.
+/// Transpose Q4 blocks from [N][K/32] (row-major) to [K/32][N] (Metal layout).
+/// Pure block permutation — no dequantization, zero precision loss.
+fn transpose_q4_blocks(data: &[u8], n: usize, k: usize) -> Vec<u8> {
+    const BS: usize = 18; // bytes per Q4 block
+    let blocks_per_row = k / 32;
+    let total_blocks = blocks_per_row * n;
+    let mut out = vec![0u8; total_blocks * BS];
+
+    // Input layout:  row `r`, block `b` at offset (r * blocks_per_row + b) * 18
+    // Output layout: block `b`, col `r` at offset (b * n + r) * 18
+    for r in 0..n {
+        for b in 0..blocks_per_row {
+            let src = (r * blocks_per_row + b) * BS;
+            let dst = (b * n + r) * BS;
+            out[dst..dst + BS].copy_from_slice(&data[src..src + BS]);
+        }
+    }
+    out
+}
+
 fn quantize_f32_to_block_q4_0(weights: &[f32], n: usize, k: usize) -> Vec<u8> {
     const BS: usize = 32;
     let blocks_per_col = k / BS;
