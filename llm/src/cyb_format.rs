@@ -1113,6 +1113,11 @@ fn encoding_to_dtype(enc: &str) -> DType {
         "q8" => DType::Q8,
         "q4" => DType::Q4,
         "ternary" => DType::Ternary,
+        "q4k" => DType::Q4_K,
+        "q6k" => DType::Q6_K,
+        "q2k" => DType::Q2_K,
+        "q3k" => DType::Q3_K,
+        "q5k" => DType::Q5_K,
         _ => DType::U8,
     }
 }

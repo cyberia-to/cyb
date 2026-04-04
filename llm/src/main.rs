@@ -1254,6 +1254,12 @@ print('\n'.join(lines))
             cyb_llm::ir::DType::Q4 => "q4",
             cyb_llm::ir::DType::Q8 => "q8",
             cyb_llm::ir::DType::Ternary | cyb_llm::ir::DType::U8 => "ternary",
+            cyb_llm::ir::DType::Q4_K => "q4k",
+            cyb_llm::ir::DType::Q6_K => "q6k",
+            cyb_llm::ir::DType::Q4_1 => "q4",
+            cyb_llm::ir::DType::Q2_K => "q2k",
+            cyb_llm::ir::DType::Q3_K => "q3k",
+            cyb_llm::ir::DType::Q5_K => "q5k",
             _ => "u32",
         };
         let size = w.data.len();
