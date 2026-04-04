@@ -325,40 +325,76 @@ pub fn safetensors_to_f32(data: &[u8], dtype: crate::ir::DType) -> Vec<f32> {
         DType::Q4_K => {
             // Q4_K: super blocks of 256 values = 144 bytes
             // Layout: d(f16=2) + dmin(f16=2) + scales(12) + qs(128) = 144 bytes
+            // Reference: llama.cpp dequantize_row_q4_K / get_scale_min_k4
             let block_size = 144;
             data.chunks_exact(block_size).flat_map(|block| {
                 let d = half::f16::from_le_bytes([block[0], block[1]]).to_f32();
                 let dmin = half::f16::from_le_bytes([block[2], block[3]]).to_f32();
-                let scales = &block[4..16]; // 12 bytes = 6 pairs of (scale, min) packed as 6-bit
-                let qs = &block[16..144]; // 128 bytes = 256 nibbles
+                let scales_raw = &block[4..16]; // 12 bytes of packed 6-bit scales+mins
+                let qs = &block[16..144];       // 128 bytes = 256 nibbles
+
+                // get_scale_min_k4: unpack 6-bit scale and min for sub-block j (j=0..7, stepped by 2)
+                // j < 4: sc = q[j] & 63, m = q[j+4] & 63
+                // j >= 4: sc = (q[j+4] & 0xF) | ((q[j-4] >> 6) << 4)
+                //         m  = (q[j+4] >>  4) | ((q[j  ] >> 6) << 4)
+                let get_scale_min = |j: usize| -> (u8, u8) {
+                    if j < 4 {
+                        (scales_raw[j] & 63, scales_raw[j + 4] & 63)
+                    } else {
+                        let sc = (scales_raw[j + 4] & 0xF) | ((scales_raw[j - 4] >> 6) << 4);
+                        let mn = (scales_raw[j + 4] >> 4) | ((scales_raw[j] >> 6) << 4);
+                        (sc, mn)
+                    }
+                };
 
                 let mut vals = [0.0f32; 256];
-                // K-quant has complex scale unpacking — simplified dequant
-                for j in 0..256 {
-                    let byte_idx = j / 2;
-                    let nib = if j % 2 == 0 { qs[byte_idx] & 0x0F } else { qs[byte_idx] >> 4 };
-                    // Simplified: use global d scale (loses sub-block scaling but works)
-                    vals[j] = d * (nib as f32 - 8.0);
+                let mut q_ptr = 0usize; // pointer into qs
+                let mut is = 0usize;    // scale index (0..7)
+
+                // 4 groups of 64 values each (2 sub-blocks per group)
+                for grp in 0..4 {
+                    let (sc1, m1) = get_scale_min(is);
+                    is += 1;
+                    let d1 = d * sc1 as f32;
+                    let m1_val = dmin * m1 as f32;
+
+                    let (sc2, m2) = get_scale_min(is);
+                    is += 1;
+                    let d2 = d * sc2 as f32;
+                    let m2_val = dmin * m2 as f32;
+
+                    let base = grp * 64;
+                    // First 32: low nibbles with scale 1
+                    for l in 0..32 {
+                        vals[base + l] = d1 * (qs[q_ptr + l] & 0xF) as f32 - m1_val;
+                    }
+                    // Next 32: high nibbles with scale 2
+                    for l in 0..32 {
+                        vals[base + 32 + l] = d2 * (qs[q_ptr + l] >> 4) as f32 - m2_val;
+                    }
+                    q_ptr += 32;
                 }
+
                 vals
             }).collect()
         }
         DType::Q6_K => {
             // Q6_K: super blocks of 256 values = 210 bytes
             // Layout: ql(128) + qh(64) + scales(16) + d(f16=2) = 210 bytes
+            // Reference: llama.cpp dequantize_row_q6_K
             let block_size = 210;
             data.chunks_exact(block_size).flat_map(|block| {
                 let d = half::f16::from_le_bytes([block[208], block[209]]).to_f32();
                 let ql = &block[0..128];
                 let qh = &block[128..192];
-                let scales = &block[192..208];
+                let scales = &block[192..208]; // 16 x int8 scales for 16 sub-blocks of 16
 
                 let mut vals = [0.0f32; 256];
                 for j in 0..256 {
                     let ql_byte = ql[j / 2];
                     let ql_nib = if j % 2 == 0 { ql_byte & 0x0F } else { ql_byte >> 4 };
                     let qh_bit = (qh[j / 4] >> ((j % 4) * 2)) & 0x03;
-                    let q = ((qh_bit as i32) << 4) | (ql_nib as i32);
+                    let q = ((qh_bit as u8) << 4) | ql_nib;
                     let sc = scales[j / 16] as i8;
                     vals[j] = d * sc as f32 * (q as f32 - 32.0);
                 }
@@ -805,17 +841,27 @@ impl NativeModel {
             let (up_matmul_params, up_matmul_wg) = precompute_q4_matmul(&pipelines, intermediate_size as u32, hs, bs);
             let (down_matmul_params, down_matmul_wg) = precompute_q4_matmul(&pipelines, hs, intermediate_size as u32, bs);
 
-            let (fused_q_params, fused_q_wg) = {
+            // Fused norm+q4 uses workgroup shared memory for the full hidden state.
+            // Max shared_normed is 4096 floats (16 KB) — disable fused path for
+            // larger hidden sizes to avoid OOB in workgroup memory.
+            let use_fused = hidden_size <= 4096;
+            let (fused_q_params, fused_q_wg) = if use_fused {
                 let (b, w) = precompute_fused_norm_q4(&pipelines, q_dim as u32, hs, bs, rms_norm_eps);
                 (Some(b), w)
+            } else {
+                (None, (0, 0, 0))
             };
-            let (fused_k_params, fused_k_wg) = {
+            let (fused_k_params, fused_k_wg) = if use_fused {
                 let (b, w) = precompute_fused_norm_q4(&pipelines, kv_dim as u32, hs, bs, rms_norm_eps);
                 (Some(b), w)
+            } else {
+                (None, (0, 0, 0))
             };
-            let (fused_v_params, fused_v_wg) = {
+            let (fused_v_params, fused_v_wg) = if use_fused {
                 let (b, w) = precompute_fused_norm_q4(&pipelines, kv_dim as u32, hs, bs, rms_norm_eps);
                 (Some(b), w)
+            } else {
+                (None, (0, 0, 0))
             };
 
             layers.push(LayerWeights {
@@ -989,6 +1035,14 @@ impl NativeModel {
                 wg: embed_wg,
             });
             let mut hidden = embed_out;
+
+            // DEBUG: limit to first N layers to diagnose zero output
+            // Flush write_buffer calls before compute dispatches.
+            // queue.write_buffer() schedules a staging copy that must complete
+            // before the compute pass reads the buffer. An explicit empty submit
+            // + poll ensures the writes are visible to the GPU.
+            p.queue.submit(std::iter::empty());
+            p.device.poll(wgpu::Maintain::Wait);
 
             for i in 0..num_layers {
                 let lp = &self.layers[i].params;
@@ -1505,4 +1559,98 @@ pub fn sample_top_p(logits: &[f32], temperature: f32, top_p: f32) -> u32 {
     }
 
     candidates.last().map(|(i, _)| *i as u32).unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::safetensors_to_f32;
+    use crate::ir::DType;
+
+    fn from_hex(s: &str) -> Vec<u8> {
+        (0..s.len())
+            .step_by(2)
+            .map(|i| u8::from_str_radix(&s[i..i + 2], 16).unwrap())
+            .collect()
+    }
+
+    #[test]
+    fn test_q4k_dequant() {
+        // First Q4_K superblock from blk.0.attn_q.weight in Qwen2.5-Coder-14B GGUF
+        let raw = from_hex(concat!(
+            "7b0cb91253ce5952a294ffaa618f1265",
+            "92054f3584280455a48353b03a5413e3",
+            "7463367854ac33492588944a80f54879",
+            "67476a6888e7f748ab99eb4c985d57f6",
+            "984c383178aa05ba5c685556e03b6aaf",
+            "15373a1d1836312a482823080c1a0237",
+            "392a28472713390f36100a23f8272e06",
+            "467c6af67c6b559a12262625162b0477",
+            "908e57538a1989285636485a6a597b58",
+        ));
+
+        assert_eq!(raw.len(), 144);
+        let result = safetensors_to_f32(&raw, DType::Q4_K);
+        assert_eq!(result.len(), 256);
+
+        // Reference from Python llama.cpp-style dequant
+        let expected: [f32; 32] = [
+            -0.017509937, -0.001922369, 0.050036192, -0.001922369,
+            -0.007118225, 0.013665199, -0.007118225, -0.001922369,
+            -0.007118225, -0.012314081, -0.012314081, -0.027901649,
+            0.024056911, -0.007118225, -0.012314081, -0.012314081,
+            -0.007118225, -0.012314081, 0.003273487, 0.013665199,
+            -0.007118225, 0.034448624, -0.012314081, 0.018861055,
+            -0.001922369, 0.013665199, -0.007118225, 0.024056911,
+            -0.027901649, -0.001922369, 0.013665199, 0.018861055,
+        ];
+
+        for (i, (&got, &exp)) in result.iter().zip(expected.iter()).enumerate() {
+            let diff = (got - exp).abs();
+            assert!(
+                diff < 1e-4,
+                "val[{i}]: got={got:.6}, expected={exp:.6}, diff={diff:.2e}"
+            );
+        }
+    }
+
+    #[test]
+    fn test_q6k_dequant() {
+        // First Q6_K superblock from output.weight in Qwen2.5-Coder-14B GGUF
+        let raw = from_hex(concat!(
+            "162af4414e1521f6ac0ebf0105983baf",
+            "1e679e3157ad69dbd8a68f83900bb800",
+            "51f05484432b61c6ebcba8d40a8e791c",
+            "b234daa1f17e2611459d05e5c736789329",
+            "e65bbf85b3f5c2102356bef34721f731",
+            "1e013093f45a32de38fa2226a352a115",
+            "1e50b209daa6eda17edaed546910e4a4",
+            "e133e13a0dc232da331f70ab72b9546d",
+            "659199ac40205d6d775656ac88a11a15",
+            "e5959a12d19b198926a66e98899b4aad",
+            "c62665abaf554a40a766618a623e456b",
+            "8ab668990965a962a991a262aad563c0",
+            "56c6486153805b99a752425a949ca5cd",
+            "00",
+        ));
+
+        assert_eq!(raw.len(), 210, "Q6_K block is 210 bytes");
+        let result = safetensors_to_f32(&raw, DType::Q6_K);
+        assert_eq!(result.len(), 256);
+
+        // Reference from Python dequant (first 16 values)
+        let expected: [f32; 16] = [
+            0.00782013, -0.01329422, -0.00782013, 0.01094818,
+            0.00938416, 0.00078201, -0.00078201, 0.00938416,
+            0.00156403, 0.02189636, 0.00860214, -0.00078201,
+            0.01173019, -0.00156403, 0.00782013, -0.01173019,
+        ];
+
+        for (i, (&got, &exp)) in result.iter().zip(expected.iter()).enumerate() {
+            let diff = (got - exp).abs();
+            assert!(
+                diff < 1e-4,
+                "Q6K val[{i}]: got={got:.6}, expected={exp:.6}, diff={diff:.2e}"
+            );
+        }
+    }
 }

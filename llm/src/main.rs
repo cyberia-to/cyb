@@ -1137,8 +1137,12 @@ fn run_import(dir_path: &str) {
     let head_dim = text_config["head_dim"].as_u64().unwrap_or(hidden_size / num_heads);
     let max_pos = text_config["max_position_embeddings"].as_u64().unwrap_or(8192);
     let rope_theta = text_config["rope_theta"].as_f64().unwrap_or(10000.0);
+    let rms_norm_eps = text_config["rms_norm_eps"].as_f64().unwrap_or(1e-6);
+    let tie_word_embeddings = text_config["tie_word_embeddings"].as_bool()
+        .or_else(|| config_json["tie_word_embeddings"].as_bool())
+        .unwrap_or(true);
 
-    println!("Architecture: {model_type}, hidden={hidden_size}, heads={num_heads}/{kv_heads}, layers={num_layers}");
+    println!("Architecture: {model_type}, hidden={hidden_size}, heads={num_heads}/{kv_heads}, layers={num_layers}, tie_embed={tie_word_embeddings}");
 
     // Generate config.toml
     let config_toml = format!(
@@ -1155,6 +1159,8 @@ intermediate_size = {intermediate_size}
 vocab_size = {vocab_size}
 max_position_embeddings = {max_pos}
 rope_theta = {rope_theta}
+rms_norm_eps = {rms_norm_eps}
+tie_word_embeddings = {tie_word_embeddings}
 
 [tokenizer]
 type = "bpe"
@@ -1237,6 +1243,17 @@ print('\n'.join(lines))
     };
 
     // Generate tensors.toml and pack binary weights
+    // Print dtype distribution
+    {
+        let mut dtype_counts: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+        for w in graph.weights.values() {
+            *dtype_counts.entry(format!("{:?}", w.dtype)).or_default() += 1;
+        }
+        let mut counts: Vec<_> = dtype_counts.into_iter().collect();
+        counts.sort();
+        println!("  dtypes: {:?}", counts);
+    }
+
     println!("Packing {} tensors...", graph.weights.len());
     let mut tensors_lines = Vec::new();
     let mut weight_data = Vec::new();

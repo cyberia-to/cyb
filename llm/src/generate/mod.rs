@@ -152,6 +152,7 @@ impl TextGenerator {
         let prefill_ms = prefill_start.elapsed().as_secs_f64() * 1000.0;
         log::info!("Prefill: {} tokens in {:.1}ms ({:.1} ms/tok)", token_ids.len(), prefill_ms, prefill_ms / token_ids.len() as f64);
 
+
         let decode_start = std::time::Instant::now();
 
         // Autoregressive generation

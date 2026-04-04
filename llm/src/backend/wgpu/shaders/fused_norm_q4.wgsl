@@ -27,7 +27,7 @@ struct Params {
 @group(0) @binding(5) var<uniform> params: Params;
 
 // Shared memory: normalized activation values + reduction scratch
-var<workgroup> shared_normed: array<f32, 4096>;  // max hidden size
+var<workgroup> shared_normed: array<f32, 4096>;  // max hidden size (fused path disabled for >4096)
 var<workgroup> shared_sums: array<f32, 1024>;    // WG_SIZE * NR
 
 @compute @workgroup_size(256)
