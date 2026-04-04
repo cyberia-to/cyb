@@ -796,6 +796,29 @@ impl MetalModel {
         result
     }
 
+    /// Debug: run embed only, return first 8 hidden values as f32
+    pub fn debug_embed(&mut self, token_id: u32) -> Vec<f32> {
+        let p = &self.pipelines;
+        let c = &self.config;
+        self.token_buf.write(|d| { d[..4].copy_from_slice(&token_id.to_le_bytes()); });
+        unsafe { aruminium::autorelease_pool(|| {
+            p.dispatcher.batch_raw(|batch| {
+                let embed_params = [c.hidden_size as u32];
+                batch.bind(&p.embed);
+                batch.bind_buffer(&self.embed_table, 0, 0);
+                batch.bind_buffer(&self.token_buf, 0, 1);
+                batch.bind_buffer(&self.scratch.hidden, 0, 2);
+                batch.push(bytemuck::cast_slice(&embed_params), 3);
+                batch.launch_groups((div_ceil(c.hidden_size, 256), 1, 1), (256, 1, 1));
+            });
+        }); }
+        // Read first 8 f16 values from scratch.hidden, convert to f32
+        self.scratch.hidden.read(|d| {
+            let f16s: &[u16] = bytemuck::cast_slice(&d[..16]);
+            f16s.iter().map(|&v| aruminium::fp16_to_f32(v)).collect()
+        })
+    }
+
     pub fn reset_kv_cache(&mut self) {
         self.past_seq_len = 0;
     }
