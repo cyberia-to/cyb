@@ -44,7 +44,8 @@ pub struct MetalPipelines {
     pub kv_append: Pipeline,
     pub kv_expand: Pipeline,
     pub f16_matvec: Pipeline,
-    pub argmax: Pipeline,
+    pub argmax_partial: Pipeline,
+    pub argmax_reduce: Pipeline,
 }
 
 impl MetalPipelines {
@@ -99,9 +100,10 @@ impl MetalPipelines {
         let kv_append = compile(kernels::KV_CACHE, "kv_append_f16")?;
         let kv_expand = compile(kernels::KV_CACHE, "kv_expand_f16")?;
         let f16_matvec = compile(kernels::F16_MATVEC, "f16_matvec")?;
-        let argmax = compile(kernels::ARGMAX, "argmax_f16")?;
+        let argmax_partial = compile(kernels::ARGMAX, "argmax_partial")?;
+        let argmax_reduce = compile(kernels::ARGMAX, "argmax_reduce")?;
 
-        log::info!("Metal: all 18 MSL kernels compiled");
+        log::info!("Metal: all 19 MSL kernels compiled");
 
         Ok(MetalPipelines {
             device, queue, dispatcher,
@@ -112,7 +114,7 @@ impl MetalPipelines {
             matvec_ternary, matvec_q4k,
             matvec_q4_batch, matvec_ternary_batch,
             embed, rms_norm, rope, add_f16, silu_mul_f16, relu2_mul_f16,
-            attention_decode, kv_append, kv_expand, f16_matvec, argmax,
+            attention_decode, kv_append, kv_expand, f16_matvec, argmax_partial, argmax_reduce,
         })
     }
 

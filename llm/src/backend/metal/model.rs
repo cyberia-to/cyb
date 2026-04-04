@@ -64,7 +64,6 @@ struct Scratch {
     argmax_result: Buffer,
     argmax_partial_vals: Buffer,
     argmax_partial_idxs: Buffer,
-    argmax_counter: Buffer,
 }
 
 pub struct MetalModel {
@@ -207,11 +206,11 @@ impl MetalModel {
             pipelines.upload_f16(&f16).map_err(|e| format!("{e}"))
         };
 
-        // Upload Q4 weights — transpose block layout from [N][K/32] to [K/32][N] (zero precision loss)
+        // Upload Q4 weights — transpose block layout from [N][K/32] to [K/32][N] + repack nibbles
         let q4_upload = |name: &str, n: usize, k: usize| -> Result<Buffer, String> {
             let w = weights.get(name).ok_or_else(|| format!("Missing: {name}"))?;
             if matches!(w.dtype, crate::ir::DType::Q4) {
-                // Direct Q4 block transpose — no dequant, zero precision loss
+                // Direct Q4 block transpose + nibble repack (GGUF split → Metal interleaved)
                 let transposed = transpose_q4_blocks(&w.data, n, k);
                 pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))
             } else {
@@ -358,7 +357,6 @@ impl MetalModel {
             argmax_result: pipelines.alloc(4).map_err(|e| format!("{e}"))?, // u32
             argmax_partial_vals: pipelines.alloc(64 * 4).map_err(|e| format!("{e}"))?, // 64 floats
             argmax_partial_idxs: pipelines.alloc(64 * 4).map_err(|e| format!("{e}"))?, // 64 u32s
-            argmax_counter: pipelines.alloc(4).map_err(|e| format!("{e}"))?, // atomic u32
         };
 
         log::info!("Metal model loaded: {} layers, Q4 weights, fp16 activations", num_layers);
@@ -761,17 +759,25 @@ impl MetalModel {
                 batch.push(bytemuck::cast_slice(&lm_params), 3);
                 batch.launch_groups((div_ceil(c.vocab_size, 8), 1, 1), (256, 1, 1));
 
-                // ── Argmax (parallel multi-workgroup) ──
+                // ── Argmax (two-pass: partial scan → reduce) ──
                 let num_argmax_groups = 64u32.min((c.vocab_size as u32 + 255) / 256);
                 let argmax_params = [c.vocab_size as u32, num_argmax_groups];
-                batch.bind(&p.argmax);
+
+                // Pass 1: each workgroup finds local max
+                batch.bind(&p.argmax_partial);
                 batch.bind_buffer(&self.scratch.logits, 0, 0);
-                batch.bind_buffer(&self.scratch.argmax_result, 0, 1);
-                batch.push(bytemuck::cast_slice(&argmax_params), 2);
-                batch.bind_buffer(&self.scratch.argmax_partial_vals, 0, 3);
-                batch.bind_buffer(&self.scratch.argmax_partial_idxs, 0, 4);
-                batch.bind_buffer(&self.scratch.argmax_counter, 0, 5);
+                batch.push(bytemuck::cast_slice(&argmax_params), 1);
+                batch.bind_buffer(&self.scratch.argmax_partial_vals, 0, 2);
+                batch.bind_buffer(&self.scratch.argmax_partial_idxs, 0, 3);
                 batch.launch_groups((num_argmax_groups as usize, 1, 1), (256, 1, 1));
+
+                // Pass 2: single workgroup reduces partials
+                batch.bind(&p.argmax_reduce);
+                batch.bind_buffer(&self.scratch.argmax_partial_vals, 0, 0);
+                batch.bind_buffer(&self.scratch.argmax_partial_idxs, 0, 1);
+                batch.bind_buffer(&self.scratch.argmax_result, 0, 2);
+                batch.push(bytemuck::cast_slice(&argmax_params), 3);
+                batch.launch_groups((1, 1, 1), (256, 1, 1));
             });
         });}
 
@@ -1046,15 +1052,25 @@ impl MetalModel {
         });}
         let lm_head_ms = t1.elapsed().as_secs_f64() * 1000.0;
 
-        // Phase 3: Argmax
+        // Phase 3: Argmax (two-pass)
         let t2 = Instant::now();
         unsafe { aruminium::autorelease_pool(|| {
             p.dispatcher.batch_raw(|batch| {
-                let argmax_params = [c.vocab_size as u32];
-                batch.bind(&p.argmax);
+                let num_argmax_groups = 64u32.min((c.vocab_size as u32 + 255) / 256);
+                let argmax_params = [c.vocab_size as u32, num_argmax_groups];
+
+                batch.bind(&p.argmax_partial);
                 batch.bind_buffer(&self.scratch.logits, 0, 0);
-                batch.bind_buffer(&self.scratch.argmax_result, 0, 1);
-                batch.push(bytemuck::cast_slice(&argmax_params), 2);
+                batch.push(bytemuck::cast_slice(&argmax_params), 1);
+                batch.bind_buffer(&self.scratch.argmax_partial_vals, 0, 2);
+                batch.bind_buffer(&self.scratch.argmax_partial_idxs, 0, 3);
+                batch.launch_groups((num_argmax_groups as usize, 1, 1), (256, 1, 1));
+
+                batch.bind(&p.argmax_reduce);
+                batch.bind_buffer(&self.scratch.argmax_partial_vals, 0, 0);
+                batch.bind_buffer(&self.scratch.argmax_partial_idxs, 0, 1);
+                batch.bind_buffer(&self.scratch.argmax_result, 0, 2);
+                batch.push(bytemuck::cast_slice(&argmax_params), 3);
                 batch.launch_groups((1, 1, 1), (256, 1, 1));
             });
         });}
@@ -1098,23 +1114,52 @@ impl MetalModel {
     }
 }
 
-/// Quantize f32 weight matrix [N, K] to block_q4_0 format for Metal matvec_q4 kernel.
-/// Layout: [K/32][N] blocks, each block = { half scale; uint8_t qs[16]; } = 18 bytes.
-/// Transpose Q4 blocks from [N][K/32] (row-major) to [K/32][N] (Metal layout).
-/// Pure block permutation — no dequantization, zero precision loss.
+/// Transpose Q4 blocks from [N][K/32] (row-major, GGUF) to [K/32][N] (Metal layout)
+/// AND repack nibbles from GGUF split order to Metal interleaved order.
+///
+/// GGUF Q4_0 nibble layout within a block (32 weights, 16 bytes of qs):
+///   byte j: lo nibble = weight[j], hi nibble = weight[j+16]
+///   (first 16 weights in lo nibbles, last 16 in hi nibbles)
+///
+/// Metal kernel expects interleaved nibbles:
+///   byte i: lo nibble = weight[2*i], hi nibble = weight[2*i+1]
+///   (consecutive weight pairs packed into each byte)
+///
+/// The repacking is lossless — just rearranging nibbles within each block.
 fn transpose_q4_blocks(data: &[u8], n: usize, k: usize) -> Vec<u8> {
-    const BS: usize = 18; // bytes per Q4 block
+    const BS: usize = 18; // bytes per Q4 block: 2 (scale) + 16 (qs)
     let blocks_per_row = k / 32;
     let total_blocks = blocks_per_row * n;
     let mut out = vec![0u8; total_blocks * BS];
 
-    // Input layout:  row `r`, block `b` at offset (r * blocks_per_row + b) * 18
-    // Output layout: block `b`, col `r` at offset (b * n + r) * 18
     for r in 0..n {
         for b in 0..blocks_per_row {
             let src = (r * blocks_per_row + b) * BS;
             let dst = (b * n + r) * BS;
-            out[dst..dst + BS].copy_from_slice(&data[src..src + BS]);
+
+            // Copy scale (2 bytes) unchanged
+            out[dst] = data[src];
+            out[dst + 1] = data[src + 1];
+
+            // Repack nibbles: GGUF split → Metal interleaved
+            // GGUF: qs[j] has weight[j] in lo, weight[j+16] in hi  (j=0..15)
+            // Metal: qs[i] has weight[2i] in lo, weight[2i+1] in hi (i=0..15)
+            //
+            // Build a 32-element nibble array, then repack:
+            let qs_src = &data[src + 2..src + 18];
+            let qs_dst = &mut out[dst + 2..dst + 18];
+
+            // Extract all 32 nibbles in weight order (GGUF layout)
+            let mut nibbles = [0u8; 32];
+            for j in 0..16 {
+                nibbles[j] = qs_src[j] & 0x0F;       // weight[j]
+                nibbles[j + 16] = qs_src[j] >> 4;     // weight[j+16]
+            }
+
+            // Repack as interleaved pairs (Metal layout)
+            for i in 0..16 {
+                qs_dst[i] = nibbles[2 * i] | (nibbles[2 * i + 1] << 4);
+            }
         }
     }
     out

@@ -167,7 +167,31 @@ fn main() {
                 return;
             };
 
-            println!("Loading: {}", model_file.display());
+            let use_metal = match cli.backend.as_str() {
+                "metal" => true,
+                "wgpu" => false,
+                _ => cfg!(target_os = "macos"), // auto: Metal on macOS
+            };
+
+            println!("Loading: {} (backend: {})", model_file.display(),
+                if use_metal { "metal" } else { "wgpu" });
+
+            #[cfg(target_os = "macos")]
+            if use_metal {
+                // Read config for chat template
+                let config_toml = cyb_llm::cyb_format::read_model_config(&model_file)
+                    .map(|(_, cfg)| cfg).unwrap_or_default();
+                let formatted = cyb_llm::generate::apply_chat_template(&prompt, &config_toml);
+
+                run_metal_model(&model_file, &formatted, max_tokens, temperature);
+                return;
+            }
+
+            #[cfg(not(target_os = "macos"))]
+            if use_metal {
+                eprintln!("Metal backend is only available on macOS");
+                return;
+            }
 
             let backend = cyb_llm::backend::create_wgpu_backend();
             let load_start = std::time::Instant::now();
@@ -752,6 +776,70 @@ fn run_metal(model_path: &std::path::Path, tokenizer_path: &std::path::Path, pro
     let token_ids = encoding.get_ids();
     eprintln!("Tokens ({}): {:?}", token_ids.len(), &token_ids[..token_ids.len().min(20)]);
     let eos = cyb_llm::generate::detect_eos_tokens(&tokenizer, "");
+
+    // Prefill
+    let prefill_start = std::time::Instant::now();
+    let mut next_token = 0u32;
+    for &tid in token_ids {
+        next_token = model.forward_decode(tid);
+    }
+    let prefill_ms = prefill_start.elapsed().as_secs_f64() * 1000.0;
+
+    // Decode
+    println!("---");
+    use std::io::Write;
+    let decode_start = std::time::Instant::now();
+    let mut gen_count = 0usize;
+    for _ in 0..max_tokens {
+        if eos.contains(&next_token) { break; }
+        gen_count += 1;
+        let decoded = tokenizer.decode(&[next_token], false).unwrap_or_else(|_| "?".to_string());
+        print!("{decoded}");
+        std::io::stdout().flush().ok();
+        next_token = model.forward_decode(next_token);
+    }
+    let decode_s = decode_start.elapsed().as_secs_f64();
+    let tok_s = if decode_s > 0.0 { gen_count as f64 / decode_s } else { 0.0 };
+    println!("\n---");
+    println!("Prefill: {:.0}ms | Decode: {} tokens in {:.1}s ({:.1} tok/s)", prefill_ms, gen_count, decode_s, tok_s);
+}
+
+/// Run inference on Metal backend using .model file (embedded tokenizer)
+#[cfg(target_os = "macos")]
+fn run_metal_model(model_path: &std::path::Path, prompt: &str, max_tokens: usize, _temperature: f32) {
+    use cyb_llm::backend::metal::MetalModel;
+
+    let load_start = std::time::Instant::now();
+    let mut model = match MetalModel::load(model_path) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("Metal model load failed: {e}");
+            return;
+        }
+    };
+
+    let tokenizer = match cyb_llm::cyb_format::build_tokenizer(model_path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("Tokenizer build failed: {e}");
+            return;
+        }
+    };
+    println!("Model loaded in {:.1}s (Metal)", load_start.elapsed().as_secs_f64());
+
+    let encoding = match tokenizer.encode(prompt, true) {
+        Ok(e) => e,
+        Err(e) => {
+            eprintln!("Tokenization failed: {e}");
+            return;
+        }
+    };
+    let token_ids = encoding.get_ids();
+    eprintln!("Tokens ({}): {:?}", token_ids.len(), &token_ids[..token_ids.len().min(20)]);
+
+    let config_toml = cyb_llm::cyb_format::read_model_config(model_path)
+        .map(|(_, cfg)| cfg).unwrap_or_default();
+    let eos = cyb_llm::generate::detect_eos_tokens(&tokenizer, &config_toml);
 
     // Prefill
     let prefill_start = std::time::Instant::now();

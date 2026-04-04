@@ -1,28 +1,27 @@
 // Argmax — find index of max value in fp16 array
-// Two-pass: parallel scan across workgroups, then final reduction
-// Each workgroup scans a chunk and writes its local max to partial buffer.
-// Last workgroup (detected via atomic counter) reduces the partials.
+// Two-dispatch approach (called from Rust):
+//   1. argmax_partial: each workgroup finds local max, writes to partial buffers
+//   2. argmax_reduce: single workgroup reduces partials to final result
+// This avoids cross-workgroup atomic sync which is unreliable in Metal.
 
 #include <metal_stdlib>
 using namespace metal;
 
 struct ArgmaxParams { uint n; uint num_groups; };
 
-kernel void argmax_f16(device const half *input [[buffer(0)]],
-                       device uint *result [[buffer(1)]],
-                       constant ArgmaxParams &p [[buffer(2)]],
-                       device float *partial_vals [[buffer(3)]],
-                       device uint *partial_idxs [[buffer(4)]],
-                       device atomic_uint *counter [[buffer(5)]],
-                       uint lid [[thread_index_in_threadgroup]],
-                       uint group_id [[threadgroup_position_in_grid]],
-                       uint simd_lane [[thread_index_in_simdgroup]],
-                       uint simd_group [[simdgroup_index_in_threadgroup]]) {
+// Pass 1: each workgroup scans its chunk, writes partial max to device buffers
+kernel void argmax_partial(device const half *input [[buffer(0)]],
+                           constant ArgmaxParams &p [[buffer(1)]],
+                           device float *partial_vals [[buffer(2)]],
+                           device uint *partial_idxs [[buffer(3)]],
+                           uint lid [[thread_index_in_threadgroup]],
+                           uint group_id [[threadgroup_position_in_grid]],
+                           uint simd_lane [[thread_index_in_simdgroup]],
+                           uint simd_group [[simdgroup_index_in_threadgroup]]) {
 
     threadgroup float max_vals[8];
     threadgroup uint max_idxs[8];
 
-    // Each workgroup scans elements [group_id * chunk .. (group_id+1) * chunk)
     uint chunk = (p.n + p.num_groups - 1u) / p.num_groups;
     uint start = group_id * chunk;
     uint end = min(start + chunk, p.n);
@@ -67,24 +66,24 @@ kernel void argmax_f16(device const half *input [[buffer(0)]],
         partial_vals[group_id] = best;
         partial_idxs[group_id] = best_idx;
     }
+}
 
-    // Last workgroup to finish does the final reduction
-    threadgroup_barrier(mem_flags::mem_device_and_threadgroup);
-    if (lid == 0u) {
-        uint finished = atomic_fetch_add_explicit(counter, 1u, memory_order_relaxed) + 1u;
-        if (finished == p.num_groups) {
-            // We are the last workgroup — reduce partials
-            float best = partial_vals[0];
-            uint best_idx = partial_idxs[0];
-            for (uint g = 1u; g < p.num_groups; g++) {
-                if (partial_vals[g] > best) {
-                    best = partial_vals[g];
-                    best_idx = partial_idxs[g];
-                }
-            }
-            result[0] = best_idx;
-            // Reset counter for next call
-            atomic_store_explicit(counter, 0u, memory_order_relaxed);
+// Pass 2: single workgroup reduces partial results to final answer
+kernel void argmax_reduce(device float *partial_vals [[buffer(0)]],
+                          device uint *partial_idxs [[buffer(1)]],
+                          device uint *result [[buffer(2)]],
+                          constant ArgmaxParams &p [[buffer(3)]],
+                          uint lid [[thread_index_in_threadgroup]]) {
+    // Only thread 0 does the work (num_groups is small, ~64)
+    if (lid != 0u) return;
+
+    float best = partial_vals[0];
+    uint best_idx = partial_idxs[0];
+    for (uint g = 1u; g < p.num_groups; g++) {
+        if (partial_vals[g] > best) {
+            best = partial_vals[g];
+            best_idx = partial_idxs[g];
         }
     }
+    result[0] = best_idx;
 }
