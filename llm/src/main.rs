@@ -915,7 +915,9 @@ fn quick_bench_model(model_path: &std::path::Path) -> (String, String) {
         Ok(g) => g,
         Err(e) => {
             log::set_max_level(prev);
-            return (format!("\x1b[31m{}\x1b[0m", &e[..e.len().min(30)]), "—".into());
+            log::set_max_level(prev);
+            log::warn!("WGPU {}: {}", model_path.file_stem().unwrap_or_default().to_str().unwrap_or(""), e);
+            return ("\x1b[31merr\x1b[0m".into(), "—".into());
         },
     };
 
@@ -966,7 +968,8 @@ fn quick_bench_metal(model_path: &std::path::Path) -> (String, String) {
         Ok(m) => m,
         Err(e) => {
             log::set_max_level(prev);
-            return (format!("\x1b[31m{}\x1b[0m", &e[..e.len().min(30)]), "—".into());
+            log::warn!("Metal {}: {}", model_path.file_stem().unwrap_or_default().to_str().unwrap_or(""), e);
+            return ("\x1b[31merr\x1b[0m".into(), "—".into());
         }
     };
 
