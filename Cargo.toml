@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
 members = ["bevy", "nu", "llm"]
-exclude = ["vendor/rio-backend", "vendor/copa", "vendor/nushell", "leptos"]
+exclude = ["vendor/nushell", "leptos"]
 
 [workspace.dependencies]
 bevy = "0.18.0"
