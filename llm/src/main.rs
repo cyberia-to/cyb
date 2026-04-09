@@ -138,6 +138,17 @@ enum Commands {
         #[arg(short, long)]
         tier: Option<String>,
     },
+
+    /// Start OpenAI-compatible HTTP server
+    Serve {
+        /// Model to serve (name from manifest or path to .model file)
+        #[arg(default_value = "qwen3-0.6b-abl")]
+        model: String,
+
+        /// Port to listen on
+        #[arg(short, long, default_value_t = 8080)]
+        port: u16,
+    },
 }
 
 fn main() {
@@ -289,6 +300,10 @@ fn main() {
 
         Commands::Fetch { name, tier } => {
             run_fetch(name, tier);
+        }
+
+        Commands::Serve { model, port } => {
+            eprintln!("serve: coming soon (model={model}, port={port})");
         }
 
         Commands::Import { name } => {

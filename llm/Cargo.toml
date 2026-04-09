@@ -52,6 +52,11 @@ toml = "0.8"
 tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
 hf-hub = { version = "0.5", features = ["default-tls"] }
 
+# HTTP serve (OpenAI-compatible API)
+axum = { version = "0.8", features = ["json"] }
+tokio = { version = "1", features = ["full"] }
+futures = "0.3"
+
 # Utils
 log = "0.4"
 env_logger = "0.11"
