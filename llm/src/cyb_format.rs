@@ -819,10 +819,16 @@ pub fn dtype_to_encoding(dtype: &DType) -> &'static str {
     match dtype {
         DType::F32 => "u32",
         DType::F16 | DType::BF16 => "u16",
-        DType::Q8 | DType::Q6_K => "q8",
-        DType::Q4 | DType::Q4_1 | DType::Q4_K | DType::Q5_K | DType::Q2_K | DType::Q3_K => "q4",
+        DType::Q8 => "q8",
+        DType::Q4 | DType::Q4_1 => "q4",
         DType::Ternary => "ternary",
         DType::I8 | DType::U8 | DType::Bool => "q8",
+        // K-quant types preserve their encoding through round-trip
+        DType::Q2_K => "q2k",
+        DType::Q3_K => "q3k",
+        DType::Q4_K => "q4k",
+        DType::Q5_K => "q5k",
+        DType::Q6_K => "q6k",
     }
 }
 

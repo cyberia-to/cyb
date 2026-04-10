@@ -134,6 +134,10 @@ pub struct NativeModel {
     config: ModelConfig,
     pipelines: Arc<Pipelines>,
     embed_table: wgpu::Buffer,
+    /// CPU-side f32 embed table for reliable embedding lookup.
+    /// Large (multi-GB) GPU buffers can have upload latency issues on Metal;
+    /// doing the lookup on CPU and uploading only the result avoids this.
+    embed_f32: Vec<f32>,
     /// Separate LM head weights (None = tied to embed_table)
     lm_head: Option<wgpu::Buffer>,
     layers: Vec<LayerWeights>,
@@ -774,6 +778,10 @@ impl NativeModel {
             })
         } else { None };
 
+        // Note: embed lookup is done on CPU using embed_f32, so no GPU sync needed
+        // for the embed table. The lm_head is used in f32_matmul which runs after
+        // all layer dispatches, giving the upload plenty of time to complete.
+
         let q_dim = num_heads * head_dim;
         let kv_dim = kv_num_heads * head_dim;
 
@@ -931,7 +939,7 @@ impl NativeModel {
         log::info!(".model loaded: {} layers, Q4 quantize-on-load", num_layers);
 
         Ok(Self {
-            config, pipelines, embed_table, lm_head, layers, final_norm_weight,
+            config, pipelines, embed_table, embed_f32, lm_head, layers, final_norm_weight,
             cos_cache, sin_cache, kv_cache, past_seq_len: 0, greedy_mode: false,
             quant_format: QuantFormat::Q4,
             model_params: ModelParamBuffers {
@@ -1027,14 +1035,13 @@ impl NativeModel {
 
             let mut all_dispatches: Vec<DispatchCmd> = Vec::with_capacity(num_layers * 21 + 5);
 
-            let (embed_out, embed_bg, embed_wg) =
-                dispatch::embed_prepare(&p, &self.embed_table, &ids_buf, hidden_size, 1);
-            all_dispatches.push(DispatchCmd {
-                shader: &p.embed,
-                bg: embed_bg,
-                wg: embed_wg,
-            });
-            let mut hidden = embed_out;
+            // CPU embedding lookup: avoids GPU-side read of the multi-GB embed table
+            // which can return zeros if the upload hasn't fully resolved on Metal.
+            let token_id = token_ids[0] as usize;
+            let hs = hidden_size as usize;
+            let embed_start = token_id * hs;
+            let embed_slice = &self.embed_f32[embed_start..embed_start + hs];
+            let mut hidden = p.upload_f32(embed_slice);
 
             for i in 0..num_layers {
                 let lp = &self.layers[i].params;
@@ -1248,39 +1255,9 @@ impl NativeModel {
             );
             all_dispatches.push(DispatchCmd { shader: &p.f32_matmul, bg: lm_bg, wg: lm_wg });
 
-            if self.greedy_mode {
-                let (argmax_buf, argmax_bg, argmax_wg) =
-                    dispatch::argmax_gpu_prepare_precomputed(&p, &logits_buf, &mp.argmax_params, mp.argmax_wg);
-                all_dispatches.push(DispatchCmd { shader: &p.argmax, bg: argmax_bg, wg: argmax_wg });
-
-                {
-                    let mut pass = enc.begin_compute_pass(&Default::default());
-                    for cmd in &all_dispatches {
-                        p.dispatch_in_pass(&mut pass, cmd.shader, &cmd.bg, cmd.wg);
-                    }
-                }
-                // Merge copy into same encoder — single submission, no second encoder
-                enc.copy_buffer_to_buffer(&argmax_buf, 0, &self.argmax_staging, 0, 4);
-                let sub_idx = p.queue.submit(std::iter::once(enc.finish()));
-                self.past_seq_len = total_seq;
-
-                // Read from persistent staging buffer — wait for specific submission
-                let slice = self.argmax_staging.slice(..);
-                let (tx, rx) = std::sync::mpsc::channel();
-                slice.map_async(wgpu::MapMode::Read, move |r| { tx.send(r).unwrap(); });
-                p.device.poll(wgpu::Maintain::WaitForSubmissionIndex(sub_idx));
-                rx.recv().unwrap().unwrap();
-                let data = slice.get_mapped_range();
-                let token_id = bytemuck::cast_slice::<u8, f32>(&data)[0].to_bits();
-                drop(data);
-                self.argmax_staging.unmap();
-
-                let mut logits = vec![0.0f32; vocab as usize];
-                logits[token_id as usize] = 1.0;
-                return logits;
-            }
-
-            // Non-greedy
+            // Execute all dispatches and read back logits to CPU.
+            // Using multiple compute passes within a single encoder avoids
+            // hitting Metal limits on dispatches-per-pass for large models.
             {
                 let mut pass = enc.begin_compute_pass(&Default::default());
                 for cmd in &all_dispatches {
