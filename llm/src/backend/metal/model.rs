@@ -38,14 +38,17 @@ struct MetalLayerWeights {
     gate_proj: Buffer,
     up_proj: Buffer,
     down_proj: Buffer,
-    /// true = Q4_K format (use matvec_q4k kernel), false = Q4_0 (use matvec_q4)
-    is_k_quant: bool,
+    /// Weight format per projection: Q4_K, Q4_0, or F16
+    weight_format: WeightFormat,
     // Ternary weight scales (BitNet)
     weight_scales: Option<[f32; 7]>, // q,k,v,o,gate,up,down
     // Sub-layer norms (BitNet)
     attn_sub_norm: Option<Buffer>,
     ffn_sub_norm: Option<Buffer>,
 }
+
+#[derive(Clone, Copy, PartialEq)]
+enum WeightFormat { Q4, Q4K, F16 }
 
 struct MetalKVCache {
     k: Buffer, // [kv_heads, MAX_SEQ, head_dim] fp16
@@ -73,7 +76,7 @@ pub struct MetalModel {
     config: MetalModelConfig,
     embed_table: Buffer,
     lm_head_q4: Buffer,
-    lm_head_is_k_quant: bool,
+    lm_head_format: WeightFormat,
     lm_head_f16: Option<Buffer>,
     final_norm_weight: Buffer,
     token_buf: Buffer,      // pre-allocated, rewritten each step
@@ -175,7 +178,11 @@ impl MetalModel {
         let lm_w = weights.get("lm_head.weight")
             .or_else(|| weights.get("model.embed_tokens.weight"))
             .ok_or("Missing lm_head or embed weights")?;
-        let lm_head_is_k_quant = matches!(lm_w.dtype, crate::ir::DType::Q4_K | crate::ir::DType::Q6_K);
+        let lm_head_format = match lm_w.dtype {
+            crate::ir::DType::Q4_K => WeightFormat::Q4K,
+            crate::ir::DType::Q4 => WeightFormat::Q4,
+            _ => WeightFormat::F16,
+        };
         let lm_head_q4 = if matches!(lm_w.dtype, crate::ir::DType::Q4) {
             let transposed = transpose_q4_blocks(&lm_w.data, vocab_size, hidden_size);
             pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?
@@ -214,30 +221,35 @@ impl MetalModel {
             pipelines.upload_f16(&f16).map_err(|e| format!("{e}"))
         };
 
-        // Upload quantized weights — transpose block layout for Metal kernels
-        let q4_upload = |name: &str, n: usize, k: usize| -> Result<(Buffer, bool), String> {
+        // Upload quantized weights — returns (buffer, format)
+        let q4_upload = |name: &str, n: usize, k: usize| -> Result<(Buffer, WeightFormat), String> {
             let w = weights.get(name).ok_or_else(|| format!("Missing: {name}"))?;
             match w.dtype {
                 crate::ir::DType::Q4 => {
-                    // Q4_0: 18 bytes/32 values, transpose [N][K/32] → [K/32][N] + nibble repack
                     let transposed = transpose_q4_blocks(&w.data, n, k);
-                    Ok((pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?, false))
+                    Ok((pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?, WeightFormat::Q4))
                 }
                 crate::ir::DType::Q4_K => {
-                    // Q4_K: 144 bytes/256 values, transpose [N][K/256] → [K/256][N], no nibble repack
                     let transposed = transpose_blocks(&w.data, n, k, 256, 144);
-                    Ok((pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?, true))
+                    Ok((pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?, WeightFormat::Q4K))
                 }
                 crate::ir::DType::Q6_K => {
-                    // Q6_K: 210 bytes/256 values, transpose [N][K/256] → [K/256][N]
-                    let transposed = transpose_blocks(&w.data, n, k, 256, 210);
-                    Ok((pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?, true))
+                    // Q6_K: dequant to f32, requant to Q4_K, then transpose
+                    // This preserves more precision than Q4_0 requant
+                    let f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
+                    let q4k_data = quantize_f32_to_q4k(&f32s, n, k);
+                    let transposed = transpose_blocks(&q4k_data, n, k, 256, 144);
+                    Ok((pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?, WeightFormat::Q4K))
+                }
+                crate::ir::DType::F16 | crate::ir::DType::BF16 => {
+                    let f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
+                    let f16s: Vec<u16> = f32s.iter().map(|&v| aruminium::f32_to_fp16(v)).collect();
+                    Ok((pipelines.upload_f16(&f16s).map_err(|e| format!("{e}"))?, WeightFormat::F16))
                 }
                 _ => {
-                    // Non-quantized: dequant → requant to Q4_0
                     let f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
                     let packed = quantize_f32_to_block_q4_0(&f32s, n, k);
-                    Ok((pipelines.upload_bytes(&packed).map_err(|e| format!("{e}"))?, false))
+                    Ok((pipelines.upload_bytes(&packed).map_err(|e| format!("{e}"))?, WeightFormat::Q4))
                 }
             }
         };
@@ -264,7 +276,7 @@ impl MetalModel {
             ).map_err(|e| format!("{e}"))?;
 
             let (q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj, weight_scales);
-            let mut is_k = false;
+            let mut wfmt = WeightFormat::Q4;
             if is_ternary {
                 let (qp, qs) = ternary_upload(&format!("model.layers.{i}.self_attn.q_proj.weight"))?;
                 let (kp, ks) = ternary_upload(&format!("model.layers.{i}.self_attn.k_proj.weight"))?;
@@ -286,8 +298,8 @@ impl MetalModel {
                 down_proj = f16_upload(&format!("model.layers.{i}.mlp.down_proj.weight"))?;
                 weight_scales = None;
             } else {
-                let (qp, kq) = q4_upload(&format!("model.layers.{i}.self_attn.q_proj.weight"), q_dim, hidden_size)?;
-                q_proj = qp; is_k = kq;
+                let (qp, fmt) = q4_upload(&format!("model.layers.{i}.self_attn.q_proj.weight"), q_dim, hidden_size)?;
+                q_proj = qp; wfmt = fmt;
                 let (kp, _) = q4_upload(&format!("model.layers.{i}.self_attn.k_proj.weight"), kv_dim, hidden_size)?;
                 k_proj = kp;
                 let (vp, _) = q4_upload(&format!("model.layers.{i}.self_attn.v_proj.weight"), kv_dim, hidden_size)?;
@@ -339,7 +351,7 @@ impl MetalModel {
                 q_proj_bias, k_proj_bias, v_proj_bias,
                 q_norm_weight, k_norm_weight,
                 post_norm_weight, gate_proj, up_proj, down_proj,
-                is_k_quant: is_k,
+                weight_format: wfmt,
                 weight_scales, attn_sub_norm, ffn_sub_norm,
             });
         }
@@ -395,7 +407,7 @@ impl MetalModel {
         let token_buf = pipelines.alloc(4).map_err(|e| format!("{e}"))?;
 
         Ok(MetalModel {
-            pipelines, config, embed_table, lm_head_q4, lm_head_is_k_quant, lm_head_f16, final_norm_weight,
+            pipelines, config, embed_table, lm_head_q4, lm_head_format, lm_head_f16, final_norm_weight,
             token_buf, layers, cos_cache, sin_cache, kv_cache, past_seq_len: 0, scratch,
         })
     }
@@ -482,7 +494,7 @@ impl MetalModel {
                         dispatch_f16(batch, &self.scratch.hidden2, &layer.q_proj, &self.scratch.q, q_dim_val, c.hidden_size as u32);
                         dispatch_f16(batch, &self.scratch.hidden2, &layer.k_proj, &self.scratch.k, kv_dim_val, c.hidden_size as u32);
                         dispatch_f16(batch, &self.scratch.hidden2, &layer.v_proj, &self.scratch.v, kv_dim_val, c.hidden_size as u32);
-                    } else if layer.is_k_quant {
+                    } else if layer.weight_format == WeightFormat::Q4K {
                         // ── Q4_K Q/K/V projections (3 separate dispatches with matvec_q4k) ──
                         let dispatch_q4k = |batch: &aruminium::Batch, input: &Buffer, w: &Buffer, out: &Buffer, n: u32, k: u32| {
                             let params = [n, k];
@@ -639,7 +651,7 @@ impl MetalModel {
                             batch.bind_buffer(&self.scratch.down, 0, 2);
                             batch.push(bytemuck::cast_slice(&params), 3);
                             batch.launch_groups((div_ceil(n as usize, 4), 1, 1), (256, 1, 1));
-                        } else if layer.is_k_quant {
+                        } else if layer.weight_format == WeightFormat::Q4K {
                             batch.bind(&p.matvec_q4k);
                             batch.bind_buffer(&self.scratch.attn_out, 0, 0);
                             batch.bind_buffer(&layer.o_proj, 0, 1);
@@ -703,7 +715,7 @@ impl MetalModel {
                         batch.bind_buffer(&self.scratch.up, 0, 2);
                         batch.push(bytemuck::cast_slice(&f16_params), 3);
                         batch.launch_groups((div_ceil(inter as usize, 4), 1, 1), (256, 1, 1));
-                    } else if layer.is_k_quant {
+                    } else if layer.weight_format == WeightFormat::Q4K {
                         // Q4_K gate + up (separate dispatches)
                         let inter = c.intermediate_size as u32;
                         let hid = c.hidden_size as u32;
@@ -782,7 +794,7 @@ impl MetalModel {
                         batch.bind_buffer(&self.scratch.down, 0, 2);
                         batch.push(bytemuck::cast_slice(&params), 3);
                         batch.launch_groups((div_ceil(c.hidden_size, 4), 1, 1), (256, 1, 1));
-                    } else if layer.is_k_quant {
+                    } else if layer.weight_format == WeightFormat::Q4K {
                         let params = [c.hidden_size as u32, c.intermediate_size as u32];
                         batch.bind(&p.matvec_q4k);
                         batch.bind_buffer(&self.scratch.gate, 0, 0);
@@ -827,7 +839,7 @@ impl MetalModel {
                         batch.bind_buffer(lm_f16, 0, 1);
                         batch.bind_buffer(&self.scratch.logits, 0, 2);
                     }
-                } else if self.lm_head_is_k_quant {
+                } else if self.lm_head_format == WeightFormat::Q4K {
                     batch.bind(&p.matvec_q4k);
                     batch.bind_buffer(&self.scratch.hidden2, 0, 0);
                     batch.bind_buffer(&self.lm_head_q4, 0, 1);
@@ -1284,6 +1296,88 @@ fn transpose_q4_blocks(data: &[u8], n: usize, k: usize) -> Vec<u8> {
             for i in 0..16 {
                 qs_dst[i] = nibbles[2 * i] | (nibbles[2 * i + 1] << 4);
             }
+        }
+    }
+    out
+}
+
+/// Quantize f32 weights to Q4_K format (144 bytes per 256 values).
+/// Layout: d(f16=2) + dmin(f16=2) + scales(12) + qs(128) = 144 bytes
+/// Input: [N, K] row-major f32. Output: [N, K/256] Q4_K blocks (row-major).
+fn quantize_f32_to_q4k(weights: &[f32], n: usize, k: usize) -> Vec<u8> {
+    let super_blocks = k / 256;
+    let mut out = vec![0u8; n * super_blocks * 144];
+
+    for row in 0..n {
+        for sb in 0..super_blocks {
+            let base = row * k + sb * 256;
+            let dst = (row * super_blocks + sb) * 144;
+
+            // Find global max abs for d, and max negative for dmin
+            let block_vals = &weights[base..base + 256];
+
+            // Process 8 sub-blocks of 32 values
+            let mut scales = [0u8; 12];
+            let mut qs = [0u8; 128];
+
+            // Simple quantization: find per-sub-block scale and min
+            let mut sub_scales = [0.0f32; 8];
+            let mut sub_mins = [0.0f32; 8];
+
+            for j in 0..8 {
+                let sub = &block_vals[j * 32..(j + 1) * 32];
+                let max_val = sub.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                let min_val = sub.iter().cloned().fold(f32::INFINITY, f32::min);
+                sub_scales[j] = if max_val > min_val { (max_val - min_val) / 15.0 } else { 0.0 };
+                sub_mins[j] = if min_val < 0.0 { -min_val } else { 0.0 };
+            }
+
+            // Global d and dmin
+            let d = sub_scales.iter().cloned().fold(0.0f32, f32::max);
+            let dmin = sub_mins.iter().cloned().fold(0.0f32, f32::max);
+            let inv_d = if d > 0.0 { 1.0 / d } else { 0.0 };
+            let inv_dmin = if dmin > 0.0 { 1.0 / dmin } else { 0.0 };
+
+            // Pack d, dmin as f16
+            let d_f16 = half::f16::from_f32(d);
+            let dmin_f16 = half::f16::from_f32(dmin);
+            out[dst..dst + 2].copy_from_slice(&d_f16.to_le_bytes());
+            out[dst + 2..dst + 4].copy_from_slice(&dmin_f16.to_le_bytes());
+
+            // Pack 6-bit scales (simplified: just use low 6 bits)
+            for j in 0..8 {
+                let sc = (sub_scales[j] * inv_d * 63.0).round().min(63.0).max(0.0) as u8;
+                let m = (sub_mins[j] * inv_dmin * 63.0).round().min(63.0).max(0.0) as u8;
+                if j < 4 {
+                    scales[j] = (scales[j] & 0xC0) | (sc & 63);
+                    scales[j + 4] = (scales[j + 4] & 0xC0) | (m & 63);
+                } else {
+                    scales[j + 4] = (scales[j + 4] & 0xF0) | (sc & 0xF);
+                    scales[j - 4] = (scales[j - 4] & 0x3F) | ((sc >> 4) << 6);
+                    scales[j + 4] = (scales[j + 4] & 0x0F) | ((m & 0xF) << 4);
+                    scales[j] = (scales[j] & 0x3F) | ((m >> 4) << 6);
+                }
+            }
+            out[dst + 4..dst + 16].copy_from_slice(&scales);
+
+            // Quantize values to 4-bit nibbles
+            for grp in 0..4 {
+                let sc1 = sub_scales[grp * 2];
+                let m1 = sub_mins[grp * 2];
+                let sc2 = sub_scales[grp * 2 + 1];
+                let m2 = sub_mins[grp * 2 + 1];
+                let inv_sc1 = if sc1 > 0.0 { 1.0 / sc1 } else { 0.0 };
+                let inv_sc2 = if sc2 > 0.0 { 1.0 / sc2 } else { 0.0 };
+
+                for l in 0..32 {
+                    let v1 = block_vals[grp * 64 + l];
+                    let v2 = block_vals[grp * 64 + 32 + l];
+                    let q1 = ((v1 + m1) * inv_sc1).round().min(15.0).max(0.0) as u8;
+                    let q2 = ((v2 + m2) * inv_sc2).round().min(15.0).max(0.0) as u8;
+                    qs[grp * 32 + l] = (q1 & 0xF) | ((q2 & 0xF) << 4);
+                }
+            }
+            out[dst + 16..dst + 144].copy_from_slice(&qs);
         }
     }
     out
