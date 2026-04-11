@@ -47,7 +47,7 @@ struct MetalLayerWeights {
     ffn_sub_norm: Option<Buffer>,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, Debug, PartialEq)]
 enum WeightFormat { Q4, Q4K, F16 }
 
 struct MetalKVCache {
@@ -178,8 +178,9 @@ impl MetalModel {
         let lm_w = weights.get("lm_head.weight")
             .or_else(|| weights.get("model.embed_tokens.weight"))
             .ok_or("Missing lm_head or embed weights")?;
+        log::debug!("Metal: lm_head dtype={:?}, data_len={}", lm_w.dtype, lm_w.data.len());
         let lm_head_format = match lm_w.dtype {
-            crate::ir::DType::Q4_K => WeightFormat::Q4K,
+            crate::ir::DType::Q4_K | crate::ir::DType::Q6_K => WeightFormat::Q4K,
             crate::ir::DType::Q4 => WeightFormat::Q4,
             _ => WeightFormat::F16,
         };
@@ -190,7 +191,10 @@ impl MetalModel {
             let transposed = transpose_blocks(&lm_w.data, vocab_size, hidden_size, 256, 144);
             pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?
         } else if matches!(lm_w.dtype, crate::ir::DType::Q6_K) {
-            let transposed = transpose_blocks(&lm_w.data, vocab_size, hidden_size, 256, 210);
+            // Q6_K → Q4_K requantization (same path as layer weights)
+            let f32s = crate::backend::wgpu::model::safetensors_to_f32(&lm_w.data, lm_w.dtype);
+            let q4k_data = quantize_f32_to_q4k(&f32s, vocab_size, hidden_size);
+            let transposed = transpose_blocks(&q4k_data, vocab_size, hidden_size, 256, 144);
             pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?
         } else {
             let f32s = crate::backend::wgpu::model::safetensors_to_f32(&lm_w.data, lm_w.dtype);
@@ -300,6 +304,7 @@ impl MetalModel {
             } else {
                 let (qp, fmt) = q4_upload(&format!("model.layers.{i}.self_attn.q_proj.weight"), q_dim, hidden_size)?;
                 q_proj = qp; wfmt = fmt;
+                if i == 0 { log::debug!("Metal: layer 0 q_proj weight_format={:?}", fmt); }
                 let (kp, _) = q4_upload(&format!("model.layers.{i}.self_attn.k_proj.weight"), kv_dim, hidden_size)?;
                 k_proj = kp;
                 let (vp, _) = q4_upload(&format!("model.layers.{i}.self_attn.v_proj.weight"), kv_dim, hidden_size)?;
@@ -1328,15 +1333,24 @@ fn quantize_f32_to_q4k(weights: &[f32], n: usize, k: usize) -> Vec<u8> {
                 let sub = &block_vals[j * 32..(j + 1) * 32];
                 let max_val = sub.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
                 let min_val = sub.iter().cloned().fold(f32::INFINITY, f32::min);
-                sub_scales[j] = if max_val > min_val { (max_val - min_val) / 15.0 } else { 0.0 };
-                sub_mins[j] = if min_val < 0.0 { -min_val } else { 0.0 };
+                // Q4_K offset is unsigned: dmin*m is always subtracted.
+                // Clamp the effective minimum to <= 0 so the offset is non-negative.
+                let eff_min = min_val.min(0.0);
+                sub_mins[j] = -eff_min; // non-negative offset
+                sub_scales[j] = if max_val > eff_min { (max_val - eff_min) / 15.0 } else { 0.0 };
             }
 
-            // Global d and dmin
-            let d = sub_scales.iter().cloned().fold(0.0f32, f32::max);
-            let dmin = sub_mins.iter().cloned().fold(0.0f32, f32::max);
-            let inv_d = if d > 0.0 { 1.0 / d } else { 0.0 };
-            let inv_dmin = if dmin > 0.0 { 1.0 / dmin } else { 0.0 };
+            // Global d and dmin — divide by 63 so that d * int_scale ≈ sub_scale
+            // The Metal kernel reconstructs: value = d * sc_int * q - dmin * m_int
+            // where sc_int, m_int are 6-bit integers (0..63).
+            // For d * sc_int ≈ sub_scales[j], we need d = max_sub_scale / 63.
+            let max_scale = sub_scales.iter().cloned().fold(0.0f32, f32::max);
+            let max_min = sub_mins.iter().cloned().fold(0.0f32, f32::max);
+            let d = max_scale / 63.0;
+            let dmin = max_min / 63.0;
+            // inv_* map sub-block values → 6-bit integers: sc_int = sub_scales[j] / d
+            let inv_d = if max_scale > 0.0 { 1.0 / d } else { 0.0 };
+            let inv_dmin = if max_min > 0.0 { 1.0 / dmin } else { 0.0 };
 
             // Pack d, dmin as f16
             let d_f16 = half::f16::from_f32(d);
@@ -1344,10 +1358,10 @@ fn quantize_f32_to_q4k(weights: &[f32], n: usize, k: usize) -> Vec<u8> {
             out[dst..dst + 2].copy_from_slice(&d_f16.to_le_bytes());
             out[dst + 2..dst + 4].copy_from_slice(&dmin_f16.to_le_bytes());
 
-            // Pack 6-bit scales (simplified: just use low 6 bits)
+            // Pack 6-bit scales
             for j in 0..8 {
-                let sc = (sub_scales[j] * inv_d * 63.0).round().min(63.0).max(0.0) as u8;
-                let m = (sub_mins[j] * inv_dmin * 63.0).round().min(63.0).max(0.0) as u8;
+                let sc = (sub_scales[j] * inv_d).round().min(63.0).max(0.0) as u8;
+                let m = (sub_mins[j] * inv_dmin).round().min(63.0).max(0.0) as u8;
                 if j < 4 {
                     scales[j] = (scales[j] & 0xC0) | (sc & 63);
                     scales[j + 4] = (scales[j + 4] & 0xC0) | (m & 63);
@@ -1422,6 +1436,113 @@ fn quantize_f32_to_block_q4_0(weights: &[f32], n: usize, k: usize) -> Vec<u8> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Rust port of the Metal get_scale_min_k4 for testing
+    fn get_scale_min_k4(j: usize, scales: &[u8; 12]) -> (f32, f32) {
+        if j < 4 {
+            let sc = (scales[j] & 63) as f32;
+            let m = (scales[j + 4] & 63) as f32;
+            (sc, m)
+        } else {
+            let sc = ((scales[j + 4] & 0xF) | ((scales[j - 4] >> 6) << 4)) as f32;
+            let m = ((scales[j + 4] >> 4) | ((scales[j] >> 6) << 4)) as f32;
+            (sc, m)
+        }
+    }
+
+    /// Dequantize a single Q4_K block (144 bytes) → 256 f32 values,
+    /// using the same formula as matvec_q4k.metal
+    fn dequant_q4k_block(block: &[u8]) -> [f32; 256] {
+        let d = half::f16::from_le_bytes([block[0], block[1]]).to_f32();
+        let dmin = half::f16::from_le_bytes([block[2], block[3]]).to_f32();
+        let scales: [u8; 12] = block[4..16].try_into().unwrap();
+        let qs = &block[16..144];
+
+        let mut out = [0.0f32; 256];
+        for grp in 0..4 {
+            let (sc1, m1) = get_scale_min_k4(grp * 2, &scales);
+            let (sc2, m2) = get_scale_min_k4(grp * 2 + 1, &scales);
+            let d1 = d * sc1;
+            let m1v = dmin * m1;
+            let d2 = d * sc2;
+            let m2v = dmin * m2;
+            let qs_off = grp * 32;
+            let k_base = grp * 64;
+            for l in 0..32 {
+                let qb = qs[qs_off + l];
+                out[k_base + l] = d1 * (qb & 0xF) as f32 - m1v;
+                out[k_base + 32 + l] = d2 * (qb >> 4) as f32 - m2v;
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn test_quantize_f32_to_q4k_roundtrip() {
+        // Create 256 known f32 values with a mix of positive and negative
+        let mut input = [0.0f32; 256];
+        for i in 0..256 {
+            // Range roughly -1.0 to +1.0 with varied distribution
+            input[i] = ((i as f32) - 128.0) / 128.0;
+        }
+
+        // Quantize: n=1, k=256 → one super-block
+        let q4k = quantize_f32_to_q4k(&input, 1, 256);
+        assert_eq!(q4k.len(), 144, "One Q4_K block should be 144 bytes");
+
+        // Dequantize using the Metal kernel formula
+        let output = dequant_q4k_block(&q4k);
+
+        // Check max absolute error
+        let max_err = input.iter().zip(output.iter())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0f32, f32::max);
+
+        assert!(max_err < 0.1, "Max error {max_err} exceeds 0.1 for Q4_K quantization");
+        assert!(!output.iter().any(|v| v.is_nan()), "Dequantized values contain NaN");
+        assert!(!output.iter().any(|v| v.is_infinite()), "Dequantized values contain Inf");
+    }
+
+    #[test]
+    fn test_quantize_f32_to_q4k_all_positive() {
+        // Test with all-positive values (sub_mins should still work)
+        let mut input = [0.0f32; 256];
+        for i in 0..256 {
+            input[i] = (i as f32) / 256.0 + 0.1; // range 0.1 to ~1.1
+        }
+
+        let q4k = quantize_f32_to_q4k(&input, 1, 256);
+        let output = dequant_q4k_block(&q4k);
+
+        let max_err = input.iter().zip(output.iter())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0f32, f32::max);
+        eprintln!("Q4_K all-positive roundtrip: max_err={max_err:.6}");
+
+        assert!(max_err < 0.1, "Max error {max_err} exceeds 0.1");
+        assert!(!output.iter().any(|v| v.is_nan()), "NaN in output");
+    }
+
+    #[test]
+    fn test_quantize_f32_to_q4k_large_range() {
+        // Test with larger magnitude values (typical weight range)
+        let mut input = [0.0f32; 256];
+        for i in 0..256 {
+            input[i] = ((i as f32) - 128.0) / 32.0; // range -4.0 to +4.0
+        }
+
+        let q4k = quantize_f32_to_q4k(&input, 1, 256);
+        let output = dequant_q4k_block(&q4k);
+
+        let max_err = input.iter().zip(output.iter())
+            .map(|(a, b)| (a - b).abs())
+            .fold(0.0f32, f32::max);
+        eprintln!("Q4_K large range roundtrip: max_err={max_err:.6}");
+
+        // Larger range means larger absolute error, but should still be proportional
+        assert!(max_err < 0.5, "Max error {max_err} exceeds 0.5 for range [-4,4]");
+        assert!(!output.iter().any(|v| v.is_nan()), "NaN in output");
+    }
 
     #[test]
     fn test_transpose_q4_nibble_repack() {
