@@ -19,6 +19,7 @@ enum QuantFormat {
     F32,
     F16,
     Q4,
+    Q4K,
     Q8,
     Ternary,
 }
@@ -167,6 +168,7 @@ fn quant_fmt_to_dispatch(qf: QuantFormat) -> dispatch::QuantFormat {
         QuantFormat::F32 => dispatch::QuantFormat::F32,
         QuantFormat::F16 => dispatch::QuantFormat::F16,
         QuantFormat::Q4 => dispatch::QuantFormat::Q4,
+        QuantFormat::Q4K => dispatch::QuantFormat::Q4K,
         QuantFormat::Q8 => dispatch::QuantFormat::Q8,
         QuantFormat::Ternary => dispatch::QuantFormat::Ternary,
     }
@@ -583,6 +585,34 @@ struct Q8MatmulParams {
     u32s_per_row: u32,
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct Q4KMatmulParams {
+    n: u32,
+    k: u32,
+    blocks_per_row: u32,
+    _pad: u32,
+}
+
+fn precompute_q4k_matmul(
+    p: &Pipelines,
+    n: u32,
+    k: u32,
+) -> (wgpu::Buffer, (u32, u32, u32)) {
+    let blocks_per_row = k / 256;
+    let params = Q4KMatmulParams {
+        n,
+        k,
+        blocks_per_row,
+        _pad: 0,
+    };
+    let buf = p.upload_uniform_permanent(bytemuck::bytes_of(&params));
+    let num_wg = (n + 3) / 4;
+    let x = num_wg.min(65535);
+    let y = (num_wg + x - 1) / x;
+    (buf, (x, y, 1))
+}
+
 fn precompute_q8_matmul(
     p: &Pipelines,
     n: u32,
@@ -785,6 +815,16 @@ impl NativeModel {
         let q_dim = num_heads * head_dim;
         let kv_dim = kv_num_heads * head_dim;
 
+        // Detect if weights are Q4_K (K-quant) — check first layer's q_proj
+        let is_q4k = weights.get("model.layers.0.self_attn.q_proj.weight")
+            .map(|w| matches!(w.dtype, crate::ir::DType::Q4_K))
+            .unwrap_or(false);
+        let model_quant = if is_q4k { QuantFormat::Q4K } else { QuantFormat::Q4 };
+
+        if is_q4k {
+            log::info!("Detected Q4_K weights — using native Q4_K matmul (no requant)");
+        }
+
         let mut layers = Vec::with_capacity(num_layers);
         for i in 0..num_layers {
             log::info!("Loading layer {i}/{num_layers}...");
@@ -792,29 +832,39 @@ impl NativeModel {
             let input_norm_f32 = weight_to_f32(&format!("model.layers.{i}.input_layernorm.weight"))?;
             let input_norm_weight = pipelines.upload_f32(&input_norm_f32);
 
-            let quantize_upload = |name: &str, n: usize, k: usize| -> Result<(wgpu::Buffer, wgpu::Buffer), String> {
-                let f32_data = weight_to_f32(name)?;
-                let (packed, scales) = quantize_f32_to_q4(&f32_data, n, k);
-                Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales)))
+            // Q4_K: upload raw bytes directly; Q4/f32/etc: dequant→requant to Q4_0
+            let quantize_upload = |name: &str, n: usize, k: usize| -> Result<(wgpu::Buffer, wgpu::Buffer, QuantFormat), String> {
+                let w = weights.get(name).ok_or_else(|| format!("Missing weight: {name}"))?;
+                if matches!(w.dtype, crate::ir::DType::Q4_K) {
+                    // Native Q4_K: upload raw superblock bytes, no scales buffer needed
+                    let buf = pipelines.upload_bytes(&w.data);
+                    // Dummy scales buffer (not used by Q4_K shader, but struct requires it)
+                    let dummy_scales = pipelines.upload_f32(&[0.0f32]);
+                    Ok((buf, dummy_scales, QuantFormat::Q4K))
+                } else {
+                    let f32_data = safetensors_to_f32(&w.data, w.dtype);
+                    let (packed, scales) = quantize_f32_to_q4(&f32_data, n, k);
+                    Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales), QuantFormat::Q4))
+                }
             };
 
-            let (q_proj_packed, q_proj_scales) = quantize_upload(
+            let (q_proj_packed, q_proj_scales, q_proj_qf) = quantize_upload(
                 &format!("model.layers.{i}.self_attn.q_proj.weight"), q_dim, hidden_size)?;
-            let (k_proj_packed, k_proj_scales) = quantize_upload(
+            let (k_proj_packed, k_proj_scales, k_proj_qf) = quantize_upload(
                 &format!("model.layers.{i}.self_attn.k_proj.weight"), kv_dim, hidden_size)?;
-            let (v_proj_packed, v_proj_scales) = quantize_upload(
+            let (v_proj_packed, v_proj_scales, v_proj_qf) = quantize_upload(
                 &format!("model.layers.{i}.self_attn.v_proj.weight"), kv_dim, hidden_size)?;
-            let (o_proj_packed, o_proj_scales) = quantize_upload(
+            let (o_proj_packed, o_proj_scales, o_proj_qf) = quantize_upload(
                 &format!("model.layers.{i}.self_attn.o_proj.weight"), hidden_size, q_dim)?;
 
             let post_norm_f32 = weight_to_f32(&format!("model.layers.{i}.post_attention_layernorm.weight"))?;
             let post_norm_weight = pipelines.upload_f32(&post_norm_f32);
 
-            let (gate_proj_packed, gate_proj_scales) = quantize_upload(
+            let (gate_proj_packed, gate_proj_scales, gate_proj_qf) = quantize_upload(
                 &format!("model.layers.{i}.mlp.gate_proj.weight"), intermediate_size, hidden_size)?;
-            let (up_proj_packed, up_proj_scales) = quantize_upload(
+            let (up_proj_packed, up_proj_scales, up_proj_qf) = quantize_upload(
                 &format!("model.layers.{i}.mlp.up_proj.weight"), intermediate_size, hidden_size)?;
-            let (down_proj_packed, down_proj_scales) = quantize_upload(
+            let (down_proj_packed, down_proj_scales, down_proj_qf) = quantize_upload(
                 &format!("model.layers.{i}.mlp.down_proj.weight"), hidden_size, intermediate_size)?;
 
             let q_proj_bias = if has_attn_bias {
@@ -838,21 +888,31 @@ impl NativeModel {
             let hd = head_dim as u32;
             let bs = 32u32;
             let (input_norm_params, input_norm_wg) = precompute_rms_norm(&pipelines, 1, hs, rms_norm_eps);
-            let (q_matmul_params, q_matmul_wg) = precompute_q4_matmul(&pipelines, q_dim as u32, hs, bs);
-            let (k_matmul_params, k_matmul_wg) = precompute_q4_matmul(&pipelines, kv_dim as u32, hs, bs);
-            let (v_matmul_params, v_matmul_wg) = precompute_q4_matmul(&pipelines, kv_dim as u32, hs, bs);
+
+            // Precompute matmul params: Q4_K uses different params struct than Q4_0
+            let precompute_matmul = |qf: QuantFormat, n: u32, k: u32| -> (wgpu::Buffer, (u32, u32, u32)) {
+                match qf {
+                    QuantFormat::Q4K => precompute_q4k_matmul(&pipelines, n, k),
+                    _ => precompute_q4_matmul(&pipelines, n, k, bs),
+                }
+            };
+
+            let (q_matmul_params, q_matmul_wg) = precompute_matmul(q_proj_qf, q_dim as u32, hs);
+            let (k_matmul_params, k_matmul_wg) = precompute_matmul(k_proj_qf, kv_dim as u32, hs);
+            let (v_matmul_params, v_matmul_wg) = precompute_matmul(v_proj_qf, kv_dim as u32, hs);
             let (q_rope_params, q_rope_wg) = precompute_rope(&pipelines, q_dim as u32, hd, 1);
             let (k_rope_params, k_rope_wg) = precompute_rope(&pipelines, kv_dim as u32, hd, 1);
-            let (o_matmul_params, o_matmul_wg) = precompute_q4_matmul(&pipelines, hs, q_dim as u32, bs);
+            let (o_matmul_params, o_matmul_wg) = precompute_matmul(o_proj_qf, hs, q_dim as u32);
             let (post_norm_params, post_norm_wg) = precompute_rms_norm(&pipelines, 1, hs, rms_norm_eps);
-            let (gate_matmul_params, gate_matmul_wg) = precompute_q4_matmul(&pipelines, intermediate_size as u32, hs, bs);
-            let (up_matmul_params, up_matmul_wg) = precompute_q4_matmul(&pipelines, intermediate_size as u32, hs, bs);
-            let (down_matmul_params, down_matmul_wg) = precompute_q4_matmul(&pipelines, hs, intermediate_size as u32, bs);
+            let (gate_matmul_params, gate_matmul_wg) = precompute_matmul(gate_proj_qf, intermediate_size as u32, hs);
+            let (up_matmul_params, up_matmul_wg) = precompute_matmul(up_proj_qf, intermediate_size as u32, hs);
+            let (down_matmul_params, down_matmul_wg) = precompute_matmul(down_proj_qf, hs, intermediate_size as u32);
 
             // Fused norm+q4 uses workgroup shared memory for the full hidden state.
             // Max shared_normed is 4096 floats (16 KB) — disable fused path for
             // larger hidden sizes to avoid OOB in workgroup memory.
-            let use_fused = hidden_size <= 4096;
+            // Also disable for Q4_K since fused_norm_q4 is Q4_0-specific.
+            let use_fused = hidden_size <= 4096 && !is_q4k;
             let (fused_q_params, fused_q_wg) = if use_fused {
                 let (b, w) = precompute_fused_norm_q4(&pipelines, q_dim as u32, hs, bs, rms_norm_eps);
                 (Some(b), w)
@@ -874,16 +934,16 @@ impl NativeModel {
 
             layers.push(LayerWeights {
                 input_norm_weight,
-                q_proj_packed, q_proj_scales, q_proj_quant: QuantFormat::Q4, q_n: q_dim as u32,
-                k_proj_packed, k_proj_scales, k_proj_quant: QuantFormat::Q4, k_n: kv_dim as u32,
-                v_proj_packed, v_proj_scales, v_proj_quant: QuantFormat::Q4, v_n: kv_dim as u32,
+                q_proj_packed, q_proj_scales, q_proj_quant: q_proj_qf, q_n: q_dim as u32,
+                k_proj_packed, k_proj_scales, k_proj_quant: k_proj_qf, k_n: kv_dim as u32,
+                v_proj_packed, v_proj_scales, v_proj_quant: v_proj_qf, v_n: kv_dim as u32,
                 q_proj_bias, k_proj_bias, v_proj_bias,
                 q_norm_weight: q_norm_w, k_norm_weight: k_norm_w,
-                o_proj_packed, o_proj_scales, o_proj_quant: QuantFormat::Q4, o_n: hidden_size as u32,
+                o_proj_packed, o_proj_scales, o_proj_quant: o_proj_qf, o_n: hidden_size as u32,
                 post_norm_weight,
-                gate_proj_packed, gate_proj_scales, gate_proj_quant: QuantFormat::Q4, gate_n: intermediate_size as u32,
-                up_proj_packed, up_proj_scales, up_proj_quant: QuantFormat::Q4, up_n: intermediate_size as u32,
-                down_proj_packed, down_proj_scales, down_proj_quant: QuantFormat::Q4, down_n: hidden_size as u32,
+                gate_proj_packed, gate_proj_scales, gate_proj_quant: gate_proj_qf, gate_n: intermediate_size as u32,
+                up_proj_packed, up_proj_scales, up_proj_quant: up_proj_qf, up_n: intermediate_size as u32,
+                down_proj_packed, down_proj_scales, down_proj_quant: down_proj_qf, down_n: hidden_size as u32,
                 params: LayerParamBuffers {
                     input_norm_params, input_norm_wg,
                     q_norm_params: if has_qk_norm { Some(precompute_rms_norm(&pipelines, num_heads as u32, hd, rms_norm_eps).0) } else { None },
@@ -1449,7 +1509,7 @@ fn dispatch_matmul_enc(
         QuantFormat::F32 => dispatch::f32_matmul(p, enc, activation, weight, n, k),
         QuantFormat::F16 => dispatch::f16_matmul(p, enc, activation, weight, n, k),
         QuantFormat::Q8 => dispatch::q8_matmul(p, enc, activation, weight, scales, n, k, block_size),
-        QuantFormat::Q4 => dispatch::q4_matmul(p, enc, activation, weight, scales, n, k, block_size),
+        QuantFormat::Q4 | QuantFormat::Q4K => dispatch::q4_matmul(p, enc, activation, weight, scales, n, k, block_size),
         QuantFormat::Ternary => dispatch::ternary_matmul(p, enc, activation, weight, scales, n, k),
     }
 }
