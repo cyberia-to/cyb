@@ -1245,6 +1245,18 @@ fn run_import(dir_path: &str) {
     // Extract architecture params
     let text_config = config_json.get("text_config").unwrap_or(&config_json);
     let model_type = config_json.get("model_type").and_then(|v| v.as_str()).unwrap_or("unknown");
+
+    // Detect EOS token from tokenizer_config.json (for chat template detection)
+    let tok_config_path = dir.join("tokenizer_config.json");
+    let eos_token_str = if tok_config_path.exists() {
+        let tc = std::fs::read_to_string(&tok_config_path).unwrap_or_default();
+        if let Ok(v) = serde_json::from_str::<serde_json::Value>(&tc) {
+            v.get("eos_token").and_then(|t| {
+                t.as_str().map(|s| s.to_string())
+                    .or_else(|| t.get("content").and_then(|c| c.as_str()).map(|s| s.to_string()))
+            }).unwrap_or_default()
+        } else { String::new() }
+    } else { String::new() };
     let hidden_size = text_config["hidden_size"].as_u64().unwrap_or(0);
     let num_heads = text_config["num_attention_heads"].as_u64().unwrap_or(0);
     let kv_heads = text_config["num_key_value_heads"].as_u64().unwrap_or(num_heads);
@@ -1281,6 +1293,7 @@ tie_word_embeddings = {tie_word_embeddings}
 
 [tokenizer]
 type = "bpe"
+eos_token = "{eos_token}"
 
 [sampling]
 temperature = 700
@@ -1291,6 +1304,7 @@ scale = 1000
 source = "{source}"
 "#,
         params = hidden_size * num_layers * 12, // rough estimate
+        eos_token = eos_token_str,
         source = config_json_path.parent().and_then(|p| p.file_name()).and_then(|n| n.to_str()).unwrap_or(""),
     );
 
