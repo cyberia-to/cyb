@@ -20,7 +20,10 @@ enum QuantFormat {
     F16,
     Q4,
     Q4K,
+    Q5K,
     Q6K,
+    Q3K,
+    Q2K,
     Q8,
     Ternary,
 }
@@ -131,8 +134,14 @@ struct ModelParamBuffers {
     f16_matmul_wg: (u32, u32, u32),
     q4k_lm_params: wgpu::Buffer,
     q4k_lm_wg: (u32, u32, u32),
+    q5k_lm_params: wgpu::Buffer,
+    q5k_lm_wg: (u32, u32, u32),
     q6k_lm_params: wgpu::Buffer,
     q6k_lm_wg: (u32, u32, u32),
+    q3k_lm_params: wgpu::Buffer,
+    q3k_lm_wg: (u32, u32, u32),
+    q2k_lm_params: wgpu::Buffer,
+    q2k_lm_wg: (u32, u32, u32),
     argmax_params: wgpu::Buffer,
     argmax_wg: (u32, u32, u32),
 }
@@ -179,7 +188,10 @@ fn quant_fmt_to_dispatch(qf: QuantFormat) -> dispatch::QuantFormat {
         QuantFormat::F16 => dispatch::QuantFormat::F16,
         QuantFormat::Q4 => dispatch::QuantFormat::Q4,
         QuantFormat::Q4K => dispatch::QuantFormat::Q4K,
+        QuantFormat::Q5K => dispatch::QuantFormat::Q5K,
         QuantFormat::Q6K => dispatch::QuantFormat::Q6K,
+        QuantFormat::Q3K => dispatch::QuantFormat::Q3K,
+        QuantFormat::Q2K => dispatch::QuantFormat::Q2K,
         QuantFormat::Q8 => dispatch::QuantFormat::Q8,
         QuantFormat::Ternary => dispatch::QuantFormat::Ternary,
     }
@@ -418,6 +430,133 @@ pub fn safetensors_to_f32(data: &[u8], dtype: crate::ir::DType) -> Vec<f32> {
                 vals
             }).collect()
         }
+        DType::Q5_K => {
+            // Q5_K: super blocks of 256 values = 176 bytes
+            // Layout: d(f16=2) + dmin(f16=2) + scales(12) + qh(32) + qs(128) = 176 bytes
+            let block_size = 176;
+            data.chunks_exact(block_size).flat_map(|block| {
+                let d = half::f16::from_le_bytes([block[0], block[1]]).to_f32();
+                let dmin = half::f16::from_le_bytes([block[2], block[3]]).to_f32();
+                let scales_raw = &block[4..16];
+                let qh = &block[16..48];
+                let qs = &block[48..176];
+
+                let get_scale_min = |j: usize| -> (u8, u8) {
+                    if j < 4 {
+                        (scales_raw[j] & 63, scales_raw[j + 4] & 63)
+                    } else {
+                        let sc = (scales_raw[j + 4] & 0xF) | ((scales_raw[j - 4] >> 6) << 4);
+                        let mn = (scales_raw[j + 4] >> 4) | ((scales_raw[j] >> 6) << 4);
+                        (sc, mn)
+                    }
+                };
+
+                let mut vals = [0.0f32; 256];
+                let mut q_ptr = 0usize;
+                let mut is = 0usize;
+
+                for grp in 0..4 {
+                    let (sc1, m1) = get_scale_min(is);
+                    is += 1;
+                    let d1 = d * sc1 as f32;
+                    let m1_val = dmin * m1 as f32;
+
+                    let (sc2, m2) = get_scale_min(is);
+                    is += 1;
+                    let d2 = d * sc2 as f32;
+                    let m2_val = dmin * m2 as f32;
+
+                    let base = grp * 64;
+                    for l in 0..32 {
+                        let lo_nib = qs[q_ptr + l] & 0xF;
+                        let lo_idx = grp * 64 + l;
+                        let lo_qh = (qh[lo_idx / 8] >> (lo_idx % 8)) & 1;
+                        let lo_q = lo_nib | (lo_qh << 4);
+                        vals[base + l] = d1 * lo_q as f32 - m1_val;
+                    }
+                    for l in 0..32 {
+                        let hi_nib = qs[q_ptr + l] >> 4;
+                        let hi_idx = grp * 64 + 32 + l;
+                        let hi_qh = (qh[hi_idx / 8] >> (hi_idx % 8)) & 1;
+                        let hi_q = hi_nib | (hi_qh << 4);
+                        vals[base + 32 + l] = d2 * hi_q as f32 - m2_val;
+                    }
+                    q_ptr += 32;
+                }
+
+                vals
+            }).collect()
+        }
+        DType::Q3_K => {
+            // Q3_K: super blocks of 256 values = 110 bytes
+            // Layout: hmask(32) + qs(64) + scales(12) + d(f16=2) = 110 bytes
+            let block_size = 110;
+            data.chunks_exact(block_size).flat_map(|block| {
+                let hmask = &block[0..32];
+                let qs = &block[32..96];
+                let scales_raw = &block[96..108];
+                let d = half::f16::from_le_bytes([block[108], block[109]]).to_f32();
+
+                // Unpack 16 6-bit scales from 12 bytes
+                let get_scale = |j: usize| -> i32 {
+                    let us = if j < 4 {
+                        (scales_raw[j] & 0xF) as u32
+                            | ((((scales_raw[8 + (j >> 1)] >> (4 * (j & 1))) & 3) as u32) << 4)
+                    } else if j < 8 {
+                        let jj = j - 4;
+                        (scales_raw[4 + jj] & 0xF) as u32
+                            | ((((scales_raw[10 + (jj >> 1)] >> (4 * (jj & 1))) & 3) as u32) << 4)
+                    } else if j < 12 {
+                        let jj = j - 8;
+                        (scales_raw[jj] >> 4) as u32
+                            | ((((scales_raw[8 + (jj >> 1)] >> (4 * (jj & 1) + 2)) & 3) as u32) << 4)
+                    } else {
+                        let jj = j - 12;
+                        (scales_raw[4 + jj] >> 4) as u32
+                            | ((((scales_raw[10 + (jj >> 1)] >> (4 * (jj & 1) + 2)) & 3) as u32) << 4)
+                    };
+                    us as i32 - 32
+                };
+
+                let mut vals = [0.0f32; 256];
+                for sb in 0..16 {
+                    let sc = get_scale(sb) as f32;
+                    for l in 0..16 {
+                        let j = sb * 16 + l;
+                        let ql = (qs[j / 4] >> ((j % 4) * 2)) & 3;
+                        let hm = (hmask[j / 8] >> (j % 8)) & 1;
+                        let q3 = (ql | (hm << 2)) as i32 - 4;
+                        vals[j] = d * sc * q3 as f32;
+                    }
+                }
+                vals
+            }).collect()
+        }
+        DType::Q2_K => {
+            // Q2_K: super blocks of 256 values = 84 bytes
+            // Layout: scales(16) + qs(64) + d(f16=2) + dmin(f16=2) = 84 bytes
+            let block_size = 84;
+            data.chunks_exact(block_size).flat_map(|block| {
+                let scales = &block[0..16];
+                let qs = &block[16..80];
+                let d = half::f16::from_le_bytes([block[80], block[81]]).to_f32();
+                let dmin = half::f16::from_le_bytes([block[82], block[83]]).to_f32();
+
+                let mut vals = [0.0f32; 256];
+                for sb in 0..16 {
+                    let sc = (scales[sb] & 0xF) as f32;
+                    let m = (scales[sb] >> 4) as f32;
+                    let ds = d * sc;
+                    let dm = dmin * m;
+                    for l in 0..16 {
+                        let j = sb * 16 + l;
+                        let q2 = (qs[j / 4] >> ((j % 4) * 2)) & 3;
+                        vals[j] = ds * q2 as f32 - dm;
+                    }
+                }
+                vals
+            }).collect()
+        }
         _ => {
             log::warn!("Unsupported dtype {:?}, treating as f32", dtype);
             data.chunks_exact(4)
@@ -652,6 +791,90 @@ fn precompute_q6k_matmul(
     (buf, (x, y, 1))
 }
 
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct Q5KMatmulParams {
+    n: u32,
+    k: u32,
+    blocks_per_row: u32,
+    _pad: u32,
+}
+
+fn precompute_q5k_matmul(
+    p: &Pipelines,
+    n: u32,
+    k: u32,
+) -> (wgpu::Buffer, (u32, u32, u32)) {
+    let blocks_per_row = k / 256;
+    let params = Q5KMatmulParams {
+        n,
+        k,
+        blocks_per_row,
+        _pad: 0,
+    };
+    let buf = p.upload_uniform_permanent(bytemuck::bytes_of(&params));
+    let num_wg = (n + 3) / 4;
+    let x = num_wg.min(65535);
+    let y = (num_wg + x - 1) / x;
+    (buf, (x, y, 1))
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct Q3KMatmulParams {
+    n: u32,
+    k: u32,
+    blocks_per_row: u32,
+    _pad: u32,
+}
+
+fn precompute_q3k_matmul(
+    p: &Pipelines,
+    n: u32,
+    k: u32,
+) -> (wgpu::Buffer, (u32, u32, u32)) {
+    let blocks_per_row = k / 256;
+    let params = Q3KMatmulParams {
+        n,
+        k,
+        blocks_per_row,
+        _pad: 0,
+    };
+    let buf = p.upload_uniform_permanent(bytemuck::bytes_of(&params));
+    let num_wg = (n + 3) / 4;
+    let x = num_wg.min(65535);
+    let y = (num_wg + x - 1) / x;
+    (buf, (x, y, 1))
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+struct Q2KMatmulParams {
+    n: u32,
+    k: u32,
+    blocks_per_row: u32,
+    _pad: u32,
+}
+
+fn precompute_q2k_matmul(
+    p: &Pipelines,
+    n: u32,
+    k: u32,
+) -> (wgpu::Buffer, (u32, u32, u32)) {
+    let blocks_per_row = k / 256;
+    let params = Q2KMatmulParams {
+        n,
+        k,
+        blocks_per_row,
+        _pad: 0,
+    };
+    let buf = p.upload_uniform_permanent(bytemuck::bytes_of(&params));
+    let num_wg = (n + 3) / 4;
+    let x = num_wg.min(65535);
+    let y = (num_wg + x - 1) / x;
+    (buf, (x, y, 1))
+}
+
 fn precompute_q8_matmul(
     p: &Pipelines,
     n: u32,
@@ -856,9 +1079,18 @@ impl NativeModel {
                 if matches!(lm_w.dtype, crate::ir::DType::Q4_K) {
                     log::info!("Uploading lm_head as Q4_K ({:.1}MB)", lm_w.data.len() as f64 / 1e6);
                     (Some(pipelines.upload_bytes(&lm_w.data)), QuantFormat::Q4K)
+                } else if matches!(lm_w.dtype, crate::ir::DType::Q5_K) {
+                    log::info!("Uploading lm_head as Q5_K ({:.1}MB)", lm_w.data.len() as f64 / 1e6);
+                    (Some(pipelines.upload_bytes(&lm_w.data)), QuantFormat::Q5K)
                 } else if matches!(lm_w.dtype, crate::ir::DType::Q6_K) {
                     log::info!("Uploading lm_head as Q6_K ({:.1}MB)", lm_w.data.len() as f64 / 1e6);
                     (Some(pipelines.upload_bytes(&lm_w.data)), QuantFormat::Q6K)
+                } else if matches!(lm_w.dtype, crate::ir::DType::Q3_K) {
+                    log::info!("Uploading lm_head as Q3_K ({:.1}MB)", lm_w.data.len() as f64 / 1e6);
+                    (Some(pipelines.upload_bytes(&lm_w.data)), QuantFormat::Q3K)
+                } else if matches!(lm_w.dtype, crate::ir::DType::Q2_K) {
+                    log::info!("Uploading lm_head as Q2_K ({:.1}MB)", lm_w.data.len() as f64 / 1e6);
+                    (Some(pipelines.upload_bytes(&lm_w.data)), QuantFormat::Q2K)
                 } else {
                     let f32_data = safetensors_to_f32(&lm_w.data, lm_w.dtype);
                     log::info!("Uploading lm_head as f32 ({:.1}MB)", f32_data.len() as f64 * 4.0 / 1e6);
@@ -878,13 +1110,27 @@ impl NativeModel {
         let first_proj_dtype = weights.get("model.layers.0.self_attn.q_proj.weight")
             .map(|w| w.dtype);
         let is_q4k = matches!(first_proj_dtype, Some(crate::ir::DType::Q4_K));
+        let is_q5k = matches!(first_proj_dtype, Some(crate::ir::DType::Q5_K));
         let is_q6k = matches!(first_proj_dtype, Some(crate::ir::DType::Q6_K));
-        let model_quant_format = if is_q6k { QuantFormat::Q6K } else if is_q4k { QuantFormat::Q4K } else { QuantFormat::Q4 };
+        let is_q3k = matches!(first_proj_dtype, Some(crate::ir::DType::Q3_K));
+        let is_q2k = matches!(first_proj_dtype, Some(crate::ir::DType::Q2_K));
+        let model_quant_format = if is_q6k { QuantFormat::Q6K }
+            else if is_q5k { QuantFormat::Q5K }
+            else if is_q4k { QuantFormat::Q4K }
+            else if is_q3k { QuantFormat::Q3K }
+            else if is_q2k { QuantFormat::Q2K }
+            else { QuantFormat::Q4 };
 
         if is_q6k {
             log::info!("Detected Q6_K weights — using native Q6_K matmul (no requant)");
+        } else if is_q5k {
+            log::info!("Detected Q5_K weights — using native Q5_K matmul (no requant)");
         } else if is_q4k {
             log::info!("Detected Q4_K weights — using native Q4_K matmul (no requant)");
+        } else if is_q3k {
+            log::info!("Detected Q3_K weights — using native Q3_K matmul (no requant)");
+        } else if is_q2k {
+            log::info!("Detected Q2_K weights — using native Q2_K matmul (no requant)");
         }
 
         let mut layers = Vec::with_capacity(num_layers);
@@ -894,19 +1140,29 @@ impl NativeModel {
             let input_norm_f32 = weight_to_f32(&format!("model.layers.{i}.input_layernorm.weight"))?;
             let input_norm_weight = pipelines.upload_f32(&input_norm_f32);
 
-            // Q4_K: upload raw bytes directly; Q4/f32/etc: dequant→requant to Q4_0
+            // K-quant: upload raw bytes directly; Q4/f32/etc: dequant→requant to Q4_0
             let quantize_upload = |name: &str, n: usize, k: usize| -> Result<(wgpu::Buffer, wgpu::Buffer, QuantFormat), String> {
                 let w = weights.get(name).ok_or_else(|| format!("Missing weight: {name}"))?;
                 if matches!(w.dtype, crate::ir::DType::Q4_K) {
-                    // Native Q4_K: upload raw superblock bytes, no scales buffer needed
                     let buf = pipelines.upload_bytes(&w.data);
                     let dummy_scales = pipelines.upload_f32(&[0.0f32]);
                     Ok((buf, dummy_scales, QuantFormat::Q4K))
+                } else if matches!(w.dtype, crate::ir::DType::Q5_K) {
+                    let buf = pipelines.upload_bytes(&w.data);
+                    let dummy_scales = pipelines.upload_f32(&[0.0f32]);
+                    Ok((buf, dummy_scales, QuantFormat::Q5K))
                 } else if matches!(w.dtype, crate::ir::DType::Q6_K) {
-                    // Native Q6_K: upload raw superblock bytes, no scales buffer needed
                     let buf = pipelines.upload_bytes(&w.data);
                     let dummy_scales = pipelines.upload_f32(&[0.0f32]);
                     Ok((buf, dummy_scales, QuantFormat::Q6K))
+                } else if matches!(w.dtype, crate::ir::DType::Q3_K) {
+                    let buf = pipelines.upload_bytes(&w.data);
+                    let dummy_scales = pipelines.upload_f32(&[0.0f32]);
+                    Ok((buf, dummy_scales, QuantFormat::Q3K))
+                } else if matches!(w.dtype, crate::ir::DType::Q2_K) {
+                    let buf = pipelines.upload_bytes(&w.data);
+                    let dummy_scales = pipelines.upload_f32(&[0.0f32]);
+                    Ok((buf, dummy_scales, QuantFormat::Q2K))
                 } else {
                     let f32_data = safetensors_to_f32(&w.data, w.dtype);
                     let (packed, scales) = quantize_f32_to_q4(&f32_data, n, k);
@@ -955,11 +1211,14 @@ impl NativeModel {
             let bs = 32u32;
             let (input_norm_params, input_norm_wg) = precompute_rms_norm(&pipelines, 1, hs, rms_norm_eps);
 
-            // Precompute matmul params: Q4_K uses different params struct than Q4_0
+            // Precompute matmul params: K-quants use different params structs than Q4_0
             let precompute_matmul = |qf: QuantFormat, n: u32, k: u32| -> (wgpu::Buffer, (u32, u32, u32)) {
                 match qf {
                     QuantFormat::Q4K => precompute_q4k_matmul(&pipelines, n, k),
+                    QuantFormat::Q5K => precompute_q5k_matmul(&pipelines, n, k),
                     QuantFormat::Q6K => precompute_q6k_matmul(&pipelines, n, k),
+                    QuantFormat::Q3K => precompute_q3k_matmul(&pipelines, n, k),
+                    QuantFormat::Q2K => precompute_q2k_matmul(&pipelines, n, k),
                     QuantFormat::F16 => precompute_f16_matmul(&pipelines, n, k),
                     QuantFormat::F32 => precompute_f32_matmul(&pipelines, n, k),
                     _ => precompute_q4_matmul(&pipelines, n, k, bs),
@@ -980,8 +1239,8 @@ impl NativeModel {
             // Fused norm+q4 uses workgroup shared memory for the full hidden state.
             // Max shared_normed is 4096 floats (16 KB) — disable fused path for
             // larger hidden sizes to avoid OOB in workgroup memory.
-            // Also disable for Q4_K since fused_norm_q4 is Q4_0-specific.
-            let use_fused = hidden_size <= 4096 && !is_q4k;
+            // Also disable for K-quants since fused_norm_q4 is Q4_0-specific.
+            let use_fused = hidden_size <= 4096 && !is_q4k && !is_q5k && !is_q6k && !is_q3k && !is_q2k;
             let (fused_q_params, fused_q_wg) = if use_fused {
                 let (b, w) = precompute_fused_norm_q4(&pipelines, q_dim as u32, hs, bs, rms_norm_eps);
                 (Some(b), w)
@@ -1051,7 +1310,10 @@ impl NativeModel {
         let (f32_matmul_params, f32_matmul_wg) = precompute_f32_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
         let (f16_matmul_params, f16_matmul_wg) = precompute_f16_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
         let (q4k_lm_params, q4k_lm_wg) = precompute_q4k_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
+        let (q5k_lm_params, q5k_lm_wg) = precompute_q5k_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
         let (q6k_lm_params, q6k_lm_wg) = precompute_q6k_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
+        let (q3k_lm_params, q3k_lm_wg) = precompute_q3k_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
+        let (q2k_lm_params, q2k_lm_wg) = precompute_q2k_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
         let (argmax_params, argmax_wg) = precompute_argmax(&pipelines, vocab_size as u32);
 
         // Persistent staging buffer for greedy argmax readback (4 bytes = 1 f32)
@@ -1080,7 +1342,10 @@ impl NativeModel {
                 f32_matmul_params, f32_matmul_wg,
                 f16_matmul_params, f16_matmul_wg,
                 q4k_lm_params, q4k_lm_wg,
+                q5k_lm_params, q5k_lm_wg,
                 q6k_lm_params, q6k_lm_wg,
+                q3k_lm_params, q3k_lm_wg,
+                q2k_lm_params, q2k_lm_wg,
                 argmax_params, argmax_wg,
             },
             kv_compressor: None,
@@ -1397,12 +1662,30 @@ impl NativeModel {
                     &mp.q4k_lm_params, vocab, mp.q4k_lm_wg,
                 );
                 (buf, bg, wg, &p.q4k_matmul)
+            } else if self.lm_head_quant == QuantFormat::Q5K {
+                let (buf, bg, wg) = dispatch::q5k_matmul_prepare_precomputed(
+                    &p, &final_normed, lm_head_buf,
+                    &mp.q5k_lm_params, vocab, mp.q5k_lm_wg,
+                );
+                (buf, bg, wg, &p.q5k_matmul)
             } else if self.lm_head_quant == QuantFormat::Q6K {
                 let (buf, bg, wg) = dispatch::q6k_matmul_prepare_precomputed(
                     &p, &final_normed, lm_head_buf,
                     &mp.q6k_lm_params, vocab, mp.q6k_lm_wg,
                 );
                 (buf, bg, wg, &p.q6k_matmul)
+            } else if self.lm_head_quant == QuantFormat::Q3K {
+                let (buf, bg, wg) = dispatch::q3k_matmul_prepare_precomputed(
+                    &p, &final_normed, lm_head_buf,
+                    &mp.q3k_lm_params, vocab, mp.q3k_lm_wg,
+                );
+                (buf, bg, wg, &p.q3k_matmul)
+            } else if self.lm_head_quant == QuantFormat::Q2K {
+                let (buf, bg, wg) = dispatch::q2k_matmul_prepare_precomputed(
+                    &p, &final_normed, lm_head_buf,
+                    &mp.q2k_lm_params, vocab, mp.q2k_lm_wg,
+                );
+                (buf, bg, wg, &p.q2k_matmul)
             } else {
                 let (buf, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
                     &p, &final_normed, lm_head_buf,
@@ -1612,7 +1895,10 @@ fn dispatch_matmul_enc(
         QuantFormat::Q8 => dispatch::q8_matmul(p, enc, activation, weight, scales, n, k, block_size),
         QuantFormat::Q4 => dispatch::q4_matmul(p, enc, activation, weight, scales, n, k, block_size),
         QuantFormat::Q4K => dispatch::q4k_matmul(p, enc, activation, weight, n, k),
+        QuantFormat::Q5K => dispatch::q5k_matmul(p, enc, activation, weight, n, k),
         QuantFormat::Q6K => dispatch::q6k_matmul(p, enc, activation, weight, n, k),
+        QuantFormat::Q3K => dispatch::q3k_matmul(p, enc, activation, weight, n, k),
+        QuantFormat::Q2K => dispatch::q2k_matmul(p, enc, activation, weight, n, k),
         QuantFormat::Ternary => dispatch::ternary_matmul(p, enc, activation, weight, scales, n, k),
     }
 }
@@ -2520,5 +2806,252 @@ f67c6b559a12262625162b0477908e57538a1989285636485a6a597b58";
         let diff = (result[0] - expected_sum).abs();
         eprintln!("Q6K GPU test: got={:.6}, expected={:.6}, diff={:.2e}", result[0], expected_sum, diff);
         assert!(diff < 0.01, "Q6K GPU matmul mismatch: got={}, expected={}, diff={}", result[0], expected_sum, diff);
+    }
+
+    #[test]
+    fn test_q5k_dequant() {
+        // Construct a synthetic Q5_K block (176 bytes = 256 values)
+        // Layout: d(f16=2) + dmin(f16=2) + scales(12) + qh(32) + qs(128) = 176
+        let mut block = vec![0u8; 176];
+
+        // d = 1.0 as f16
+        let d_bits = half::f16::from_f32(1.0).to_bits();
+        block[0] = (d_bits & 0xFF) as u8;
+        block[1] = (d_bits >> 8) as u8;
+        // dmin = 0.5 as f16
+        let dmin_bits = half::f16::from_f32(0.5).to_bits();
+        block[2] = (dmin_bits & 0xFF) as u8;
+        block[3] = (dmin_bits >> 8) as u8;
+
+        // scales[12]: set sub-block 0 scale=2, min=1; rest zero
+        // For j=0: sc = scales[0] & 63, m = scales[4] & 63
+        block[4] = 2; // scale for sub-block 0
+        block[8] = 1; // min for sub-block 0
+
+        // qs[128] at offset 48: set first byte to 0x32 (lo=2, hi=3)
+        block[48] = 0x32;
+        // qh[32] at offset 16: set bit 0 for value 0 (5th bit = 1)
+        block[16] = 0x01; // bit 0 = value index 0
+
+        let result = safetensors_to_f32(&block, DType::Q5_K);
+        assert_eq!(result.len(), 256);
+
+        // Value 0: lo_nib=2, qh=1, q=2|(1<<4)=18, val = d*sc*q - dmin*m = 1.0*2*18 - 0.5*1 = 35.5
+        let expected_0 = 1.0f32 * 2.0 * 18.0 - 0.5 * 1.0;
+        assert!((result[0] - expected_0).abs() < 1e-3, "Q5K val[0]: got={}, expected={}", result[0], expected_0);
+
+        // Value 1: qs[1]=0, lo_nib=0, qh bit 1 not set, q=0, val = 1.0*2*0 - 0.5*1 = -0.5
+        let expected_1 = 1.0f32 * 2.0 * 0.0 - 0.5 * 1.0;
+        assert!((result[1] - expected_1).abs() < 1e-3, "Q5K val[1]: got={}, expected={}", result[1], expected_1);
+
+        // Value 32: hi_nib of qs[0]=0x32 is 3, q=3|(0<<4)=3, sub-block 1 with scale=0, min=0
+        // Sub-block 1 has scale=scales[5]&63=0 and min=scales[9]&63=0 → val = 0
+        let expected_32 = 0.0f32;
+        assert!((result[32] - expected_32).abs() < 1e-3, "Q5K val[32]: got={}, expected={}", result[32], expected_32);
+    }
+
+    #[test]
+    fn test_q5k_gpu_matmul() {
+        // Synthetic Q5_K block test on GPU
+        let mut block = vec![0u8; 176];
+        let d_bits = half::f16::from_f32(0.1).to_bits();
+        block[0] = (d_bits & 0xFF) as u8;
+        block[1] = (d_bits >> 8) as u8;
+        let dmin_bits = half::f16::from_f32(0.05).to_bits();
+        block[2] = (dmin_bits & 0xFF) as u8;
+        block[3] = (dmin_bits >> 8) as u8;
+
+        // Set scale=3, min=2 for sub-block 0
+        block[4] = 3;
+        block[8] = 2;
+        // Set scale=1, min=1 for sub-block 1
+        block[5] = 1;
+        block[9] = 1;
+
+        // Fill qs with pattern
+        for i in 0..128 {
+            block[48 + i] = ((i * 7 + 3) % 256) as u8;
+        }
+        // Fill qh with pattern
+        for i in 0..32 {
+            block[16 + i] = ((i * 13 + 5) % 256) as u8;
+        }
+
+        // CPU reference
+        let cpu_vals = safetensors_to_f32(&block, DType::Q5_K);
+        assert_eq!(cpu_vals.len(), 256);
+        let expected_sum: f32 = cpu_vals.iter().sum();
+
+        // GPU
+        let backend = crate::backend::create_wgpu_backend();
+        let p = &backend.pipelines;
+        let act_data = vec![1.0f32; 256];
+        let act_buf = p.upload_f32(&act_data);
+        let weight_buf = p.upload_bytes(&block);
+
+        let mut enc = p.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let output = crate::backend::wgpu::dispatch::q5k_matmul(p, &mut enc, &act_buf, &weight_buf, 1, 256);
+        p.queue.submit(std::iter::once(enc.finish()));
+
+        let result = p.read_f32(&output, 1);
+        let diff = (result[0] - expected_sum).abs();
+        eprintln!("Q5K GPU test: got={:.6}, expected={:.6}, diff={:.2e}", result[0], expected_sum, diff);
+        assert!(diff < 0.1, "Q5K GPU matmul mismatch: got={}, expected={}, diff={}", result[0], expected_sum, diff);
+    }
+
+    #[test]
+    fn test_q3k_dequant() {
+        // Synthetic Q3_K block (110 bytes = 256 values)
+        // Layout: hmask(32) + qs(64) + scales(12) + d(f16=2) = 110
+        let mut block = vec![0u8; 110];
+
+        // d = 1.0 as f16 at offset 108
+        let d_bits = half::f16::from_f32(1.0).to_bits();
+        block[108] = (d_bits & 0xFF) as u8;
+        block[109] = (d_bits >> 8) as u8;
+
+        // scales[12] at offset 96: set scale for sub-block 0 to raw value 34 (34-32=2)
+        // For j=0: us = (scales[0] & 0xF) | (((scales[8] >> 0) & 3) << 4)
+        // We want us=34: low4=2, high2=2 → scales[0]=(scales[0]&0xF0)|2=2, scales[8]=(scales[8]&~3)|2=2
+        block[96] = 0x02; // low 4 bits = 2
+        block[104] = 0x02; // bits [1:0] = 2 → us = 2 | (2<<4) = 34 → scale = 34-32 = 2
+
+        // qs[64] at offset 32: value 0 → 2 bits at qs[0] bits [1:0]
+        // Set qs[0] = 0x03 → q_lo = 3 for value 0
+        block[32] = 0x03;
+
+        // hmask[32] at offset 0: set bit 0 for value 0 → qh = 1
+        block[0] = 0x01;
+
+        let result = safetensors_to_f32(&block, DType::Q3_K);
+        assert_eq!(result.len(), 256);
+
+        // Value 0: ql=3, hm=1, q3=(3|(1<<2))-4 = 7-4 = 3, scale=2, val = 1.0 * 2 * 3 = 6.0
+        let expected_0 = 6.0f32;
+        assert!((result[0] - expected_0).abs() < 1e-3, "Q3K val[0]: got={}, expected={}", result[0], expected_0);
+    }
+
+    #[test]
+    fn test_q3k_gpu_matmul() {
+        // Synthetic Q3_K GPU test
+        let mut block = vec![0u8; 110];
+        let d_bits = half::f16::from_f32(0.1).to_bits();
+        block[108] = (d_bits & 0xFF) as u8;
+        block[109] = (d_bits >> 8) as u8;
+
+        // Fill scales with pattern that gives known values after unpacking
+        // Use raw value 33 for all sub-blocks (scale = 33-32 = 1)
+        // For j=0: us = (scales[0]&0xF) | (((scales[8]>>(4*(0&1))) & 3)<<4)
+        // Want 33: low4=1, high2=2 → raw[0]|=1, raw[8]|=2
+        for i in 0..4 {
+            block[96 + i] = 0x11; // low nib = 1 for j and j+8
+            block[96 + 4 + i] = 0x11; // for j+4 and j+12
+        }
+        block[96 + 8] = 0x22; // high 2 bits for j=0,1
+        block[96 + 9] = 0x22; // high 2 bits for j=2,3
+        block[96 + 10] = 0x22; // high 2 bits for j=4,5
+        block[96 + 11] = 0x22; // high 2 bits for j=6,7
+
+        // Fill qs and hmask with deterministic pattern
+        for i in 0..64 {
+            block[32 + i] = ((i * 17 + 7) % 256) as u8;
+        }
+        for i in 0..32 {
+            block[i] = ((i * 11 + 3) % 256) as u8;
+        }
+
+        let cpu_vals = safetensors_to_f32(&block, DType::Q3_K);
+        assert_eq!(cpu_vals.len(), 256);
+        let expected_sum: f32 = cpu_vals.iter().sum();
+
+        let backend = crate::backend::create_wgpu_backend();
+        let p = &backend.pipelines;
+        let act_data = vec![1.0f32; 256];
+        let act_buf = p.upload_f32(&act_data);
+        let weight_buf = p.upload_bytes(&block);
+
+        let mut enc = p.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let output = crate::backend::wgpu::dispatch::q3k_matmul(p, &mut enc, &act_buf, &weight_buf, 1, 256);
+        p.queue.submit(std::iter::once(enc.finish()));
+
+        let result = p.read_f32(&output, 1);
+        let diff = (result[0] - expected_sum).abs();
+        eprintln!("Q3K GPU test: got={:.6}, expected={:.6}, diff={:.2e}", result[0], expected_sum, diff);
+        assert!(diff < 0.1, "Q3K GPU matmul mismatch: got={}, expected={}, diff={}", result[0], expected_sum, diff);
+    }
+
+    #[test]
+    fn test_q2k_dequant() {
+        // Synthetic Q2_K block (84 bytes = 256 values)
+        // Layout: scales(16) + qs(64) + d(f16=2) + dmin(f16=2) = 84
+        let mut block = vec![0u8; 84];
+
+        // d = 1.0 as f16 at offset 80
+        let d_bits = half::f16::from_f32(1.0).to_bits();
+        block[80] = (d_bits & 0xFF) as u8;
+        block[81] = (d_bits >> 8) as u8;
+        // dmin = 0.5 as f16 at offset 82
+        let dmin_bits = half::f16::from_f32(0.5).to_bits();
+        block[82] = (dmin_bits & 0xFF) as u8;
+        block[83] = (dmin_bits >> 8) as u8;
+
+        // scales[16] at offset 0: sub-block 0 scale=3, min=2 → byte = (2<<4)|3 = 0x23
+        block[0] = 0x23;
+
+        // qs[64] at offset 16: value 0 at qs[0] bits [1:0]
+        // Set qs[0] = 0x03 → q2 = 3 for value 0
+        block[16] = 0x03;
+
+        let result = safetensors_to_f32(&block, DType::Q2_K);
+        assert_eq!(result.len(), 256);
+
+        // Value 0: sc=3, m=2, q2=3, val = d*sc*q2 - dmin*m = 1.0*3*3 - 0.5*2 = 8.0
+        let expected_0 = 8.0f32;
+        assert!((result[0] - expected_0).abs() < 1e-3, "Q2K val[0]: got={}, expected={}", result[0], expected_0);
+
+        // Value 1: at qs[0] bits [3:2] = 0, so q2=0, val = 1.0*3*0 - 0.5*2 = -1.0
+        let expected_1 = -1.0f32;
+        assert!((result[1] - expected_1).abs() < 1e-3, "Q2K val[1]: got={}, expected={}", result[1], expected_1);
+    }
+
+    #[test]
+    fn test_q2k_gpu_matmul() {
+        // Synthetic Q2_K GPU test
+        let mut block = vec![0u8; 84];
+        let d_bits = half::f16::from_f32(0.1).to_bits();
+        block[80] = (d_bits & 0xFF) as u8;
+        block[81] = (d_bits >> 8) as u8;
+        let dmin_bits = half::f16::from_f32(0.05).to_bits();
+        block[82] = (dmin_bits & 0xFF) as u8;
+        block[83] = (dmin_bits >> 8) as u8;
+
+        // Fill scales: each sub-block gets scale=2, min=1 → byte = (1<<4)|2 = 0x12
+        for i in 0..16 {
+            block[i] = 0x12;
+        }
+
+        // Fill qs with pattern
+        for i in 0..64 {
+            block[16 + i] = ((i * 19 + 11) % 256) as u8;
+        }
+
+        let cpu_vals = safetensors_to_f32(&block, DType::Q2_K);
+        assert_eq!(cpu_vals.len(), 256);
+        let expected_sum: f32 = cpu_vals.iter().sum();
+
+        let backend = crate::backend::create_wgpu_backend();
+        let p = &backend.pipelines;
+        let act_data = vec![1.0f32; 256];
+        let act_buf = p.upload_f32(&act_data);
+        let weight_buf = p.upload_bytes(&block);
+
+        let mut enc = p.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let output = crate::backend::wgpu::dispatch::q2k_matmul(p, &mut enc, &act_buf, &weight_buf, 1, 256);
+        p.queue.submit(std::iter::once(enc.finish()));
+
+        let result = p.read_f32(&output, 1);
+        let diff = (result[0] - expected_sum).abs();
+        eprintln!("Q2K GPU test: got={:.6}, expected={:.6}, diff={:.2e}", result[0], expected_sum, diff);
+        assert!(diff < 0.1, "Q2K GPU matmul mismatch: got={}, expected={}, diff={}", result[0], expected_sum, diff);
     }
 }
