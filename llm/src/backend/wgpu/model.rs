@@ -1152,19 +1152,19 @@ impl NativeModel {
                     let (q, q_bg, q_wg, q_shader) = dispatch::prepare_matmul_for_quant(
                         &p, &normed, &self.layers[i].q_proj_packed, &self.layers[i].q_proj_scales,
                         &lp.q_matmul_params, self.layers[i].q_n, lp.q_matmul_wg,
-                        quant_fmt_to_dispatch(quant_fmt),
+                        quant_fmt_to_dispatch(self.layers[i].q_proj_quant),
                     );
                     all_dispatches.push(DispatchCmd { shader: q_shader, bg: q_bg, wg: q_wg });
                     let (k, k_bg, k_wg, k_shader) = dispatch::prepare_matmul_for_quant(
                         &p, &normed, &self.layers[i].k_proj_packed, &self.layers[i].k_proj_scales,
                         &lp.k_matmul_params, self.layers[i].k_n, lp.k_matmul_wg,
-                        quant_fmt_to_dispatch(quant_fmt),
+                        quant_fmt_to_dispatch(self.layers[i].k_proj_quant),
                     );
                     all_dispatches.push(DispatchCmd { shader: k_shader, bg: k_bg, wg: k_wg });
                     let (v, v_bg, v_wg, v_shader) = dispatch::prepare_matmul_for_quant(
                         &p, &normed, &self.layers[i].v_proj_packed, &self.layers[i].v_proj_scales,
                         &lp.v_matmul_params, self.layers[i].v_n, lp.v_matmul_wg,
-                        quant_fmt_to_dispatch(quant_fmt),
+                        quant_fmt_to_dispatch(self.layers[i].v_proj_quant),
                     );
                     all_dispatches.push(DispatchCmd { shader: v_shader, bg: v_bg, wg: v_wg });
                     q_buf = q; k_buf = k; v_buf = v;
@@ -1266,7 +1266,7 @@ impl NativeModel {
                 let (attn_proj, oproj_bg, oproj_wg, oproj_shader) = dispatch::prepare_matmul_for_quant(
                     &p, &attn_out, &self.layers[i].o_proj_packed, &self.layers[i].o_proj_scales,
                     &lp.o_matmul_params, self.layers[i].o_n, lp.o_matmul_wg,
-                    quant_fmt_to_dispatch(quant_fmt),
+                    quant_fmt_to_dispatch(self.layers[i].o_proj_quant),
                 );
                 all_dispatches.push(DispatchCmd { shader: oproj_shader, bg: oproj_bg, wg: oproj_wg });
 
@@ -1282,13 +1282,13 @@ impl NativeModel {
                     let (g, gate_bg, gate_wg, gate_shader) = dispatch::prepare_matmul_for_quant(
                         &p, &normed2, &self.layers[i].gate_proj_packed, &self.layers[i].gate_proj_scales,
                         &lp.gate_matmul_params, self.layers[i].gate_n, lp.gate_matmul_wg,
-                        quant_fmt_to_dispatch(quant_fmt),
+                        quant_fmt_to_dispatch(self.layers[i].gate_proj_quant),
                     );
                     all_dispatches.push(DispatchCmd { shader: gate_shader, bg: gate_bg, wg: gate_wg });
                     let (u, up_bg, up_wg, up_shader) = dispatch::prepare_matmul_for_quant(
                         &p, &normed2, &self.layers[i].up_proj_packed, &self.layers[i].up_proj_scales,
                         &lp.up_matmul_params, self.layers[i].up_n, lp.up_matmul_wg,
-                        quant_fmt_to_dispatch(quant_fmt),
+                        quant_fmt_to_dispatch(self.layers[i].up_proj_quant),
                     );
                     all_dispatches.push(DispatchCmd { shader: up_shader, bg: up_bg, wg: up_wg });
                     gate = g; up = u;
@@ -1300,7 +1300,7 @@ impl NativeModel {
                 let (ffn_out, down_bg, down_wg, down_shader) = dispatch::prepare_matmul_for_quant(
                     &p, &ffn, &self.layers[i].down_proj_packed, &self.layers[i].down_proj_scales,
                     &lp.down_matmul_params, self.layers[i].down_n, lp.down_matmul_wg,
-                    quant_fmt_to_dispatch(quant_fmt),
+                    quant_fmt_to_dispatch(self.layers[i].down_proj_quant),
                 );
                 all_dispatches.push(DispatchCmd { shader: down_shader, bg: down_bg, wg: down_wg });
 
@@ -2343,5 +2343,55 @@ f67c6b559a12262625162b0477908e57538a1989285636485a6a597b58";
         eprintln!("Q4K multi: row1 got={:.6} exp={:.6} diff={:.2e}", result[1], exp1, (result[1]-exp1).abs());
         assert!((result[0]-exp0).abs() < 0.01, "row0 mismatch");
         assert!((result[1]-exp1).abs() < 0.01, "row1 mismatch");
+    }
+
+    #[test]
+    fn test_q4k_gpu_fullsize() {
+        // Test with real model row: N=1, K=5120 (20 superblocks)
+        let model_path = std::path::Path::new("/Users/mastercyb/llm/qwen2.5-coder-14b-abl.model");
+        if !model_path.exists() { eprintln!("SKIP"); return; }
+
+        let data = std::fs::read(model_path).unwrap();
+        let ws = data.windows(11).position(|w| w == b"~~~weights\n").unwrap() + 11;
+        let offset = 17739776usize;
+        let bpr = 20usize;
+
+        let row_data = data[ws+offset..ws+offset+bpr*144].to_vec();
+
+        // CPU dequant
+        fn dequant_block(block: &[u8]) -> Vec<f32> {
+            let d = half::f16::from_le_bytes([block[0], block[1]]).to_f32();
+            let dm = half::f16::from_le_bytes([block[2], block[3]]).to_f32();
+            let sc = &block[4..16]; let qs = &block[16..144];
+            fn gsm(j: usize, sc: &[u8]) -> (f32, f32) {
+                if j < 4 { ((sc[j]&63) as f32, (sc[j+4]&63) as f32) }
+                else { (((sc[j+4]&0xF)|((sc[j-4]>>6)<<4)) as f32, ((sc[j+4]>>4)|((sc[j]>>6)<<4)) as f32) }
+            }
+            let mut v = vec![0.0f32; 256];
+            for g in 0..4 {
+                let (s1,m1) = gsm(g*2,sc); let (s2,m2) = gsm(g*2+1,sc);
+                for l in 0..32 { let q=qs[g*32+l]; v[g*64+l]=d*s1*(q&0xF) as f32-dm*m1; v[g*64+l+32]=d*s2*(q>>4) as f32-dm*m2; }
+            }
+            v
+        }
+
+        let mut all_vals = Vec::with_capacity(5120);
+        for b in 0..bpr { all_vals.extend(dequant_block(&row_data[b*144..(b+1)*144])); }
+
+        let act = vec![1.0f32; 5120];
+        let expected: f32 = act.iter().zip(all_vals.iter()).map(|(a,w)| a*w).sum();
+
+        let backend = crate::backend::create_wgpu_backend();
+        let p = &backend.pipelines;
+        let act_buf = p.upload_f32(&act);
+        let weight_buf = p.upload_bytes(&row_data);
+
+        let mut enc = p.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let output = crate::backend::wgpu::dispatch::q4k_matmul(p, &mut enc, &act_buf, &weight_buf, 1, 5120);
+        p.queue.submit(std::iter::once(enc.finish()));
+        let result = p.read_f32(&output, 1);
+
+        eprintln!("Q4K fullsize: got={:.6} exp={:.6} diff={:.2e}", result[0], expected, (result[0]-expected).abs());
+        assert!((result[0]-expected).abs() < 0.1, "fullsize mismatch: got={} exp={}", result[0], expected);
     }
 }
