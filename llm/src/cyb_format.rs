@@ -1157,6 +1157,23 @@ impl LoadedModel {
             });
         }
 
+        // Validate that all encodings are from the canonical set.
+        // Canonical: q4k, q6k, q5k, q3k, q2k, q8, u16 (F16), u32 (F32), ternary.
+        // Q4 (Q4_0) is allowed for backwards compat with older .model files.
+        for t in &tensor_index {
+            match t.dtype {
+                DType::Q4_K | DType::Q6_K | DType::Q5_K | DType::Q3_K | DType::Q2_K |
+                DType::Q8 | DType::F16 | DType::F32 | DType::Ternary | DType::U8 |
+                DType::Q4 => {}
+                _ => {
+                    return Err(io::Error::new(
+                        io::ErrorKind::InvalidData,
+                        format!("Unsupported encoding '{}' for tensor '{}'. Re-import the model.", t.dtype, t.name),
+                    ));
+                }
+            }
+        }
+
         Ok(LoadedModel { config: mf.config, vocab: mf.vocab, weights })
     }
 

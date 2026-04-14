@@ -211,30 +211,42 @@ impl MetalModel {
             crate::ir::DType::Q3_K => WeightFormat::Q3K,
             crate::ir::DType::Q2_K => WeightFormat::Q2K,
             crate::ir::DType::Q4 => WeightFormat::Q4,
-            _ => WeightFormat::F16,
+            crate::ir::DType::F16 | crate::ir::DType::F32 | crate::ir::DType::Q8 => WeightFormat::F16,
+            _ => return Err(format!(
+                "Unsupported dtype {:?} for lm_head.weight. Re-import the model.", lm_w.dtype
+            )),
         };
-        let lm_head_q4 = if matches!(lm_w.dtype, crate::ir::DType::Q4) {
-            let transposed = transpose_q4_blocks(&lm_w.data, vocab_size, hidden_size);
-            pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?
-        } else if matches!(lm_w.dtype, crate::ir::DType::Q4_K) {
-            let transposed = transpose_blocks(&lm_w.data, vocab_size, hidden_size, 256, 144);
-            pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?
-        } else if matches!(lm_w.dtype, crate::ir::DType::Q5_K) {
-            let transposed = transpose_blocks(&lm_w.data, vocab_size, hidden_size, 256, 176);
-            pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?
-        } else if matches!(lm_w.dtype, crate::ir::DType::Q6_K) {
-            let transposed = transpose_blocks(&lm_w.data, vocab_size, hidden_size, 256, 210);
-            pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?
-        } else if matches!(lm_w.dtype, crate::ir::DType::Q3_K) {
-            let transposed = transpose_blocks(&lm_w.data, vocab_size, hidden_size, 256, 110);
-            pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?
-        } else if matches!(lm_w.dtype, crate::ir::DType::Q2_K) {
-            let transposed = transpose_blocks(&lm_w.data, vocab_size, hidden_size, 256, 84);
-            pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?
-        } else {
-            let f32s = crate::backend::wgpu::model::safetensors_to_f32(&lm_w.data, lm_w.dtype);
-            let packed = quantize_f32_to_block_q4_0(&f32s, vocab_size, hidden_size);
-            pipelines.upload_bytes(&packed).map_err(|e| format!("{e}"))?
+        let lm_head_q4 = match lm_w.dtype {
+            crate::ir::DType::Q4 => {
+                let transposed = transpose_q4_blocks(&lm_w.data, vocab_size, hidden_size);
+                pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?
+            }
+            crate::ir::DType::Q4_K => {
+                let transposed = transpose_blocks(&lm_w.data, vocab_size, hidden_size, 256, 144);
+                pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?
+            }
+            crate::ir::DType::Q5_K => {
+                let transposed = transpose_blocks(&lm_w.data, vocab_size, hidden_size, 256, 176);
+                pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?
+            }
+            crate::ir::DType::Q6_K => {
+                let transposed = transpose_blocks(&lm_w.data, vocab_size, hidden_size, 256, 210);
+                pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?
+            }
+            crate::ir::DType::Q3_K => {
+                let transposed = transpose_blocks(&lm_w.data, vocab_size, hidden_size, 256, 110);
+                pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?
+            }
+            crate::ir::DType::Q2_K => {
+                let transposed = transpose_blocks(&lm_w.data, vocab_size, hidden_size, 256, 84);
+                pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?
+            }
+            _ => {
+                // F16, F32, Q8 — convert to f32 then pack as Q4_0
+                let f32s = crate::backend::wgpu::model::safetensors_to_f32(&lm_w.data, lm_w.dtype);
+                let packed = quantize_f32_to_block_q4_0(&f32s, vocab_size, hidden_size);
+                pipelines.upload_bytes(&packed).map_err(|e| format!("{e}"))?
+            }
         };
 
         // LM head f16 (for f16 mode)
@@ -288,16 +300,19 @@ impl MetalModel {
                     let transposed = transpose_blocks(&w.data, n, k, 256, 84);
                     Ok((pipelines.upload_bytes(&transposed).map_err(|e| format!("{e}"))?, WeightFormat::Q2K))
                 }
-                crate::ir::DType::F16 | crate::ir::DType::BF16 => {
+                crate::ir::DType::F16 => {
                     let f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
                     let f16s: Vec<u16> = f32s.iter().map(|&v| aruminium::f32_to_fp16(v)).collect();
                     Ok((pipelines.upload_f16(&f16s).map_err(|e| format!("{e}"))?, WeightFormat::F16))
                 }
-                _ => {
+                crate::ir::DType::F32 => {
                     let f32s = crate::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
                     let packed = quantize_f32_to_block_q4_0(&f32s, n, k);
                     Ok((pipelines.upload_bytes(&packed).map_err(|e| format!("{e}"))?, WeightFormat::Q4))
                 }
+                _ => Err(format!(
+                    "Unsupported dtype {:?} for weight '{}'. Re-import the model.", w.dtype, name
+                ))
             }
         };
 

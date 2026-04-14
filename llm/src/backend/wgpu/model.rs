@@ -327,6 +327,22 @@ pub fn safetensors_to_f32(data: &[u8], dtype: crate::ir::DType) -> Vec<f32> {
                 vals
             }).collect()
         }
+        DType::Q4_1 => {
+            // GGUF Q4_1: blocks of {half scale, half min, uint8_t qs[16]} = 20 bytes = 32 weights
+            let block_size = 20;
+            data.chunks_exact(block_size).flat_map(|block| {
+                let scale = half::f16::from_le_bytes([block[0], block[1]]).to_f32();
+                let min = half::f16::from_le_bytes([block[2], block[3]]).to_f32();
+                let qs = &block[4..20];
+                let mut vals = [0.0f32; 32];
+                for j in 0..16 {
+                    let byte = qs[j];
+                    vals[j] = scale * (byte & 0x0F) as f32 + min;
+                    vals[j + 16] = scale * (byte >> 4) as f32 + min;
+                }
+                vals
+            }).collect()
+        }
         DType::Q8 => {
             // GGUF Q8_0: blocks of {half scale, int8_t qs[32]} = 34 bytes = 32 weights
             let block_size = 34;
@@ -1076,25 +1092,37 @@ impl NativeModel {
 
         let (lm_head, lm_head_quant) = if !tie_word_embeddings {
             if let Some(lm_w) = weights.get("lm_head.weight") {
-                if matches!(lm_w.dtype, crate::ir::DType::Q4_K) {
-                    log::info!("Uploading lm_head as Q4_K ({:.1}MB)", lm_w.data.len() as f64 / 1e6);
-                    (Some(pipelines.upload_bytes(&lm_w.data)), QuantFormat::Q4K)
-                } else if matches!(lm_w.dtype, crate::ir::DType::Q5_K) {
-                    log::info!("Uploading lm_head as Q5_K ({:.1}MB)", lm_w.data.len() as f64 / 1e6);
-                    (Some(pipelines.upload_bytes(&lm_w.data)), QuantFormat::Q5K)
-                } else if matches!(lm_w.dtype, crate::ir::DType::Q6_K) {
-                    log::info!("Uploading lm_head as Q6_K ({:.1}MB)", lm_w.data.len() as f64 / 1e6);
-                    (Some(pipelines.upload_bytes(&lm_w.data)), QuantFormat::Q6K)
-                } else if matches!(lm_w.dtype, crate::ir::DType::Q3_K) {
-                    log::info!("Uploading lm_head as Q3_K ({:.1}MB)", lm_w.data.len() as f64 / 1e6);
-                    (Some(pipelines.upload_bytes(&lm_w.data)), QuantFormat::Q3K)
-                } else if matches!(lm_w.dtype, crate::ir::DType::Q2_K) {
-                    log::info!("Uploading lm_head as Q2_K ({:.1}MB)", lm_w.data.len() as f64 / 1e6);
-                    (Some(pipelines.upload_bytes(&lm_w.data)), QuantFormat::Q2K)
-                } else {
-                    let f32_data = safetensors_to_f32(&lm_w.data, lm_w.dtype);
-                    log::info!("Uploading lm_head as f32 ({:.1}MB)", f32_data.len() as f64 * 4.0 / 1e6);
-                    (Some(pipelines.upload_f32(&f32_data)), QuantFormat::F32)
+                match lm_w.dtype {
+                    crate::ir::DType::Q4_K => {
+                        log::info!("Uploading lm_head as Q4_K ({:.1}MB)", lm_w.data.len() as f64 / 1e6);
+                        (Some(pipelines.upload_bytes(&lm_w.data)), QuantFormat::Q4K)
+                    }
+                    crate::ir::DType::Q5_K => {
+                        log::info!("Uploading lm_head as Q5_K ({:.1}MB)", lm_w.data.len() as f64 / 1e6);
+                        (Some(pipelines.upload_bytes(&lm_w.data)), QuantFormat::Q5K)
+                    }
+                    crate::ir::DType::Q6_K => {
+                        log::info!("Uploading lm_head as Q6_K ({:.1}MB)", lm_w.data.len() as f64 / 1e6);
+                        (Some(pipelines.upload_bytes(&lm_w.data)), QuantFormat::Q6K)
+                    }
+                    crate::ir::DType::Q3_K => {
+                        log::info!("Uploading lm_head as Q3_K ({:.1}MB)", lm_w.data.len() as f64 / 1e6);
+                        (Some(pipelines.upload_bytes(&lm_w.data)), QuantFormat::Q3K)
+                    }
+                    crate::ir::DType::Q2_K => {
+                        log::info!("Uploading lm_head as Q2_K ({:.1}MB)", lm_w.data.len() as f64 / 1e6);
+                        (Some(pipelines.upload_bytes(&lm_w.data)), QuantFormat::Q2K)
+                    }
+                    crate::ir::DType::F32 | crate::ir::DType::F16 | crate::ir::DType::Q4 | crate::ir::DType::Q8 => {
+                        let f32_data = safetensors_to_f32(&lm_w.data, lm_w.dtype);
+                        log::info!("Uploading lm_head as f32 ({:.1}MB)", f32_data.len() as f64 * 4.0 / 1e6);
+                        (Some(pipelines.upload_f32(&f32_data)), QuantFormat::F32)
+                    }
+                    _ => {
+                        return Err(format!(
+                            "Unsupported dtype {:?} for lm_head.weight. Re-import the model.", lm_w.dtype
+                        ));
+                    }
                 }
             } else { (None, QuantFormat::F32) }
         } else { (None, QuantFormat::F32) };
@@ -1140,33 +1168,50 @@ impl NativeModel {
             let input_norm_f32 = weight_to_f32(&format!("model.layers.{i}.input_layernorm.weight"))?;
             let input_norm_weight = pipelines.upload_f32(&input_norm_f32);
 
-            // K-quant: upload raw bytes directly; Q4/f32/etc: dequant→requant to Q4_0
+            // K-quant: upload raw bytes directly; Q4_0: dequant→requant to Q4_0
             let quantize_upload = |name: &str, n: usize, k: usize| -> Result<(wgpu::Buffer, wgpu::Buffer, QuantFormat), String> {
                 let w = weights.get(name).ok_or_else(|| format!("Missing weight: {name}"))?;
-                if matches!(w.dtype, crate::ir::DType::Q4_K) {
-                    let buf = pipelines.upload_bytes(&w.data);
-                    let dummy_scales = pipelines.upload_f32(&[0.0f32]);
-                    Ok((buf, dummy_scales, QuantFormat::Q4K))
-                } else if matches!(w.dtype, crate::ir::DType::Q5_K) {
-                    let buf = pipelines.upload_bytes(&w.data);
-                    let dummy_scales = pipelines.upload_f32(&[0.0f32]);
-                    Ok((buf, dummy_scales, QuantFormat::Q5K))
-                } else if matches!(w.dtype, crate::ir::DType::Q6_K) {
-                    let buf = pipelines.upload_bytes(&w.data);
-                    let dummy_scales = pipelines.upload_f32(&[0.0f32]);
-                    Ok((buf, dummy_scales, QuantFormat::Q6K))
-                } else if matches!(w.dtype, crate::ir::DType::Q3_K) {
-                    let buf = pipelines.upload_bytes(&w.data);
-                    let dummy_scales = pipelines.upload_f32(&[0.0f32]);
-                    Ok((buf, dummy_scales, QuantFormat::Q3K))
-                } else if matches!(w.dtype, crate::ir::DType::Q2_K) {
-                    let buf = pipelines.upload_bytes(&w.data);
-                    let dummy_scales = pipelines.upload_f32(&[0.0f32]);
-                    Ok((buf, dummy_scales, QuantFormat::Q2K))
-                } else {
-                    let f32_data = safetensors_to_f32(&w.data, w.dtype);
-                    let (packed, scales) = quantize_f32_to_q4(&f32_data, n, k);
-                    Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales), QuantFormat::Q4))
+                match w.dtype {
+                    crate::ir::DType::Q4_K => {
+                        let buf = pipelines.upload_bytes(&w.data);
+                        let dummy_scales = pipelines.upload_f32(&[0.0f32]);
+                        Ok((buf, dummy_scales, QuantFormat::Q4K))
+                    }
+                    crate::ir::DType::Q5_K => {
+                        let buf = pipelines.upload_bytes(&w.data);
+                        let dummy_scales = pipelines.upload_f32(&[0.0f32]);
+                        Ok((buf, dummy_scales, QuantFormat::Q5K))
+                    }
+                    crate::ir::DType::Q6_K => {
+                        let buf = pipelines.upload_bytes(&w.data);
+                        let dummy_scales = pipelines.upload_f32(&[0.0f32]);
+                        Ok((buf, dummy_scales, QuantFormat::Q6K))
+                    }
+                    crate::ir::DType::Q3_K => {
+                        let buf = pipelines.upload_bytes(&w.data);
+                        let dummy_scales = pipelines.upload_f32(&[0.0f32]);
+                        Ok((buf, dummy_scales, QuantFormat::Q3K))
+                    }
+                    crate::ir::DType::Q2_K => {
+                        let buf = pipelines.upload_bytes(&w.data);
+                        let dummy_scales = pipelines.upload_f32(&[0.0f32]);
+                        Ok((buf, dummy_scales, QuantFormat::Q2K))
+                    }
+                    crate::ir::DType::Q4 => {
+                        // Legacy Q4_0 — dequant and requant (backwards compat for old .model files)
+                        let f32_data = safetensors_to_f32(&w.data, w.dtype);
+                        let (packed, scales) = quantize_f32_to_q4(&f32_data, n, k);
+                        Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales), QuantFormat::Q4))
+                    }
+                    crate::ir::DType::F32 | crate::ir::DType::F16 => {
+                        // Float weights — dequant and requant to Q4_0
+                        let f32_data = safetensors_to_f32(&w.data, w.dtype);
+                        let (packed, scales) = quantize_f32_to_q4(&f32_data, n, k);
+                        Ok((pipelines.upload_u32(&packed), pipelines.upload_f32(&scales), QuantFormat::Q4))
+                    }
+                    _ => Err(format!(
+                        "Unsupported dtype {:?} for weight '{}'. Re-import the model.", w.dtype, name
+                    )),
                 }
             };
 

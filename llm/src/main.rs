@@ -1396,6 +1396,11 @@ print('\n'.join(lines))
     let mut weight_data = Vec::new();
     let mut offset = 0usize;
 
+    // Conversion counters
+    let mut q4_0_to_q4k = 0usize;
+    let mut q4_1_to_q4k = 0usize;
+    let mut bf16_to_f16 = 0usize;
+
     // Sort tensors by name for deterministic output
     let mut tensor_names: Vec<&String> = graph.weights.keys().collect();
     tensor_names.sort();
@@ -1403,22 +1408,49 @@ print('\n'.join(lines))
     for tname in &tensor_names {
         let w = &graph.weights[*tname];
 
-        // Q6_K passes through natively — no conversion needed
-        let encoding = match w.dtype {
-            cyb_llm::ir::DType::F32 => "u32",
-            cyb_llm::ir::DType::F16 | cyb_llm::ir::DType::BF16 => "u16",
-            cyb_llm::ir::DType::Q4 => "q4",
-            cyb_llm::ir::DType::Q8 => "q8",
-            cyb_llm::ir::DType::Ternary | cyb_llm::ir::DType::U8 => "ternary",
-            cyb_llm::ir::DType::Q4_K => "q4k",
-            cyb_llm::ir::DType::Q6_K => "q6k",
-            cyb_llm::ir::DType::Q4_1 => "q4",
-            cyb_llm::ir::DType::Q2_K => "q2k",
-            cyb_llm::ir::DType::Q3_K => "q3k",
-            cyb_llm::ir::DType::Q5_K => "q5k",
-            _ => "u32",
+        // Normalize obsolete formats to canonical set during import:
+        //   Q4_0 → Q4_K, Q4_1 → Q4_K, BF16 → F16
+        // Canonical set: q4k, q6k, q5k, q3k, q2k, q8, u16, u32
+        let (encoding, converted_data): (&str, Option<Vec<u8>>) = match w.dtype {
+            cyb_llm::ir::DType::F32 => ("u32", None),
+            cyb_llm::ir::DType::F16 => ("u16", None),
+            cyb_llm::ir::DType::BF16 => {
+                // BF16 → f32 → f16
+                bf16_to_f16 += 1;
+                let f32s = cyb_llm::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
+                let f16_bytes: Vec<u8> = f32s.iter().flat_map(|&v| {
+                    half::f16::from_f32(v).to_le_bytes()
+                }).collect();
+                ("u16", Some(f16_bytes))
+            }
+            cyb_llm::ir::DType::Q4 => {
+                // Q4_0 → f32 → Q4_K
+                q4_0_to_q4k += 1;
+                let f32s = cyb_llm::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
+                let n = w.shape.first().copied().unwrap_or(1);
+                let k = if w.shape.len() >= 2 { w.shape[1] } else { f32s.len() / n };
+                let q4k_data = cyb_llm::import::quantize_f32_to_q4k(&f32s, n, k);
+                ("q4k", Some(q4k_data))
+            }
+            cyb_llm::ir::DType::Q4_1 => {
+                // Q4_1 → f32 → Q4_K
+                q4_1_to_q4k += 1;
+                let f32s = cyb_llm::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
+                let n = w.shape.first().copied().unwrap_or(1);
+                let k = if w.shape.len() >= 2 { w.shape[1] } else { f32s.len() / n };
+                let q4k_data = cyb_llm::import::quantize_f32_to_q4k(&f32s, n, k);
+                ("q4k", Some(q4k_data))
+            }
+            cyb_llm::ir::DType::Q8 => ("q8", None),
+            cyb_llm::ir::DType::Ternary | cyb_llm::ir::DType::U8 => ("ternary", None),
+            cyb_llm::ir::DType::Q4_K => ("q4k", None),
+            cyb_llm::ir::DType::Q6_K => ("q6k", None),
+            cyb_llm::ir::DType::Q2_K => ("q2k", None),
+            cyb_llm::ir::DType::Q3_K => ("q3k", None),
+            cyb_llm::ir::DType::Q5_K => ("q5k", None),
+            _ => ("u32", None),
         };
-        let data_ref = &w.data;
+        let data_ref = converted_data.as_deref().unwrap_or(&w.data);
         let size = data_ref.len();
         let shape_str = w.shape.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", ");
 
@@ -1429,10 +1461,16 @@ print('\n'.join(lines))
             hf_name, shape_str, encoding, offset, size
         ));
 
-        weight_data.extend_from_slice(&data_ref);
+        weight_data.extend_from_slice(data_ref);
         offset += size;
     }
     let tensors_toml = tensors_lines.join("\n");
+
+    // Print conversion summary
+    if q4_0_to_q4k > 0 || q4_1_to_q4k > 0 || bf16_to_f16 > 0 {
+        println!("Converted: {} Q4_0 → Q4_K, {} Q4_1 → Q4_K, {} BF16 → F16",
+            q4_0_to_q4k, q4_1_to_q4k, bf16_to_f16);
+    }
     println!("  weights: {} bytes ({:.1} GB)", weight_data.len(), weight_data.len() as f64 / 1e9);
 
     // Write .model file
