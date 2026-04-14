@@ -126,6 +126,10 @@ struct ModelParamBuffers {
     final_norm_wg: (u32, u32, u32),
     f32_matmul_params: wgpu::Buffer,
     f32_matmul_wg: (u32, u32, u32),
+    f16_matmul_params: wgpu::Buffer,
+    f16_matmul_wg: (u32, u32, u32),
+    q4k_lm_params: wgpu::Buffer,
+    q4k_lm_wg: (u32, u32, u32),
     argmax_params: wgpu::Buffer,
     argmax_wg: (u32, u32, u32),
 }
@@ -141,6 +145,7 @@ pub struct NativeModel {
     embed_f32: Vec<f32>,
     /// Separate LM head weights (None = tied to embed_table)
     lm_head: Option<wgpu::Buffer>,
+    lm_head_quant: QuantFormat,
     layers: Vec<LayerWeights>,
     final_norm_weight: wgpu::Buffer,
     cos_cache: Vec<f32>,
@@ -814,13 +819,18 @@ impl NativeModel {
             pipelines.upload_f32(&[0.0f32])
         };
 
-        let lm_head = if !tie_word_embeddings {
-            weights.get("lm_head.weight").map(|lm_w| {
-                log::info!("Uploading lm_head ({} elements, {:.1}MB)", lm_w.shape.iter().product::<usize>(),
-                    safetensors_to_f32(&lm_w.data, lm_w.dtype).len() as f64 * 4.0 / 1e6);
-                pipelines.upload_f32(&safetensors_to_f32(&lm_w.data, lm_w.dtype))
-            })
-        } else { None };
+        let (lm_head, lm_head_quant) = if !tie_word_embeddings {
+            if let Some(lm_w) = weights.get("lm_head.weight") {
+                if matches!(lm_w.dtype, crate::ir::DType::Q4_K) {
+                    log::info!("Uploading lm_head as Q4_K ({:.1}MB)", lm_w.data.len() as f64 / 1e6);
+                    (Some(pipelines.upload_bytes(&lm_w.data)), QuantFormat::Q4K)
+                } else {
+                    let f32_data = safetensors_to_f32(&lm_w.data, lm_w.dtype);
+                    log::info!("Uploading lm_head as f32 ({:.1}MB)", f32_data.len() as f64 * 4.0 / 1e6);
+                    (Some(pipelines.upload_f32(&f32_data)), QuantFormat::F32)
+                }
+            } else { (None, QuantFormat::F32) }
+        } else { (None, QuantFormat::F32) };
 
         // Note: embed lookup is done on CPU using embed_f32, so no GPU sync needed
         // for the embed table. The lm_head is used in f32_matmul which runs after
@@ -907,6 +917,8 @@ impl NativeModel {
             let precompute_matmul = |qf: QuantFormat, n: u32, k: u32| -> (wgpu::Buffer, (u32, u32, u32)) {
                 match qf {
                     QuantFormat::Q4K => precompute_q4k_matmul(&pipelines, n, k),
+                    QuantFormat::F16 => precompute_f16_matmul(&pipelines, n, k),
+                    QuantFormat::F32 => precompute_f32_matmul(&pipelines, n, k),
                     _ => precompute_q4_matmul(&pipelines, n, k, bs),
                 }
             };
@@ -994,6 +1006,8 @@ impl NativeModel {
 
         let (final_norm_params, final_norm_wg) = precompute_rms_norm(&pipelines, 1, hidden_size as u32, rms_norm_eps);
         let (f32_matmul_params, f32_matmul_wg) = precompute_f32_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
+        let (f16_matmul_params, f16_matmul_wg) = precompute_f16_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
+        let (q4k_lm_params, q4k_lm_wg) = precompute_q4k_matmul(&pipelines, vocab_size as u32, hidden_size as u32);
         let (argmax_params, argmax_wg) = precompute_argmax(&pipelines, vocab_size as u32);
 
         // Persistent staging buffer for greedy argmax readback (4 bytes = 1 f32)
@@ -1014,12 +1028,14 @@ impl NativeModel {
         log::info!(".model loaded: {} layers, {:?} weights", num_layers, model_quant_format);
 
         Ok(Self {
-            config, pipelines, embed_table, embed_f32, lm_head, layers, final_norm_weight,
+            config, pipelines, embed_table, embed_f32, lm_head, lm_head_quant, layers, final_norm_weight,
             cos_cache, sin_cache, kv_cache, past_seq_len: 0, greedy_mode: false,
             quant_format: model_quant_format,
             model_params: ModelParamBuffers {
                 final_norm_params, final_norm_wg,
                 f32_matmul_params, f32_matmul_wg,
+                f16_matmul_params, f16_matmul_wg,
+                q4k_lm_params, q4k_lm_wg,
                 argmax_params, argmax_wg,
             },
             kv_compressor: None,
@@ -1119,8 +1135,8 @@ impl NativeModel {
             if pos_offset < 2 {
                 log::warn!("WGPU embed[token={token_id}][0:4]: {:?}", &embed_slice[..4]);
             }
-            p.queue.write_buffer(&self.decode_embed_buf, 0, bytemuck::cast_slice(embed_slice));
-            let mut hidden = self.decode_embed_buf.clone();
+            // Use fresh buffer for embed (write_buffer may fail under GPU memory pressure)
+            let mut hidden = p.upload_f32(embed_slice);
 
             for i in 0..num_layers {
                 let lp = &self.layers[i].params;
@@ -1330,11 +1346,20 @@ impl NativeModel {
             all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: fn_bg, wg: fn_wg });
 
             let lm_head_buf = self.lm_head.as_ref().unwrap_or(&self.embed_table);
-            let (logits_buf, lm_bg, lm_wg) = dispatch::f32_matmul_prepare_precomputed(
-                &p, &final_normed, lm_head_buf,
-                &mp.f32_matmul_params, vocab, mp.f32_matmul_wg,
-            );
-            all_dispatches.push(DispatchCmd { shader: &p.f32_matmul, bg: lm_bg, wg: lm_wg });
+            let (logits_buf, lm_bg, lm_wg, lm_shader) = if self.lm_head_quant == QuantFormat::Q4K {
+                let (buf, bg, wg) = dispatch::q4k_matmul_prepare_precomputed(
+                    &p, &final_normed, lm_head_buf,
+                    &mp.q4k_lm_params, vocab, mp.q4k_lm_wg,
+                );
+                (buf, bg, wg, &p.q4k_matmul)
+            } else {
+                let (buf, bg, wg) = dispatch::f32_matmul_prepare_precomputed(
+                    &p, &final_normed, lm_head_buf,
+                    &mp.f32_matmul_params, vocab, mp.f32_matmul_wg,
+                );
+                (buf, bg, wg, &p.f32_matmul)
+            };
+            all_dispatches.push(DispatchCmd { shader: lm_shader, bg: lm_bg, wg: lm_wg });
 
             {
                 let mut pass = enc.begin_compute_pass(&Default::default());
@@ -1345,7 +1370,14 @@ impl NativeModel {
             p.queue.submit(std::iter::once(enc.finish()));
             self.past_seq_len = total_seq;
 
-            return p.read_f32(&logits_buf, vocab as usize);
+            let logits = p.read_f32(&logits_buf, vocab as usize);
+            if total_seq <= 2 {
+                let max_logit = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                let min_logit = logits.iter().cloned().fold(f32::INFINITY, f32::min);
+                let argmax = logits.iter().enumerate().max_by(|a,b| a.1.partial_cmp(b.1).unwrap()).map(|(i,_)| i).unwrap_or(0);
+                log::warn!("WGPU pos={}: logits range=[{:.2}..{:.2}] argmax={}", total_seq-1, min_logit, max_logit, argmax);
+            }
+            return logits;
         }
 
         // ================================================================
