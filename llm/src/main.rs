@@ -1336,10 +1336,16 @@ with open('{}') as f: tok = json.load(f)
 m = tok.get('model', {{}})
 vocab = m.get('vocab', {{}})
 merges = m.get('merges', [])
+added = tok.get('added_tokens', [])
 lines = ['[tokens]']
 if isinstance(vocab, dict):
     for t, i in sorted(vocab.items(), key=lambda x: x[1]):
         lines.append(f'{{i}} = "{{esc(t)}}"')
+for at in added:
+    tid = at.get('id', -1)
+    content = at.get('content', '')
+    if tid >= 0 and content:
+        lines.append(f'{{tid}} = "{{esc(content)}}"')
 else:
     for i, item in enumerate(vocab):
         t = item[0] if isinstance(item, list) else str(item)

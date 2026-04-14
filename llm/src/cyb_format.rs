@@ -1265,6 +1265,17 @@ pub fn build_tokenizer_from_vocab(vocab_toml: &str) -> Result<tokenizers::Tokeni
     tokenizer.with_pre_tokenizer(Some(byte_level.clone()));
     tokenizer.with_decoder(Some(byte_level));
 
+    // Register special tokens (tokens matching <|...|> pattern) so token_to_id works
+    let special: Vec<tokenizers::AddedToken> = tokenizer.get_vocab(false)
+        .into_iter()
+        .filter(|(t, _)| t.starts_with("<|") && t.ends_with("|>"))
+        .map(|(t, _)| tokenizers::AddedToken::from(t, true))
+        .collect();
+    if !special.is_empty() {
+        log::info!("Registering {} special tokens", special.len());
+        tokenizer.add_special_tokens(&special);
+    }
+
     Ok(tokenizer)
 }
 

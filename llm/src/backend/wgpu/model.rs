@@ -160,6 +160,8 @@ pub struct NativeModel {
     decode_ids_buf: wgpu::Buffer,
     decode_cos_buf: wgpu::Buffer,
     decode_sin_buf: wgpu::Buffer,
+    /// Persistent embedding buffer for decode path (avoids create_buffer_init)
+    decode_embed_buf: wgpu::Buffer,
 }
 
 /// Convert model-level QuantFormat to dispatch::QuantFormat
@@ -799,6 +801,10 @@ impl NativeModel {
             Ok(safetensors_to_f32(&w.data, w.dtype))
         };
 
+        // Pre-allocate decode embedding buffer EARLY — before heavy weight loading
+        // which can exhaust wgpu's internal staging pools.
+        let decode_embed_buf = pipelines.upload_f32(&vec![0.0f32; hidden_size]);
+
         let embed_f32 = weight_to_f32("model.embed_tokens.weight")?;
         let embed_table = pipelines.upload_f32(&embed_f32);
 
@@ -819,7 +825,7 @@ impl NativeModel {
         let is_q4k = weights.get("model.layers.0.self_attn.q_proj.weight")
             .map(|w| matches!(w.dtype, crate::ir::DType::Q4_K))
             .unwrap_or(false);
-        let model_quant = if is_q4k { QuantFormat::Q4K } else { QuantFormat::Q4 };
+        let model_quant_format = if is_q4k { QuantFormat::Q4K } else { QuantFormat::Q4 };
 
         if is_q4k {
             log::info!("Detected Q4_K weights — using native Q4_K matmul (no requant)");
@@ -995,13 +1001,14 @@ impl NativeModel {
         let decode_ids_buf = pipelines.upload_f32(&[0.0f32]);
         let decode_cos_buf = pipelines.upload_f32(&vec![0.0f32; half]);
         let decode_sin_buf = pipelines.upload_f32(&vec![0.0f32; half]);
+        // decode_embed_buf was pre-allocated above, before weight loading
 
-        log::info!(".model loaded: {} layers, Q4 quantize-on-load", num_layers);
+        log::info!(".model loaded: {} layers, {:?} weights", num_layers, model_quant_format);
 
         Ok(Self {
             config, pipelines, embed_table, embed_f32, lm_head, layers, final_norm_weight,
             cos_cache, sin_cache, kv_cache, past_seq_len: 0, greedy_mode: false,
-            quant_format: QuantFormat::Q4,
+            quant_format: model_quant_format,
             model_params: ModelParamBuffers {
                 final_norm_params, final_norm_wg,
                 f32_matmul_params, f32_matmul_wg,
@@ -1009,7 +1016,7 @@ impl NativeModel {
             },
             kv_compressor: None,
             argmax_staging,
-            decode_ids_buf, decode_cos_buf, decode_sin_buf,
+            decode_ids_buf, decode_cos_buf, decode_sin_buf, decode_embed_buf,
         })
     }
 
@@ -1101,7 +1108,10 @@ impl NativeModel {
             let hs = hidden_size as usize;
             let embed_start = token_id * hs;
             let embed_slice = &self.embed_f32[embed_start..embed_start + hs];
-            let mut hidden = p.upload_f32(embed_slice);
+            // Write embedding to persistent buffer (avoids create_buffer_init which
+            // silently fails after heavy GPU memory allocation on some backends).
+            p.queue.write_buffer(&self.decode_embed_buf, 0, bytemuck::cast_slice(embed_slice));
+            let mut hidden = self.decode_embed_buf.clone();
 
             for i in 0..num_layers {
                 let lp = &self.layers[i].params;
@@ -1137,6 +1147,8 @@ impl NativeModel {
                         &lp.input_norm_params, 1, hidden_size, lp.input_norm_wg,
                     );
                     all_dispatches.push(DispatchCmd { shader: &p.rms_norm, bg: norm_bg, wg: norm_wg });
+
+
                     let (q, q_bg, q_wg, q_shader) = dispatch::prepare_matmul_for_quant(
                         &p, &normed, &self.layers[i].q_proj_packed, &self.layers[i].q_proj_scales,
                         &lp.q_matmul_params, self.layers[i].q_n, lp.q_matmul_wg,
@@ -1315,9 +1327,6 @@ impl NativeModel {
             );
             all_dispatches.push(DispatchCmd { shader: &p.f32_matmul, bg: lm_bg, wg: lm_wg });
 
-            // Execute all dispatches and read back logits to CPU.
-            // Using multiple compute passes within a single encoder avoids
-            // hitting Metal limits on dispatches-per-pass for large models.
             {
                 let mut pass = enc.begin_compute_pass(&Default::default());
                 for cmd in &all_dispatches {
@@ -1327,6 +1336,17 @@ impl NativeModel {
             p.queue.submit(std::iter::once(enc.finish()));
             self.past_seq_len = total_seq;
 
+            // DEBUG: test different buffer sizes
+            if total_seq == 1 {
+                for size in [16u64, 1024, 4096, 20480, 65536] {
+                    let n = (size / 4) as usize;
+                    let data: Vec<f32> = (0..n).map(|i| (i as f32 + 1.0)).collect();
+                    let buf = p.alloc(size);
+                    p.queue.write_buffer(&buf, 0, bytemuck::cast_slice(&data));
+                    let check = p.read_f32(&buf, 2);
+                    log::warn!("DEBUG alloc({size}) + write: first2={:?} (expected [1.0, 2.0])", check);
+                }
+            }
             return p.read_f32(&logits_buf, vocab as usize);
         }
 
@@ -1509,7 +1529,8 @@ fn dispatch_matmul_enc(
         QuantFormat::F32 => dispatch::f32_matmul(p, enc, activation, weight, n, k),
         QuantFormat::F16 => dispatch::f16_matmul(p, enc, activation, weight, n, k),
         QuantFormat::Q8 => dispatch::q8_matmul(p, enc, activation, weight, scales, n, k, block_size),
-        QuantFormat::Q4 | QuantFormat::Q4K => dispatch::q4_matmul(p, enc, activation, weight, scales, n, k, block_size),
+        QuantFormat::Q4 => dispatch::q4_matmul(p, enc, activation, weight, scales, n, k, block_size),
+        QuantFormat::Q4K => dispatch::q4k_matmul(p, enc, activation, weight, n, k),
         QuantFormat::Ternary => dispatch::ternary_matmul(p, enc, activation, weight, scales, n, k),
     }
 }
@@ -1642,6 +1663,516 @@ mod tests {
         }
     }
 
+    /// End-to-end test: embed → RMS norm → Q4_K matmul for layer 0 k_proj
+    #[test]
+    fn test_q4k_gpu_e2e_layer0() {
+        use std::sync::Arc;
+        use std::path::Path;
+        use crate::backend::wgpu::pipelines::Pipelines;
+        use crate::backend::wgpu::dispatch;
+        use crate::cyb_format::LoadedModel;
+
+        let model_path = Path::new("/Users/mastercyb/llm/qwen2.5-coder-14b-abl.model");
+        if !model_path.exists() {
+            eprintln!("Model file not found, skipping test");
+            return;
+        }
+
+        let lm = LoadedModel::load(model_path).expect("Failed to load model");
+
+        // Get config
+        let config_json = lm.config_json();
+        let arch = config_json.get("architecture").unwrap_or(&config_json);
+        let hidden_size = arch.get("hidden_size").and_then(|v| v.as_u64()).unwrap() as usize;
+        let kv_num_heads = arch.get("num_key_value_heads").and_then(|v| v.as_u64()).unwrap() as usize;
+        let head_dim = 128usize;
+        let kv_dim = kv_num_heads * head_dim;
+        eprintln!("hidden_size={hidden_size}, kv_dim={kv_dim}, head_dim={head_dim}");
+
+        // Embedding for token 27 ("<|im_start|>")
+        let embed_w = lm.weights.get("model.embed_tokens.weight").expect("no embed");
+        let embed_f32 = safetensors_to_f32(&embed_w.data, embed_w.dtype);
+        let token_id = 27usize;
+        let embed = &embed_f32[token_id * hidden_size..(token_id + 1) * hidden_size];
+        eprintln!("embed[0..4] = {:?}", &embed[..4]);
+
+        // CPU RMS norm
+        let input_norm_w = lm.weights.get("model.layers.0.input_layernorm.weight").expect("no norm");
+        let norm_w = safetensors_to_f32(&input_norm_w.data, input_norm_w.dtype);
+        let eps = 1e-6f32;
+        let rms = (embed.iter().map(|x| x * x).sum::<f32>() / hidden_size as f32 + eps).sqrt();
+        let normed: Vec<f32> = embed.iter().zip(norm_w.iter()).map(|(&x, &w)| (x / rms) * w).collect();
+        eprintln!("normed[0..4] = {:?}", &normed[..4]);
+
+        // CPU Q4_K matmul for k_proj
+        let k_proj = lm.weights.get("model.layers.0.self_attn.k_proj.weight").expect("no k_proj");
+        let k_proj_f32_all = safetensors_to_f32(&k_proj.data, k_proj.dtype);
+        let n = kv_dim;  // output dim
+        let k = hidden_size;  // input dim
+        let total_vals = k_proj_f32_all.len();
+        eprintln!("k_proj: {} total f32 vals, expected {}", total_vals, n * k);
+        assert_eq!(total_vals, n * k);
+
+        let cpu_result: Vec<f32> = (0..n).map(|r| {
+            let row = &k_proj_f32_all[r * k..(r + 1) * k];
+            row.iter().zip(normed.iter()).map(|(&w, &a)| w * a).sum()
+        }).collect();
+        eprintln!("CPU k_proj[0..4] = {:?}", &cpu_result[..4]);
+
+        // GPU
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(), ..Default::default()
+        });
+        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance, ..Default::default()
+        })).expect("No GPU adapter");
+
+        let mut limits = wgpu::Limits::default();
+        limits.max_buffer_size = 1u64 << 30;
+        limits.max_storage_buffer_binding_size = 1u32 << 30;
+        let mut features = wgpu::Features::empty();
+        if adapter.features().contains(wgpu::Features::SUBGROUP) {
+            features |= wgpu::Features::SUBGROUP;
+        }
+        let (device, queue) = pollster::block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("e2e-test"), required_features: features,
+                required_limits: limits, memory_hints: Default::default(),
+            }, None,
+        )).expect("Failed to create device");
+
+        let device = Arc::new(device);
+        let queue = Arc::new(queue);
+        let p = Pipelines::new(device.clone(), queue.clone());
+
+        // GPU: upload normed activation
+        let normed_buf = p.upload_f32(&normed);
+        // GPU: upload raw Q4_K weights
+        let weight_buf = p.upload_bytes(&k_proj.data);
+
+        // GPU: Q4_K matmul
+        let mut enc = p.device.create_command_encoder(&Default::default());
+        let gpu_result_buf = dispatch::q4k_matmul(&p, &mut enc, &normed_buf, &weight_buf, n as u32, k as u32);
+        p.queue.submit(std::iter::once(enc.finish()));
+
+        let gpu_result = p.read_f32(&gpu_result_buf, n);
+
+        // Compare
+        let mut max_diff = 0.0f32;
+        let mut max_rel = 0.0f32;
+        for r in 0..n {
+            let diff = (gpu_result[r] - cpu_result[r]).abs();
+            let rel = if cpu_result[r].abs() > 1e-8 { diff / cpu_result[r].abs() } else { diff };
+            if diff > max_diff { max_diff = diff; }
+            if rel > max_rel { max_rel = rel; }
+        }
+        eprintln!("GPU k_proj[0..4] = {:?}", &gpu_result[..4]);
+        eprintln!("Max diff={max_diff:.2e}, max_rel={max_rel:.2e} across {n} rows");
+
+        assert!(max_diff < 0.5 || max_rel < 0.05,
+            "Q4_K e2e mismatch: max_diff={max_diff:.2e}, max_rel={max_rel:.2e}");
+    }
+
+    /// GPU test with real model data: loads k_proj from qwen2.5-coder-14b model,
+    /// computes Q4_K matmul for first 4 rows, compares GPU vs CPU reference.
+    #[test]
+    fn test_q4k_gpu_real_model() {
+        use std::sync::Arc;
+        use std::path::Path;
+        use crate::backend::wgpu::pipelines::Pipelines;
+        use crate::cyb_format::LoadedModel;
+
+        let model_path = Path::new("/Users/mastercyb/llm/qwen2.5-coder-14b-abl.model");
+        if !model_path.exists() {
+            eprintln!("Model file not found, skipping test");
+            return;
+        }
+
+        let lm = LoadedModel::load(model_path).expect("Failed to load model");
+        let k_proj = lm.weights.get("model.layers.0.self_attn.k_proj.weight")
+            .expect("Missing k_proj weight");
+
+        assert!(matches!(k_proj.dtype, DType::Q4_K), "k_proj should be Q4_K");
+
+        // k_proj: N=1024, K=5120
+        let n: u32 = 4; // Test first 4 rows only
+        let k: u32 = 5120;
+        let blocks_per_row: u32 = k / 256;
+
+        // Extract first 4 rows of raw Q4_K data
+        let bytes_per_row = (blocks_per_row as usize) * 144;
+        let weight_data = &k_proj.data[..n as usize * bytes_per_row];
+
+        // CPU dequant of first 4 rows
+        let all_cpu_vals: Vec<f32> = (0..n as usize).map(|r| {
+            let row_bytes = &weight_data[r * bytes_per_row..(r + 1) * bytes_per_row];
+            safetensors_to_f32(row_bytes, DType::Q4_K)
+        }).collect::<Vec<Vec<f32>>>().concat();
+
+        // Activation: simple ramp [0/K, 1/K, ..., (K-1)/K]
+        let activation: Vec<f32> = (0..k).map(|i| (i as f32) / (k as f32)).collect();
+
+        // CPU matmul
+        let cpu_dots: Vec<f32> = (0..n as usize).map(|r| {
+            let row = &all_cpu_vals[r * k as usize..(r + 1) * k as usize];
+            row.iter().zip(activation.iter()).map(|(&w, &a)| w * a).sum()
+        }).collect();
+
+        // GPU
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            ..Default::default()
+        });
+        let adapter = pollster::block_on(
+            instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                ..Default::default()
+            }),
+        ).expect("No GPU adapter");
+
+        let mut limits = wgpu::Limits::default();
+        limits.max_buffer_size = 1u64 << 30;
+        limits.max_storage_buffer_binding_size = 1u32 << 30;
+
+        let mut features = wgpu::Features::empty();
+        if adapter.features().contains(wgpu::Features::SUBGROUP) {
+            features |= wgpu::Features::SUBGROUP;
+        }
+
+        let (device, queue) = pollster::block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("q4k-real-test"),
+                required_features: features,
+                required_limits: limits,
+                memory_hints: Default::default(),
+            },
+            None,
+        )).expect("Failed to create device");
+
+        let device = Arc::new(device);
+        let queue = Arc::new(queue);
+        let p = Pipelines::new(device.clone(), queue.clone());
+
+        let act_buf = p.upload_f32(&activation);
+        let weight_buf = p.upload_bytes(weight_data);
+
+        #[repr(C)]
+        #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+        struct Params { n: u32, k: u32, blocks_per_row: u32, _pad: u32 }
+        let params = Params { n, k, blocks_per_row, _pad: 0 };
+        let params_buf = p.upload_uniform_permanent(bytemuck::bytes_of(&params));
+
+        let output_buf = p.device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: (n as u64) * 4,
+            usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_SRC | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let bg = p.create_bind_group(
+            &p.q4k_matmul,
+            &[
+                act_buf.as_entire_binding(),
+                weight_buf.as_entire_binding(),
+                output_buf.as_entire_binding(),
+                params_buf.as_entire_binding(),
+            ],
+        );
+
+        let num_wg = (n + 3) / 4;
+        let mut encoder = p.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_compute_pass(&Default::default());
+            p.dispatch_in_pass(&mut pass, &p.q4k_matmul, &bg, (num_wg, 1, 1));
+        }
+        p.queue.submit(std::iter::once(encoder.finish()));
+
+        let result = p.read_f32(&output_buf, n as usize);
+
+        for r in 0..n as usize {
+            let gpu = result[r];
+            let cpu = cpu_dots[r];
+            let diff = (gpu - cpu).abs();
+            let rel = if cpu.abs() > 1e-8 { diff / cpu.abs() } else { diff };
+            eprintln!("Row {r}: CPU={cpu:.6}, GPU={gpu:.6}, diff={diff:.2e}, rel={rel:.2e}");
+            assert!(
+                diff < 0.1 || rel < 0.02,
+                "Row {r}: Q4_K GPU vs CPU mismatch: gpu={gpu:.6}, cpu={cpu:.6}, diff={diff:.2e}"
+            );
+        }
+    }
+
+    /// GPU integration test: run the Q4_K WGSL shader on a single superblock
+    /// and compare the dot product with the CPU reference dequant.
+    #[test]
+    fn test_q4k_gpu() {
+        use std::sync::Arc;
+        use crate::backend::wgpu::pipelines::Pipelines;
+
+        // Same Q4_K block as test_q4k_dequant (verified correct on CPU)
+        let raw = from_hex(concat!(
+            "7b0cb91253ce5952a294ffaa618f1265",
+            "92054f3584280455a48353b03a5413e3",
+            "7463367854ac33492588944a80f54879",
+            "67476a6888e7f748ab99eb4c985d57f6",
+            "984c383178aa05ba5c685556e03b6aaf",
+            "15373a1d1836312a482823080c1a0237",
+            "392a28472713390f36100a23f8272e06",
+            "467c6af67c6b559a12262625162b0477",
+            "908e57538a1989285636485a6a597b58",
+        ));
+        // Pad to 144 if needed (the concat above should be exactly 144 bytes)
+        assert_eq!(raw.len(), 144, "Q4_K block must be 144 bytes");
+
+        // CPU reference: dequant and dot product with all-ones
+        let cpu_vals = safetensors_to_f32(&raw, DType::Q4_K);
+        assert_eq!(cpu_vals.len(), 256);
+
+        // Activation: all ones (strongest single-block test)
+        let activation: Vec<f32> = vec![1.0f32; 256];
+        let cpu_dot: f32 = cpu_vals.iter().sum();
+
+        // -- GPU --
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            ..Default::default()
+        });
+        let adapter = pollster::block_on(
+            instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                ..Default::default()
+            }),
+        )
+        .expect("No GPU adapter for test");
+
+        let mut limits = wgpu::Limits::default();
+        limits.max_buffer_size = 1u64 << 30;
+        limits.max_storage_buffer_binding_size = 1u32 << 30;
+
+        let mut features = wgpu::Features::empty();
+        if adapter.features().contains(wgpu::Features::SUBGROUP) {
+            features |= wgpu::Features::SUBGROUP;
+        }
+
+        let (device, queue) = pollster::block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("q4k-test"),
+                required_features: features,
+                required_limits: limits,
+                memory_hints: Default::default(),
+            },
+            None,
+        ))
+        .expect("Failed to create device");
+
+        let device = Arc::new(device);
+        let queue = Arc::new(queue);
+        let p = Pipelines::new(device.clone(), queue.clone());
+
+        // Upload activation (256 f32s)
+        let act_buf = p.upload_f32(&activation);
+
+        // Upload weights: 1 row of 1 Q4_K block = 36 u32s = 144 bytes
+        let weight_buf = p.upload_bytes(&raw);
+
+        // Output: 1 row
+        let n: u32 = 1;
+        let k: u32 = 256;
+        let blocks_per_row: u32 = 1;
+
+        // Params uniform
+        #[repr(C)]
+        #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+        struct Params {
+            n: u32,
+            k: u32,
+            blocks_per_row: u32,
+            _pad: u32,
+        }
+        let params = Params { n, k, blocks_per_row, _pad: 0 };
+        let params_buf = p.upload_uniform_permanent(bytemuck::bytes_of(&params));
+
+        // Output buffer
+        let output_buf = p.device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: 4, // 1 f32
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        // Dispatch
+        let bg = p.create_bind_group(
+            &p.q4k_matmul,
+            &[
+                act_buf.as_entire_binding(),
+                weight_buf.as_entire_binding(),
+                output_buf.as_entire_binding(),
+                params_buf.as_entire_binding(),
+            ],
+        );
+
+        // NR=4, so 1 workgroup covers rows 0..3 (we only have row 0)
+        let mut encoder = p.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_compute_pass(&Default::default());
+            p.dispatch_in_pass(&mut pass, &p.q4k_matmul, &bg, (1, 1, 1));
+        }
+        p.queue.submit(std::iter::once(encoder.finish()));
+
+        // Read back
+        let result = p.read_f32(&output_buf, 1);
+        let gpu_dot = result[0];
+
+        let diff = (gpu_dot - cpu_dot).abs();
+        let rel = if cpu_dot.abs() > 1e-8 { diff / cpu_dot.abs() } else { diff };
+
+        eprintln!("CPU dot = {cpu_dot:.6}, GPU dot = {gpu_dot:.6}, diff = {diff:.2e}, rel = {rel:.2e}");
+
+        // Allow small floating-point divergence (f16 intermediates on GPU)
+        assert!(
+            diff < 0.01 || rel < 0.02,
+            "Q4_K GPU vs CPU mismatch: gpu={gpu_dot:.6}, cpu={cpu_dot:.6}, diff={diff:.2e}"
+        );
+    }
+
+    /// Multi-block GPU test: N=4 rows, K=512 (2 blocks per row), random activation.
+    /// This tests the cross-thread accumulation that single-block test misses.
+    #[test]
+    fn test_q4k_gpu_multiblock() {
+        use std::sync::Arc;
+        use crate::backend::wgpu::pipelines::Pipelines;
+
+        // Reuse the verified Q4_K block from test_q4k_dequant
+        let block_hex = concat!(
+            "7b0cb91253ce5952a294ffaa618f1265",
+            "92054f3584280455a48353b03a5413e3",
+            "7463367854ac33492588944a80f54879",
+            "67476a6888e7f748ab99eb4c985d57f6",
+            "984c383178aa05ba5c685556e03b6aaf",
+            "15373a1d1836312a482823080c1a0237",
+            "392a28472713390f36100a23f8272e06",
+            "467c6af67c6b559a12262625162b0477",
+            "908e57538a1989285636485a6a597b58",
+        );
+        let one_block = from_hex(block_hex);
+        assert_eq!(one_block.len(), 144);
+
+        let n: u32 = 4;
+        let blocks_per_row: u32 = 2;
+        let k: u32 = blocks_per_row * 256;
+
+        // Build weight buffer: N rows, each with blocks_per_row copies of same block
+        let mut weight_bytes: Vec<u8> = Vec::new();
+        for _row in 0..n {
+            for _blk in 0..blocks_per_row {
+                weight_bytes.extend_from_slice(&one_block);
+            }
+        }
+
+        // CPU reference: dequant one block, tile it
+        let one_block_f32 = safetensors_to_f32(&one_block, DType::Q4_K);
+        assert_eq!(one_block_f32.len(), 256);
+
+        // Activation: simple ramp pattern
+        let activation: Vec<f32> = (0..k).map(|i| (i as f32) / (k as f32)).collect();
+
+        // CPU dot product per row (all rows identical since all use same blocks)
+        let cpu_dot: f32 = (0..blocks_per_row).map(|b| {
+            let col_base = (b * 256) as usize;
+            one_block_f32.iter().enumerate()
+                .map(|(j, &w)| w * activation[col_base + j])
+                .sum::<f32>()
+        }).sum();
+
+        // -- GPU --
+        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+            backends: wgpu::Backends::all(),
+            ..Default::default()
+        });
+        let adapter = pollster::block_on(
+            instance.request_adapter(&wgpu::RequestAdapterOptions {
+                power_preference: wgpu::PowerPreference::HighPerformance,
+                ..Default::default()
+            }),
+        )
+        .expect("No GPU adapter");
+
+        let mut limits = wgpu::Limits::default();
+        limits.max_buffer_size = 1u64 << 30;
+        limits.max_storage_buffer_binding_size = 1u32 << 30;
+
+        let mut features = wgpu::Features::empty();
+        if adapter.features().contains(wgpu::Features::SUBGROUP) {
+            features |= wgpu::Features::SUBGROUP;
+        }
+
+        let (device, queue) = pollster::block_on(adapter.request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("q4k-multi-test"),
+                required_features: features,
+                required_limits: limits,
+                memory_hints: Default::default(),
+            },
+            None,
+        ))
+        .expect("Failed to create device");
+
+        let device = Arc::new(device);
+        let queue = Arc::new(queue);
+        let p = Pipelines::new(device.clone(), queue.clone());
+
+        let act_buf = p.upload_f32(&activation);
+        let weight_buf = p.upload_bytes(&weight_bytes);
+
+        #[repr(C)]
+        #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+        struct Params { n: u32, k: u32, blocks_per_row: u32, _pad: u32 }
+        let params = Params { n, k, blocks_per_row, _pad: 0 };
+        let params_buf = p.upload_uniform_permanent(bytemuck::bytes_of(&params));
+
+        let output_buf = p.device.create_buffer(&wgpu::BufferDescriptor {
+            label: None,
+            size: (n as u64) * 4,
+            usage: wgpu::BufferUsages::STORAGE
+                | wgpu::BufferUsages::COPY_SRC
+                | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let bg = p.create_bind_group(
+            &p.q4k_matmul,
+            &[
+                act_buf.as_entire_binding(),
+                weight_buf.as_entire_binding(),
+                output_buf.as_entire_binding(),
+                params_buf.as_entire_binding(),
+            ],
+        );
+
+        let num_wg = (n + 3) / 4; // = 1 (4 rows, NR=4)
+        let mut encoder = p.device.create_command_encoder(&Default::default());
+        {
+            let mut pass = encoder.begin_compute_pass(&Default::default());
+            p.dispatch_in_pass(&mut pass, &p.q4k_matmul, &bg, (num_wg, 1, 1));
+        }
+        p.queue.submit(std::iter::once(encoder.finish()));
+
+        let result = p.read_f32(&output_buf, n as usize);
+
+        for r in 0..n as usize {
+            let gpu_dot = result[r];
+            let diff = (gpu_dot - cpu_dot).abs();
+            let rel = if cpu_dot.abs() > 1e-8 { diff / cpu_dot.abs() } else { diff };
+            eprintln!("Row {r}: CPU={cpu_dot:.6}, GPU={gpu_dot:.6}, diff={diff:.2e}, rel={rel:.2e}");
+            assert!(
+                diff < 0.05 || rel < 0.02,
+                "Row {r}: Q4_K GPU vs CPU mismatch: gpu={gpu_dot:.6}, cpu={cpu_dot:.6}, diff={diff:.2e}"
+            );
+        }
+    }
+
     #[test]
     fn test_q6k_dequant() {
         // First Q6_K superblock from output.weight in Qwen2.5-Coder-14B GGUF
@@ -1681,5 +2212,136 @@ mod tests {
                 "Q6K val[{i}]: got={got:.6}, expected={exp:.6}, diff={diff:.2e}"
             );
         }
+    }
+
+    #[test]
+    fn test_q4k_gpu_matmul() {
+        // Q4_K block from qwen2.5-coder-14b q_proj layer 0, row 0
+        let block_hex = "7b0cb91253ce5952a294ffaa618f12659205\
+4f3584280455a48353b03a5413e37463367854ac33492588944a80f5487967476a\
+6888e7f748ab99eb4c985d57f6984c383178aa05ba5c685556e03b6aaf1537\
+3a1d1836312a482823080c1a0237392a28472713390f36100a23f8272e06467c6a\
+f67c6b559a12262625162b0477908e57538a1989285636485a6a597b58";
+        let block = from_hex(block_hex);
+        assert_eq!(block.len(), 144, "Q4_K block = 144 bytes");
+
+        // CPU dequant reference (same algorithm as shader)
+        let d = half::f16::from_le_bytes([block[0], block[1]]).to_f32();
+        let dmin = half::f16::from_le_bytes([block[2], block[3]]).to_f32();
+        let scales = &block[4..16];
+        let qs = &block[16..144];
+
+        fn gsm(j: usize, sc: &[u8]) -> (f32, f32) {
+            if j < 4 {
+                ((sc[j] & 63) as f32, (sc[j + 4] & 63) as f32)
+            } else {
+                let s = ((sc[j + 4] & 0xF) | ((sc[j - 4] >> 6) << 4)) as f32;
+                let m = ((sc[j + 4] >> 4) | ((sc[j] >> 6) << 4)) as f32;
+                (s, m)
+            }
+        }
+
+        let mut ref_vals = [0.0f32; 256];
+        for grp in 0..4 {
+            let (sc1, m1) = gsm(grp * 2, scales);
+            let (sc2, m2) = gsm(grp * 2 + 1, scales);
+            for l in 0..32 {
+                let qb = qs[grp * 32 + l];
+                ref_vals[grp * 64 + l] = d * sc1 * (qb & 0xF) as f32 - dmin * m1;
+                ref_vals[grp * 64 + l + 32] = d * sc2 * (qb >> 4) as f32 - dmin * m2;
+            }
+        }
+
+        // Test: activation = [1,1,1,...,1] → dot = sum of all dequanted values
+        let expected_sum: f32 = ref_vals.iter().sum();
+
+        // Run on GPU
+        let backend = crate::backend::create_wgpu_backend();
+        let p = &backend.pipelines;
+
+        // Upload activation: 256 f32 ones
+        let act_data = vec![1.0f32; 256];
+        let act_buf = p.upload_f32(&act_data);
+
+        // Upload Q4_K block as raw bytes (padded to u32 alignment — already is)
+        let weight_buf = p.upload_bytes(&block);
+
+        // Create params: n=1 (1 output row), k=256, blocks_per_row=1
+        #[repr(C)]
+        #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+        struct Q4KParams { n: u32, k: u32, blocks_per_row: u32, _pad: u32 }
+        let params = Q4KParams { n: 1, k: 256, blocks_per_row: 1, _pad: 0 };
+        let params_buf = p.upload_uniform(bytemuck::bytes_of(&params));
+
+        // Dispatch
+        let mut enc = p.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let output = crate::backend::wgpu::dispatch::q4k_matmul(p, &mut enc, &act_buf, &weight_buf, 1, 256);
+        p.queue.submit(std::iter::once(enc.finish()));
+
+        // Read back
+        let result = p.read_f32(&output, 1);
+
+        let diff = (result[0] - expected_sum).abs();
+        eprintln!("Q4K GPU test: got={:.6}, expected={:.6}, diff={:.2e}", result[0], expected_sum, diff);
+        assert!(diff < 0.01, "Q4K GPU matmul mismatch: got={}, expected={}, diff={}", result[0], expected_sum, diff);
+    }
+
+    #[test]
+    fn test_q4k_gpu_matmul_multiblock() {
+        // Test N=2, K=512 (2 superblocks per row) from real model data
+        let model_path = std::path::Path::new("/Users/mastercyb/llm/qwen2.5-coder-14b-abl.model");
+        if !model_path.exists() { eprintln!("SKIP: model not found"); return; }
+
+        let data = std::fs::read(model_path).unwrap();
+        let ws = data.windows(11).position(|w| w == b"~~~weights\n").unwrap() + 11;
+        let offset = 17739776usize; // q_proj offset
+        let bpr = 20usize; // 5120/256
+
+        // Read 2 blocks from row 0, 2 blocks from row 1
+        let mut test_weights = Vec::with_capacity(576);
+        test_weights.extend_from_slice(&data[ws+offset..ws+offset+288]); // row 0
+        test_weights.extend_from_slice(&data[ws+offset+bpr*144..ws+offset+bpr*144+288]); // row 1
+
+        // CPU reference dequant
+        fn dequant_block(block: &[u8]) -> Vec<f32> {
+            let d = half::f16::from_le_bytes([block[0], block[1]]).to_f32();
+            let dm = half::f16::from_le_bytes([block[2], block[3]]).to_f32();
+            let sc = &block[4..16]; let qs = &block[16..144];
+            fn gsm(j: usize, sc: &[u8]) -> (f32, f32) {
+                if j < 4 { ((sc[j]&63) as f32, (sc[j+4]&63) as f32) }
+                else { (((sc[j+4]&0xF)|((sc[j-4]>>6)<<4)) as f32, ((sc[j+4]>>4)|((sc[j]>>6)<<4)) as f32) }
+            }
+            let mut v = vec![0.0f32; 256];
+            for g in 0..4 {
+                let (s1,m1) = gsm(g*2,sc); let (s2,m2) = gsm(g*2+1,sc);
+                for l in 0..32 { let q=qs[g*32+l]; v[g*64+l]=d*s1*(q&0xF) as f32-dm*m1; v[g*64+l+32]=d*s2*(q>>4) as f32-dm*m2; }
+            }
+            v
+        }
+
+        let mut row0_vals = dequant_block(&test_weights[0..144]);
+        row0_vals.extend(dequant_block(&test_weights[144..288]));
+        let mut row1_vals = dequant_block(&test_weights[288..432]);
+        row1_vals.extend(dequant_block(&test_weights[432..576]));
+
+        let act = vec![1.0f32; 512];
+        let exp0: f32 = act.iter().zip(row0_vals.iter()).map(|(a,w)| a*w).sum();
+        let exp1: f32 = act.iter().zip(row1_vals.iter()).map(|(a,w)| a*w).sum();
+
+        // GPU
+        let backend = crate::backend::create_wgpu_backend();
+        let p = &backend.pipelines;
+        let act_buf = p.upload_f32(&act);
+        let weight_buf = p.upload_bytes(&test_weights);
+
+        let mut enc = p.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let output = crate::backend::wgpu::dispatch::q4k_matmul(p, &mut enc, &act_buf, &weight_buf, 2, 512);
+        p.queue.submit(std::iter::once(enc.finish()));
+        let result = p.read_f32(&output, 2);
+
+        eprintln!("Q4K multi: row0 got={:.6} exp={:.6} diff={:.2e}", result[0], exp0, (result[0]-exp0).abs());
+        eprintln!("Q4K multi: row1 got={:.6} exp={:.6} diff={:.2e}", result[1], exp1, (result[1]-exp1).abs());
+        assert!((result[0]-exp0).abs() < 0.01, "row0 mismatch");
+        assert!((result[1]-exp1).abs() < 0.01, "row1 mismatch");
     }
 }
