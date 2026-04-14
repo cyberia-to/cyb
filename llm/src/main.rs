@@ -1400,35 +1400,25 @@ print('\n'.join(lines))
     let mut tensor_names: Vec<&String> = graph.weights.keys().collect();
     tensor_names.sort();
 
-    let mut q6k_converted = 0usize;
     for tname in &tensor_names {
         let w = &graph.weights[*tname];
 
-        // Convert Q6_K → Q4_K at import time (uniform format, no runtime conversion)
-        let (data_ref, encoding) = if matches!(w.dtype, cyb_llm::ir::DType::Q6_K) && w.shape.len() == 2 {
-            let f32_data = cyb_llm::backend::wgpu::model::safetensors_to_f32(&w.data, w.dtype);
-            let n = w.shape[1]; // ne1 = outer dim (GGUF order)
-            let k = w.shape[0]; // ne0 = inner dim
-            let q4k_data = cyb_llm::import::quantize_f32_to_q4k(&f32_data, n, k);
-            q6k_converted += 1;
-            (q4k_data, "q4k")
-        } else {
-            let encoding = match w.dtype {
-                cyb_llm::ir::DType::F32 => "u32",
-                cyb_llm::ir::DType::F16 | cyb_llm::ir::DType::BF16 => "u16",
-                cyb_llm::ir::DType::Q4 => "q4",
-                cyb_llm::ir::DType::Q8 => "q8",
-                cyb_llm::ir::DType::Ternary | cyb_llm::ir::DType::U8 => "ternary",
-                cyb_llm::ir::DType::Q4_K => "q4k",
-                cyb_llm::ir::DType::Q6_K => "q6k", // 1D tensors (norms) stay as-is
-                cyb_llm::ir::DType::Q4_1 => "q4",
-                cyb_llm::ir::DType::Q2_K => "q2k",
-                cyb_llm::ir::DType::Q3_K => "q3k",
-                cyb_llm::ir::DType::Q5_K => "q5k",
-                _ => "u32",
-            };
-            (w.data.clone(), encoding)
+        // Q6_K passes through natively — no conversion needed
+        let encoding = match w.dtype {
+            cyb_llm::ir::DType::F32 => "u32",
+            cyb_llm::ir::DType::F16 | cyb_llm::ir::DType::BF16 => "u16",
+            cyb_llm::ir::DType::Q4 => "q4",
+            cyb_llm::ir::DType::Q8 => "q8",
+            cyb_llm::ir::DType::Ternary | cyb_llm::ir::DType::U8 => "ternary",
+            cyb_llm::ir::DType::Q4_K => "q4k",
+            cyb_llm::ir::DType::Q6_K => "q6k",
+            cyb_llm::ir::DType::Q4_1 => "q4",
+            cyb_llm::ir::DType::Q2_K => "q2k",
+            cyb_llm::ir::DType::Q3_K => "q3k",
+            cyb_llm::ir::DType::Q5_K => "q5k",
+            _ => "u32",
         };
+        let data_ref = &w.data;
         let size = data_ref.len();
         let shape_str = w.shape.iter().map(|s| s.to_string()).collect::<Vec<_>>().join(", ");
 
@@ -1441,9 +1431,6 @@ print('\n'.join(lines))
 
         weight_data.extend_from_slice(&data_ref);
         offset += size;
-    }
-    if q6k_converted > 0 {
-        println!("  converted {q6k_converted} Q6_K tensors → Q4_K");
     }
     let tensors_toml = tensors_lines.join("\n");
     println!("  weights: {} bytes ({:.1} GB)", weight_data.len(), weight_data.len() as f64 / 1e9);

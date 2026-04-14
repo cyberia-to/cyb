@@ -18,6 +18,7 @@ pub struct MetalPipelines {
     pub matvec_q4: Pipeline,
     pub matvec_ternary: Pipeline,
     pub matvec_q4k: Pipeline,
+    pub matvec_q6k: Pipeline,
 
     // Decode batched (dequant-once-dot-many)
     pub matvec_q4_batch: Pipeline,
@@ -75,6 +76,7 @@ impl MetalPipelines {
         let matvec_q4 = compile(kernels::MATVEC_Q4, "matvec_q4")?;
         let matvec_ternary = compile(kernels::MATVEC_TERNARY, "matvec_ternary")?;
         let matvec_q4k = compile(kernels::MATVEC_Q4K, "matvec_q4k")?;
+        let matvec_q6k = compile(kernels::MATVEC_Q6K, "matvec_q6k")?;
 
         let batch_src = |src: &str, b: u32| format!("#define BATCH {b}\n{src}");
         let matvec_q4_batch = compile(&batch_src(kernels::MATVEC_Q4_BATCH, 8), "matvec_q4_batch")?;
@@ -103,7 +105,7 @@ impl MetalPipelines {
         let argmax_partial = compile(kernels::ARGMAX, "argmax_partial")?;
         let argmax_reduce = compile(kernels::ARGMAX, "argmax_reduce")?;
 
-        log::info!("Metal: all 19 MSL kernels compiled");
+        log::info!("Metal: all 20 MSL kernels compiled");
 
         Ok(MetalPipelines {
             device, queue, dispatcher,
@@ -111,7 +113,7 @@ impl MetalPipelines {
             matvec_q4, matvec_q4_fast,
             fused_rope_qk, fused_kv_append, fused_add_norm,
             matvec_q4_fast_batch4, fused_qkv, fused_gate_up, fused_silu_down,
-            matvec_ternary, matvec_q4k,
+            matvec_ternary, matvec_q4k, matvec_q6k,
             matvec_q4_batch, matvec_ternary_batch,
             embed, rms_norm, rope, add_f16, silu_mul_f16, relu2_mul_f16,
             attention_decode, kv_append, kv_expand, f16_matvec, argmax_partial, argmax_reduce,

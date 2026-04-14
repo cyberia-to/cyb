@@ -20,6 +20,7 @@ pub mod kernels {
     pub const MATVEC_Q4: &str = include_str!("kernels/matvec_q4.metal");
     pub const MATVEC_TERNARY: &str = include_str!("kernels/matvec_ternary.metal");
     pub const MATVEC_Q4K: &str = include_str!("kernels/matvec_q4k.metal");
+    pub const MATVEC_Q6K: &str = include_str!("kernels/matvec_q6k.metal");
 
     // Matvec batched (decode batch>1, dequant-once-dot-many)
     pub const MATVEC_Q4_BATCH: &str = include_str!("kernels/matvec_q4_batch.metal");

@@ -84,6 +84,12 @@ pub struct Pipelines {
     pub f16_matmul: ComputeShader,
     pub ternary_matmul: ComputeShader,
 
+    // --- Q4_K native matmul ---
+    pub q4k_matmul: ComputeShader,
+
+    // --- Q6_K native matmul ---
+    pub q6k_matmul: ComputeShader,
+
     // --- Batch 9: Runtime quantization ---
     pub quantize: ComputeShader,
 
@@ -447,6 +453,22 @@ impl Pipelines {
             &[storage_ro(), storage_ro(), storage_ro(), storage_rw(), uniform()],
         );
 
+        // --- Q4_K native matmul ---
+        let q4k_matmul = create_pipeline(
+            &device,
+            include_str!("shaders/q4k_matmul.wgsl"),
+            "main",
+            &[storage_ro(), storage_ro(), storage_rw(), uniform()],
+        );
+
+        // --- Q6_K native matmul ---
+        let q6k_matmul = create_pipeline(
+            &device,
+            include_str!("shaders/q6k_matmul.wgsl"),
+            "main",
+            &[storage_ro(), storage_ro(), storage_rw(), uniform()],
+        );
+
         // --- Batch 9: Runtime quantization ---
         let quantize = create_pipeline(
             &device,
@@ -521,6 +543,10 @@ impl Pipelines {
             // Batch 8
             f16_matmul,
             ternary_matmul,
+            // Q4_K
+            q4k_matmul,
+            // Q6_K
+            q6k_matmul,
             // Batch 9
             quantize,
             frame_alloc,

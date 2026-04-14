@@ -107,6 +107,136 @@ pub fn q8_matmul(
     output
 }
 
+/// Q4_K matmul: [1, K] x Q4_K[N, K] -> [1, N]
+/// Weights stored as raw Q4_K superblocks (144 bytes = 256 values each)
+pub fn q4k_matmul(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    activation: &wgpu::Buffer,
+    weights: &wgpu::Buffer,
+    n: u32,
+    k: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+    let blocks_per_row = k / 256;
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        n: u32,
+        k: u32,
+        blocks_per_row: u32,
+        _pad: u32,
+    }
+
+    let params = Params { n, k, blocks_per_row, _pad: 0 };
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&params));
+
+    let num_wg = (n + 3) / 4;
+    let x = num_wg.min(65535);
+    let y = (num_wg + x - 1) / x;
+    p.encode(
+        enc,
+        &p.q4k_matmul,
+        &[
+            activation.as_entire_binding(),
+            weights.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        (x, y, 1),
+    );
+
+    output
+}
+
+/// Q4_K matmul prepare with pre-computed params (decode path)
+pub fn q4k_matmul_prepare_precomputed(
+    p: &Pipelines,
+    activation: &wgpu::Buffer,
+    weights: &wgpu::Buffer,
+    params_buf: &wgpu::Buffer,
+    n: u32,
+    wg: (u32, u32, u32),
+) -> (wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32)) {
+    let output = p.alloc((n as u64) * 4);
+    let bg = p.create_bind_group(
+        &p.q4k_matmul,
+        &[
+            activation.as_entire_binding(),
+            weights.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+    );
+    (output, bg, wg)
+}
+
+/// Q6_K matmul: [1, K] x Q6_K[N, K] -> [1, N]
+/// Weights stored as raw Q6_K superblocks (210 bytes = 256 values each)
+pub fn q6k_matmul(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    activation: &wgpu::Buffer,
+    weights: &wgpu::Buffer,
+    n: u32,
+    k: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((n as u64) * 4);
+    let blocks_per_row = k / 256;
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        n: u32,
+        k: u32,
+        blocks_per_row: u32,
+        _pad: u32,
+    }
+
+    let params = Params { n, k, blocks_per_row, _pad: 0 };
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&params));
+
+    let num_wg = (n + 3) / 4;
+    let x = num_wg.min(65535);
+    let y = (num_wg + x - 1) / x;
+    p.encode(
+        enc,
+        &p.q6k_matmul,
+        &[
+            activation.as_entire_binding(),
+            weights.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        (x, y, 1),
+    );
+
+    output
+}
+
+/// Q6_K matmul prepare with pre-computed params (decode path)
+pub fn q6k_matmul_prepare_precomputed(
+    p: &Pipelines,
+    activation: &wgpu::Buffer,
+    weights: &wgpu::Buffer,
+    params_buf: &wgpu::Buffer,
+    n: u32,
+    wg: (u32, u32, u32),
+) -> (wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32)) {
+    let output = p.alloc((n as u64) * 4);
+    let bg = p.create_bind_group(
+        &p.q6k_matmul,
+        &[
+            activation.as_entire_binding(),
+            weights.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+    );
+    (output, bg, wg)
+}
+
 /// LayerNorm: (input - mean) / sqrt(var + eps) * weight + bias
 pub fn layernorm(
     p: &Pipelines,
@@ -2611,6 +2741,8 @@ pub enum QuantFormat {
     F16,
     Q8,
     Q4,
+    Q4K,
+    Q6K,
     Ternary,
 }
 
@@ -2646,6 +2778,16 @@ pub fn prepare_matmul_for_quant<'a>(
         QuantFormat::F16 => {
             let (buf, bg, wg) = f16_matmul_prepare_precomputed(p, activation, weight, params_buf, n, wg);
             (buf, bg, wg, &p.f16_matmul)
+        }
+        QuantFormat::Q4K => {
+            // Q4_K: no separate scales buffer — everything is in the weight superblocks
+            let (buf, bg, wg) = q4k_matmul_prepare_precomputed(p, activation, weight, params_buf, n, wg);
+            (buf, bg, wg, &p.q4k_matmul)
+        }
+        QuantFormat::Q6K => {
+            // Q6_K: no separate scales buffer — everything is in the weight superblocks
+            let (buf, bg, wg) = q6k_matmul_prepare_precomputed(p, activation, weight, params_buf, n, wg);
+            (buf, bg, wg, &p.q6k_matmul)
         }
         QuantFormat::Ternary => {
             let (buf, bg, wg) = ternary_matmul_prepare_precomputed(p, activation, weight, scales, params_buf, n, wg);
