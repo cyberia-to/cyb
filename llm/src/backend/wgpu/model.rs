@@ -806,10 +806,18 @@ impl NativeModel {
         let decode_embed_buf = pipelines.upload_f32(&vec![0.0f32; hidden_size]);
 
         let embed_f32 = weight_to_f32("model.embed_tokens.weight")?;
-        let embed_table = pipelines.upload_f32(&embed_f32);
+        // Only upload embed to GPU if needed (tied weights use it as lm_head)
+        let embed_table = if tie_word_embeddings {
+            pipelines.upload_f32(&embed_f32)
+        } else {
+            // Dummy 4-byte buffer — not used, lm_head is separate
+            pipelines.upload_f32(&[0.0f32])
+        };
 
         let lm_head = if !tie_word_embeddings {
             weights.get("lm_head.weight").map(|lm_w| {
+                log::info!("Uploading lm_head ({} elements, {:.1}MB)", lm_w.shape.iter().product::<usize>(),
+                    safetensors_to_f32(&lm_w.data, lm_w.dtype).len() as f64 * 4.0 / 1e6);
                 pipelines.upload_f32(&safetensors_to_f32(&lm_w.data, lm_w.dtype))
             })
         } else { None };
@@ -1108,8 +1116,9 @@ impl NativeModel {
             let hs = hidden_size as usize;
             let embed_start = token_id * hs;
             let embed_slice = &self.embed_f32[embed_start..embed_start + hs];
-            // Write embedding to persistent buffer (avoids create_buffer_init which
-            // silently fails after heavy GPU memory allocation on some backends).
+            if pos_offset < 2 {
+                log::warn!("WGPU embed[token={token_id}][0:4]: {:?}", &embed_slice[..4]);
+            }
             p.queue.write_buffer(&self.decode_embed_buf, 0, bytemuck::cast_slice(embed_slice));
             let mut hidden = self.decode_embed_buf.clone();
 
@@ -1336,17 +1345,6 @@ impl NativeModel {
             p.queue.submit(std::iter::once(enc.finish()));
             self.past_seq_len = total_seq;
 
-            // DEBUG: test different buffer sizes
-            if total_seq == 1 {
-                for size in [16u64, 1024, 4096, 20480, 65536] {
-                    let n = (size / 4) as usize;
-                    let data: Vec<f32> = (0..n).map(|i| (i as f32 + 1.0)).collect();
-                    let buf = p.alloc(size);
-                    p.queue.write_buffer(&buf, 0, bytemuck::cast_slice(&data));
-                    let check = p.read_f32(&buf, 2);
-                    log::warn!("DEBUG alloc({size}) + write: first2={:?} (expected [1.0, 2.0])", check);
-                }
-            }
             return p.read_f32(&logits_buf, vocab as usize);
         }
 
