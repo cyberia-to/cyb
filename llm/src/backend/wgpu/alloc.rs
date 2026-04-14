@@ -9,10 +9,13 @@ use std::sync::Arc;
 /// After the first step, zero new GPU allocations occur.
 pub struct FrameAllocator {
     device: Arc<wgpu::Device>,
-    /// Available buffers grouped by size
-    pools: HashMap<u64, Vec<wgpu::Buffer>>,
+    /// Available STORAGE buffers grouped by size
+    storage_pools: HashMap<u64, Vec<wgpu::Buffer>>,
+    /// Available UNIFORM buffers grouped by size
+    uniform_pools: HashMap<u64, Vec<wgpu::Buffer>>,
     /// Buffers allocated this frame (will be recycled on reset)
-    in_use: Vec<(u64, wgpu::Buffer)>,
+    /// (size, buffer, is_uniform)
+    in_use: Vec<(u64, wgpu::Buffer, bool)>,
     /// Stats
     pub reused: usize,
     pub allocated: usize,
@@ -22,7 +25,8 @@ impl FrameAllocator {
     pub fn new(device: Arc<wgpu::Device>) -> Self {
         Self {
             device,
-            pools: HashMap::new(),
+            storage_pools: HashMap::new(),
+            uniform_pools: HashMap::new(),
             in_use: Vec::with_capacity(1024),
             reused: 0,
             allocated: 0,
@@ -31,10 +35,10 @@ impl FrameAllocator {
 
     /// Allocate a storage buffer. Reuses existing buffer if available.
     pub fn alloc_storage(&mut self, size: u64) -> wgpu::Buffer {
-        if let Some(buffers) = self.pools.get_mut(&size) {
+        if let Some(buffers) = self.storage_pools.get_mut(&size) {
             if let Some(buf) = buffers.pop() {
                 self.reused += 1;
-                self.in_use.push((size, buf.clone()));
+                self.in_use.push((size, buf.clone(), false));
                 return buf;
             }
         }
@@ -48,18 +52,17 @@ impl FrameAllocator {
                 | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        self.in_use.push((size, buf.clone()));
+        self.in_use.push((size, buf.clone(), false));
         buf
     }
 
     /// Allocate a uniform buffer (small, for params).
     pub fn alloc_uniform(&mut self, size: u64) -> wgpu::Buffer {
-        // Round up to 16-byte alignment
         let aligned = (size + 15) & !15;
-        if let Some(buffers) = self.pools.get_mut(&aligned) {
+        if let Some(buffers) = self.uniform_pools.get_mut(&aligned) {
             if let Some(buf) = buffers.pop() {
                 self.reused += 1;
-                self.in_use.push((aligned, buf.clone()));
+                self.in_use.push((aligned, buf.clone(), true));
                 return buf;
             }
         }
@@ -71,14 +74,18 @@ impl FrameAllocator {
             usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             mapped_at_creation: false,
         });
-        self.in_use.push((aligned, buf.clone()));
+        self.in_use.push((aligned, buf.clone(), true));
         buf
     }
 
     /// Reset: all buffers from previous frame become available for reuse
     pub fn reset(&mut self) {
-        for (size, buf) in self.in_use.drain(..) {
-            self.pools.entry(size).or_default().push(buf);
+        for (size, buf, is_uniform) in self.in_use.drain(..) {
+            if is_uniform {
+                self.uniform_pools.entry(size).or_default().push(buf);
+            } else {
+                self.storage_pools.entry(size).or_default().push(buf);
+            }
         }
     }
 
