@@ -2,57 +2,68 @@
 
 Status: approved
 Created: 2026-04-16
+Updated: 2026-04-16
 
 Make any GGUF model work out of the box. No model-specific workarounds.
 
-## Verified issues
+## Progress
 
-### 1. Buffer >4GB crash (blocks gemma-4-31b)
+### 1. Buffer >4GB / large-vocab embed — DONE
 
-wgpu max_buffer_size = 4GB. Any model with vocab × hidden × 4 > 4GB crashes.
+WGPU: Q4_K embed shader (q4k_embed.wgsl) — keeps raw Q4_K on GPU, dequant
+per-token. Decode + prefill both wired. Committed a26e2c42.
 
-Gemma-4: vocab=262144 × hidden=5376 × 4 = 5.6GB → crash.
+Metal: CPU Q4_K dequant per-token (dequant_q4k_row_to_f16). Avoids 2.8GB
+f16 table upload. Committed 1bb4cf00.
 
-Fix: keep embed as quantized on GPU. Do Q4_K embed lookup in a compute shader
-instead of dequanting 5.6GB to f32. Same for lm_head — keep as quantized,
-use Q4_K matvec for logit computation.
+File loader: mmap for >1GB files. Was reading 17GB twice (34GB total).
+Now mmap + per-tensor copy. Header scan up to 32MB (gemma-4 has 18.4MB
+text header due to 60-layer tensor index). Committed 1bb4cf00.
 
-### 2. Attention shared memory limit (future-proofs to long context)
+Metal matvec_q4k: fixed dmin handling + get_scale_min_k4. Previous version
+ignored dmin entirely. Committed a26e2c42.
+
+### 2. Attention shared memory limit — TODO
 
 `scores: array<f32, 2048>` in attention.wgsl limits max_seq to 2048.
-Models with context >2048 silently corrupt. Gemma-4 has 262K context.
+Fix: tiled attention or storage buffer.
 
-Fix: tile attention over sequence — process chunks of 2048, accumulate partial
-softmax. Or use dynamic allocation via storage buffer instead of workgroup mem.
+### 3. Coder-14b garbled output — IN PROGRESS
 
-### 3. Coder-14b garbled output (unknown compute bug)
+New findings (2026-04-16):
+- WGPU: logits range normal (-17..15), but argmax picks wrong tokens.
+  Output "Rif>Mainvos" or "PKG" instead of "4".
+- Metal: NaN logits from pos=0. Argmax=0 every step. Output "!!!!!".
+- Ollama: correct output "2+2 = 4" from same GGUF.
+- qwen3-0.6b works correctly on both backends (225 tok/s Metal).
+- Difference: qwen3-0.6b uses Q4 encoding. Coder-14b uses Q4_K encoding.
+- Coder-14b also uses Q4_K GPU embed path (vocab 152K × hidden 5120 = 3.1GB > 2GB threshold).
 
-Everything individually verified correct: Q4_K shader, Q6_K shader, embed,
-tokenizer, GQA expansion, format chain. But 48-layer forward produces garbage.
-Ollama outputs correct "Four" from same GGUF.
+Suspects:
+1. Q4_K matvec at large dimensions (5120 hidden) — may have precision/indexing bug
+2. Q4_K embed GPU dequant may produce wrong values
+3. GGUF shape convention: embed stored as [hidden, vocab] vs [vocab, hidden]
+   — physical layout IS [vocab, hidden] (confirmed), but metadata says [5120, 152064]
 
-Suspected: subtle numerical issue in one of the intermediate kernels (RoPE,
-attention, skip_norm) that only manifests at larger dimensions. Need
-layer-by-layer comparison with a known-good reference.
+Next step: add debug dump after embed + after layer 0 for coder-14b.
+Compare first 8 values with reference (llama.cpp/ggml debug output).
 
-Debug approach:
-- Export intermediate tensors from ollama/llama.cpp for first token
-- Compare with our GPU output after each layer
-- Find exact divergence point
+### 4. Gemma-4 architecture — BLOCKED on transpose
 
-### 4. Gemma-4 architecture support
+Gemma-4 loads but panics at layer 5: transpose_blocks index out of range.
+Slice len=6193152 but tried to read 6193296 (diff = 144 = 1 Q4_K block).
+Some tensor shape does not divide cleanly by Q4_K block size.
 
-Gemma-4 needs features not in the current transformer template:
-- Mixed sliding_window / full_attention layer types
+Also needs:
 - GELU activation (vs SiLU)
 - final_logit_softcapping
+- Mixed sliding_window / full_attention layer types
 - attention_k_eq_v (shared K/V projections)
-
-Fix: parse these from config, add conditional dispatch.
 
 ## Implementation priority
 
-1. **Q4_K embed shader** — unblocks gemma-4 (and any large-vocab model)
-2. **Layer-by-layer debug** — find coder-14b compute bug
-3. **Tiled attention** — unblocks long context
-4. **Gemma-4 arch features** — activations, softcapping, sliding window
+1. ~~Q4_K embed shader~~ DONE
+2. **Coder-14b debug** — find divergence point vs reference
+3. **Gemma-4 tensor shapes** — fix transpose_blocks for non-aligned tensors
+4. **Tiled attention** — unblocks long context
+5. **Gemma-4 arch features** — GELU, softcapping, sliding window
