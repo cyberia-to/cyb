@@ -1733,6 +1733,27 @@ impl NativeModel {
                 all_dispatches.push(DispatchCmd { shader: &p.add, bg: res2_bg, wg: res2_wg });
 
                 hidden = new_hidden;
+
+                // DEBUG: dump hidden state after each layer on first token
+                // Enable with DEBUG_LAYERS=1 env var
+                if pos_offset == 0 && std::env::var("DEBUG_LAYERS").is_ok()
+                    && (i < 3 || i >= num_layers - 2)
+                {
+                    let mut enc = p.device.create_command_encoder(&Default::default());
+                    for cmd in all_dispatches.drain(..) {
+                        let mut pass = enc.begin_compute_pass(&Default::default());
+                        pass.set_pipeline(&cmd.shader.pipeline);
+                        pass.set_bind_group(0, Some(&cmd.bg), &[]);
+                        pass.dispatch_workgroups(cmd.wg.0, cmd.wg.1, cmd.wg.2);
+                    }
+                    let idx = p.queue.submit(std::iter::once(enc.finish()));
+                    p.device.poll(wgpu::Maintain::WaitForSubmissionIndex(idx));
+                    let vals = p.read_f32(&hidden, 8);
+                    let status = if vals.iter().any(|v| v.is_nan()) { "NaN!" }
+                        else if vals.iter().any(|v| v.is_infinite()) { "INF!" }
+                        else { "ok" };
+                    log::warn!("LAYER {i} hidden[0:8]: {:?} {}", vals, status);
+                }
             }
 
             // Final norm + LM head
@@ -1799,7 +1820,11 @@ impl NativeModel {
                 let max_logit = logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
                 let min_logit = logits.iter().cloned().fold(f32::INFINITY, f32::min);
                 let argmax = logits.iter().enumerate().max_by(|a,b| a.1.partial_cmp(b.1).unwrap()).map(|(i,_)| i).unwrap_or(0);
-                log::warn!("WGPU pos={}: logits range=[{:.2}..{:.2}] argmax={}", total_seq-1, min_logit, max_logit, argmax);
+                // Top-5 tokens
+                let mut indexed: Vec<(usize, f32)> = logits.iter().enumerate().map(|(i,&v)| (i,v)).collect();
+                indexed.sort_by(|a,b| b.1.partial_cmp(&a.1).unwrap());
+                let top5: Vec<_> = indexed[..5.min(indexed.len())].iter().map(|(i,v)| format!("{}:{:.2}", i, v)).collect();
+                log::warn!("WGPU pos={}: logits range=[{:.2}..{:.2}] argmax={} top5=[{}]", total_seq-1, min_logit, max_logit, argmax, top5.join(", "));
             }
             return logits;
         }
