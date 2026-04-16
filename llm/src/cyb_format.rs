@@ -1003,17 +1003,28 @@ pub fn read_model_config(path: &Path) -> io::Result<(String, String)> {
 
 /// Read a .model file (new spec: TOML frontmatter + ~~~name delimiters)
 pub fn read_model_file(path: &Path) -> io::Result<ModelFile> {
-    let data = std::fs::read(path)?;
+    use std::io::{Read, Seek, SeekFrom};
 
-    // Find weights size from frontmatter (needed to know where binary starts)
-    let text_part = {
-        // Scan for ~~~weights\n — everything before the line after it is text
-        let marker = b"~~~weights\n";
-        let pos = data.windows(marker.len()).position(|w| w == marker)
-            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "no ~~~weights section"))?;
-        std::str::from_utf8(&data[..pos])
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?
-    };
+    let file = std::fs::File::open(path)?;
+    let file_len = file.metadata()?.len() as usize;
+
+    // For large files (>1GB), read only the text header to find weights offset,
+    // then mmap for zero-copy weight access. For small files, read entirely.
+    let use_mmap = file_len > 1_000_000_000;
+
+    // Step 1: Read text header (scan for ~~~weights\n marker)
+    // Text part can be large for models with many tensors (gemma-4: 18MB).
+    let header_limit = file_len.min(32 * 1024 * 1024);
+    let mut reader = std::io::BufReader::new(&file);
+    let mut header_buf = vec![0u8; header_limit];
+    reader.read_exact(&mut header_buf)?;
+
+    let marker = b"~~~weights\n";
+    let marker_pos = header_buf.windows(marker.len()).position(|w| w == marker)
+        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "no ~~~weights section"))?;
+
+    let text_part = std::str::from_utf8(&header_buf[..marker_pos])
+        .map_err(|e| io::Error::new(io::ErrorKind::InvalidData, e))?;
 
     // Find weights size from frontmatter
     let weights_size: usize = text_part.lines()
@@ -1030,7 +1041,6 @@ pub fn read_model_file(path: &Path) -> io::Result<ModelFile> {
 
     for line in text_part.lines() {
         if line.starts_with("~~~") {
-            // Save previous section
             if let Some(name) = current_name.take() {
                 sections.insert(name, current_content.clone());
             }
@@ -1046,18 +1056,33 @@ pub fn read_model_file(path: &Path) -> io::Result<ModelFile> {
             current_content.push_str(line);
         }
     }
-    // Save last text section
     if let Some(name) = current_name.take() {
         sections.insert(name, current_content);
     }
 
     // Extract binary weights
-    let marker = b"~~~weights\n";
-    let weights_start = data.windows(marker.len()).position(|w| w == marker)
-        .map(|p| p + marker.len())
-        .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidData, "no ~~~weights"))?;
-    let weights_end = (weights_start + weights_size).min(data.len());
-    let weights = data[weights_start..weights_end].to_vec();
+    let weights_start = marker_pos + marker.len();
+    let weights_end = (weights_start + weights_size).min(file_len);
+
+    let weights = if use_mmap {
+        // Large file: mmap and copy only the weights region.
+        // This avoids reading the entire file into RAM twice.
+        // The OS pages in only what we touch.
+        log::info!("mmap loading {:.1}GB weights from {}", weights_size as f64 / 1e9, path.display());
+        drop(reader);
+        // SAFETY: file is open, read-only, not modified during loading
+        let mmap = unsafe { memmap2::Mmap::map(&file)? };
+        mmap[weights_start..weights_end].to_vec()
+    } else {
+        // Small file: already read enough in header_buf, or read fully
+        if weights_end <= header_buf.len() {
+            header_buf[weights_start..weights_end].to_vec()
+        } else {
+            drop(reader);
+            let data = std::fs::read(path)?;
+            data[weights_start..weights_end].to_vec()
+        }
+    };
 
     Ok(ModelFile {
         card: sections.remove("card").unwrap_or_default(),

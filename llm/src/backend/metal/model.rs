@@ -100,6 +100,12 @@ pub struct MetalModel {
     pipelines: MetalPipelines,
     config: MetalModelConfig,
     embed_table: Buffer,
+    /// CPU-side raw Q4_K embed bytes for large-vocab models (gemma 262K).
+    /// When Some, decode does CPU dequant of one row → f16 upload, instead of
+    /// uploading the entire 2.8GB f16 table to GPU.
+    embed_q4k_cpu: Option<Vec<u8>>,
+    /// CPU-side f32 embed for small models (fallback when not Q4_K large vocab)
+    embed_f32_cpu: Vec<f32>,
     lm_head_q4: Buffer,
     lm_head_format: WeightFormat,
     lm_head_f16: Option<Buffer>,
@@ -195,9 +201,32 @@ impl MetalModel {
             Ok(f32s.iter().map(|&v| aruminium::f32_to_fp16(v)).collect())
         };
 
-        // Embed table (fp16)
-        let embed_f16 = weight_to_f16("model.embed_tokens.weight")?;
-        let embed_table = pipelines.upload_f16(&embed_f16).map_err(|e| format!("{e}"))?;
+        // Embed table — detect large vocab to avoid multi-GB CPU dequant
+        let embed_w = weights.get("model.embed_tokens.weight")
+            .ok_or("Missing weight: model.embed_tokens.weight")?;
+        let embed_f32_size = vocab_size * hidden_size * 4;
+        let use_cpu_embed = matches!(embed_w.dtype, crate::ir::DType::Q4_K)
+            && embed_f32_size > 2_000_000_000;
+
+        let (embed_f32_cpu, embed_q4k_cpu, embed_table) = if use_cpu_embed {
+            // Large Q4_K embed: keep raw bytes on CPU, dequant one row per token
+            let raw_mb = embed_w.data.len() as f64 / 1e6;
+            let f32_gb = embed_f32_size as f64 / 1e9;
+            log::info!(
+                "Metal large embed: vocab={vocab_size} hidden={hidden_size} → {f32_gb:.1}GB f32. \
+                 CPU Q4_K lookup ({raw_mb:.0}MB raw)."
+            );
+            // Dummy 1-row embed on GPU (rewritten each decode step)
+            let dummy = vec![0u16; hidden_size];
+            let embed_table = pipelines.upload_f16(&dummy).map_err(|e| format!("{e}"))?;
+            (Vec::new(), Some(embed_w.data.clone()), embed_table)
+        } else {
+            // Small embed: dequant to f16 and upload whole table
+            let f16_data = weight_to_f16("model.embed_tokens.weight")?;
+            let embed_table = pipelines.upload_f16(&f16_data).map_err(|e| format!("{e}"))?;
+            let f32_data = crate::backend::wgpu::model::safetensors_to_f32(&embed_w.data, embed_w.dtype);
+            (f32_data, None, embed_table)
+        };
 
         // LM head
         let lm_w = weights.get("lm_head.weight")
@@ -249,12 +278,12 @@ impl MetalModel {
             }
         };
 
-        // LM head f16 (for f16 mode)
-        let lm_head_f16 = if use_f16 {
+        // LM head f16 (for f16 mode) — skip for large vocab (multi-GB allocation)
+        let lm_head_f16 = if use_f16 && !use_cpu_embed {
             let lm_f16 = if !tie_word_embeddings {
-                weight_to_f16("lm_head.weight").unwrap_or_else(|_| embed_f16.clone())
+                weight_to_f16("lm_head.weight")?
             } else {
-                embed_f16.clone()
+                weight_to_f16("model.embed_tokens.weight")?
             };
             Some(pipelines.upload_f16(&lm_f16).map_err(|e| format!("{e}"))?)
         } else { None };
@@ -480,7 +509,8 @@ impl MetalModel {
         let token_buf = pipelines.alloc(4).map_err(|e| format!("{e}"))?;
 
         Ok(MetalModel {
-            pipelines, config, embed_table, lm_head_q4, lm_head_format, lm_head_f16, final_norm_weight,
+            pipelines, config, embed_table, embed_q4k_cpu, embed_f32_cpu,
+            lm_head_q4, lm_head_format, lm_head_f16, final_norm_weight,
             token_buf, layers, cos_cache, sin_cache, kv_cache, past_seq_len: 0, scratch,
         })
     }
@@ -500,9 +530,28 @@ impl MetalModel {
             d[..4].copy_from_slice(&token_id.to_le_bytes());
         });
 
+        // CPU embed lookup for large-vocab Q4_K models
+        if let Some(ref q4k_raw) = self.embed_q4k_cpu {
+            let row_f16 = dequant_q4k_row_to_f16(q4k_raw, token_id as usize, c.hidden_size);
+            self.embed_table.write(|d| {
+                let bytes = bytemuck::cast_slice::<u16, u8>(&row_f16);
+                d[..bytes.len()].copy_from_slice(bytes);
+            });
+        } else if !self.embed_f32_cpu.is_empty() {
+            // Small model: CPU f32 lookup → f16 upload
+            let hs = c.hidden_size;
+            let start = token_id as usize * hs;
+            let row: Vec<u16> = self.embed_f32_cpu[start..start + hs]
+                .iter().map(|&v| aruminium::f32_to_fp16(v)).collect();
+            self.embed_table.write(|d| {
+                let bytes = bytemuck::cast_slice::<u16, u8>(&row);
+                d[..bytes.len()].copy_from_slice(bytes);
+            });
+        }
+
         unsafe { aruminium::autorelease_pool(|| {
             p.dispatcher.batch_raw(|batch| {
-                // ── Embed ──
+                // ── Embed (GPU reads from pre-written embed_table) ──
                 let embed_params = [c.hidden_size as u32];
                 batch.bind(&p.embed);
                 batch.bind_buffer(&self.embed_table, 0, 0);
@@ -999,6 +1048,14 @@ impl MetalModel {
         let p = &self.pipelines;
         let c = &self.config;
         self.token_buf.write(|d| { d[..4].copy_from_slice(&token_id.to_le_bytes()); });
+        // CPU embed for large-vocab models
+        if let Some(ref q4k_raw) = self.embed_q4k_cpu {
+            let row_f16 = dequant_q4k_row_to_f16(q4k_raw, token_id as usize, c.hidden_size);
+            self.embed_table.write(|d| {
+                let bytes = bytemuck::cast_slice::<u16, u8>(&row_f16);
+                d[..bytes.len()].copy_from_slice(bytes);
+            });
+        }
         unsafe { aruminium::autorelease_pool(|| {
             p.dispatcher.batch_raw(|batch| {
                 let embed_params = [c.hidden_size as u32];
@@ -1093,6 +1150,15 @@ impl MetalModel {
         self.token_buf.write(|d| {
             d[..4].copy_from_slice(&token_id.to_le_bytes());
         });
+
+        // CPU embed for large-vocab models
+        if let Some(ref q4k_raw) = self.embed_q4k_cpu {
+            let row_f16 = dequant_q4k_row_to_f16(q4k_raw, token_id as usize, c.hidden_size);
+            self.embed_table.write(|d| {
+                let bytes = bytemuck::cast_slice::<u16, u8>(&row_f16);
+                d[..bytes.len()].copy_from_slice(bytes);
+            });
+        }
 
         // Phase 1: Embed + Layers
         let t0 = Instant::now();
@@ -1663,5 +1729,54 @@ mod tests {
                 "byte {i}: got {}, expected {} (w[{}]={}, w[{}]={})", 
                 qs_out[i], expected, 2*i, weights[2*i], 2*i+1, weights[2*i+1]);
         }
+    }
+}
+
+/// Dequantize one row of a Q4_K embed table to f16 values.
+/// Q4_K superblock: 144 bytes = 256 values.
+/// Layout: d(f16=2) + dmin(f16=2) + scales(12) + qs(128).
+fn dequant_q4k_row_to_f16(raw: &[u8], token_id: usize, hidden_size: usize) -> Vec<u16> {
+    const BLOCK_SIZE: usize = 256; // values per superblock
+    const BLOCK_BYTES: usize = 144;
+    let blocks_per_row = hidden_size / BLOCK_SIZE;
+    let row_offset = token_id * blocks_per_row * BLOCK_BYTES;
+    let mut out = vec![0u16; hidden_size];
+
+    for blk in 0..blocks_per_row {
+        let base = row_offset + blk * BLOCK_BYTES;
+        let d = half::f16::from_le_bytes([raw[base], raw[base + 1]]).to_f32();
+        let dmin = half::f16::from_le_bytes([raw[base + 2], raw[base + 3]]).to_f32();
+        let scales = &raw[base + 4..base + 16];
+        let qs = &raw[base + 16..base + 144];
+
+        for grp in 0..4usize {
+            let (sc1, m1) = get_scale_min_k4(grp * 2, scales);
+            let (sc2, m2) = get_scale_min_k4(grp * 2 + 1, scales);
+            let d1 = d * sc1;
+            let m1v = dmin * m1;
+            let d2 = d * sc2;
+            let m2v = dmin * m2;
+
+            for l in 0..32usize {
+                let qb = qs[grp * 32 + l];
+                let v_lo = d1 * (qb & 0xF) as f32 - m1v;
+                let v_hi = d2 * (qb >> 4) as f32 - m2v;
+                let idx = blk * BLOCK_SIZE + grp * 64 + l;
+                out[idx] = aruminium::f32_to_fp16(v_lo);
+                out[idx + 32] = aruminium::f32_to_fp16(v_hi);
+            }
+        }
+    }
+    out
+}
+
+/// Unpack 6-bit scale and min for sub-block j (0..7)
+fn get_scale_min_k4(j: usize, scales: &[u8]) -> (f32, f32) {
+    if j < 4 {
+        (f32::from(scales[j] & 63), f32::from(scales[j + 4] & 63))
+    } else {
+        let sc = ((scales[j + 4] & 0xF) | ((scales[j - 4] >> 6) << 4)) as f32;
+        let mn = ((scales[j + 4] >> 4) | ((scales[j] >> 6) << 4)) as f32;
+        (sc, mn)
     }
 }
