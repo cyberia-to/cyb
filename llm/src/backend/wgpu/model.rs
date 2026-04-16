@@ -574,7 +574,7 @@ pub fn safetensors_to_f32(data: &[u8], dtype: crate::ir::DType) -> Vec<f32> {
             }).collect()
         }
         _ => {
-            log::warn!("Unsupported dtype {:?}, treating as f32", dtype);
+            log::error!("Unsupported dtype {:?} — cannot dequantize. Data will be interpreted as f32 (likely wrong).", dtype);
             data.chunks_exact(4)
                 .map(|c| f32::from_le_bytes([c[0], c[1], c[2], c[3]]))
                 .collect()

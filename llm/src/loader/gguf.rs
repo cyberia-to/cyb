@@ -105,7 +105,7 @@ fn gguf_type_to_dtype(type_id: u32) -> DType {
         13 => DType::Q5_K,  // GGML_TYPE_Q5_K
         14 => DType::Q6_K,  // GGML_TYPE_Q6_K
         _ => {
-            log::warn!("Unknown GGUF type {type_id}, defaulting to F32");
+            log::error!("Unknown GGUF type {type_id} — no dequant available, data will be wrong");
             DType::F32
         }
     }
