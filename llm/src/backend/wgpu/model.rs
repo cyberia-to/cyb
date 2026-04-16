@@ -151,10 +151,12 @@ pub struct NativeModel {
     config: ModelConfig,
     pipelines: Arc<Pipelines>,
     embed_table: wgpu::Buffer,
-    /// CPU-side f32 embed table for reliable embedding lookup.
-    /// Large (multi-GB) GPU buffers can have upload latency issues on Metal;
-    /// doing the lookup on CPU and uploading only the result avoids this.
+    /// CPU-side f32 embed table for reliable embedding lookup (small models).
+    /// Empty when using GPU Q4_K embed path for large vocab models.
     embed_f32: Vec<f32>,
+    /// Raw Q4_K embed table on GPU for large-vocab models (gemma 262k vocab).
+    /// When Some, decode/prefill use q4k_embed shader instead of CPU lookup.
+    embed_q4k_gpu: Option<wgpu::Buffer>,
     /// Separate LM head weights (None = tied to embed_table)
     lm_head: Option<wgpu::Buffer>,
     lm_head_quant: QuantFormat,
@@ -1081,13 +1083,40 @@ impl NativeModel {
         // which can exhaust wgpu's internal staging pools.
         let decode_embed_buf = pipelines.upload_f32(&vec![0.0f32; hidden_size]);
 
-        let embed_f32 = weight_to_f32("model.embed_tokens.weight")?;
-        // Only upload embed to GPU if needed (tied weights use it as lm_head)
-        let embed_table = if tie_word_embeddings {
-            pipelines.upload_f32(&embed_f32)
+        // Detect large Q4_K embed tables that would exceed GPU buffer limits if dequanted to f32.
+        // Threshold: vocab * hidden * 4 bytes > 2GB → keep raw Q4_K on GPU, dequant per-token.
+        let embed_w = weights.get("model.embed_tokens.weight")
+            .ok_or("Missing weight: model.embed_tokens.weight")?;
+        let embed_f32_size = vocab_size * hidden_size * 4;
+        let use_gpu_q4k_embed = matches!(embed_w.dtype, crate::ir::DType::Q4_K)
+            && embed_f32_size > 2_000_000_000;
+
+        let (embed_f32, embed_table, embed_q4k_gpu) = if use_gpu_q4k_embed {
+            // Large Q4_K embed: upload raw bytes to GPU, dequant per-token via shader
+            let raw_size_mb = embed_w.data.len() as f64 / 1e6;
+            let f32_size_gb = embed_f32_size as f64 / 1e9;
+            log::info!(
+                "Large embed: vocab={vocab_size} hidden={hidden_size} → {f32_size_gb:.1}GB f32 exceeds 2GB limit. \
+                 Using GPU Q4_K embed ({raw_size_mb:.0}MB raw)."
+            );
+            let q4k_buf = pipelines.upload_bytes(&embed_w.data);
+            // For tied weights, the lm_head also needs Q4_K buffer, so upload as embed_table too
+            let embed_table = if tie_word_embeddings {
+                // The lm_head will use the Q4_K buffer via q4k_matmul — store it as embed_table
+                pipelines.upload_bytes(&embed_w.data)
+            } else {
+                pipelines.upload_f32(&[0.0f32])
+            };
+            (Vec::new(), embed_table, Some(q4k_buf))
         } else {
-            // Dummy 4-byte buffer — not used, lm_head is separate
-            pipelines.upload_f32(&[0.0f32])
+            // Small embed: dequant to f32 on CPU (existing path)
+            let f32_data = safetensors_to_f32(&embed_w.data, embed_w.dtype);
+            let embed_table = if tie_word_embeddings {
+                pipelines.upload_f32(&f32_data)
+            } else {
+                pipelines.upload_f32(&[0.0f32])
+            };
+            (f32_data, embed_table, None)
         };
 
         let (lm_head, lm_head_quant) = if !tie_word_embeddings {
@@ -1125,11 +1154,14 @@ impl NativeModel {
                     }
                 }
             } else { (None, QuantFormat::F32) }
+        } else if use_gpu_q4k_embed {
+            // Tied weights + Q4_K embed: lm_head uses embed_table which is Q4_K raw bytes
+            (None, QuantFormat::Q4K)
         } else { (None, QuantFormat::F32) };
 
-        // Note: embed lookup is done on CPU using embed_f32, so no GPU sync needed
-        // for the embed table. The lm_head is used in f32_matmul which runs after
-        // all layer dispatches, giving the upload plenty of time to complete.
+        // Note: for small embeds, lookup is done on CPU using embed_f32.
+        // For large Q4_K embeds, lookup is done on GPU via q4k_embed shader.
+        // The lm_head is used in matmul which runs after all layer dispatches.
 
         let q_dim = num_heads * head_dim;
         let kv_dim = kv_num_heads * head_dim;
@@ -1379,7 +1411,7 @@ impl NativeModel {
         log::info!(".model loaded: {} layers, {:?} weights", num_layers, model_quant_format);
 
         Ok(Self {
-            config, pipelines, embed_table, embed_f32, lm_head, lm_head_quant, layers, final_norm_weight,
+            config, pipelines, embed_table, embed_f32, embed_q4k_gpu, lm_head, lm_head_quant, layers, final_norm_weight,
             cos_cache, sin_cache, kv_cache, past_seq_len: 0, greedy_mode: false,
             quant_format: model_quant_format,
             model_params: ModelParamBuffers {
@@ -1481,17 +1513,30 @@ impl NativeModel {
 
             let mut all_dispatches: Vec<DispatchCmd> = Vec::with_capacity(num_layers * 21 + 5);
 
-            // CPU embedding lookup: avoids GPU-side read of the multi-GB embed table
-            // which can return zeros if the upload hasn't fully resolved on Metal.
             let token_id = token_ids[0] as usize;
             let hs = hidden_size as usize;
-            let embed_start = token_id * hs;
-            let embed_slice = &self.embed_f32[embed_start..embed_start + hs];
-            if pos_offset < 2 {
-                log::warn!("WGPU embed[token={token_id}][0:4]: {:?}", &embed_slice[..4]);
-            }
-            // Use fresh buffer for embed (write_buffer may fail under GPU memory pressure)
-            let mut hidden = p.upload_f32(embed_slice);
+
+            let mut hidden = if let Some(ref q4k_buf) = self.embed_q4k_gpu {
+                // GPU Q4_K embed: dequant one row on GPU (avoids 5.6GB f32 dequant)
+                if pos_offset < 2 {
+                    log::warn!("WGPU q4k_embed[token={token_id}] (GPU path)");
+                }
+                let (out, bg, wg) = dispatch::q4k_embed_prepare(
+                    &p, q4k_buf, token_id as u32, hidden_size,
+                );
+                all_dispatches.push(DispatchCmd { shader: &p.q4k_embed, bg, wg });
+                out
+            } else {
+                // CPU embedding lookup: avoids GPU-side read of the multi-GB embed table
+                // which can return zeros if the upload hasn't fully resolved on Metal.
+                let embed_start = token_id * hs;
+                let embed_slice = &self.embed_f32[embed_start..embed_start + hs];
+                if pos_offset < 2 {
+                    log::warn!("WGPU embed[token={token_id}][0:4]: {:?}", &embed_slice[..4]);
+                }
+                // Use fresh buffer for embed (write_buffer may fail under GPU memory pressure)
+                p.upload_f32(embed_slice)
+            };
 
             for i in 0..num_layers {
                 let lp = &self.layers[i].params;
@@ -1762,7 +1807,36 @@ impl NativeModel {
         // ================================================================
         // PREFILL PATH — legacy one-pass-per-op
         // ================================================================
-        let mut hidden = dispatch::embed(&p, &mut enc, &self.embed_table, &ids_buf, hidden_size, seq_len as u32);
+        let mut hidden = if let Some(ref q4k_buf) = self.embed_q4k_gpu {
+            // Q4_K embed prefill: dequant each token's row on GPU via individual dispatches
+            let out = p.alloc((seq_len as u64) * (hidden_size as u64) * 4);
+            let blocks_per_row = hidden_size / 256;
+            for s in 0..seq_len {
+                let tid = token_ids[s] as u32;
+                #[repr(C)]
+                #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+                struct EParams { token_id: u32, hidden_size: u32, blocks_per_row: u32, _pad: u32 }
+                let ep = EParams { token_id: tid, hidden_size, blocks_per_row, _pad: 0 };
+                let ep_buf = p.upload_uniform(bytemuck::bytes_of(&ep));
+                // Write to output[s * hidden_size .. (s+1) * hidden_size]
+                // We need a per-position output buffer, then copy
+                let row_out = p.alloc((hidden_size as u64) * 4);
+                p.encode(
+                    &mut enc, &p.q4k_embed,
+                    &[
+                        q4k_buf.as_entire_binding(),
+                        row_out.as_entire_binding(),
+                        ep_buf.as_entire_binding(),
+                    ],
+                    ((hidden_size + 255) / 256, 1, 1),
+                );
+                let offset = (s as u64) * (hidden_size as u64) * 4;
+                enc.copy_buffer_to_buffer(&row_out, 0, &out, offset, (hidden_size as u64) * 4);
+            }
+            out
+        } else {
+            dispatch::embed(&p, &mut enc, &self.embed_table, &ids_buf, hidden_size, seq_len as u32)
+        };
 
         for i in 0..num_layers {
             let normed = dispatch::rms_norm(

@@ -2141,6 +2141,78 @@ pub fn embed_prepare(
     (output, bg, ((output_size + 255) / 256, 1, 1))
 }
 
+/// Q4_K embed: dequant one row of a Q4_K embed table on GPU
+/// Returns output buffer of [hidden_size] f32
+pub fn q4k_embed(
+    p: &Pipelines,
+    enc: &mut wgpu::CommandEncoder,
+    embed_table: &wgpu::Buffer,
+    token_id: u32,
+    hidden_size: u32,
+) -> wgpu::Buffer {
+    let output = p.alloc((hidden_size as u64) * 4);
+    let blocks_per_row = hidden_size / 256;
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        token_id: u32,
+        hidden_size: u32,
+        blocks_per_row: u32,
+        _pad: u32,
+    }
+
+    let params = Params { token_id, hidden_size, blocks_per_row, _pad: 0 };
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&params));
+
+    p.encode(
+        enc,
+        &p.q4k_embed,
+        &[
+            embed_table.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+        ((hidden_size + 255) / 256, 1, 1),
+    );
+
+    output
+}
+
+/// Q4_K embed prepare: returns (output, bind_group, workgroups) for batched dispatch
+pub fn q4k_embed_prepare(
+    p: &Pipelines,
+    embed_table: &wgpu::Buffer,
+    token_id: u32,
+    hidden_size: u32,
+) -> (wgpu::Buffer, wgpu::BindGroup, (u32, u32, u32)) {
+    let output = p.alloc((hidden_size as u64) * 4);
+    let blocks_per_row = hidden_size / 256;
+
+    #[repr(C)]
+    #[derive(Clone, Copy, bytemuck::Pod, bytemuck::Zeroable)]
+    struct Params {
+        token_id: u32,
+        hidden_size: u32,
+        blocks_per_row: u32,
+        _pad: u32,
+    }
+
+    let params = Params { token_id, hidden_size, blocks_per_row, _pad: 0 };
+    let params_buf = p.upload_uniform(bytemuck::bytes_of(&params));
+
+    let bg = p.create_bind_group(
+        &p.q4k_embed,
+        &[
+            embed_table.as_entire_binding(),
+            output.as_entire_binding(),
+            params_buf.as_entire_binding(),
+        ],
+    );
+
+    (output, bg, ((hidden_size + 255) / 256, 1, 1))
+}
+
 // ---- Pre-computed param variants ----
 
 /// Q8 matmul with pre-computed params buffer

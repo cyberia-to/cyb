@@ -99,6 +99,9 @@ pub struct Pipelines {
     // --- Q2_K native matmul ---
     pub q2k_matmul: ComputeShader,
 
+    // --- Q4_K embed (dequant single row on GPU) ---
+    pub q4k_embed: ComputeShader,
+
     // --- Batch 9: Runtime quantization ---
     pub quantize: ComputeShader,
 
@@ -502,6 +505,14 @@ impl Pipelines {
             &[storage_ro(), storage_ro(), storage_rw(), uniform()],
         );
 
+        // --- Q4_K embed (dequant single row on GPU) ---
+        let q4k_embed = create_pipeline(
+            &device,
+            include_str!("shaders/q4k_embed.wgsl"),
+            "main",
+            &[storage_ro(), storage_rw(), uniform()],
+        );
+
         // --- Batch 9: Runtime quantization ---
         let quantize = create_pipeline(
             &device,
@@ -586,6 +597,8 @@ impl Pipelines {
             q3k_matmul,
             // Q2_K
             q2k_matmul,
+            // Q4_K embed
+            q4k_embed,
             // Batch 9
             quantize,
             frame_alloc,
