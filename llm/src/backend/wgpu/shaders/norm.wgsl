@@ -108,8 +108,8 @@ fn groupnorm_kernel(
     partial_sum = subgroupAdd(partial_sum);
     if (sg_id == 0u) { gn_wg_partial[sg_idx] = partial_sum; }
     workgroupBarrier();
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        partial_sum = gn_wg_partial[sg_id];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) { partial_sum = gn_wg_partial[sg_id]; } else { partial_sum = 0.0; }
         partial_sum = subgroupAdd(partial_sum);
     }
     if (tid == 0u) { gn_wg_partial[0] = partial_sum; }
@@ -131,8 +131,8 @@ fn groupnorm_kernel(
     partial_var = subgroupAdd(partial_var);
     if (sg_id == 0u) { gn_wg_partial[sg_idx] = partial_var; }
     workgroupBarrier();
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        partial_var = gn_wg_partial[sg_id];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) { partial_var = gn_wg_partial[sg_id]; } else { partial_var = 0.0; }
         partial_var = subgroupAdd(partial_var);
     }
     if (tid == 0u) { gn_wg_partial[0] = partial_var; }
@@ -194,8 +194,8 @@ fn instance_norm_kernel(
     partial_sum = subgroupAdd(partial_sum);
     if (sg_id == 0u) { in_wg_partial[sg_idx] = partial_sum; }
     workgroupBarrier();
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        partial_sum = in_wg_partial[sg_id];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) { partial_sum = in_wg_partial[sg_id]; } else { partial_sum = 0.0; }
         partial_sum = subgroupAdd(partial_sum);
     }
     if (tid == 0u) { in_wg_partial[0] = partial_sum; }
@@ -214,8 +214,8 @@ fn instance_norm_kernel(
     partial_var = subgroupAdd(partial_var);
     if (sg_id == 0u) { in_wg_partial[sg_idx] = partial_var; }
     workgroupBarrier();
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        partial_var = in_wg_partial[sg_id];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) { partial_var = in_wg_partial[sg_id]; } else { partial_var = 0.0; }
         partial_var = subgroupAdd(partial_var);
     }
     if (tid == 0u) { in_wg_partial[0] = partial_var; }
@@ -274,8 +274,8 @@ fn adaln_kernel(
     partial_sum = subgroupAdd(partial_sum);
     if (sg_id == 0u) { adaln_wg_partial[sg_idx] = partial_sum; }
     workgroupBarrier();
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        partial_sum = adaln_wg_partial[sg_id];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) { partial_sum = adaln_wg_partial[sg_id]; } else { partial_sum = 0.0; }
         partial_sum = subgroupAdd(partial_sum);
     }
     if (tid == 0u) { adaln_wg_partial[0] = partial_sum; }
@@ -294,8 +294,8 @@ fn adaln_kernel(
     partial_var = subgroupAdd(partial_var);
     if (sg_id == 0u) { adaln_wg_partial[sg_idx] = partial_var; }
     workgroupBarrier();
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        partial_var = adaln_wg_partial[sg_id];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) { partial_var = adaln_wg_partial[sg_id]; } else { partial_var = 0.0; }
         partial_var = subgroupAdd(partial_var);
     }
     if (tid == 0u) { adaln_wg_partial[0] = partial_var; }

@@ -48,8 +48,12 @@ fn main(
     }
     workgroupBarrier();
 
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        partial_sum = wg_partial_sum[sg_id];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) {
+            partial_sum = wg_partial_sum[sg_id];
+        } else {
+            partial_sum = 0.0;
+        }
         partial_sum = subgroupAdd(partial_sum);
     }
     if (tid == 0u) {
@@ -73,8 +77,12 @@ fn main(
     }
     workgroupBarrier();
 
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        partial_var = wg_partial_sq[sg_id];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) {
+            partial_var = wg_partial_sq[sg_id];
+        } else {
+            partial_var = 0.0;
+        }
         partial_var = subgroupAdd(partial_var);
     }
     if (tid == 0u) {

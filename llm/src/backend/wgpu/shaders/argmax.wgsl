@@ -61,9 +61,14 @@ fn main(
     workgroupBarrier();
 
     // Cross-subgroup reduction (first subgroup only, num_sgs entries)
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        local_max = wg_vals[sg_id];
-        local_idx = wg_idxs[sg_id];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) {
+            local_max = wg_vals[sg_id];
+            local_idx = wg_idxs[sg_id];
+        } else {
+            local_max = -1000000000.0;
+            local_idx = 0u;
+        }
 
         let global_max = subgroupMax(local_max);
 

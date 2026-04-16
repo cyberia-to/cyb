@@ -48,8 +48,12 @@ fn main(
     }
     workgroupBarrier();
 
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        sum_sq = wg_partial[sg_id];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) {
+            sum_sq = wg_partial[sg_id];
+        } else {
+            sum_sq = 0.0;
+        }
         sum_sq = subgroupAdd(sum_sq);
     }
 

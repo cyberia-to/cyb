@@ -71,8 +71,12 @@ fn main(
     }
     workgroupBarrier();
 
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        local_max = wg_partial[sg_id];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) {
+            local_max = wg_partial[sg_id];
+        } else {
+            local_max = -1000000.0;
+        }
         local_max = subgroupMax(local_max);
     }
 
@@ -102,8 +106,12 @@ fn main(
     }
     workgroupBarrier();
 
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        local_sum = wg_partial[sg_id];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) {
+            local_sum = wg_partial[sg_id];
+        } else {
+            local_sum = 0.0;
+        }
         local_sum = subgroupAdd(local_sum);
     }
 
@@ -184,8 +192,8 @@ fn attention_encode(
     local_max = subgroupMax(local_max);
     if (sg_id == 0u) { enc_wg_partial[sg_idx] = local_max; }
     workgroupBarrier();
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        local_max = enc_wg_partial[sg_id];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) { local_max = enc_wg_partial[sg_id]; } else { local_max = -1000000.0; }
         local_max = subgroupMax(local_max);
     }
     if (tid == 0u) { enc_wg_partial[0] = local_max; }
@@ -204,8 +212,8 @@ fn attention_encode(
     local_sum = subgroupAdd(local_sum);
     if (sg_id == 0u) { enc_wg_partial[sg_idx] = local_sum; }
     workgroupBarrier();
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        local_sum = enc_wg_partial[sg_id];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) { local_sum = enc_wg_partial[sg_id]; } else { local_sum = 0.0; }
         local_sum = subgroupAdd(local_sum);
     }
     if (tid == 0u) { enc_wg_partial[0] = local_sum; }

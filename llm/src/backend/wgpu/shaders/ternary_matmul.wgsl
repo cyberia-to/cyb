@@ -81,8 +81,12 @@ fn main(
     }
     workgroupBarrier();
 
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        partial_sum = tern_wg_partial[sg_id];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) {
+            partial_sum = tern_wg_partial[sg_id];
+        } else {
+            partial_sum = 0.0;
+        }
         partial_sum = subgroupAdd(partial_sum);
     }
 

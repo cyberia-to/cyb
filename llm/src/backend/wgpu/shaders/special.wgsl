@@ -259,8 +259,8 @@ fn cross_attention_kernel(
     local_max = subgroupMax(local_max);
     if (sg_id == 0u) { cross_wg_partial[sg_idx] = local_max; }
     workgroupBarrier();
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        local_max = cross_wg_partial[sg_id];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) { local_max = cross_wg_partial[sg_id]; } else { local_max = -1000000.0; }
         local_max = subgroupMax(local_max);
     }
     if (tid == 0u) { cross_wg_partial[0] = local_max; }
@@ -280,8 +280,8 @@ fn cross_attention_kernel(
     local_sum = subgroupAdd(local_sum);
     if (sg_id == 0u) { cross_wg_partial[sg_idx] = local_sum; }
     workgroupBarrier();
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        local_sum = cross_wg_partial[sg_id];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) { local_sum = cross_wg_partial[sg_id]; } else { local_sum = 0.0; }
         local_sum = subgroupAdd(local_sum);
     }
     if (tid == 0u) { cross_wg_partial[0] = local_sum; }
@@ -388,8 +388,8 @@ fn flash_attention_kernel(
         tile_max = subgroupMax(tile_max);
         if (sg_id == 0u) { flash_wg_partial[sg_idx] = tile_max; }
         workgroupBarrier();
-        if (sg_idx == 0u && sg_id < num_sgs) {
-            tile_max = flash_wg_partial[sg_id];
+        if (sg_idx == 0u) {
+            if (sg_id < num_sgs) { tile_max = flash_wg_partial[sg_id]; } else { tile_max = -1000000.0; }
             tile_max = subgroupMax(tile_max);
         }
         if (tid == 0u) { flash_wg_partial[0] = tile_max; }
@@ -409,8 +409,8 @@ fn flash_attention_kernel(
         tile_sum = subgroupAdd(tile_sum);
         if (sg_id == 0u) { flash_wg_partial[sg_idx] = tile_sum; }
         workgroupBarrier();
-        if (sg_idx == 0u && sg_id < num_sgs) {
-            tile_sum = flash_wg_partial[sg_id];
+        if (sg_idx == 0u) {
+            if (sg_id < num_sgs) { tile_sum = flash_wg_partial[sg_id]; } else { tile_sum = 0.0; }
             tile_sum = subgroupAdd(tile_sum);
         }
         if (tid == 0u) { flash_wg_partial[0] = tile_sum; }

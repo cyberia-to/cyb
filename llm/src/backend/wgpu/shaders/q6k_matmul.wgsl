@@ -180,9 +180,15 @@ fn main(
     }
     workgroupBarrier();
 
-    if (sg_idx == 0u && sg_id < num_sgs) {
-        for (var r = 0u; r < NR; r++) {
-            sums[r] = wg_partial[sg_id * NR + r];
+    if (sg_idx == 0u) {
+        if (sg_id < num_sgs) {
+            for (var r = 0u; r < NR; r++) {
+                sums[r] = wg_partial[sg_id * NR + r];
+            }
+        } else {
+            for (var r = 0u; r < NR; r++) {
+                sums[r] = 0.0;
+            }
         }
         for (var r = 0u; r < NR; r++) {
             sums[r] = subgroupAdd(sums[r]);
