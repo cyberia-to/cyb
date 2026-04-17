@@ -1,0 +1,48 @@
+[package]
+name = "mr"
+version = "0.1.0"
+edition = "2021"
+description = "Model runtime — universal, portable, spec-driven"
+
+[lib]
+name = "mr"
+path = "src/lib.rs"
+
+[[bin]]
+name = "mr"
+path = "src/bin/mr.rs"
+
+[dependencies]
+# core
+half = { version = "2", features = ["num-traits"] }
+bytemuck = { version = "1", features = ["derive"] }
+thiserror = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+log = "0.4"
+env_logger = "0.11"
+
+# portable GPU backend
+wgpu = { version = "24", features = ["wgsl"] }
+pollster = "0.4"
+
+# file loading
+memmap2 = "0.9"
+
+# Apple Silicon turbo backend (macOS only)
+[target.'cfg(target_os = "macos")'.dependencies]
+aruminium = { path = "../../honeycrisp/aruminium" }
+
+[dev-dependencies]
+# tests that dump goldens from Python would run outside; here we use
+# checked-in JSON golden files
+serde_json = "1"
+
+[[test]]
+name = "tier1_ops"
+path = "tests/tier1_ops.rs"
+
+[[test]]
+name = "tier2_layers"
+path = "tests/tier2_layers.rs"

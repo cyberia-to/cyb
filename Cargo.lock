@@ -6801,6 +6801,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "mr"
+version = "0.1.0"
+dependencies = [
+ "aruminium",
+ "bytemuck",
+ "env_logger 0.11.9",
+ "half",
+ "log",
+ "memmap2 0.9.10",
+ "pollster",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "toml 0.8.2",
+ "wgpu 24.0.5",
+]
+
+[[package]]
 name = "muda"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"

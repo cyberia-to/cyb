@@ -1,0 +1,160 @@
+//! Tensor — shape, layout, dtype, host or backend-resident data.
+//!
+//! Spec: reference/runtime/tensor.md
+
+use crate::dtype::DType;
+use std::sync::Arc;
+
+/// Row-major tensor shape. Most-significant dim first.
+pub type Shape = Vec<usize>;
+
+/// Compute row-major strides from shape.
+///
+/// For rank 0 (scalar) returns empty vec.
+pub fn strides_from_shape(shape: &[usize]) -> Vec<usize> {
+    if shape.is_empty() {
+        return Vec::new();
+    }
+    let mut strides = vec![0; shape.len()];
+    strides[shape.len() - 1] = 1;
+    for i in (0..shape.len() - 1).rev() {
+        strides[i] = strides[i + 1] * shape[i + 1];
+    }
+    strides
+}
+
+/// Total element count for a shape.
+pub fn numel(shape: &[usize]) -> usize {
+    shape.iter().product()
+}
+
+/// A tensor: shape + dtype + data location.
+///
+/// For CPU tensors, data lives in host memory.
+/// For backend tensors, data is opaque (Arc<dyn BackendData>).
+#[derive(Clone)]
+pub struct Tensor {
+    pub shape: Shape,
+    pub dtype: DType,
+    pub data: TensorData,
+}
+
+/// Opaque backend-resident buffer handle.
+pub trait BackendData: Send + Sync + std::any::Any {
+    fn backend_name(&self) -> &'static str;
+    fn as_any(&self) -> &dyn std::any::Any;
+}
+
+#[derive(Clone)]
+pub enum TensorData {
+    /// CPU bytes, tightly packed row-major per dtype layout.
+    Host(Arc<Vec<u8>>),
+    /// Backend-resident buffer, opaque to caller.
+    Backend(Arc<dyn BackendData>),
+}
+
+impl Tensor {
+    /// Create a host tensor from f32 data.
+    pub fn from_f32(shape: Shape, data: Vec<f32>) -> Self {
+        assert_eq!(
+            numel(&shape),
+            data.len(),
+            "numel mismatch: shape={shape:?}, data.len={}",
+            data.len()
+        );
+        let bytes: Vec<u8> = bytemuck::cast_slice(&data).to_vec();
+        Self {
+            shape,
+            dtype: DType::F32,
+            data: TensorData::Host(Arc::new(bytes)),
+        }
+    }
+
+    /// Create a host tensor from raw bytes with explicit dtype.
+    pub fn from_bytes(shape: Shape, dtype: DType, bytes: Vec<u8>) -> Self {
+        assert_eq!(
+            dtype.bytes_for(numel(&shape)),
+            bytes.len(),
+            "byte count mismatch for shape={shape:?} dtype={dtype:?}"
+        );
+        Self {
+            shape,
+            dtype,
+            data: TensorData::Host(Arc::new(bytes)),
+        }
+    }
+
+    /// Element count.
+    pub fn numel(&self) -> usize {
+        numel(&self.shape)
+    }
+
+    /// Rank (number of dimensions).
+    pub fn rank(&self) -> usize {
+        self.shape.len()
+    }
+
+    /// Access host bytes or error if backend-resident.
+    pub fn as_host_bytes(&self) -> Option<&[u8]> {
+        match &self.data {
+            TensorData::Host(b) => Some(b.as_slice()),
+            TensorData::Backend(_) => None,
+        }
+    }
+
+    /// Interpret host bytes as f32 slice (panics if dtype != F32).
+    pub fn as_f32(&self) -> &[f32] {
+        assert_eq!(self.dtype, DType::F32, "as_f32 requires F32 dtype");
+        let bytes = self
+            .as_host_bytes()
+            .expect("as_f32 requires host tensor");
+        bytemuck::cast_slice(bytes)
+    }
+
+    /// Clone as Vec<f32>. Works for host F32 only.
+    pub fn to_f32_vec(&self) -> Vec<f32> {
+        self.as_f32().to_vec()
+    }
+}
+
+impl std::fmt::Debug for Tensor {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let loc = match &self.data {
+            TensorData::Host(_) => "host",
+            TensorData::Backend(b) => b.backend_name(),
+        };
+        write!(
+            f,
+            "Tensor {{ shape: {:?}, dtype: {:?}, loc: {} }}",
+            self.shape, self.dtype, loc
+        )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strides_row_major() {
+        assert_eq!(strides_from_shape(&[2, 3, 4]), vec![12, 4, 1]);
+        assert_eq!(strides_from_shape(&[5]), vec![1]);
+        assert_eq!(strides_from_shape(&[]), Vec::<usize>::new());
+    }
+
+    #[test]
+    fn numel_matches_product() {
+        assert_eq!(numel(&[2, 3, 4]), 24);
+        assert_eq!(numel(&[]), 1); // scalar
+        assert_eq!(numel(&[0, 5]), 0); // empty
+    }
+
+    #[test]
+    fn f32_roundtrip() {
+        let t = Tensor::from_f32(vec![2, 3], (0..6).map(|x| x as f32).collect());
+        assert_eq!(t.shape, vec![2, 3]);
+        assert_eq!(t.dtype, DType::F32);
+        assert_eq!(t.numel(), 6);
+        assert_eq!(t.to_f32_vec(), vec![0.0, 1.0, 2.0, 3.0, 4.0, 5.0]);
+    }
+}
