@@ -40,6 +40,10 @@ aruminium = { path = "../../honeycrisp/aruminium" }
 serde_json = "1"
 
 [[test]]
+name = "tier0_import"
+path = "tests/tier0_import.rs"
+
+[[test]]
 name = "tier1_ops"
 path = "tests/tier1_ops.rs"
 
