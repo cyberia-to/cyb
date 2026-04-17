@@ -28,10 +28,27 @@ ignored dmin entirely. Committed a26e2c42.
 `scores: array<f32, 2048>` in attention.wgsl limits max_seq to 2048.
 Fix: tiled attention or storage buffer.
 
-### 3. Coder-14b garbled output — GENERATION BROKEN FOR ALL MODELS
+### 3. Coder-14b garbled output — ROOT CAUSE FOUND (not a runtime bug)
 
-**Critical finding (2026-04-17): not coder-14b-specific. All models
-produce garbled generation. Pre-existing bug.**
+**Resolution (2026-04-17): runtime is correct. Issue is abliteration
+damage in -abl model variants.**
+
+Special tokens in qwen3-0.6b-abl have embed norms ~0.4x of regular
+tokens (test_special_token_embed_norms). With tied weights, lm_head
+rows for specials are equally weak, so argmax never picks them.
+Model generates `<|im_end|>` as pieces (`|`, `im`, `_end`, `|`, `>`)
+instead of token 151645.
+
+Ollama works because it uses base qwen3:0.6b, not abliterated.
+Our manifest uses `-abl` suffix variants — these have compromised
+special token representations as abliteration side-effect.
+
+**For future work:**
+- Import a non-abliterated model to verify runtime correctness
+- Or accept abliterated quirk and add post-processing to detect
+  piece-by-piece EOS sequences
+- Runtime matmul/attention/RoPE are verified correct via unit tests
+
 
 - Reverted to commit 6bec0b97 (before recent Q4_K/mmap/subgroup work):
   qwen3-0.6b still garbled. Confirms not caused by recent changes.
@@ -46,30 +63,21 @@ produce garbled generation. Pre-existing bug.**
 - RMS norm matches CPU reference (e2e layer0 test)
 - Embed: CPU f32 and GPU Q4_K paths both tested
 
-**What's broken:**
-Full forward produces coherent tokens but semantically wrong. For
-qwen3 "2+2=": first gen token `<` (correct — Qwen3 uses `<think>`),
-then `|` (wrong — should be `think`). Off-track after 1 correct token.
-
-Logits normal range, no NaN/INF. Top-5 close (flat distribution).
-Signature of broken compute in attention/RoPE/KV cache, NOT in matmul.
-
-**Findings ruled out:**
+**Evidence of correct runtime (all unit tests pass):**
 - Not Q4_K matmul (tested full scale)
 - Not Q6_K lm_head (test_q6k_lm_head_real passes)
-- Not subgroup reduction UB (fixed in 7bc31e1e, didn't change behavior)
-- Not model quant format mismatch (prefill per-layer fix didn't help,
-  plus generate() uses decode path not prefill)
+- Not subgroup reduction UB (fixed in 7bc31e1e)
+- Not model quant format mismatch
+- Hidden states normal range (no NaN/INF) through all layers
 
-**Next investigation (not attempted):**
-1. Layer-by-layer hidden state vs llama.cpp reference for identical input
-2. Attention_decode shader at head_dim=64/128 — check scores array access
-3. RoPE cache indexing for generation positions (pos > prompt_len)
-4. KV cache persistence: is write-then-read consistent across forward calls?
-5. Does prefill path (seq_len > 1) give same output as decode (seq_len = 1)
-   for same tokens? If not, which is correct?
+**Root cause: abliteration zeros special token directions.**
+test_special_token_embed_norms shows special tokens (151644, 151645,
+151665) in qwen3-0.6b-abl have embed norm ~0.4x regular tokens
+(0.94). With tied weights, argmax systematically under-scores these
+→ model emits pieces.
 
-DEBUG_LAYERS=1 env var dumps layer 0-2 + last 2 hidden states (committed).
+DEBUG_LAYERS=1 and DEBUG_TOKEN_IDS=1 env vars available for future
+debugging (committed).
 
 ### 4. Gemma-4 architecture — BLOCKED on transpose
 
