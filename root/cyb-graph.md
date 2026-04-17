@@ -333,7 +333,7 @@ snapshot endpoints stream the file; clients can pipe directly into a compiler:
 
 ```
 curl -s https://node.bostrom.cybernode.ai/cyber/graph/snapshot?block=23195000 \
-  | cyber-compile - -o bostrom-23195000.model
+  | mc - -o bostrom-23195000.model
 ```
 
 snapshot validity is also checkable offline with a single CLI:
