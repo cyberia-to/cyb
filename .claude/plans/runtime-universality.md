@@ -2,7 +2,7 @@
 
 Status: approved
 Created: 2026-04-16
-Updated: 2026-04-16
+Updated: 2026-04-17
 
 Make any GGUF model work out of the box. No model-specific workarounds.
 
@@ -28,25 +28,48 @@ ignored dmin entirely. Committed a26e2c42.
 `scores: array<f32, 2048>` in attention.wgsl limits max_seq to 2048.
 Fix: tiled attention or storage buffer.
 
-### 3. Coder-14b garbled output — IN PROGRESS
+### 3. Coder-14b garbled output — GENERATION BROKEN FOR ALL MODELS
 
-New findings (2026-04-16):
-- WGPU: logits range normal (-17..15), but argmax picks wrong tokens.
-  Output "Rif>Mainvos" or "PKG" instead of "4".
-- Metal: NaN logits from pos=0. Argmax=0 every step. Output "!!!!!".
-- Ollama: correct output "2+2 = 4" from same GGUF.
-- qwen3-0.6b works correctly on both backends (225 tok/s Metal).
-- Difference: qwen3-0.6b uses Q4 encoding. Coder-14b uses Q4_K encoding.
-- Coder-14b also uses Q4_K GPU embed path (vocab 152K × hidden 5120 = 3.1GB > 2GB threshold).
+**Critical finding (2026-04-17): not coder-14b-specific. All models
+produce garbled generation. Pre-existing bug.**
 
-Suspects:
-1. Q4_K matvec at large dimensions (5120 hidden) — may have precision/indexing bug
-2. Q4_K embed GPU dequant may produce wrong values
-3. GGUF shape convention: embed stored as [hidden, vocab] vs [vocab, hidden]
-   — physical layout IS [vocab, hidden] (confirmed), but metadata says [5120, 152064]
+- Reverted to commit 6bec0b97 (before recent Q4_K/mmap/subgroup work):
+  qwen3-0.6b still garbled. Confirms not caused by recent changes.
+- qwen3-0.6b on `"2+2="`: predicts `<|im_end|>` immediately instead
+  of `<think>...2+2=4...`. Metal 218 tok/s, but wrong output.
+- Ollama with same GGUF: correct "2+2 = 4" with thinking trace.
 
-Next step: add debug dump after embed + after layer 0 for coder-14b.
-Compare first 8 values with reference (llama.cpp/ggml debug output).
+**What's verified correct (unit tests all pass):**
+- Q4_K matmul: 3e-7 precision, small and full-size (152064×5120 lm_head)
+- Q6_K matmul: same precision at lm_head scale
+- Q5_K, Q3_K, Q2_K matmul shaders
+- RMS norm matches CPU reference (e2e layer0 test)
+- Embed: CPU f32 and GPU Q4_K paths both tested
+
+**What's broken:**
+Full forward produces coherent tokens but semantically wrong. For
+qwen3 "2+2=": first gen token `<` (correct — Qwen3 uses `<think>`),
+then `|` (wrong — should be `think`). Off-track after 1 correct token.
+
+Logits normal range, no NaN/INF. Top-5 close (flat distribution).
+Signature of broken compute in attention/RoPE/KV cache, NOT in matmul.
+
+**Findings ruled out:**
+- Not Q4_K matmul (tested full scale)
+- Not Q6_K lm_head (test_q6k_lm_head_real passes)
+- Not subgroup reduction UB (fixed in 7bc31e1e, didn't change behavior)
+- Not model quant format mismatch (prefill per-layer fix didn't help,
+  plus generate() uses decode path not prefill)
+
+**Next investigation (not attempted):**
+1. Layer-by-layer hidden state vs llama.cpp reference for identical input
+2. Attention_decode shader at head_dim=64/128 — check scores array access
+3. RoPE cache indexing for generation positions (pos > prompt_len)
+4. KV cache persistence: is write-then-read consistent across forward calls?
+5. Does prefill path (seq_len > 1) give same output as decode (seq_len = 1)
+   for same tokens? If not, which is correct?
+
+DEBUG_LAYERS=1 env var dumps layer 0-2 + last 2 hidden states (committed).
 
 ### 4. Gemma-4 architecture — BLOCKED on transpose
 
