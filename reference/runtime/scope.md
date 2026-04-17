@@ -123,17 +123,18 @@ K-quant preferred for new imports. Q4_0 kept for backwards compat.
 
 ## Backends
 
-| Backend | Target | When available |
+| Backend | Target | When |
 |---|---|---|
-| cpu | reference, slow, always correct | v1 |
-| wgpu | portable GPU (Windows, Linux, Android, Web) | v1 |
-| metal | Apple GPU with aruminium zero-copy | v1 |
-| ane | Apple Neural Engine via MIL | v2 |
-| cuda | NVIDIA | future |
+| **wgpu+rs** | portable default — wgpu GPU + Rust CPU fallback. Covers Linux/Windows/macOS/Android/Web. | v1 |
+| **honeycrisp** | Apple Silicon turbo — Metal + ANE + AMX + NEON + unimem zero-copy via aruminium. | v1 |
+| **nox** | convergent VM — trident-compiled bytecode, deterministic, verifiable, portable to future hardware. | future |
 
-A model runs on a backend if the backend implements every op the
-model's graph uses. Missing op falls back to CPU for that op
-(see [architecture.md](architecture.md)).
+CPU is not a user-facing backend — it's a reference library inside
+wgpu+rs for ops wgpu can't dispatch. Any model runs anywhere, at
+worst in pure Rust on CPU. See [architecture.md](architecture.md#backends).
+
+A CUDA+TensorCore turbo (analogous to honeycrisp, for NVIDIA) may
+be added when warranted. Not in v1.
 
 ## Out of scope (v1)
 
@@ -185,3 +186,8 @@ family is a minor version bump. Removing one is a breaking change
   covered by curated families. It's not "legacy" — it's the
   universality promise.
 - 2026-04-17: Training out of scope. cyb-llm is inference-only.
+- 2026-04-17: Three backends: wgpu+rs (portable), honeycrisp (Apple
+  Silicon turbo, full stack Metal+ANE+AMX+NEON+unimem), nox (convergent
+  VM, future). CPU is reference library not a backend. Rationale: modern
+  devices all have GPU access via wgpu; honeycrisp captures unique
+  Apple hardware that Metal alone does not.

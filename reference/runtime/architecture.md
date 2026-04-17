@@ -128,25 +128,111 @@ These must hold across all paths:
 └──────────────────────────────────────────────┘
 ```
 
-## Backend contract
+## Backends
 
-A backend declares which IR ops it implements. The graph executor
-queries the backend at dispatch time:
+Three backends. Each trades off portability, speed, and determinism.
+
+```
+             ┌─────────────────────────────┐
+             │         model + graph       │
+             └──────────────┬──────────────┘
+                            │
+          ┌─────────────────┼─────────────────┐
+          ▼                 ▼                 ▼
+    ┌─────────────┐  ┌──────────────┐  ┌─────────────┐
+    │  wgpu+rs    │  │  honeycrisp  │  │     nox     │
+    │             │  │              │  │             │
+    │  portable   │  │  apple turbo │  │ convergent  │
+    └─────────────┘  └──────────────┘  └─────────────┘
+```
+
+### wgpu+rs — portable
+
+Default everywhere. wgpu for GPU compute (WGSL), Rust CPU fallback
+for anything wgpu can't do. Runs on:
+
+- Linux, Windows, macOS (Vulkan, DX12, Metal translation)
+- Android (Vulkan)
+- Web (WebGPU in browsers)
+- Server-class CPUs without dedicated GPU (via integrated GPU or
+  software Vulkan)
+
+Speed: baseline. Typical 1× llama.cpp on mid-range GPU.
+
+Universal — if your device can compute, this runs. CPU part is not
+a separate backend; it's the fallback path within wgpu+rs for ops
+wgpu doesn't implement.
+
+### honeycrisp — Apple Silicon turbo
+
+Full-stack M-series acceleration. More than just Metal:
+
+- **Metal** — GPU compute via MSL kernels
+- **ANE** — Apple Neural Engine via MIL graph compilation,
+  for convolutions and attention at extreme efficiency
+- **AMX** — Apple Matrix coprocessor CPU instructions for f32/f16
+  matmul outside GPU dispatch overhead
+- **NEON** — ARM SIMD for element-wise fallback
+- **unimem** — IOSurface-pinned memory for zero-copy between
+  CPU / GPU / ANE (single memory region, no `copy_buffer`)
+
+Backed by the `aruminium` Rust crate (+ `acpu`, `rane` for ANE).
+
+Speed target: 1.5-3× llama.cpp on M1+ — combining the best compute
+unit per op (ANE for conv, GPU for attention, AMX for matmul).
+
+Only available on Apple Silicon. On Intel Macs, falls back to wgpu+rs.
+
+### nox — convergent
+
+Deterministic VM executing trident-compiled bytecode (18 instructions).
+
+Scope: long-term target. Trident describes architecture once,
+compiler specializes per hardware → output runs on any nox VM
+with bit-exact determinism.
+
+Two properties no other backend provides:
+
+1. **Verifiable**: content-addressed bytecode + deterministic VM =
+   proof of exact execution. Critical for cyb's on-chain verification.
+2. **Portable to future hardware**: a new accelerator only needs a
+   nox VM implementation. All existing models re-run without changes.
+
+Speed: post-compilation, approaches honeycrisp on Apple, wgpu+rs
+elsewhere. Early versions will be slower.
+
+Not usable today. Adding trident/nox maturity is a separate project.
+
+### Backend contract
 
 ```rust
 trait Backend {
-    fn supports(&self, op: &Op) -> bool;
+    fn name(&self) -> &str;               // "wgpu+rs", "honeycrisp", "nox"
+    fn supports(&self, op: &Op) -> bool;  // can this backend execute op?
     fn execute(&self, op: &Op, inputs: &[Tensor]) -> Result<Vec<Tensor>>;
 }
 ```
 
-Missing op falls back to CPU. CPU always implements every op. This
-means **any graph runs on any backend** — at worst with CPU fallback
-for unsupported ops.
+Every backend must produce outputs within the ε-equivalence tolerances
+([correctness invariants](#correctness-invariants)) for ops it claims
+to support. A backend that returns `supports: true` and produces wrong
+output is a bug in that backend, not a contract violation by the caller.
 
-Curated paths bypass this — they know which ops they need and call
-them directly. A curated path that needs an op the backend doesn't
-have fails at init time with a specific error.
+Missing op is **explicit error**, never silent wrong output. The
+dispatcher may try another backend, or fall back to the internal CPU
+reference library (which implements every op).
+
+### CPU reference library
+
+Not a user-facing backend. A Rust library implementing every IR op
+in pure f32, used for:
+
+- Correctness authority (golden values in tests)
+- Fallback inside wgpu+rs when wgpu can't dispatch an op
+- Debugging — always available, slow, always correct
+
+Consequence: **any model runs anywhere**, at worst in pure Rust
+on CPU. Speed degrades to compute bound, correctness never degrades.
 
 ## Evolution
 
@@ -196,3 +282,7 @@ contract is stable; strategies change.
   op has a CPU implementation; GPU kernels verified against it.
 - 2026-04-17: Backend contract: CPU fallback for unsupported ops.
   Any graph runs on any backend, at worst slowly.
+- 2026-04-17: Three backends: wgpu+rs (portable default), honeycrisp
+  (Apple Silicon turbo — Metal+ANE+AMX+NEON+unimem via aruminium),
+  nox (convergent VM, future). CPU is a reference library not a
+  backend. CUDA+TensorCore turbo is future, analogous to honeycrisp.
