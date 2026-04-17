@@ -5,9 +5,11 @@
 mod bpe;
 mod byte_level;
 mod chat;
+mod loader;
 
 pub use bpe::Bpe;
 pub use chat::{apply_chat_template, ChatMessage};
+pub use loader::build_tokenizer;
 
 /// High-level tokenizer API: owns BPE + optional chat template.
 pub struct Tokenizer {
