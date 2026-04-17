@@ -1,157 +1,174 @@
 # Scope
 
-What cyb-llm runtime MUST run, MAY run, and WILL NOT run.
+cyb-llm runtime executes a **graph** of tensor operations on any
+hardware. Models are graphs. Scope is defined by the set of primitive
+operations the runtime implements — not by which models it "supports".
 
-A "universal, portable" runtime cannot support everything. It must
-support a well-defined subset large enough to cover real use, small
-enough to verify exhaustively. This file draws the line.
+## Why this framing
 
-## Design principle
+Traditional ML runtimes define scope by model family: llama.cpp
+runs Llama and friends. ONNX Runtime runs ONNX graphs. Our runtime
+sits closer to ONNX: an op set with conforming backends, but smaller,
+content-addressed, and verifiable.
 
-Coverage is a tree, not a list. Each tier inherits from the one
-below. Tier N+1 adds capability; Tier N still works without it.
-This enables shipping incrementally: Tier 0 working beats Tier 3 broken.
+Consequences:
+- Adding a new model family is **zero runtime work** if its graph
+  uses existing primitives. Just add a graph template in import.
+- New primitives are added only when no composition of existing ones
+  suffices. The primitive set grows deliberately.
+- "Does it support X?" = "is X expressible in our op set?" —
+  answerable by checking the graph, not by reading release notes.
 
-## Tier 0 — decoder-only LLM (MUST)
+## Modality coverage
 
-The 80% of HuggingFace: text-in, text-out autoregressive models.
+The primitive set must be complete enough to express the
+computational graphs behind every form of intelligence we care
+about. Not "chat", "embedding", "image gen" as product categories —
+primitives don't care about product categories.
 
-### Architectures
+| Modality | What graph looks like | Primitives required |
+|---|---|---|
+| Text (LLM) | embed → N × (RMSNorm + GQA-SDPA + SwiGLU) → norm → logits | matmul, RMSNorm, RoPE, SDPA, SwiGLU, softmax |
+| Text encoder | embed + pos → N × (LayerNorm + full-SDPA + GeLU-MLP) → pool | matmul, LayerNorm, PosEmbed, SDPA(non-causal), GELU |
+| Vision (ViT) | patch → N × (LayerNorm + SDPA + GELU-MLP) → pool | Conv2d (patch embed), LayerNorm, SDPA, GELU |
+| Vision (CNN) | Conv2d + Pool + LayerNorm + MLP | Conv2d, BatchNorm, ReLU, Pool |
+| Audio (Whisper) | Conv1d-stem → N × encoder → N × decoder-cross-attn | Conv1d, LayerNorm, SDPA, SDPA-cross, softmax |
+| TTS (VITS/XTTS) | text embed → transformer + flow + HiFi-GAN | Conv1d, FlowStep, ConvTranspose, GELU, attention |
+| Diffusion (UNet) | timestep + latent → ResBlocks + cross-attn → denoised | Conv2d, GroupNorm, SinusoidalEmbed, SDPA-cross, SiLU |
+| Diffusion (DiT/video) | patchify → N × (AdaLN + SDPA + MLP) → unpatchify | PatchEmbed, AdaLN, SDPA, GELU, PixelShuffle, Conv3d |
+| SSM / Mamba | embed → N × (RMSNorm + SSM-scan + Gate) → norm | Scan (NEW), gate, matmul, RMSNorm |
+| Multimodal (VL) | vision encoder + projection + LLM | all of the above, glued |
 
-Canonical transformer decoder with these features:
+All rows except "SSM / Mamba" are expressible in the current IR.
+SSM requires one new primitive (`Scan`). MoE requires one (`RoutedMatmul`).
 
-- Pre-layernorm with RMSNorm (Llama-style) OR post-layernorm with LayerNorm
-- Causal self-attention with Grouped Query Attention (GQA, num_heads ≥ kv_heads)
-- Rotary Position Embedding (RoPE) — standard or NeoX style
-- FFN: SwiGLU (gate, up, down) or GeLU-MLP
-- Tied or untied word embeddings
-- Optional attention biases on Q, K, V (Qwen2 style)
-- Optional per-head QK-norm (Qwen3, DeepSeek-V3 style)
+## Primitive set (v1)
 
-### Covered models (examples)
+This is the **closed** set we commit to implementing correctly on
+every backend. Versioned — additions require spec update.
 
-- Llama 2/3, Mistral, Mixtral (dense only for Tier 0)
-- Qwen2, Qwen2.5, Qwen3 (including -Coder variants)
-- Gemma 1, Gemma 2 (not Gemma 3/4 — see Tier 1)
-- Phi 2, Phi 3, Phi 4
-- SmolLM, SmolLM2
-- DeepSeek-LLM (not V2/V3 — MoE, see Tier 3)
-- StarCoder 2
-- MiMo, NuExtract
+### Linear algebra (core)
+Matmul, Add, Mul, Sub, Div, Transpose, Reshape, Permute,
+Concat, Split, Chunk, Clamp, NanToNum, Argmax
 
-### Weight formats (per-tensor mixed allowed)
+### Attention
+Sdpa (causal/non-causal, GQA), SdpaCross, SdpaWindow,
+FlashAttention (as composite), KvCache, KvCompress
 
-- F32, F16, BF16 (on disk; may dequant at load or GPU)
-- Q8_0 (8-bit symmetric blocks of 32)
-- Q4_0 (4-bit symmetric blocks of 32)
-- Q4_K, Q5_K, Q6_K (K-quants, 256-elem super-blocks)
-- Q3_K, Q2_K (low-bit K-quants, for MXFP-like compression)
+### Position encoding
+Rope (1D for LLMs, multi-axis for DiT/video), SinusoidalEmbed,
+RelativePosEmbedding, PosEmbed (learned), TokenEmbed
 
-### Context length
+### Normalization
+RmsNorm, LayerNorm, BatchNorm, GroupNorm, InstanceNorm, AdaLN
 
-- Up to 32K tokens during generation
-- Prefill supports same max as decode
-- Attention tiling required beyond 2048 (workgroup memory limit)
+### Activation
+Silu, Gelu (standard, tanh-approx), Relu, LeakyRelu, PRelu,
+Sigmoid, Tanh, Softmax, SwiGlu, GeGlu, Glu
 
-### Sampling
+### Convolution
+Conv1d, Conv2d, Conv3d, ConvTranspose2d, CausalConv1d,
+DepthwiseConv, Pool (max/avg)
 
-- Greedy (temperature=0)
-- Top-K, Top-P (temperature > 0)
-- Min-P optional
+### Spatial
+Interpolate, PixelShuffle, PixelUnshuffle, PatchEmbed, Unpatchify
 
-### Tokenization
+### Quantization (orthogonal to ops — any matmul accepts any dtype)
+F32, F16, BF16, Q8_0, Q4_0, Q4_K, Q5_K, Q6_K, Q3_K, Q2_K, Ternary,
+Quantize, Dequantize
 
-- Byte-level BPE (GPT-2, Qwen, Mistral family)
-- SentencePiece (Llama, Gemma)
-- Special token registration + detection
+### Diffusion / flow / sampling
+NoiseSchedule, FlowStep, Sample (top-p, top-k, temperature, grammar)
 
-## Tier 1 — encoders + exotic decoders (SHOULD, next)
+### Adapters (runtime composition)
+LoraApply (low-rank addition), Kron, MatrixInverse
 
-### Encoder-only
+### Fused (optimization — semantics = composition)
+FusedNormMatmul, FusedSkipNorm, FusedSwiGlu — performance only,
+always equivalent to unfused graph.
 
-Unlocks classification, embedding, zero-shot, retrieval.
+## Primitives explicitly NOT yet in the set
 
-- BERT, RoBERTa, DeBERTa v2/v3
-- ModernBERT
-- Jina, e5, bge embedding models
-- Absolute position embeddings
-- Bidirectional attention (no causal mask)
-- CLS pooling, mean pooling
-- Classification head (sequence, token)
+These are planned but need a spec addition before we claim them.
 
-Covered: our tier-0 soma models (deberta-zeroshot, modernbert, granite-hap, jina).
+- **Scan** — sequential state propagation for SSM/Mamba/RWKV/RNN
+- **RoutedMatmul** — sparse-expert dispatch for MoE
+- **ContinuousBatching** — not a primitive; scheduler concern
+- **Backward / Autograd** — training is a separate system
 
-### Decoder extensions for Gemma 3/4
+## Hardware backends
 
-- Mixed sliding_window + full_attention layer types
-- GELU activation (instead of SiLU)
-- Final logit softcapping
-- attention_k_eq_v (shared K=V projections)
+Each backend must implement every primitive correctly (test.md).
 
-Covered: gemma-3, gemma-4.
+| Backend | Target | Tier |
+|---|---|---|
+| `cpu` | Reference (slow, always correct, golden values) | 1 |
+| `wgpu` | Portable GPU (Windows, Linux, Android, Web) | 1 |
+| `metal` | Apple GPU with aruminium zero-copy | 1 |
+| `ane` | Apple Neural Engine (MIL graph compile) | 2 |
+| `cuda` | NVIDIA (future) | 2 |
 
-### Weight formats (additional)
+A model runs on a backend if the backend implements every primitive
+the model's graph uses. Missing primitive = clear error ("backend
+`ane` does not support Op::Scan"), not silent corruption.
 
-- IQ2, IQ3, IQ4 (imatrix quants) — optional, for space-constrained
-- Ternary (BitNet 1.58-bit)
+## Acceptance criteria for "universal portable runtime"
 
-## Tier 2 — sequence-to-sequence + multimodal (MAY, later)
+v1 of the spec is complete when:
 
-### Encoder-decoder
+1. **Coverage**: every primitive in the set has a math definition
+   (ops.md), a reference CPU implementation, and at least one GPU backend.
 
-- T5, FlanT5, mT5 (relative position bias, different attention)
-- BART, Whisper
+2. **Correctness**: every primitive passes its golden test (input X
+   → output Y, diff < 1e-4 vs F32 reference) on every implementing
+   backend.
 
-### Multimodal (vision-language)
+3. **Composition**: any graph composed of primitives produces the
+   same output (diff < 1e-3) regardless of which backend runs it.
 
-- LLaVA, Qwen2-VL, Moondream
-- Vision encoder (ViT or similar) → projection → LLM
-- Image token merging
+4. **Import**: any GGUF, safetensors, MLX, or ONNX model expressible
+   in the primitive set imports to a graph without manual work.
+   Unsupported primitive in source = actionable error, not silent drop.
 
-### Audio
+5. **Speed**: for decoder-only LLMs on GPU, within 2× of llama.cpp;
+   for vision models on GPU, within 3× of HF transformers.
 
-- Whisper (ASR)
-- BEATs (audio encoder)
-- XTTS, Piper (TTS)
+6. **Modalities demonstrated**: at least one model from each row in
+   the modality table above runs end-to-end correctly.
 
-## Tier 3 — advanced architectures (WILL NOT for now)
+## Versioning
 
-Explicitly out of scope for current universality claim:
+The primitive set is versioned. Adding a primitive increments the
+minor version. Changing semantics of an existing primitive is a
+breaking change (major version). Models declare the primitive-set
+version they require.
 
-- Sparse MoE (Mixtral, DeepSeek-V2/V3, Qwen-MoE)
-- State-space models (Mamba, Mamba2, RWKV)
-- Diffusion (Stable Diffusion)
-- Training / fine-tuning
-- Continuous batching (multi-request)
+## Growth philosophy
 
-These are future work. Tier 0 + Tier 1 is the "universal, portable"
-minimum. Models outside Tier 0/1 must either fall back to CPU
-reference or be explicitly rejected with a clear error.
+A new primitive is added when:
+- An existing composition would need O(N) fused kernels per model,
+  not O(1) (e.g. flash attention)
+- It represents a fundamentally new dataflow pattern (scan for SSM)
+- It enables a modality that composition can't reach
 
-## Acceptance criteria for "universal, portable"
+A new primitive is NOT added when:
+- Existing primitives compose to the same result
+- It's only useful for a single paper's variant
+- It's a fused optimization (those are optimization-layer concerns,
+  not primitives)
 
-Runtime may claim universality when:
-
-1. Any Tier 0 model imports without manual intervention (one command)
-2. Any Tier 0 model produces correct output (verified against llama.cpp golden values per test.md)
-3. Any Tier 1 model produces correct output
-4. Out-of-scope models emit a clear, actionable error ("unsupported:
-   sparse MoE layer in layers.0.mlp.experts") — not silent corruption
-5. Runtime passes test suite on all supported backends:
-   wgpu, metal (macOS), cpu (any OS)
-6. Speed is within 2x of llama.cpp on any Tier 0 model
-
-Today we fail #2 (forward pass produces garbage for Qwen3 despite
-correct weights). Fix must come from spec-driven correctness, not
-symptom-chasing.
+The test: can we write 10 models using the primitive alone, across
+different modalities? If not, it's too specific — fuse at the
+model level, don't add a primitive.
 
 ## Decision log
 
-- 2026-04-17: Tier 0 = dense decoder-only LLMs with Llama-family
-  features + QK-norm. Covers ~80% of HF. Rationale: smallest coherent
-  scope that's useful alone.
-- 2026-04-17: Gemma 3/4 moved to Tier 1. Rationale: adds three
-  architectural features (softcapping, sliding window, K=V) that
-  all need spec + dispatch, cannot be bolted on.
-- 2026-04-17: MoE explicitly out of Tier 0. Rationale: experts routing
-  is orthogonal to base transformer and would balloon scope.
+- 2026-04-17: Scope defined by primitives, not models. Growth of
+  model support comes from graph templates, not runtime changes.
+- 2026-04-17: Scan and RoutedMatmul identified as required primitives
+  for SSM and MoE; add when first consumer lands.
+- 2026-04-17: Training out of scope for cyb-llm runtime — different
+  system (gradient + optimizer + data pipeline).
+- 2026-04-17: Backends are conforming implementations — a backend
+  that doesn't implement a primitive produces a clear error, never
+  silent wrong output.
