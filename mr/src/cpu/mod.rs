@@ -17,12 +17,14 @@ mod rmsnorm;
 mod rope;
 mod softmax;
 mod activation;
+pub mod quant;
 
 pub use matmul::matmul_f32;
 pub use rmsnorm::rms_norm_f32;
 pub use rope::rope_f32;
 pub use softmax::softmax_f32;
 pub use activation::{silu_f32, gelu_erf_f32, gelu_tanh_f32, swiglu_f32};
+pub use quant::dequantize_to_f32;
 
 /// CPU reference backend — implements every op correctly in f32.
 pub struct CpuBackend;
@@ -128,13 +130,12 @@ impl Backend for CpuBackend {
 
     fn download_f32(&self, t: &Tensor) -> Result<Vec<f32>, BackendError> {
         if t.dtype == DType::F32 {
-            Ok(t.to_f32_vec())
-        } else {
-            Err(BackendError::Internal(format!(
-                "cpu download_f32: dequant for {:?} not yet implemented",
-                t.dtype
-            )))
+            return Ok(t.to_f32_vec());
         }
+        let bytes = t.as_host_bytes().ok_or_else(|| {
+            BackendError::Internal("cpu download_f32: backend-resident tensor".into())
+        })?;
+        Ok(quant::dequantize_to_f32(bytes, t.dtype))
     }
 }
 
