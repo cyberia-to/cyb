@@ -868,11 +868,16 @@ fn run_metal_model(model_path: &std::path::Path, prompt: &str, max_tokens: usize
     use std::io::Write;
     let decode_start = std::time::Instant::now();
     let mut gen_count = 0usize;
+    let debug_ids = std::env::var("DEBUG_TOKEN_IDS").is_ok();
     for _ in 0..max_tokens {
         if eos.contains(&next_token) { break; }
         gen_count += 1;
         let decoded = tokenizer.decode(&[next_token], false).unwrap_or_else(|_| "?".to_string());
-        print!("{decoded}");
+        if debug_ids {
+            eprint!("[{next_token}:{decoded:?}]");
+        } else {
+            print!("{decoded}");
+        }
         std::io::stdout().flush().ok();
         next_token = model.forward_decode(next_token);
     }
