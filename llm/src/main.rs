@@ -1060,21 +1060,64 @@ fn quick_bench_model(model_path: &std::path::Path) -> (String, String) {
                 "0".into()
             };
 
-            let text = text.trim().to_lowercase();
-            let check_text = if let Some(pos) = text.find("</think>") {
-                &text[pos+8..]
-            } else { &text };
-            let sane = if check_text.contains('4') || check_text.contains("four") {
-                "\x1b[32m✓\x1b[0m"
-            } else if text.len() < 2 {
-                "\x1b[31m✗\x1b[0m"
-            } else {
-                "\x1b[33m?\x1b[0m"
-            };
-
+            let sane = validate_math_answer(&text);
             (tok_s, sane.into())
         }
         Err(_) => ("\x1b[31merr\x1b[0m".into(), "—".into()),
+    }
+}
+
+/// Validate generated text for "What is 2+2?" prompt. Returns colored status string.
+/// Tiers:
+///   ✓ green  — contains answer (4/four) AND no special-token fragmentation
+///   ? yellow — contains answer but quality issues (fragmented <|im_end|>, rambling)
+///   ✗ red    — no answer or broken output
+fn validate_math_answer(text: &str) -> &'static str {
+    let text = text.trim().to_lowercase();
+    // Strip thinking block
+    let body = if let Some(pos) = text.find("</think>") {
+        &text[pos + 8..]
+    } else {
+        &text[..]
+    };
+    let body = body.trim();
+
+    // Count fragmented special tokens (abliteration artifact): "|im_", "|end", "|user", etc.
+    let frag_patterns = ["|im_", "|im ", "|endof", "|user", "|assistant", "|quad", "|fim"];
+    let frag_count: usize = frag_patterns.iter()
+        .map(|p| body.matches(p).count())
+        .sum();
+
+    // Look for correct answer in plausible positions
+    // Priority: exact "2+2" followed by "=" and "4", or "= 4", or just contains "4"
+    let has_exact_math = body.contains("2+2") || body.contains("2 + 2");
+    let has_equals_four = body.contains("= 4") || body.contains("=4")
+        || body.contains("is 4") || body.contains("is four");
+    let has_digit_four = body.contains('4') || body.contains("four");
+
+    // Repetition check: same short substring appearing many times
+    let repetitive = body.len() > 20 && {
+        let first_20: String = body.chars().take(20).collect();
+        body.matches(&first_20[..]).count() > 2
+    };
+
+    if body.is_empty() || body.len() < 2 {
+        "\x1b[31m✗\x1b[0m"
+    } else if frag_count >= 3 || repetitive {
+        // Heavily garbled
+        "\x1b[31m✗\x1b[0m"
+    } else if has_digit_four && frag_count == 0 && !repetitive {
+        // Clean answer with 4
+        if has_equals_four || has_exact_math {
+            "\x1b[32m✓\x1b[0m"
+        } else {
+            "\x1b[33m?\x1b[0m"  // has '4' somewhere but not clearly as answer
+        }
+    } else if has_digit_four {
+        // Has 4 but with some fragmentation
+        "\x1b[33m?\x1b[0m"
+    } else {
+        "\x1b[31m✗\x1b[0m"
     }
 }
 
@@ -1133,16 +1176,10 @@ fn quick_bench_metal(model_path: &std::path::Path) -> (String, String) {
         format!("{:.0}", count as f64 / elapsed)
     } else { "0".into() };
 
-    let text = tokenizer.decode(&generated_ids, true).unwrap_or_default().to_lowercase();
-    let check = if let Some(pos) = text.find("</think>") { &text[pos+8..] } else { &text };
-    let sane = if check.contains('4') || check.contains("four") {
-        "\x1b[32m✓\x1b[0m"
-    } else if text.len() < 2 {
-        "\x1b[31m✗\x1b[0m"
-    } else {
-        "\x1b[33m?\x1b[0m"
-    };
-
+    // Decode WITHOUT skipping special tokens so validator can detect
+    // abliteration fragmentation (|im_end pieces).
+    let text = tokenizer.decode(&generated_ids, false).unwrap_or_default();
+    let sane = validate_math_answer(&text);
     (tok_s, sane.into())
 }
 
