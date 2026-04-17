@@ -92,6 +92,7 @@ transformer_decoder { layers: 28 }
 |-----------|------|
 | .cyb | this page |
 | .model | [[cyb-model]] |
+| .graph | [[cyb-graph]] |
 
 a .model file IS a .cyb file. the extension is a hint — not a different format. formats like .jpg, .gguf, .exe are NOT .cyb-compatible. they can be embedded inside .cyb as binary files. see [[cyb-registry]].
 
