@@ -3275,4 +3275,42 @@ f67c6b559a12262625162b0477908e57538a1989285636485a6a597b58";
 
         assert!(max_diff < 0.1, "lm_head GPU/CPU divergence too large: {max_diff}");
     }
+
+    /// Check if special tokens (<|im_end|>=151645) have reasonable embed norms
+    /// vs regular tokens. Abliteration/import bugs might zero them out.
+    #[test]
+    fn test_special_token_embed_norms() {
+        use std::path::Path;
+        use crate::cyb_format::LoadedModel;
+
+        let model_path = Path::new("/Users/mastercyb/llm/qwen3-0.6b-abl.model");
+        if !model_path.exists() { eprintln!("Skipping: model not found"); return; }
+
+        let lm = LoadedModel::load(model_path).expect("load");
+        let embed_w = lm.weights.get("model.embed_tokens.weight").expect("embed");
+        let embed_f32 = safetensors_to_f32(&embed_w.data, embed_w.dtype);
+        let vocab_size = embed_w.shape[0];
+        let hidden = embed_w.shape[1];
+        eprintln!("vocab={vocab_size}, hidden={hidden}, total_f32={}", embed_f32.len());
+
+        let row_norm = |row: usize| -> f32 {
+            let r = &embed_f32[row * hidden..(row + 1) * hidden];
+            r.iter().map(|x| x * x).sum::<f32>().sqrt()
+        };
+
+        // Regular tokens
+        let reg_norms: Vec<f32> = [0usize, 19, 91, 318, 872, 1000, 10000].iter()
+            .filter(|&&i| i < vocab_size)
+            .map(|&i| row_norm(i)).collect();
+        let reg_mean = reg_norms.iter().sum::<f32>() / reg_norms.len() as f32;
+        eprintln!("Regular tokens norms: {reg_norms:?} mean={reg_mean:.4}");
+
+        // Special tokens
+        for &sp in &[151643usize, 151644, 151645, 151665, vocab_size - 1] {
+            if sp < vocab_size {
+                let n = row_norm(sp);
+                eprintln!("Token {sp}: norm={n:.4}  ({:.2}x of regular mean)", n / reg_mean);
+            }
+        }
+    }
 }
