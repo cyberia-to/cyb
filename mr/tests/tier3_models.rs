@@ -60,3 +60,29 @@ fn qwen3_0_6b_forward_runs() {
     assert!(argmax > 0);
     assert!(argmax < model.config.vocab_size);
 }
+
+#[test]
+fn qwen25_coder_1_5b_forward_runs() {
+    let Some(path) = find_model("qwen2.5-coder-1.5b-abl") else {
+        eprintln!("skip: qwen2.5-coder-1.5b-abl.model not found");
+        return;
+    };
+    let mut model = LlamaModel::load(&path).expect("load");
+    eprintln!(
+        "model_type={}, layers={}, hidden={}, heads={}/{}, head_dim={}, qk_norm={}, attn_bias={}",
+        model.config.model_type,
+        model.config.num_hidden_layers,
+        model.config.hidden_size,
+        model.config.num_attention_heads,
+        model.config.num_key_value_heads,
+        model.config.head_dim,
+        model.config.has_qk_norm,
+        model.config.has_attn_bias,
+    );
+
+    let backend = mr::cpu::CpuBackend::new();
+    let logits = model.forward(151644, &backend).expect("forward");
+    assert_eq!(logits.len(), model.config.vocab_size);
+    let finite = logits.iter().filter(|v| v.is_finite()).count();
+    assert_eq!(finite, logits.len(), "non-finite logits");
+}

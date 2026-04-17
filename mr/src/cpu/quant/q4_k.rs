@@ -58,6 +58,11 @@ pub fn dequantize(bytes: &[u8]) -> Vec<f32> {
     out
 }
 
+/// Public wrapper for use by Q5_K.
+pub fn unpack_scale_min_k4_public(j: usize, scales: &[u8]) -> (u8, u8) {
+    unpack_scale_min_k4(j, scales)
+}
+
 /// Extract 6-bit scale and min for sub-block j (0..8) from the 12 scale bytes.
 fn unpack_scale_min_k4(j: usize, scales: &[u8]) -> (u8, u8) {
     if j < 4 {
