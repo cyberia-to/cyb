@@ -3288,6 +3288,7 @@ f67c6b559a12262625162b0477908e57538a1989285636485a6a597b58";
 
         let lm = LoadedModel::load(model_path).expect("load");
         let embed_w = lm.weights.get("model.embed_tokens.weight").expect("embed");
+        eprintln!("embed dtype={:?}, shape={:?}", embed_w.dtype, embed_w.shape);
         let embed_f32 = safetensors_to_f32(&embed_w.data, embed_w.dtype);
         let vocab_size = embed_w.shape[0];
         let hidden = embed_w.shape[1];
@@ -3298,19 +3299,177 @@ f67c6b559a12262625162b0477908e57538a1989285636485a6a597b58";
             r.iter().map(|x| x * x).sum::<f32>().sqrt()
         };
 
+        // Full distribution — bucket by norm range
+        let mut norms: Vec<f32> = (0..vocab_size).map(row_norm).collect();
+        norms.sort_by(|a,b| a.partial_cmp(b).unwrap());
+        let mean = norms.iter().sum::<f32>() / norms.len() as f32;
+        let median = norms[norms.len() / 2];
+        let p5 = norms[norms.len() / 20];
+        let p95 = norms[norms.len() * 19 / 20];
+        eprintln!("All-vocab norm stats: mean={mean:.4} median={median:.4} p5={p5:.4} p95={p95:.4}");
+
         // Regular tokens
-        let reg_norms: Vec<f32> = [0usize, 19, 91, 318, 872, 1000, 10000].iter()
+        let reg_norms: Vec<f32> = [0usize, 19, 91, 318, 872, 1000, 10000, 50000, 100000, 150000].iter()
             .filter(|&&i| i < vocab_size)
             .map(|&i| row_norm(i)).collect();
         let reg_mean = reg_norms.iter().sum::<f32>() / reg_norms.len() as f32;
-        eprintln!("Regular tokens norms: {reg_norms:?} mean={reg_mean:.4}");
+        eprintln!("Sample regular tokens norms: {reg_norms:?} mean={reg_mean:.4}");
 
         // Special tokens
-        for &sp in &[151643usize, 151644, 151645, 151665, vocab_size - 1] {
+        for &sp in &[151643usize, 151644, 151645, 151646, 151647, 151648, 151649, 151665] {
             if sp < vocab_size {
                 let n = row_norm(sp);
-                eprintln!("Token {sp}: norm={n:.4}  ({:.2}x of regular mean)", n / reg_mean);
+                eprintln!("Token {sp}: norm={n:.4}  ({:.2}x median)", n / median);
             }
         }
+
+        // Check: if import was correct, Q4 dequant of first embedding row
+        // should give values in [-1, 1] range roughly
+        let row0 = &embed_f32[0..hidden.min(16)];
+        eprintln!("Token 0 embed[0..16]: {:?}", row0);
+        let row_151645 = &embed_f32[151645 * hidden..151645 * hidden + hidden.min(16)];
+        eprintln!("Token 151645 embed[0..16]: {:?}", row_151645);
+    }
+
+    /// Compare our imported embed with ollama's GGUF (same abliterated model).
+    /// If norms differ → our import is broken.
+    #[test]
+    fn test_compare_our_embed_vs_ollama_gguf() {
+        use std::path::Path;
+        use crate::cyb_format::LoadedModel;
+        use crate::loader::gguf::load_gguf;
+
+        let our_path = Path::new("/Users/mastercyb/llm/qwen3-0.6b-abl.model");
+        let ollama_path = Path::new("/Users/mastercyb/.ollama/models/blobs/sha256-40b49c33d1e82d7b228e9a612e679c1400c31a03eac80ab836603ad2660c9d45");
+        if !our_path.exists() || !ollama_path.exists() {
+            eprintln!("Skipping: missing files");
+            return;
+        }
+
+        // Load ollama GGUF
+        let gguf = load_gguf(ollama_path).expect("load gguf");
+        // Find embed tensor — GGUF name is "token_embd.weight"
+        let ollama_embed = gguf.weights.iter().find(|(name, _)| {
+            name.as_str() == "token_embd.weight" || name.as_str() == "model.embed_tokens.weight"
+        }).map(|(_, w)| w.clone());
+        if ollama_embed.is_none() {
+            let names: Vec<_> = gguf.weights.keys().take(15).collect();
+            eprintln!("GGUF tensor names (first 15): {:?}", names);
+            return;
+        }
+        let ollama_embed = ollama_embed.unwrap();
+        eprintln!("Ollama GGUF embed: dtype={:?}, shape={:?}, data_len={}",
+                  ollama_embed.dtype, ollama_embed.shape, ollama_embed.data.len());
+
+        // Load our
+        let our = LoadedModel::load(our_path).expect("load our");
+        let our_embed = our.weights.get("model.embed_tokens.weight").expect("embed").clone();
+        eprintln!("Our embed:         dtype={:?}, shape={:?}, data_len={}",
+                  our_embed.dtype, our_embed.shape, our_embed.data.len());
+
+        // Dequant both
+        let ollama_f32 = safetensors_to_f32(&ollama_embed.data, ollama_embed.dtype);
+        let our_f32 = safetensors_to_f32(&our_embed.data, our_embed.dtype);
+        eprintln!("Dequant sizes: ollama={}, ours={}", ollama_f32.len(), our_f32.len());
+
+        let hidden = our_embed.shape[1];
+        let vocab = our_embed.shape[0];
+
+        let row_norm = |data: &[f32], row: usize| -> f32 {
+            let r = &data[row * hidden..(row + 1) * hidden];
+            r.iter().map(|x| x * x).sum::<f32>().sqrt()
+        };
+
+        for &tok in &[0usize, 19, 151643, 151644, 151645] {
+            let o_norm = row_norm(&ollama_f32, tok);
+            let our_norm = row_norm(&our_f32, tok);
+            eprintln!("Token {tok}: ollama={o_norm:.4}, ours={our_norm:.4}, ratio={:.2}", our_norm/o_norm);
+        }
+
+        // Bytewise compare a specific row
+        let ollama_151645 = &ollama_f32[151645 * hidden..151645 * hidden + 16];
+        let our_151645 = &our_f32[151645 * hidden..151645 * hidden + 16];
+        eprintln!("Ollama 151645[0..16]: {:?}", ollama_151645);
+        eprintln!("Our    151645[0..16]: {:?}", our_151645);
+
+        let _ = vocab;
+    }
+
+    /// Load ollama's Q6_K GGUF directly and run forward — bypasses our Q4_0 .model.
+    /// If this produces correct output, bug is in our Q4_0 import.
+    /// If also garbled, bug is elsewhere in runtime.
+    #[test]
+    fn test_ollama_gguf_direct() {
+        use std::path::Path;
+        use std::collections::HashMap;
+        use crate::cyb_format::LoadedModel;
+        use crate::loader::gguf::load_gguf;
+        use crate::ir::WeightData;
+
+        let ollama_path = Path::new("/Users/mastercyb/.ollama/models/blobs/sha256-40b49c33d1e82d7b228e9a612e679c1400c31a03eac80ab836603ad2660c9d45");
+        if !ollama_path.exists() { eprintln!("Skipping: ollama GGUF missing"); return; }
+
+        let gguf = load_gguf(ollama_path).expect("load gguf");
+        let mut weights: HashMap<String, WeightData> = HashMap::new();
+
+        // Convert GGUF names to HF, optionally transpose
+        for (name, w) in gguf.weights {
+            let hf_name = crate::import::gguf_to_hf(&name);
+            // GGUF embed shape is [hidden, vocab], our runtime expects [vocab, hidden].
+            // So set shape swapped, keep data as-is (physical layout is row-major by first dim).
+            // For embed specifically, the data IS already [vocab, hidden] row-major in GGUF storage,
+            // but shape metadata reports [hidden, vocab]. Swap to be consistent with our runtime.
+            let mut w = w;
+            if hf_name == "model.embed_tokens.weight" || hf_name == "lm_head.weight" {
+                w.shape = vec![w.shape[1], w.shape[0]]; // swap
+            }
+            weights.insert(hf_name, w);
+        }
+
+        // Build minimal config
+        let config_toml = r#"
+model_type = "qwen3"
+[architecture]
+hidden_size = 1024
+num_attention_heads = 16
+num_key_value_heads = 8
+num_hidden_layers = 28
+intermediate_size = 3072
+vocab_size = 151936
+max_position_embeddings = 40960
+rope_theta = 1000000
+rms_norm_eps = 0.000001
+tie_word_embeddings = true
+[tokenizer]
+eos_token_ids = [151645, 151643]
+"#;
+
+        let lm = LoadedModel {
+            config: config_toml.to_string(),
+            vocab: String::new(),
+            weights,
+        };
+
+        eprintln!("Tensors loaded: {}", lm.weights.len());
+        eprintln!("Sample names: {:?}", lm.weights.keys().take(5).collect::<Vec<_>>());
+
+        let backend = crate::backend::create_wgpu_backend();
+        let mut model = match super::NativeModel::from_loaded(lm, backend.pipelines.clone()) {
+            Ok(m) => m,
+            Err(e) => { eprintln!("Failed to build model: {e}"); return; }
+        };
+        model.reset_kv_cache();
+
+        // Generate for "<|im_start|>user\nWhat is 2+2? /no_think<|im_end|>\n<|im_start|>assistant\n"
+        // Tokenized: need to construct manually since we don't have vocab here
+        // Use a simple single-token test instead: just forward <|im_start|> and check top5
+        let logits = model.forward(&[151644]);
+        let argmax = logits.iter().enumerate().max_by(|a,b| a.1.partial_cmp(b.1).unwrap()).map(|(i,_)| i).unwrap();
+        eprintln!("After <|im_start|>: argmax={argmax}, logit={:.2}, logit[151645]={:.2}",
+                  logits[argmax], logits[151645]);
+
+        let mut indexed: Vec<(usize, f32)> = logits.iter().enumerate().map(|(i,&v)| (i,v)).collect();
+        indexed.sort_by(|a,b| b.1.partial_cmp(&a.1).unwrap());
+        eprintln!("Top-5 after <|im_start|>: {:?}", &indexed[..5]);
     }
 }
