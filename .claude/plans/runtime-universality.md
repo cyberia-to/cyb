@@ -28,26 +28,48 @@ ignored dmin entirely. Committed a26e2c42.
 `scores: array<f32, 2048>` in attention.wgsl limits max_seq to 2048.
 Fix: tiled attention or storage buffer.
 
-### 3. Coder-14b garbled output — ROOT CAUSE FOUND (not a runtime bug)
+### 3. Generation garbled — RUNTIME HAS REAL BUG IN FORWARD PASS
 
-**Resolution (2026-04-17): runtime is correct. Issue is abliteration
-damage in -abl model variants.**
+**Status: unresolved. Earlier abliteration theory REFUTED.**
 
-Special tokens in qwen3-0.6b-abl have embed norms ~0.4x of regular
-tokens (test_special_token_embed_norms). With tied weights, lm_head
-rows for specials are equally weak, so argmax never picks them.
-Model generates `<|im_end|>` as pieces (`|`, `im`, `_end`, `|`, `>`)
-instead of token 151645.
+Smoking gun: test_ollama_gguf_direct loads ollama's Q6_K
+`huihui_ai/qwen3-abliterated:0.6b` GGUF (same model ollama runs
+correctly) through our runtime. Output: argmax=2423 after
+`<|im_start|>`, logit[151645]=-4.04. Garbage.
 
-Ollama works because it uses base qwen3:0.6b, not abliterated.
-Our manifest uses `-abl` suffix variants — these have compromised
-special token representations as abliteration side-effect.
+**Same abliterated model:**
+- Through ollama → correct "2 + 2 = 4" with thinking
+- Through our runtime → `|im_end|>` pieces or random tokens
 
-**For future work:**
-- Import a non-abliterated model to verify runtime correctness
-- Or accept abliterated quirk and add post-processing to detect
-  piece-by-piece EOS sequences
-- Runtime matmul/attention/RoPE are verified correct via unit tests
+**All eliminated:**
+- ✗ Q4_0 quantization loss (Q6_K also garbage)
+- ✗ Abliteration damage (ollama handles it fine)
+- ✗ Import bug (direct GGUF load also garbage)
+- ✗ Matmul (unit tests pass at full scale 152064×5120 @ 3e-7)
+- ✗ LM head (Q6_K lm_head verified against CPU)
+- ✗ Subgroup UB (fixed, no behavior change)
+- ✗ Special token embed norms (ollama's 0.48 norm works correctly)
+
+**Bug must be in forward chain:**
+- Attention decode shader
+- RoPE (position indexing, cos/sin cache)
+- Qwen3 QK-norm (q_norm/k_norm per-head, Qwen3-specific)
+- Layer residual connections
+- KV cache write/read race conditions
+
+**Highest-suspicion: QK-norm.**
+Qwen3 has `q_norm` and `k_norm` weights that Qwen2 doesn't. Our
+code detects them (`has_qk_norm`) and applies rms_norm per-head.
+If this is buggy, Q and K projections feed wrong values into
+attention, and outputs degrade systematically. Qwen2.5-coder-14b
+also has qk-norm → would affect both models. Worth investigating
+first.
+
+**Tests available:**
+- test_ollama_gguf_direct — reproduces bug with known-good weights
+- test_compare_our_embed_vs_ollama_gguf — weight comparison
+- DEBUG_LAYERS=1 — per-layer hidden dump
+- DEBUG_TOKEN_IDS=1 — per-token ID dump
 
 
 - Reverted to commit 6bec0b97 (before recent Q4_K/mmap/subgroup work):
