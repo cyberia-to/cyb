@@ -20,6 +20,7 @@ is a spec bug — fix spec first, then code.
 - [execution.md](execution.md) — backend contract, dispatch rules
 - [test.md](test.md) — four-tier test strategy: import, op, layer, e2e
 - [reality.md](reality.md) — what actually runs today (5/26), gap analysis
+- [gaps.md](gaps.md) — completeness audit: what's missing for reimplementation
 
 ## Source of truth
 
