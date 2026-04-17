@@ -11,6 +11,7 @@ is a spec bug — fix spec first, then code.
 
 - [scope.md](scope.md) — modalities and model families we run
 - [architecture.md](architecture.md) — three-path execution model (curated + graph + nox)
+- [reality.md](reality.md) — what actually runs today (5/26), gap analysis
 - [tensor.md](tensor.md) — shape conventions, memory layout, dtype (TODO)
 - [quant.md](quant.md) — exact bit layouts for Q4_0/Q4_K/Q5_K/Q6_K/Q8/ternary (TODO)
 - [ops.md](ops.md) — math for RMSNorm, RoPE, attention, SwiGLU, softmax (TODO)
