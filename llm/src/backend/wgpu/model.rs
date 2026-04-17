@@ -1881,9 +1881,10 @@ impl NativeModel {
 
             for s in 0..seq_len {
                 let normed_slice = slice_buffer(&p, &mut enc, &normed, s * self.config.hidden_size, self.config.hidden_size);
-                let mut q_pos = dispatch_matmul_enc(&p, &mut enc, quant_fmt, &normed_slice, &self.layers[i].q_proj_packed, &self.layers[i].q_proj_scales, layer_q_n, hidden_size, block_size);
-                let mut k_pos = dispatch_matmul_enc(&p, &mut enc, quant_fmt, &normed_slice, &self.layers[i].k_proj_packed, &self.layers[i].k_proj_scales, layer_k_n, hidden_size, block_size);
-                let mut v_pos = dispatch_matmul_enc(&p, &mut enc, quant_fmt, &normed_slice, &self.layers[i].v_proj_packed, &self.layers[i].v_proj_scales, layer_v_n, hidden_size, block_size);
+                // Use per-layer quant format (not model-level) — models like Q4_K_M have mixed Q4_K/Q6_K
+                let mut q_pos = dispatch_matmul_enc(&p, &mut enc, self.layers[i].q_proj_quant, &normed_slice, &self.layers[i].q_proj_packed, &self.layers[i].q_proj_scales, layer_q_n, hidden_size, block_size);
+                let mut k_pos = dispatch_matmul_enc(&p, &mut enc, self.layers[i].k_proj_quant, &normed_slice, &self.layers[i].k_proj_packed, &self.layers[i].k_proj_scales, layer_k_n, hidden_size, block_size);
+                let mut v_pos = dispatch_matmul_enc(&p, &mut enc, self.layers[i].v_proj_quant, &normed_slice, &self.layers[i].v_proj_packed, &self.layers[i].v_proj_scales, layer_v_n, hidden_size, block_size);
                 // Add attention biases
                 if let Some(ref bias) = self.layers[i].q_proj_bias {
                     q_pos = dispatch::add(&p, &mut enc, &q_pos, bias, layer_q_n);
@@ -1979,17 +1980,17 @@ impl NativeModel {
             let last_q = slice_buffer(&p, &mut enc, &q_roped, last_q_offset, self.layers[i].q_n as usize);
             let attn_out = dispatch::attention_decode(&p, &mut enc, &last_q, &attn_k, &attn_v, num_heads, head_dim, total_seq as u32, scale);
 
-            let attn_proj = dispatch_matmul_enc(&p, &mut enc, quant_fmt, &attn_out, &self.layers[i].o_proj_packed, &self.layers[i].o_proj_scales, self.layers[i].o_n, self.layers[i].q_n, block_size);
+            let attn_proj = dispatch_matmul_enc(&p, &mut enc, self.layers[i].o_proj_quant, &attn_out, &self.layers[i].o_proj_packed, &self.layers[i].o_proj_scales, self.layers[i].o_n, self.layers[i].q_n, block_size);
 
             let residual_hidden = slice_buffer(&p, &mut enc, &hidden, (seq_len - 1) * self.config.hidden_size, self.config.hidden_size);
             hidden = dispatch::add(&p, &mut enc, &residual_hidden, &attn_proj, hidden_size);
 
             let normed2 = dispatch::rms_norm(&p, &mut enc, &hidden, &self.layers[i].post_norm_weight, 1, hidden_size, 1e-6);
 
-            let gate = dispatch_matmul_enc(&p, &mut enc, quant_fmt, &normed2, &self.layers[i].gate_proj_packed, &self.layers[i].gate_proj_scales, self.layers[i].gate_n, hidden_size, block_size);
-            let up = dispatch_matmul_enc(&p, &mut enc, quant_fmt, &normed2, &self.layers[i].up_proj_packed, &self.layers[i].up_proj_scales, self.layers[i].up_n, hidden_size, block_size);
+            let gate = dispatch_matmul_enc(&p, &mut enc, self.layers[i].gate_proj_quant, &normed2, &self.layers[i].gate_proj_packed, &self.layers[i].gate_proj_scales, self.layers[i].gate_n, hidden_size, block_size);
+            let up = dispatch_matmul_enc(&p, &mut enc, self.layers[i].up_proj_quant, &normed2, &self.layers[i].up_proj_packed, &self.layers[i].up_proj_scales, self.layers[i].up_n, hidden_size, block_size);
             let ffn = dispatch::silu_mul(&p, &mut enc, &gate, &up, self.layers[i].gate_n);
-            let ffn_out = dispatch_matmul_enc(&p, &mut enc, quant_fmt, &ffn, &self.layers[i].down_proj_packed, &self.layers[i].down_proj_scales, self.layers[i].down_n, self.layers[i].gate_n, block_size);
+            let ffn_out = dispatch_matmul_enc(&p, &mut enc, self.layers[i].down_proj_quant, &ffn, &self.layers[i].down_proj_packed, &self.layers[i].down_proj_scales, self.layers[i].down_n, self.layers[i].gate_n, block_size);
 
             hidden = dispatch::add(&p, &mut enc, &hidden, &ffn_out, hidden_size);
         }
@@ -1998,7 +1999,8 @@ impl NativeModel {
         let vocab = self.config.vocab_size as u32;
         let normed = dispatch::rms_norm(&p, &mut enc, &hidden, &self.final_norm_weight, 1, hidden_size, 1e-6);
         let lm_head_buf_pf = self.lm_head.as_ref().unwrap_or(&self.embed_table);
-        let logits_buf = dispatch::f32_matmul(&p, &mut enc, &normed, lm_head_buf_pf, vocab, hidden_size);
+        // Dispatch LM head with its actual quant format (Q4_K/Q5_K/Q6_K for K-quant models)
+        let logits_buf = dispatch_matmul_enc(&p, &mut enc, self.lm_head_quant, &normed, lm_head_buf_pf, &self.embed_table, vocab, hidden_size, block_size);
 
         if self.greedy_mode {
             let argmax_buf = dispatch::argmax_gpu(&p, &mut enc, &logits_buf, vocab);
@@ -3197,5 +3199,80 @@ f67c6b559a12262625162b0477908e57538a1989285636485a6a597b58";
         let diff = (result[0] - expected_sum).abs();
         eprintln!("Q2K GPU test: got={:.6}, expected={:.6}, diff={:.2e}", result[0], expected_sum, diff);
         assert!(diff < 0.1, "Q2K GPU matmul mismatch: got={}, expected={}, diff={}", result[0], expected_sum, diff);
+    }
+
+    /// Test Q6_K lm_head matmul with real coder-14b weights at full scale (152064×5120)
+    /// Compare GPU output rows 0, 1000, 50000, 100000, 150000 with CPU reference
+    #[test]
+    fn test_q6k_lm_head_real() {
+        use std::sync::Arc;
+        use std::path::Path;
+        use crate::cyb_format::LoadedModel;
+
+        let model_path = Path::new("/Users/mastercyb/llm/qwen2.5-coder-14b-abl.model");
+        if !model_path.exists() { eprintln!("Skipping: model not found"); return; }
+
+        let lm = LoadedModel::load(model_path).expect("Failed to load");
+        let lm_w = lm.weights.get("lm_head.weight").expect("no lm_head");
+        let hidden_size = 5120usize;
+        let vocab_size = 152064usize;
+
+        // CPU reference: dequant lm_head fully
+        eprintln!("Dequanting lm_head Q6_K to f32 ({}×{})...", vocab_size, hidden_size);
+        let lm_f32 = safetensors_to_f32(&lm_w.data, lm_w.dtype);
+        assert_eq!(lm_f32.len(), vocab_size * hidden_size, "lm_head f32 size mismatch");
+        eprintln!("Dequanted {} values", lm_f32.len());
+
+        // Random-ish activation: use first embed row as activation
+        let embed_w = lm.weights.get("model.embed_tokens.weight").expect("no embed");
+        let embed_f32 = safetensors_to_f32(&embed_w.data, embed_w.dtype);
+        let activation = &embed_f32[27 * hidden_size..28 * hidden_size]; // token 27
+
+        // CPU matmul for specific rows
+        let test_rows = [0usize, 1000, 50000, 100000, 150000];
+        let cpu_vals: Vec<f32> = test_rows.iter().map(|&r| {
+            let row = &lm_f32[r * hidden_size..(r + 1) * hidden_size];
+            row.iter().zip(activation.iter()).map(|(&w, &a)| w * a).sum()
+        }).collect();
+
+        // GPU
+        let backend = crate::backend::create_wgpu_backend();
+        let p = &backend.pipelines;
+
+        let act_buf = p.upload_f32(activation);
+        let weight_buf = p.upload_bytes(&lm_w.data);
+
+        let mut enc = p.device.create_command_encoder(&wgpu::CommandEncoderDescriptor::default());
+        let output = crate::backend::wgpu::dispatch::q6k_matmul(
+            p, &mut enc, &act_buf, &weight_buf, vocab_size as u32, hidden_size as u32,
+        );
+        p.queue.submit(std::iter::once(enc.finish()));
+
+        let gpu_all = p.read_f32(&output, vocab_size);
+
+        // Compare
+        let mut max_diff = 0.0f32;
+        for (i, &row) in test_rows.iter().enumerate() {
+            let cpu = cpu_vals[i];
+            let gpu = gpu_all[row];
+            let diff = (cpu - gpu).abs();
+            let rel = if cpu.abs() > 1e-6 { diff / cpu.abs() } else { diff };
+            max_diff = max_diff.max(diff);
+            eprintln!("row {row:>6}: CPU={cpu:>10.4} GPU={gpu:>10.4} diff={diff:.2e} rel={rel:.2e}");
+        }
+        // Also check top-5 GPU argmax
+        let mut indexed: Vec<(usize, f32)> = gpu_all.iter().enumerate().map(|(i,&v)| (i,v)).collect();
+        indexed.sort_by(|a,b| b.1.partial_cmp(&a.1).unwrap());
+        eprintln!("GPU top-5: {:?}", &indexed[..5]);
+        // CPU top-5
+        let cpu_full: Vec<f32> = (0..vocab_size).map(|r| {
+            lm_f32[r * hidden_size..(r + 1) * hidden_size].iter()
+                .zip(activation.iter()).map(|(&w, &a)| w * a).sum()
+        }).collect();
+        let mut cpu_indexed: Vec<(usize, f32)> = cpu_full.iter().enumerate().map(|(i,&v)| (i,v)).collect();
+        cpu_indexed.sort_by(|a,b| b.1.partial_cmp(&a.1).unwrap());
+        eprintln!("CPU top-5: {:?}", &cpu_indexed[..5]);
+
+        assert!(max_diff < 0.1, "lm_head GPU/CPU divergence too large: {max_diff}");
     }
 }
