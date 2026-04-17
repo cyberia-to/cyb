@@ -2,6 +2,8 @@
 
 Spec is **architecture-complete** but **operationally incomplete**.
 
+> **UPDATE 2026-04-17 (2):** CRITICAL 1-7 filled. See changelog at bottom.
+
 A reimplementer can start but would stall at the following. Ordered
 by severity — fill in order, especially before any large coding
 effort.
@@ -162,3 +164,41 @@ when trident lands, continuous batching when serving demands it).
 
 Reimplementation blocked on 4 missing pieces: IR format, tokenizer,
 chat template, KV cache structure. Others are refinable mid-implementation.
+
+## Changelog
+
+### 2026-04-17 (2) — CRITICAL gaps filled
+
+- ✓ #1 Graph IR → new `ir.md`, binary serialization, op tags,
+  payload encoding, walk algorithm, shape inference
+- ✓ #2 KV cache → extended `ops.md` KvCache section with struct
+  definition, append semantics, lifecycle, memory budget
+- ✓ #3 Tokenizer BPE → new `tokenizer.md`, byte-level mapping,
+  merge algorithm, special tokens, byte fallback, round-trip
+- ✓ #4 Chat template → included in `tokenizer.md` chat templates
+  section, Jinja subset, `~~~chat` storage, common formats
+- ✓ #5 VL config → added concrete examples to `format.md` for
+  qwen2_vl and whisper with nested `[architecture.vision]` /
+  `[architecture.audio_encoder]`
+- ✓ #6 Fused op policy → extended `execution.md` with curated
+  (explicit) vs graph (structural pattern matching at load time)
+- ✓ #7 K-quant block boundaries → extended `quant.md` with K dim
+  alignment rules, reject-and-fallback policy, no partial blocks
+
+Moderate gaps also addressed in pass:
+- RoPE edge cases (odd head_dim error, multi-axis 3D for DiT)
+- Causal mask value (-1e4, not -inf)
+- Pool stride/padding/mode
+- Conv dilation/groups (beyond depthwise)
+- Sampling method config schema
+- GQA expansion algorithm (repeat_interleave, not tile)
+- Ternary scale storage (`.scale` sibling tensor)
+- Backend fallback chain (default → honeycrisp → wgpu+rs → CPU)
+- FrameAllocator policy (exact-size buckets, per-usage pools)
+
+Remaining: minor gaps (view/copy criteria, error messages, empty
+tensors, max context overflow), future items (nox VM, trident,
+aruminium contract). Fillable on-demand during implementation.
+
+**Reimplementation is now unblocked.** Start with LlamaStyle curated
++ wgpu+rs backend as the smallest shippable slice.

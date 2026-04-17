@@ -90,18 +90,36 @@ audio = model.mel_to_audio(mel)   # vocoder
 
 ## Backend dispatch
 
-Each op dispatched to a backend. The backend for a given op is chosen
-per this table:
+Each op dispatched to a backend. The chosen backend for a given op:
 
-| Backend | Use when |
+### Platform default
+
+| Platform | Default |
 |---|---|
-| honeycrisp | available (macOS Apple Silicon) and op is supported |
-| wgpu+rs | default on all other platforms, or honeycrisp not supported |
-| cpu (library) | backend returns "unsupported" for a specific op |
-| nox | explicit override, future |
+| macOS + Apple Silicon | honeycrisp |
+| macOS + Intel | wgpu+rs |
+| Linux / Windows / Android / Web | wgpu+rs |
 
-The user can override with `--backend=wgpu|honeycrisp|nox`. Default
-is "best available".
+### Fallback chain
+
+For a single op, given the chosen default backend:
+
+1. Try default backend's `supports(op, inputs)`. If yes → execute there.
+2. If default is honeycrisp and rejects, try wgpu+rs.
+3. If wgpu+rs rejects, fall back to CPU reference library.
+4. CPU reference implements every op — step 3 always succeeds.
+
+The runtime may report per-op dispatch decisions to observability
+so heavy CPU fallback is visible.
+
+### User override
+
+`cyb-llm run --backend=wgpu+rs|honeycrisp|nox` forces the entire
+execution to a single backend. Override skips steps 1-2; if op is
+not supported, fall-through is still to CPU library (step 3).
+
+`--backend=nox` only works if model has `~~~graph` section (graph
+executor is Tier 1 for nox, not curated).
 
 ## Backend trait
 
@@ -149,10 +167,39 @@ on each decode step. Cleared on `reset_kv_cache()`.
 
 ### Activations (per-step)
 
-Frame allocator: pool of buffers sized by the largest activation in a
-single forward pass. Reused across decode steps without reallocation.
-See `FrameAllocator` in `llm/src/backend/wgpu/alloc.rs` — design
-extended to honeycrisp.
+Frame allocator: per-backend pool of buffers keyed by `(size, usage)`.
+On each forward call, the allocator hands out buffers from the pool
+or allocates new ones. At the start of the NEXT forward call, all
+buffers from the previous call become available for reuse (they're
+guaranteed unused by pending GPU work if dispatch was complete).
+
+```rust
+pub struct FrameAllocator {
+    pool: HashMap<(u64 /* size */, BufferUsage), Vec<Buffer>>,
+    in_use: Vec<(u64, BufferUsage, Buffer)>,
+}
+
+impl FrameAllocator {
+    pub fn alloc(&mut self, size: u64, usage: BufferUsage) -> Buffer;
+    pub fn reset(&mut self);  // called at start of next forward
+}
+```
+
+Sizing policy:
+
+- Buckets by exact byte size. No over-allocation to "next power of 2"
+  — different shapes in different layers produce many bucket sizes,
+  but reuse within a size is perfect.
+- On reset, all in-use buffers move back to the pool. Pool grows
+  monotonically to the steady-state size, then flat.
+- Typical footprint for a 7B decoder at bs=1: ~200 MB of pool.
+
+Separate pools per `BufferUsage` (STORAGE vs UNIFORM on wgpu;
+IOSurface vs shared memory on honeycrisp).
+
+See `llm/src/backend/wgpu/alloc.rs` for the existing wgpu
+implementation. Honeycrisp allocator follows the same design with
+IOSurface-backed buffers from aruminium.
 
 ### Position caches
 
@@ -227,6 +274,47 @@ drop(model)
 ```
 
 Frees all GPU/backend memory. Must be idempotent. No leaks.
+
+## Fused op policy
+
+Fused ops ([ops.md](ops.md#10-fused-ops)) are optional optimizations.
+Policy:
+
+### Curated paths
+
+Each curated family codepath explicitly emits fused ops where
+beneficial. The author knows the architecture and writes fused
+calls directly:
+```rust
+let (normed, res) = fused_skip_norm(hidden, attn_out, post_norm_w, eps);
+```
+No auto-detection. Curated code is hand-tuned; the author chose the
+fusion.
+
+### Graph path
+
+The graph executor runs a **pre-execution fusion pass** that
+rewrites the graph. Recognized patterns:
+
+| Pattern | Fused op |
+|---|---|
+| `RmsNorm → Matmul` | `FusedNormMatmul` |
+| `Add → RmsNorm` (both outputs used) | `FusedSkipNorm` |
+| `Matmul → Silu` followed by `Matmul` + `Mul` | `FusedSwiGlu` |
+| `Sdpa` (when backend has FlashAttention) | `FlashAttention` |
+
+Detection is purely structural: a subgraph matches the pattern's
+shape. If the backend reports `supports(FusedSkipNorm, ...)` is
+true, the fused node replaces the sub-DAG. Else stays unfused.
+
+Fusion is applied at graph-load time, once. Subsequent forwards use
+the fused graph.
+
+### Correctness
+
+Every fused op must produce the same output as its unfused
+equivalent within ε ([ops.md](ops.md#tolerance-summary)). Violation
+is a backend bug — the graph executor can fall back to unfused.
 
 ## Extension points
 

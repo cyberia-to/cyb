@@ -13,11 +13,13 @@ is a spec bug — fix spec first, then code.
 - [architecture.md](architecture.md) — three-path execution (curated + graph + nox), three backends (wgpu+rs / honeycrisp / nox)
 - [tensor.md](tensor.md) — shape conventions, memory layout, dtype, broadcasting
 - [ops.md](ops.md) — math for RMSNorm, RoPE, attention, SwiGLU, softmax, etc
+- [ir.md](ir.md) — graph IR serialization, node encoding, walk algorithm
 - [quant.md](quant.md) — exact bit layouts for Q4_0/Q4_K/Q5_K/Q6_K/Q8/ternary
+- [tokenizer.md](tokenizer.md) — BPE algorithm, special tokens, chat templates
 - [arch.md](arch.md) — graph templates per family: LlamaStyle, BertStyle, DiTDiffusion, etc
 - [format.md](format.md) — .model file layout, tensor index, sections
 - [import.md](import.md) — GGUF/HF → .model, invariants preserved
-- [execution.md](execution.md) — backend contract, dispatch rules
+- [execution.md](execution.md) — backend contract, dispatch rules, fused op policy
 - [test.md](test.md) — four-tier test strategy: import, op, layer, e2e
 - [reality.md](reality.md) — what actually runs today (5/26), gap analysis
 - [gaps.md](gaps.md) — completeness audit: what's missing for reimplementation

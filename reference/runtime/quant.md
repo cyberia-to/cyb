@@ -221,14 +221,14 @@ struct block_q2_K {
 
 ## Ternary (BitNet 1.58-bit)
 
-Four ternary values per byte, 2 bits each.
+Four ternary values per byte, 2 bits each. Used by BitNet 1.58.
 
 Encoding:
 ```
 00 → -1
 01 →  0
 10 → +1
-11 →  0  (unused)
+11 →  0  (unused; defensive default)
 ```
 
 Dequant:
@@ -237,10 +237,32 @@ for each byte:
     for i in 0..4:
         bits = (byte >> (i * 2)) & 0x03
         v = {-1, 0, +1, 0}[bits]
-        x[4*block_idx + i] = scale * v
+        x[4*byte_idx + i] = scale * v
 ```
 
-Scale is a per-tensor f32 separately stored.
+**Scale storage:** ternary tensors carry a per-tensor f32 scale
+separately from the quantized bytes. Convention: the tensor's scale
+is stored as a sibling tensor with the same name + `.scale` suffix:
+
+```
+["model.layers.0.self_attn.q_proj.weight"]
+shape = [4096, 1024]
+encoding = "ternary"
+offset = X
+size = 4096 * 1024 / 4             # 1M bytes
+
+["model.layers.0.self_attn.q_proj.weight.scale"]
+shape = [1]
+encoding = "u32"                    # f32 as raw bytes
+offset = X + 4096*1024/4
+size = 4
+```
+
+At load time, the runtime pairs each ternary tensor with its
+`.scale` sibling. Missing scale = import error.
+
+Some models use per-row scales instead of per-tensor: shape = `[N]`
+with one f32 per output row. Detected from scale tensor shape.
 
 ## Format dispatch
 
@@ -250,6 +272,53 @@ format → error at dispatch ("backend does not implement Q3_K matmul").
 
 Conversion between formats (e.g. Q4_0 → Q4_K for storage normalization)
 happens only at import time ([import.md](import.md)), not at runtime.
+
+## Storage across multiple blocks
+
+A weight tensor `W: [N, K]` with block-quantized dtype stores its
+data as a flat byte array of contiguous blocks. Layout is row-major
+by `N` (outer), then blocks along `K` (inner).
+
+For Q4_K with K=1024:
+```
+blocks_per_row = K / 256 = 4
+bytes_per_row = blocks_per_row × 144 = 576
+total_bytes = N × bytes_per_row
+```
+
+Byte offset of block at row `r`, block index `b` (within row):
+```
+offset = (r * blocks_per_row + b) * block_bytes
+```
+
+No headers, no padding between blocks, no inter-tensor alignment
+within the quantized bytes of a single tensor. Tensors themselves
+align to 64 bytes at the tensor-data level ([format.md](format.md)).
+
+## K dimension alignment
+
+All K-quants use 256-value superblocks. Q4_0 and Q8_0 use 32-value
+blocks.
+
+**Requirement:** for a weight tensor of shape `[N, K]` stored in
+format F with block size `B(F)`, K must be a multiple of B(F):
+```
+K % B(F) == 0
+```
+
+Import checks this. Models with non-aligned K cannot use that format
+— import must either:
+- Pad K with zeros to the next multiple and store metadata
+  (not preferred — wastes memory)
+- Fall back to a finer-grained format (Q8_0 if K % 32 == 0 but
+  K % 256 != 0)
+- Reject the tensor and fall back to F16 for that tensor
+
+Spec: reject and fall back. Tolerant mixing across tensors is
+supported ([scope.md](scope.md#weight-formats)).
+
+Partial blocks are NEVER stored. Every block is exactly `B(F)`
+values.
 
 ## Tolerance
 

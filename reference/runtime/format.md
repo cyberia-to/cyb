@@ -115,6 +115,68 @@ Multimodal models store per-modality sub-sections if needed:
 `[architecture.text]`, `[architecture.vision]`, but `hidden_size`
 etc at `[architecture]` root refers to the primary modality.
 
+### VL config example (qwen2_vl)
+
+```toml
+model_type = "qwen2_vl"
+parameters = 7100000000
+
+[architecture]
+# Primary modality (text tower)
+hidden_size = 3584
+num_attention_heads = 28
+num_key_value_heads = 4
+num_hidden_layers = 28
+intermediate_size = 18944
+vocab_size = 152064
+max_position_embeddings = 32768
+rope_theta = 1000000
+rms_norm_eps = 1e-6
+tie_word_embeddings = false
+
+[architecture.vision]
+hidden_size = 1280
+num_attention_heads = 16
+num_hidden_layers = 32
+intermediate_size = 5120
+patch_size = 14
+image_size = 448
+temporal_patch_size = 2            # for video input
+spatial_merge_size = 2              # patch merge factor
+window_size = 112
+
+[architecture.projector]
+input_dim = 5120                    # vision_hidden_size * spatial_merge_size^2
+output_dim = 3584                   # text hidden_size
+mlp_depth = 2
+```
+
+### ASR config example (whisper)
+
+```toml
+model_type = "whisper"
+parameters = 244000000               # small
+
+[architecture]
+# Primary modality (text decoder)
+hidden_size = 768
+num_attention_heads = 12
+num_hidden_layers = 12
+vocab_size = 51865
+max_position_embeddings = 448
+
+[architecture.audio_encoder]
+hidden_size = 768
+num_attention_heads = 12
+num_hidden_layers = 12
+n_mels = 80
+max_source_positions = 1500
+conv_kernel = 3
+```
+
+Root `[architecture]` is always the primary generation/output tower
+(text decoder for VL and ASR). Other modalities get named subsections.
+
 ## program section
 
 Declarative description of the pipeline. One of:
@@ -129,6 +191,38 @@ It is read for:
 1. Documentation — what the model does
 2. Dispatch hints — which curated family applies
 3. Future compilation to nox
+
+## graph section (optional)
+
+Serialized IR graph for models that should run via the graph
+executor path. See [ir.md](ir.md) for node structure and binary
+format.
+
+Presence of `graph` section signals the graph executor can run this
+model. A model with neither a matching curated family nor a graph
+section is unrunnable (import should have rejected it).
+
+Frontmatter entry:
+```toml
+[[files]]
+name = "graph"
+format = "bin"                 # binary IR, see ir.md
+```
+
+## chat section (optional)
+
+Chat template and EOS handling. See [tokenizer.md](tokenizer.md#chat-templates)
+for full format.
+
+```
+~~~chat
+format = "chatml"
+
+template = """..."""            # Jinja template, overrides format preset
+
+system_default = "..."
+eos_sequences = ["<|im_end|>"]
+```
 
 ## tensors section
 
