@@ -50,3 +50,7 @@ path = "tests/tier1_ops.rs"
 [[test]]
 name = "tier2_layers"
 path = "tests/tier2_layers.rs"
+
+[[test]]
+name = "tier3_models"
+path = "tests/tier3_models.rs"
