@@ -40,6 +40,44 @@ impl LlamaModel {
         })
     }
 
+    /// Move weight tensors (except embed) to the backend once.
+    /// Embed stays on host for efficient row lookup.
+    /// Call after load. For CPU backend this is a no-op.
+    pub fn to_backend(&mut self, backend: &dyn Backend) -> Result<(), BackendError> {
+        // embed_tokens stays on host — we extract one row per forward.
+        self.weights.final_norm = backend.to_backend(&self.weights.final_norm)?;
+        if let Some(ref lm_head) = self.weights.lm_head {
+            self.weights.lm_head = Some(backend.to_backend(lm_head)?);
+        }
+        for layer in &mut self.weights.layers {
+            layer.input_norm = backend.to_backend(&layer.input_norm)?;
+            layer.q_proj = backend.to_backend(&layer.q_proj)?;
+            layer.k_proj = backend.to_backend(&layer.k_proj)?;
+            layer.v_proj = backend.to_backend(&layer.v_proj)?;
+            layer.o_proj = backend.to_backend(&layer.o_proj)?;
+            if let Some(ref b) = layer.q_proj_bias {
+                layer.q_proj_bias = Some(backend.to_backend(b)?);
+            }
+            if let Some(ref b) = layer.k_proj_bias {
+                layer.k_proj_bias = Some(backend.to_backend(b)?);
+            }
+            if let Some(ref b) = layer.v_proj_bias {
+                layer.v_proj_bias = Some(backend.to_backend(b)?);
+            }
+            if let Some(ref n) = layer.q_norm {
+                layer.q_norm = Some(backend.to_backend(n)?);
+            }
+            if let Some(ref n) = layer.k_norm {
+                layer.k_norm = Some(backend.to_backend(n)?);
+            }
+            layer.post_norm = backend.to_backend(&layer.post_norm)?;
+            layer.gate_proj = backend.to_backend(&layer.gate_proj)?;
+            layer.up_proj = backend.to_backend(&layer.up_proj)?;
+            layer.down_proj = backend.to_backend(&layer.down_proj)?;
+        }
+        Ok(())
+    }
+
     pub fn reset_kv_cache(&mut self) {
         self.past_seq_len = 0;
     }

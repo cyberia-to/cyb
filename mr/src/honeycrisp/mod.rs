@@ -84,6 +84,23 @@ impl HoneycrispBackend {
             bytemuck::cast_slice::<u8, f32>(&bytes[..needed]).to_vec()
         })
     }
+
+    fn download_tensor(&self, t: &Tensor) -> Result<Tensor, BackendError> {
+        match &t.data {
+            TensorData::Host(_) => Ok(t.clone()),
+            TensorData::Backend(b) => {
+                let h = b.as_any().downcast_ref::<HcBuffer>().ok_or_else(|| {
+                    BackendError::Internal("honeycrisp: unknown backend tensor".into())
+                })?;
+                if t.dtype != DType::F32 {
+                    return Err(BackendError::Internal(
+                        "honeycrisp: non-F32 GPU download not implemented".into(),
+                    ));
+                }
+                Ok(Tensor::from_f32(t.shape.clone(), self.read_f32(&h.buffer, t.numel())))
+            }
+        }
+    }
 }
 
 impl Backend for HoneycrispBackend {
@@ -104,7 +121,11 @@ impl Backend for HoneycrispBackend {
 
     fn execute(&self, op: &Op, inputs: &[&Tensor]) -> Result<Vec<Tensor>, BackendError> {
         if !self.supports(op, inputs) {
-            return self.cpu.execute(op, inputs);
+            let materialized: Result<Vec<Tensor>, BackendError> =
+                inputs.iter().map(|t| self.download_tensor(t)).collect();
+            let materialized = materialized?;
+            let refs: Vec<&Tensor> = materialized.iter().collect();
+            return self.cpu.execute(op, &refs);
         }
 
         match op {
@@ -167,9 +188,17 @@ impl Backend for HoneycrispBackend {
         shape: Vec<usize>,
         dtype: DType,
     ) -> Result<Tensor, BackendError> {
-        // Keep on host; GPU buffers created lazily per op for now.
-        // Future: persistent GPU buffers for weights via unimem zero-copy.
-        self.cpu.upload(bytes, shape, dtype)
+        let buffer = self
+            .device
+            .gpu
+            .buffer_with_data(bytes)
+            .map_err(|e| BackendError::Internal(format!("buffer_with_data: {e}")))?;
+        let handle = HcBuffer { buffer };
+        Ok(Tensor {
+            shape,
+            dtype,
+            data: TensorData::Backend(Arc::new(handle)),
+        })
     }
 
     fn download_f32(&self, t: &Tensor) -> Result<Vec<f32>, BackendError> {

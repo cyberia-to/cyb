@@ -159,6 +159,10 @@ fn run(args: Vec<String>) {
 
     let backend: Box<dyn Backend> = pick_backend(&backend_name);
     println!("Backend: {}", backend.kind().as_str());
+    // Upload weights once to the backend (persistent GPU memory).
+    if let Err(e) = model.to_backend(&*backend) {
+        eprintln!("weight upload failed: {e}");
+    }
     println!("---");
     println!("{final_prompt}");
     println!("---");

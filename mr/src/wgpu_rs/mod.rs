@@ -71,6 +71,33 @@ impl WgpuRsBackend {
         let f32s = self.device.read_f32(buffer, n);
         Tensor::from_f32(shape, f32s)
     }
+
+    fn download_tensor(&self, t: &Tensor) -> Result<Tensor, BackendError> {
+        match &t.data {
+            TensorData::Host(_) => Ok(t.clone()),
+            TensorData::Backend(b) => {
+                let g = b.as_any().downcast_ref::<GpuBuffer>().ok_or_else(|| {
+                    BackendError::Internal("wgpu+rs: unknown backend tensor".into())
+                })?;
+                // Download F32 from GPU.
+                if t.dtype != DType::F32 {
+                    return Err(BackendError::Internal(
+                        "wgpu+rs: download non-F32 GPU tensor not yet supported".into(),
+                    ));
+                }
+                let f32s = self.device.read_f32(&g.buffer, t.numel());
+                Ok(Tensor::from_f32(t.shape.clone(), f32s))
+            }
+        }
+    }
+}
+
+/// Materialize backend-resident inputs to host tensors.
+fn materialize_inputs<F>(inputs: &[&Tensor], mut f: F) -> Result<Vec<Tensor>, BackendError>
+where
+    F: FnMut(&Tensor) -> Result<Tensor, BackendError>,
+{
+    inputs.iter().map(|t| f(t)).collect()
 }
 
 impl Backend for WgpuRsBackend {
@@ -93,7 +120,10 @@ impl Backend for WgpuRsBackend {
 
     fn execute(&self, op: &Op, inputs: &[&Tensor]) -> Result<Vec<Tensor>, BackendError> {
         if !self.supports(op, inputs) {
-            return self.cpu.execute(op, inputs);
+            // Materialize any backend-resident inputs to host, then run on CPU.
+            let materialized = materialize_inputs(inputs, |t| self.download_tensor(t))?;
+            let refs: Vec<&Tensor> = materialized.iter().collect();
+            return self.cpu.execute(op, &refs);
         }
 
         match op {
@@ -206,9 +236,18 @@ impl Backend for WgpuRsBackend {
         shape: Vec<usize>,
         dtype: DType,
     ) -> Result<Tensor, BackendError> {
-        // For now, keep on host — upload lazily when GPU kernel needs it.
-        // Future: move to GPU buffer here for persistent weights.
-        self.cpu.upload(bytes, shape, dtype)
+        // Persistent GPU buffer. Use this for weights to avoid re-upload
+        // on every forward call.
+        let buf = self.device.upload_bytes(bytes);
+        let handle = GpuBuffer {
+            buffer: buf,
+            device: self.device.clone(),
+        };
+        Ok(Tensor {
+            shape,
+            dtype,
+            data: TensorData::Backend(Arc::new(handle)),
+        })
     }
 
     fn download_f32(&self, t: &Tensor) -> Result<Vec<f32>, BackendError> {

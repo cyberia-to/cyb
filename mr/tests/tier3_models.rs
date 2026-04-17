@@ -62,6 +62,37 @@ fn qwen3_0_6b_forward_runs() {
 }
 
 #[test]
+#[ignore] // slow — big model, dequant takes ~30s. Run with --ignored.
+fn qwen25_coder_14b_forward_runs() {
+    let Some(path) = find_model("qwen2.5-coder-14b-abl") else {
+        eprintln!("skip: coder-14b not found");
+        return;
+    };
+    let mut model = LlamaModel::load(&path).expect("load");
+    eprintln!(
+        "model_type={}, layers={}, hidden={}, heads={}/{}, head_dim={}, qk_norm={}, attn_bias={}",
+        model.config.model_type,
+        model.config.num_hidden_layers,
+        model.config.hidden_size,
+        model.config.num_attention_heads,
+        model.config.num_key_value_heads,
+        model.config.head_dim,
+        model.config.has_qk_norm,
+        model.config.has_attn_bias,
+    );
+    let backend = mr::cpu::CpuBackend::new();
+    let logits = model.forward(151644, &backend).expect("forward");
+    assert_eq!(logits.len(), model.config.vocab_size);
+    let finite = logits.iter().filter(|v| v.is_finite()).count();
+    assert_eq!(finite, logits.len(), "non-finite logits");
+    eprintln!(
+        "logits range: [{:.2}, {:.2}]",
+        logits.iter().cloned().fold(f32::INFINITY, f32::min),
+        logits.iter().cloned().fold(f32::NEG_INFINITY, f32::max),
+    );
+}
+
+#[test]
 fn qwen25_coder_1_5b_forward_runs() {
     let Some(path) = find_model("qwen2.5-coder-1.5b-abl") else {
         eprintln!("skip: qwen2.5-coder-1.5b-abl.model not found");

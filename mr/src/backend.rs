@@ -96,6 +96,17 @@ pub trait Backend: Send + Sync {
         dtype: DType,
     ) -> Result<Tensor, BackendError>;
 
+    /// Move a host tensor to backend memory. Default implementation
+    /// uploads raw bytes; backends may override for zero-copy paths.
+    fn to_backend(&self, t: &Tensor) -> Result<Tensor, BackendError> {
+        match &t.data {
+            crate::tensor::TensorData::Host(bytes) => {
+                self.upload(bytes.as_slice(), t.shape.clone(), t.dtype)
+            }
+            crate::tensor::TensorData::Backend(_) => Ok(t.clone()),
+        }
+    }
+
     /// Download tensor to host memory as F32.
     /// For quantized inputs, dequantizes to F32 on download.
     fn download_f32(&self, t: &Tensor) -> Result<Vec<f32>, BackendError>;
