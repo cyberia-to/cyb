@@ -22,6 +22,7 @@ fn main() {
         "backends" => list_backends(),
         "run" => run(args),
         "status" => status(),
+        "bench" => bench(args),
         "help" | "--help" | "-h" => help(),
         other => {
             eprintln!("unknown command: {other}");
@@ -39,12 +40,100 @@ fn help() {
     println!("commands:");
     println!("  backends                         list available backends");
     println!("  status                           honest report on manifest models");
+    println!("  bench <model> [--steps N]        phase breakdown + tok/s per backend");
     println!("  run <model> --prompt <text>      generate text from a model");
     println!("    options:");
     println!("      --max-tokens N               (default 64)");
     println!("      --temperature T              (default 0 = greedy)");
     println!("      --backend NAME               cpu|wgpu+rs|honeycrisp");
     println!("      --no-chat                    skip chat template, use raw prompt");
+}
+
+fn bench(args: Vec<String>) {
+    if args.is_empty() {
+        eprintln!("usage: mr bench <model> [--steps N]");
+        std::process::exit(2);
+    }
+    let model_arg = &args[0];
+    let mut steps: usize = 10;
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--steps" => {
+                i += 1;
+                steps = args[i].parse().unwrap_or(10);
+            }
+            other => {
+                eprintln!("unknown flag: {other}");
+                std::process::exit(2);
+            }
+        }
+        i += 1;
+    }
+    let path = resolve_model_path(model_arg);
+    if !path.exists() {
+        eprintln!("model not found: {}", path.display());
+        std::process::exit(1);
+    }
+    println!();
+    println!("  \x1b[1mmr bench\x1b[0m — {} ({} forward steps)", path.display(), steps);
+    println!();
+    println!(
+        "  {:<12}  {:<8}  {:<10}  {:<10}  {:<12}  {:<8}",
+        "BACKEND", "LOAD", "UPLOAD", "FIRST-FWD", "AVG-FWD", "TOK/S"
+    );
+    println!("  {}", "─".repeat(74));
+
+    let backends_to_try: Vec<(&str, Box<dyn Fn() -> Result<Box<dyn Backend>, String>>)> = {
+        let mut v: Vec<(&str, Box<dyn Fn() -> Result<Box<dyn Backend>, String>>)> = vec![];
+        v.push((
+            "cpu",
+            Box::new(|| Ok(Box::new(mr::cpu::CpuBackend::new()) as Box<dyn Backend>)),
+        ));
+        v.push((
+            "wgpu+rs",
+            Box::new(|| {
+                mr::wgpu_rs::WgpuRsBackend::new()
+                    .map(|b| Box::new(b) as Box<dyn Backend>)
+                    .map_err(|e| format!("{e}"))
+            }),
+        ));
+        #[cfg(target_os = "macos")]
+        v.push((
+            "honeycrisp",
+            Box::new(|| {
+                mr::honeycrisp::HoneycrispBackend::new()
+                    .map(|b| Box::new(b) as Box<dyn Backend>)
+                    .map_err(|e| format!("{e}"))
+            }),
+        ));
+        v
+    };
+
+    for (name, make) in backends_to_try {
+        match make() {
+            Err(e) => {
+                println!("  {:<12}  \x1b[31munavailable\x1b[0m ({e})", name);
+                continue;
+            }
+            Ok(b) => match mr::bench::bench_e2e(&path, &*b, steps) {
+                Err(e) => println!("  {:<12}  \x1b[31merror\x1b[0m ({e})", name),
+                Ok(bench) => {
+                    let avg = bench.avg_forward_ms();
+                    println!(
+                        "  {:<12}  {:>6.0}ms  {:>6.0}ms  {:>6.0}ms   {:>6.1}ms/tok  {:>5.1} tok/s",
+                        name,
+                        bench.load_ms,
+                        bench.to_backend_ms,
+                        bench.first_forward_ms,
+                        avg,
+                        1000.0 / avg,
+                    );
+                }
+            },
+        }
+    }
+    println!();
 }
 
 fn status() {

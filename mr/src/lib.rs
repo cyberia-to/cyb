@@ -6,6 +6,7 @@
 //! Spec: reference/runtime/ in the repo root.
 
 pub mod backend;
+pub mod bench;
 pub mod cpu;
 pub mod dtype;
 pub mod format;
