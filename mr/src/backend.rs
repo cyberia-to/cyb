@@ -64,6 +64,26 @@ pub enum BackendError {
         reason: String,
     },
 
+    #[error("dtype {dtype:?} not implemented in {backend} (blocker: {blocker})")]
+    UnsupportedDtype {
+        backend: &'static str,
+        dtype: DType,
+        blocker: &'static str,
+    },
+
+    #[error("context overflow: requested position {pos}, max {max}")]
+    ContextOverflow { pos: usize, max: usize },
+
+    #[error("NaN/Inf detected in {op} output (layer {layer}, position {pos})")]
+    NonFiniteOutput {
+        op: &'static str,
+        layer: usize,
+        pos: usize,
+    },
+
+    #[error("tensor: {0}")]
+    Tensor(#[from] crate::tensor::TensorError),
+
     #[error("internal: {0}")]
     Internal(String),
 }

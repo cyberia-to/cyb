@@ -54,3 +54,11 @@ path = "tests/tier2_layers.rs"
 [[test]]
 name = "tier3_models"
 path = "tests/tier3_models.rs"
+
+[[test]]
+name = "property_tests"
+path = "tests/property_tests.rs"
+
+[[test]]
+name = "tier3_goldens"
+path = "tests/tier3_goldens.rs"

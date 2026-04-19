@@ -95,6 +95,37 @@ impl LlamaConfig {
             })
             .unwrap_or(hidden_size / num_attention_heads);
 
+        // Spec validation per arch.md LlamaStyle.
+        if head_dim == 0 || head_dim % 2 != 0 {
+            return Err(FormatError::Invalid(format!(
+                "head_dim must be positive and even, got {head_dim}"
+            )));
+        }
+        if num_attention_heads == 0 {
+            return Err(FormatError::Invalid("num_attention_heads must be > 0".into()));
+        }
+        if num_key_value_heads == 0 || num_attention_heads % num_key_value_heads != 0 {
+            return Err(FormatError::Invalid(format!(
+                "GQA requires num_heads ({num_attention_heads}) divisible by kv_heads ({num_key_value_heads})"
+            )));
+        }
+        if num_hidden_layers == 0 {
+            return Err(FormatError::Invalid("num_hidden_layers must be > 0".into()));
+        }
+        if vocab_size == 0 {
+            return Err(FormatError::Invalid("vocab_size must be > 0".into()));
+        }
+        if rope_theta <= 0.0 {
+            return Err(FormatError::Invalid(format!(
+                "rope_theta must be positive, got {rope_theta}"
+            )));
+        }
+        if !(rms_norm_eps > 0.0 && rms_norm_eps < 1.0) {
+            return Err(FormatError::Invalid(format!(
+                "rms_norm_eps outside sane range (0, 1): {rms_norm_eps}"
+            )));
+        }
+
         // Detect variants by tensor presence
         let has_qk_norm = tensors
             .iter()

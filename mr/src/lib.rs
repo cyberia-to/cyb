@@ -11,6 +11,7 @@ pub mod dtype;
 pub mod format;
 pub mod generate;
 pub mod llama_style;
+pub mod manifest;
 pub mod op;
 pub mod tensor;
 pub mod tokenizer;

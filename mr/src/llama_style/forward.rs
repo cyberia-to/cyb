@@ -93,12 +93,32 @@ impl LlamaModel {
     ) -> Result<Vec<f32>, BackendError> {
         let c = &self.config;
 
+        // Context overflow check.
+        let max_seq = c.max_position_embeddings.min(8192);
+        if self.past_seq_len >= max_seq {
+            return Err(BackendError::ContextOverflow {
+                pos: self.past_seq_len,
+                max: max_seq,
+            });
+        }
+
+        // Token id bounds check.
+        if (token_id as usize) >= c.vocab_size {
+            return Err(BackendError::InvalidInput {
+                op: "TokenEmbed",
+                reason: format!(
+                    "token_id {token_id} out of vocab range {}",
+                    c.vocab_size
+                ),
+            });
+        }
+
         // Embed lookup: one row of embed_tokens.
         let embed_table = &self.weights.embed_tokens;
         let hidden_size = c.hidden_size;
         let row_start = (token_id as usize) * hidden_size;
-        let embed_row: Vec<f32> = embed_table.as_f32()[row_start..row_start + hidden_size].to_vec();
-        let mut hidden = Tensor::from_f32(vec![1, hidden_size], embed_row);
+        let embed_row: Vec<f32> = embed_table.try_as_f32()?[row_start..row_start + hidden_size].to_vec();
+        let mut hidden = Tensor::try_from_f32(vec![1, hidden_size], embed_row)?;
 
         let pos = self.past_seq_len as f32;
         let pos_tensor = Tensor::from_f32(vec![1], vec![pos]);
@@ -136,6 +156,16 @@ impl LlamaModel {
 
         self.past_seq_len += 1;
         let logits_vec = backend.download_f32(&logits)?;
+
+        // NaN/Inf detection at the forward boundary.
+        if logits_vec.iter().any(|v| !v.is_finite()) {
+            return Err(BackendError::NonFiniteOutput {
+                op: "forward",
+                layer: c.num_hidden_layers,
+                pos: self.past_seq_len - 1,
+            });
+        }
+
         Ok(logits_vec)
     }
 }

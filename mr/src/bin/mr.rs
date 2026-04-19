@@ -21,6 +21,7 @@ fn main() {
     match cmd.as_str() {
         "backends" => list_backends(),
         "run" => run(args),
+        "status" => status(),
         "help" | "--help" | "-h" => help(),
         other => {
             eprintln!("unknown command: {other}");
@@ -37,12 +38,80 @@ fn help() {
     println!();
     println!("commands:");
     println!("  backends                         list available backends");
+    println!("  status                           honest report on manifest models");
     println!("  run <model> --prompt <text>      generate text from a model");
     println!("    options:");
     println!("      --max-tokens N               (default 64)");
     println!("      --temperature T              (default 0 = greedy)");
     println!("      --backend NAME               cpu|wgpu+rs|honeycrisp");
     println!("      --no-chat                    skip chat template, use raw prompt");
+}
+
+fn status() {
+    use mr::format::LoadedModel;
+    use mr::manifest::MANIFEST;
+
+    let base = mr::manifest::models_dir();
+    println!();
+    println!("  \x1b[1mmr status\x1b[0m — {}", base.display());
+    println!();
+    println!(
+        "  {:<26} {:<12} {:<8} {:<10} {:<20} {}",
+        "MODEL", "FAMILY", "ROLE", "LOAD", "FORWARD", "NOTES"
+    );
+    println!("  {}", "─".repeat(100));
+
+    for e in MANIFEST {
+        let path = base.join(format!("{}.model", e.name));
+        if !path.exists() {
+            println!(
+                "  {:<26} {:<12} {:<8} \x1b[33m{:<10}\x1b[0m {:<20} {}",
+                e.name, e.family, e.role, "missing", "—", e.notes
+            );
+            continue;
+        }
+
+        let t0 = Instant::now();
+        let loaded = LoadedModel::load(&path);
+        let load_s = t0.elapsed().as_secs_f64();
+
+        let (load_status, forward_status) = match loaded {
+            Err(err) => (
+                format!("\x1b[31merr\x1b[0m"),
+                format!("— ({err})"),
+            ),
+            Ok(lm) => {
+                let load_ok = format!("\x1b[32m{:.1}s\x1b[0m", load_s);
+                match mr::llama_style::LlamaModel::from_loaded(&lm) {
+                    Err(e) => (load_ok, format!("\x1b[31march fail\x1b[0m: {e}")),
+                    Ok(mut model) => {
+                        let backend = mr::cpu::CpuBackend::new();
+                        let t_fwd = Instant::now();
+                        let result = model.forward(0, &backend);
+                        let fwd_s = t_fwd.elapsed().as_secs_f64();
+                        let fwd_status = match result {
+                            Ok(logits) => {
+                                let finite = logits.iter().all(|v| v.is_finite());
+                                if finite {
+                                    format!("\x1b[32m{:.1}s ok\x1b[0m", fwd_s)
+                                } else {
+                                    "\x1b[31mnon-finite\x1b[0m".into()
+                                }
+                            }
+                            Err(e) => format!("\x1b[31merr\x1b[0m: {e}"),
+                        };
+                        (load_ok, fwd_status)
+                    }
+                }
+            }
+        };
+        println!(
+            "  {:<26} {:<12} {:<8} {:<10} {:<20} {}",
+            e.name, e.family, e.role, load_status, forward_status, e.notes
+        );
+    }
+    println!("  {}", "─".repeat(100));
+    println!();
 }
 
 fn list_backends() {

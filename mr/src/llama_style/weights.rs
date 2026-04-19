@@ -1,6 +1,6 @@
 //! LlamaStyle weight loading.
 
-use crate::cpu::dequantize_to_f32;
+use crate::cpu::quant::try_dequantize_to_f32;
 use crate::format::{FormatError, LoadedModel, TensorMeta};
 use crate::tensor::Tensor;
 
@@ -64,8 +64,10 @@ fn load_tensor_f32(lm: &LoadedModel, name: &str) -> Result<Tensor, FormatError> 
     let bytes = lm
         .tensor_bytes(name)
         .ok_or_else(|| FormatError::Invalid(format!("bytes missing for {name}")))?;
-    let f32s = dequantize_to_f32(bytes, meta.dtype);
-    Ok(Tensor::from_f32(meta.shape.clone(), f32s))
+    let f32s = try_dequantize_to_f32(bytes, meta.dtype)
+        .map_err(|e| FormatError::Invalid(format!("dequant {name}: {e}")))?;
+    Tensor::try_from_f32(meta.shape.clone(), f32s)
+        .map_err(|e| FormatError::Invalid(format!("tensor {name}: {e}")))
 }
 
 fn load_layer(lm: &LoadedModel, i: usize) -> Result<LayerWeights, FormatError> {

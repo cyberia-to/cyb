@@ -53,35 +53,76 @@ pub enum TensorData {
     Backend(Arc<dyn BackendData>),
 }
 
+#[derive(thiserror::Error, Debug)]
+pub enum TensorError {
+    #[error("numel mismatch: shape {shape:?} → {expected} elements, got {got}")]
+    NumelMismatch {
+        shape: Shape,
+        expected: usize,
+        got: usize,
+    },
+    #[error("byte count mismatch: shape {shape:?} dtype {dtype:?} → {expected} bytes, got {got}")]
+    ByteCountMismatch {
+        shape: Shape,
+        dtype: DType,
+        expected: usize,
+        got: usize,
+    },
+    #[error("expected dtype {expected:?}, got {got:?}")]
+    DTypeMismatch { expected: DType, got: DType },
+    #[error("tensor is backend-resident ({backend}), host data requested")]
+    NotHostResident { backend: &'static str },
+}
+
 impl Tensor {
-    /// Create a host tensor from f32 data.
+    /// Create a host tensor from f32 data. Panics on mismatch — caller is
+    /// responsible for matching shape to data. For construction from unknown
+    /// sources, use `try_from_f32`.
     pub fn from_f32(shape: Shape, data: Vec<f32>) -> Self {
-        assert_eq!(
-            numel(&shape),
-            data.len(),
-            "numel mismatch: shape={shape:?}, data.len={}",
-            data.len()
-        );
+        Self::try_from_f32(shape, data).expect("Tensor::from_f32: invariant violated")
+    }
+
+    /// Fallible construction from f32 data.
+    pub fn try_from_f32(shape: Shape, data: Vec<f32>) -> Result<Self, TensorError> {
+        let expected = numel(&shape);
+        if expected != data.len() {
+            return Err(TensorError::NumelMismatch {
+                shape,
+                expected,
+                got: data.len(),
+            });
+        }
         let bytes: Vec<u8> = bytemuck::cast_slice(&data).to_vec();
-        Self {
+        Ok(Self {
             shape,
             dtype: DType::F32,
             data: TensorData::Host(Arc::new(bytes)),
-        }
+        })
     }
 
     /// Create a host tensor from raw bytes with explicit dtype.
+    /// Panics on byte-count mismatch; use `try_from_bytes` for fallible.
     pub fn from_bytes(shape: Shape, dtype: DType, bytes: Vec<u8>) -> Self {
-        assert_eq!(
-            dtype.bytes_for(numel(&shape)),
-            bytes.len(),
-            "byte count mismatch for shape={shape:?} dtype={dtype:?}"
-        );
-        Self {
+        Self::try_from_bytes(shape, dtype, bytes).expect("Tensor::from_bytes: invariant violated")
+    }
+
+    /// Fallible construction from raw bytes.
+    pub fn try_from_bytes(shape: Shape, dtype: DType, bytes: Vec<u8>) -> Result<Self, TensorError> {
+        let n = numel(&shape);
+        let expected = dtype.bytes_for(n);
+        if expected != bytes.len() {
+            return Err(TensorError::ByteCountMismatch {
+                shape,
+                dtype,
+                expected,
+                got: bytes.len(),
+            });
+        }
+        Ok(Self {
             shape,
             dtype,
             data: TensorData::Host(Arc::new(bytes)),
-        }
+        })
     }
 
     /// Element count.
@@ -102,18 +143,35 @@ impl Tensor {
         }
     }
 
-    /// Interpret host bytes as f32 slice (panics if dtype != F32).
+    /// Interpret host bytes as f32 slice (panics if dtype != F32 or backend-resident).
+    /// Use `try_as_f32` for fallible access.
     pub fn as_f32(&self) -> &[f32] {
-        assert_eq!(self.dtype, DType::F32, "as_f32 requires F32 dtype");
-        let bytes = self
-            .as_host_bytes()
-            .expect("as_f32 requires host tensor");
-        bytemuck::cast_slice(bytes)
+        self.try_as_f32().expect("as_f32: invariant violated")
+    }
+
+    pub fn try_as_f32(&self) -> Result<&[f32], TensorError> {
+        if self.dtype != DType::F32 {
+            return Err(TensorError::DTypeMismatch {
+                expected: DType::F32,
+                got: self.dtype,
+            });
+        }
+        match &self.data {
+            TensorData::Host(b) => Ok(bytemuck::cast_slice(b.as_slice())),
+            TensorData::Backend(b) => Err(TensorError::NotHostResident {
+                backend: b.backend_name(),
+            }),
+        }
     }
 
     /// Clone as Vec<f32>. Works for host F32 only.
     pub fn to_f32_vec(&self) -> Vec<f32> {
         self.as_f32().to_vec()
+    }
+
+    /// True if this tensor lives on host memory.
+    pub fn is_host(&self) -> bool {
+        matches!(self.data, TensorData::Host(_))
     }
 }
 

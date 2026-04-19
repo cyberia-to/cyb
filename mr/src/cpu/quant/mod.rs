@@ -8,16 +8,21 @@ pub mod q5_k;
 pub mod q6_k;
 pub mod q8_0;
 
+use crate::backend::BackendError;
 use crate::dtype::DType;
 
-/// Dequantize any supported block-quantized format to f32.
-///
-/// Panics if dtype is not quantized.
-pub fn dequantize_to_f32(bytes: &[u8], dtype: DType) -> Vec<f32> {
-    match dtype {
+/// Fallible dequant — returns structured error for unsupported dtypes.
+pub fn try_dequantize_to_f32(bytes: &[u8], dtype: DType) -> Result<Vec<f32>, BackendError> {
+    Ok(match dtype {
         DType::Q4_0 => q4_0::dequantize(bytes),
         DType::Q4_K => q4_k::dequantize(bytes),
-        DType::Q5_K => q5_k::dequantize(bytes),
+        DType::Q5_K => {
+            return Err(BackendError::UnsupportedDtype {
+                backend: "cpu",
+                dtype: DType::Q5_K,
+                blocker: "Q5_K dequant not implemented; see reference/runtime/quant.md",
+            });
+        }
         DType::Q6_K => q6_k::dequantize(bytes),
         DType::Q8_0 => q8_0::dequantize(bytes),
         DType::F32 => bytemuck::cast_slice(bytes).to_vec(),
@@ -29,6 +34,18 @@ pub fn dequantize_to_f32(bytes: &[u8], dtype: DType) -> Vec<f32> {
             .iter()
             .map(|&bits| half::bf16::from_bits(bits).to_f32())
             .collect(),
-        other => panic!("dequantize_to_f32: dtype {other:?} not supported"),
-    }
+        other => {
+            return Err(BackendError::UnsupportedDtype {
+                backend: "cpu",
+                dtype: other,
+                blocker: "not a supported weight dtype",
+            });
+        }
+    })
+}
+
+/// Legacy panicking wrapper — retained for tests. New code should call
+/// `try_dequantize_to_f32`.
+pub fn dequantize_to_f32(bytes: &[u8], dtype: DType) -> Vec<f32> {
+    try_dequantize_to_f32(bytes, dtype).expect("dequantize_to_f32: unsupported dtype")
 }
