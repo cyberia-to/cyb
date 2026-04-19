@@ -3,12 +3,18 @@
 //! Spec: reference/runtime/arch.md#llamastyle
 
 use super::config::LlamaConfig;
-use super::weights::{Weights, LayerWeights};
+use super::weights::{LayerWeights, QuantWeight, Weights};
 use crate::backend::{Backend, BackendError};
+use crate::cpu::matmul_quant_f32;
 use crate::format::{FormatError, LoadedModel};
 use crate::op::Op;
 use crate::tensor::Tensor;
 use std::path::Path;
+
+/// Fused quant matmul via CPU kernel. Returns f32 Tensor.
+fn qw_matmul(x: &Tensor, w: &QuantWeight) -> Result<Tensor, BackendError> {
+    matmul_quant_f32(x, w.bytes.as_slice(), w.dtype, w.n(), w.k())
+}
 
 pub struct LlamaModel {
     pub config: LlamaConfig,
@@ -101,7 +107,18 @@ impl LlamaModel {
 
     pub fn from_loaded(lm: &LoadedModel) -> Result<Self, FormatError> {
         let config = LlamaConfig::parse(&lm.file.config, &lm.tensors)?;
-        let weights = Weights::load(lm, config.num_hidden_layers, config.tie_word_embeddings)?;
+        let q_dim = config.num_attention_heads * config.head_dim;
+        let kv_dim = config.num_key_value_heads * config.head_dim;
+        let weights = Weights::load(
+            lm,
+            config.num_hidden_layers,
+            config.tie_word_embeddings,
+            config.vocab_size,
+            config.hidden_size,
+            q_dim,
+            kv_dim,
+            config.intermediate_size,
+        )?;
         let max_seq = config.max_position_embeddings.min(8192);
         let kv_size = config.num_key_value_heads * max_seq * config.head_dim;
         let kv_cache = (0..config.num_hidden_layers)
@@ -124,21 +141,15 @@ impl LlamaModel {
         };
     }
 
-    /// Move weight tensors (except embed) to the backend once.
-    /// Embed stays on host for efficient row lookup.
-    /// Call after load. For CPU backend this is a no-op.
+    /// Move norm/embed tensors to the backend (if it supports persistent
+    /// upload). Matmul weights are QuantWeight (raw bytes on host) and
+    /// dispatch to CPU quant matmul regardless of "backend" selected;
+    /// GPU speedup requires per-backend quant matmul kernel (future).
     pub fn to_backend(&mut self, backend: &dyn Backend) -> Result<(), BackendError> {
-        // embed_tokens stays on host — we extract one row per forward.
         self.weights.final_norm = backend.to_backend(&self.weights.final_norm)?;
-        if let Some(ref lm_head) = self.weights.lm_head {
-            self.weights.lm_head = Some(backend.to_backend(lm_head)?);
-        }
         for layer in &mut self.weights.layers {
             layer.input_norm = backend.to_backend(&layer.input_norm)?;
-            layer.q_proj = backend.to_backend(&layer.q_proj)?;
-            layer.k_proj = backend.to_backend(&layer.k_proj)?;
-            layer.v_proj = backend.to_backend(&layer.v_proj)?;
-            layer.o_proj = backend.to_backend(&layer.o_proj)?;
+            layer.post_norm = backend.to_backend(&layer.post_norm)?;
             if let Some(ref b) = layer.q_proj_bias {
                 layer.q_proj_bias = Some(backend.to_backend(b)?);
             }
@@ -154,10 +165,6 @@ impl LlamaModel {
             if let Some(ref n) = layer.k_norm {
                 layer.k_norm = Some(backend.to_backend(n)?);
             }
-            layer.post_norm = backend.to_backend(&layer.post_norm)?;
-            layer.gate_proj = backend.to_backend(&layer.gate_proj)?;
-            layer.up_proj = backend.to_backend(&layer.up_proj)?;
-            layer.down_proj = backend.to_backend(&layer.down_proj)?;
         }
         Ok(())
     }
@@ -243,14 +250,12 @@ impl LlamaModel {
         }
 
         let t_lm = Instant::now();
-        let lm_head = self
+        let lm_head_qw = self
             .weights
             .lm_head
             .as_ref()
-            .unwrap_or(&self.weights.embed_tokens);
-        let logits = backend
-            .execute(&Op::Matmul, &[&final_normed, lm_head])?
-            .remove(0);
+            .unwrap_or(&self.weights.embed_tokens_quant);
+        let logits = qw_matmul(&final_normed, lm_head_qw)?;
         if prof_enabled {
             self.prof.lm_head_ms += t_lm.elapsed().as_secs_f64() * 1000.0;
         }
@@ -310,17 +315,11 @@ fn forward_layer(
         .remove(0);
     acc_input_norm += t.elapsed().as_secs_f64() * 1000.0;
 
-    // 2. QKV projections
+    // 2. QKV projections — fused dequant+matmul on CPU.
     let t = Instant::now();
-    let mut q = backend
-        .execute(&Op::Matmul, &[&normed, &layer.q_proj])?
-        .remove(0);
-    let mut k = backend
-        .execute(&Op::Matmul, &[&normed, &layer.k_proj])?
-        .remove(0);
-    let mut v = backend
-        .execute(&Op::Matmul, &[&normed, &layer.v_proj])?
-        .remove(0);
+    let mut q = qw_matmul(&normed, &layer.q_proj)?;
+    let mut k = qw_matmul(&normed, &layer.k_proj)?;
+    let mut v = qw_matmul(&normed, &layer.v_proj)?;
 
     // Attention biases (Qwen2)
     if let Some(bias) = &layer.q_proj_bias {
@@ -453,12 +452,10 @@ fn forward_layer(
 
     acc_attention += t.elapsed().as_secs_f64() * 1000.0;
 
-    // 6. Output projection
+    // 6. Output projection — quant matmul.
     let t = Instant::now();
     let attn_tensor = Tensor::from_f32(vec![1, num_heads * head_dim], attn_out);
-    let attn_proj = backend
-        .execute(&Op::Matmul, &[&attn_tensor, &layer.o_proj])?
-        .remove(0);
+    let attn_proj = qw_matmul(&attn_tensor, &layer.o_proj)?;
     acc_o_proj += t.elapsed().as_secs_f64() * 1000.0;
 
     // 7. Residual
@@ -475,18 +472,19 @@ fn forward_layer(
         .remove(0);
     acc_post_norm += t.elapsed().as_secs_f64() * 1000.0;
 
+    // SwiGLU FFN as 3 quant matmuls + elementwise silu*up.
     let t = Instant::now();
-    let ffn_out = backend
-        .execute(
-            &Op::SwiGlu,
-            &[
-                &normed2,
-                &layer.gate_proj,
-                &layer.up_proj,
-                &layer.down_proj,
-            ],
-        )?
-        .remove(0);
+    let gate = qw_matmul(&normed2, &layer.gate_proj)?;
+    let up = qw_matmul(&normed2, &layer.up_proj)?;
+    // Fused silu(gate) * up in-place.
+    let mut mid = gate.to_f32_vec();
+    let up_vec = up.to_f32_vec();
+    for (m, u) in mid.iter_mut().zip(up_vec.iter()) {
+        let s = *m / (1.0 + (-*m).exp());
+        *m = s * u;
+    }
+    let mid_t = Tensor::from_f32(gate.shape.clone(), mid);
+    let ffn_out = qw_matmul(&mid_t, &layer.down_proj)?;
     acc_ffn += t.elapsed().as_secs_f64() * 1000.0;
 
     // 9. Residual

@@ -18,6 +18,7 @@ mod rope;
 mod softmax;
 mod activation;
 pub mod quant;
+pub mod quant_matmul;
 
 pub use matmul::matmul_f32;
 pub use rmsnorm::rms_norm_f32;
@@ -25,6 +26,7 @@ pub use rope::rope_f32;
 pub use softmax::softmax_f32;
 pub use activation::{silu_f32, gelu_erf_f32, gelu_tanh_f32, swiglu_f32};
 pub use quant::dequantize_to_f32;
+pub use quant_matmul::matmul_quant_f32;
 
 /// CPU reference backend — implements every op correctly in f32.
 pub struct CpuBackend;
