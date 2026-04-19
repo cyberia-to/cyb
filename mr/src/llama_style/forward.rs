@@ -16,6 +16,81 @@ pub struct LlamaModel {
     /// KV cache per layer: K and V tensors shape [kv_heads, max_seq, head_dim].
     pub past_seq_len: usize,
     pub kv_cache: Vec<(Vec<f32>, Vec<f32>)>,
+    /// Per-op timing accumulator. Reset via `reset_prof`, read via `prof`.
+    pub prof: ForwardProf,
+}
+
+#[derive(Default, Clone, Debug)]
+pub struct ForwardProf {
+    pub enabled: bool,
+    pub embed_ms: f64,
+    pub input_norm_ms: f64,
+    pub qkv_proj_ms: f64,
+    pub qk_norm_ms: f64,
+    pub rope_ms: f64,
+    pub kv_append_ms: f64,
+    pub attention_ms: f64,
+    pub o_proj_ms: f64,
+    pub post_norm_ms: f64,
+    pub ffn_ms: f64,
+    pub residual_ms: f64,
+    pub final_norm_ms: f64,
+    pub lm_head_ms: f64,
+    pub forwards: usize,
+}
+
+impl ForwardProf {
+    pub fn total_ms(&self) -> f64 {
+        self.embed_ms
+            + self.input_norm_ms
+            + self.qkv_proj_ms
+            + self.qk_norm_ms
+            + self.rope_ms
+            + self.kv_append_ms
+            + self.attention_ms
+            + self.o_proj_ms
+            + self.post_norm_ms
+            + self.ffn_ms
+            + self.residual_ms
+            + self.final_norm_ms
+            + self.lm_head_ms
+    }
+    pub fn summary(&self) -> String {
+        let total = self.total_ms().max(0.001);
+        let pct = |ms: f64| (ms / total) * 100.0;
+        format!(
+            "  embed        {:>7.1} ms  ({:>5.1}%)\n\
+             \x20 input_norm   {:>7.1} ms  ({:>5.1}%)\n\
+             \x20 qkv_proj     {:>7.1} ms  ({:>5.1}%)\n\
+             \x20 qk_norm      {:>7.1} ms  ({:>5.1}%)\n\
+             \x20 rope         {:>7.1} ms  ({:>5.1}%)\n\
+             \x20 kv_append    {:>7.1} ms  ({:>5.1}%)\n\
+             \x20 attention    {:>7.1} ms  ({:>5.1}%)\n\
+             \x20 o_proj       {:>7.1} ms  ({:>5.1}%)\n\
+             \x20 post_norm    {:>7.1} ms  ({:>5.1}%)\n\
+             \x20 ffn          {:>7.1} ms  ({:>5.1}%)\n\
+             \x20 residual     {:>7.1} ms  ({:>5.1}%)\n\
+             \x20 final_norm   {:>7.1} ms  ({:>5.1}%)\n\
+             \x20 lm_head      {:>7.1} ms  ({:>5.1}%)\n\
+             \x20 ─────────────────────────────\n\
+             \x20 TOTAL        {:>7.1} ms  ({} forwards)",
+            self.embed_ms, pct(self.embed_ms),
+            self.input_norm_ms, pct(self.input_norm_ms),
+            self.qkv_proj_ms, pct(self.qkv_proj_ms),
+            self.qk_norm_ms, pct(self.qk_norm_ms),
+            self.rope_ms, pct(self.rope_ms),
+            self.kv_append_ms, pct(self.kv_append_ms),
+            self.attention_ms, pct(self.attention_ms),
+            self.o_proj_ms, pct(self.o_proj_ms),
+            self.post_norm_ms, pct(self.post_norm_ms),
+            self.ffn_ms, pct(self.ffn_ms),
+            self.residual_ms, pct(self.residual_ms),
+            self.final_norm_ms, pct(self.final_norm_ms),
+            self.lm_head_ms, pct(self.lm_head_ms),
+            total,
+            self.forwards,
+        )
+    }
 }
 
 impl LlamaModel {
@@ -37,7 +112,16 @@ impl LlamaModel {
             weights,
             past_seq_len: 0,
             kv_cache,
+            prof: ForwardProf::default(),
         })
+    }
+
+    /// Enable per-op timing. Reset counters first.
+    pub fn enable_prof(&mut self) {
+        self.prof = ForwardProf {
+            enabled: true,
+            ..Default::default()
+        };
     }
 
     /// Move weight tensors (except embed) to the backend once.
@@ -113,12 +197,20 @@ impl LlamaModel {
             });
         }
 
+        use std::time::Instant;
+        let prof_enabled = self.prof.enabled;
+        let t_embed = Instant::now();
+
         // Embed lookup: one row of embed_tokens.
         let embed_table = &self.weights.embed_tokens;
         let hidden_size = c.hidden_size;
         let row_start = (token_id as usize) * hidden_size;
         let embed_row: Vec<f32> = embed_table.try_as_f32()?[row_start..row_start + hidden_size].to_vec();
         let mut hidden = Tensor::try_from_f32(vec![1, hidden_size], embed_row)?;
+
+        if prof_enabled {
+            self.prof.embed_ms += t_embed.elapsed().as_secs_f64() * 1000.0;
+        }
 
         let pos = self.past_seq_len as f32;
         let pos_tensor = Tensor::from_f32(vec![1], vec![pos]);
@@ -132,9 +224,11 @@ impl LlamaModel {
                 backend,
                 &mut self.kv_cache[i],
                 self.past_seq_len,
+                if prof_enabled { Some(&mut self.prof) } else { None },
             )?;
         }
 
+        let t_final = Instant::now();
         // Final norm + lm_head
         let final_normed = backend
             .execute(
@@ -144,7 +238,11 @@ impl LlamaModel {
                 &[&hidden, &self.weights.final_norm],
             )?
             .remove(0);
+        if prof_enabled {
+            self.prof.final_norm_ms += t_final.elapsed().as_secs_f64() * 1000.0;
+        }
 
+        let t_lm = Instant::now();
         let lm_head = self
             .weights
             .lm_head
@@ -153,7 +251,13 @@ impl LlamaModel {
         let logits = backend
             .execute(&Op::Matmul, &[&final_normed, lm_head])?
             .remove(0);
+        if prof_enabled {
+            self.prof.lm_head_ms += t_lm.elapsed().as_secs_f64() * 1000.0;
+        }
 
+        if prof_enabled {
+            self.prof.forwards += 1;
+        }
         self.past_seq_len += 1;
         let logits_vec = backend.download_f32(&logits)?;
 
@@ -178,19 +282,36 @@ fn forward_layer(
     backend: &dyn Backend,
     kv: &mut (Vec<f32>, Vec<f32>),
     past_seq_len: usize,
+    prof: Option<&mut ForwardProf>,
 ) -> Result<Tensor, BackendError> {
+    use std::time::Instant;
     let eps = config.rms_norm_eps;
     let hidden_size = config.hidden_size;
     let head_dim = config.head_dim;
     let num_heads = config.num_attention_heads;
     let kv_heads = config.num_key_value_heads;
 
+    // accumulator helpers
+    let mut acc_input_norm = 0f64;
+    let mut acc_qkv_proj = 0f64;
+    let mut acc_qk_norm = 0f64;
+    let mut acc_rope = 0f64;
+    let mut acc_kv_append = 0f64;
+    let mut acc_attention = 0f64;
+    let mut acc_o_proj = 0f64;
+    let mut acc_post_norm = 0f64;
+    let mut acc_ffn = 0f64;
+    let mut acc_residual = 0f64;
+
     // 1. Input RmsNorm
+    let t = Instant::now();
     let normed = backend
         .execute(&Op::RmsNorm { eps }, &[hidden, &layer.input_norm])?
         .remove(0);
+    acc_input_norm += t.elapsed().as_secs_f64() * 1000.0;
 
     // 2. QKV projections
+    let t = Instant::now();
     let mut q = backend
         .execute(&Op::Matmul, &[&normed, &layer.q_proj])?
         .remove(0);
@@ -211,8 +332,10 @@ fn forward_layer(
     if let Some(bias) = &layer.v_proj_bias {
         v = backend.execute(&Op::Add, &[&v, bias])?.remove(0);
     }
+    acc_qkv_proj += t.elapsed().as_secs_f64() * 1000.0;
 
     // QK-norm (Qwen3) — per-head RmsNorm
+    let t = Instant::now();
     if let (Some(qn), Some(kn)) = (&layer.q_norm, &layer.k_norm) {
         // Reshape Q: [1, num_heads * head_dim] → [num_heads, head_dim]
         let q_reshaped = Tensor::from_f32(vec![num_heads, head_dim], q.to_f32_vec());
@@ -226,8 +349,10 @@ fn forward_layer(
         q = Tensor::from_f32(vec![1, num_heads * head_dim], q.to_f32_vec());
         k = Tensor::from_f32(vec![1, kv_heads * head_dim], k.to_f32_vec());
     }
+    acc_qk_norm += t.elapsed().as_secs_f64() * 1000.0;
 
     // 3. RoPE on Q, K
+    let t = Instant::now();
     let q_shape = vec![num_heads, head_dim];
     let k_shape = vec![kv_heads, head_dim];
     let q_reshaped = Tensor::from_f32(q_shape.clone(), q.to_f32_vec());
@@ -250,8 +375,10 @@ fn forward_layer(
             &[&k_reshaped, pos],
         )?
         .remove(0);
+    acc_rope += t.elapsed().as_secs_f64() * 1000.0;
 
     // 4. Append to KV cache, build full K and V views for attention.
+    let t = Instant::now();
     let v_flat = v.to_f32_vec();
     let k_flat = k_roped.to_f32_vec();
 
@@ -266,8 +393,10 @@ fn forward_layer(
         }
     }
     let total_seq = past_seq_len + 1;
+    acc_kv_append += t.elapsed().as_secs_f64() * 1000.0;
 
     // Build expanded K and V for GQA attention: [num_heads, total_seq, head_dim]
+    let t = Instant::now();
     let repeat = num_heads / kv_heads;
     let mut k_full = vec![0f32; num_heads * total_seq * head_dim];
     let mut v_full = vec![0f32; num_heads * total_seq * head_dim];
@@ -322,21 +451,31 @@ fn forward_layer(
         }
     }
 
+    acc_attention += t.elapsed().as_secs_f64() * 1000.0;
+
     // 6. Output projection
+    let t = Instant::now();
     let attn_tensor = Tensor::from_f32(vec![1, num_heads * head_dim], attn_out);
     let attn_proj = backend
         .execute(&Op::Matmul, &[&attn_tensor, &layer.o_proj])?
         .remove(0);
+    acc_o_proj += t.elapsed().as_secs_f64() * 1000.0;
 
     // 7. Residual
+    let t = Instant::now();
     let hidden1 = backend
         .execute(&Op::Add, &[hidden, &attn_proj])?
         .remove(0);
+    acc_residual += t.elapsed().as_secs_f64() * 1000.0;
 
     // 8. Post-attention RmsNorm + FFN (SwiGLU)
+    let t = Instant::now();
     let normed2 = backend
         .execute(&Op::RmsNorm { eps }, &[&hidden1, &layer.post_norm])?
         .remove(0);
+    acc_post_norm += t.elapsed().as_secs_f64() * 1000.0;
+
+    let t = Instant::now();
     let ffn_out = backend
         .execute(
             &Op::SwiGlu,
@@ -348,11 +487,27 @@ fn forward_layer(
             ],
         )?
         .remove(0);
+    acc_ffn += t.elapsed().as_secs_f64() * 1000.0;
 
     // 9. Residual
     let _ = hidden_size;
+    let t = Instant::now();
     let out = backend
         .execute(&Op::Add, &[&hidden1, &ffn_out])?
         .remove(0);
+    acc_residual += t.elapsed().as_secs_f64() * 1000.0;
+
+    if let Some(p) = prof {
+        p.input_norm_ms += acc_input_norm;
+        p.qkv_proj_ms += acc_qkv_proj;
+        p.qk_norm_ms += acc_qk_norm;
+        p.rope_ms += acc_rope;
+        p.kv_append_ms += acc_kv_append;
+        p.attention_ms += acc_attention;
+        p.o_proj_ms += acc_o_proj;
+        p.post_norm_ms += acc_post_norm;
+        p.ffn_ms += acc_ffn;
+        p.residual_ms += acc_residual;
+    }
     Ok(out)
 }

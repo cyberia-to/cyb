@@ -23,6 +23,7 @@ fn main() {
         "run" => run(args),
         "status" => status(),
         "bench" => bench(args),
+        "profile" => profile(args),
         "help" | "--help" | "-h" => help(),
         other => {
             eprintln!("unknown command: {other}");
@@ -41,12 +42,75 @@ fn help() {
     println!("  backends                         list available backends");
     println!("  status                           honest report on manifest models");
     println!("  bench <model> [--steps N]        phase breakdown + tok/s per backend");
+    println!("  profile <model> [--steps N] [--backend X]    per-op time breakdown");
     println!("  run <model> --prompt <text>      generate text from a model");
     println!("    options:");
     println!("      --max-tokens N               (default 64)");
     println!("      --temperature T              (default 0 = greedy)");
     println!("      --backend NAME               cpu|wgpu+rs|honeycrisp");
     println!("      --no-chat                    skip chat template, use raw prompt");
+}
+
+fn profile(args: Vec<String>) {
+    use mr::format::LoadedModel;
+    use mr::llama_style::LlamaModel;
+    if args.is_empty() {
+        eprintln!("usage: mr profile <model> [--steps N] [--backend X]");
+        std::process::exit(2);
+    }
+    let model_arg = &args[0];
+    let mut steps: usize = 8;
+    let mut backend_name = "auto".to_string();
+    let mut i = 1;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--steps" => {
+                i += 1;
+                steps = args[i].parse().unwrap_or(8);
+            }
+            "--backend" => {
+                i += 1;
+                backend_name = args[i].clone();
+            }
+            other => {
+                eprintln!("unknown flag: {other}");
+                std::process::exit(2);
+            }
+        }
+        i += 1;
+    }
+    let path = resolve_model_path(model_arg);
+    if !path.exists() {
+        eprintln!("model not found: {}", path.display());
+        std::process::exit(1);
+    }
+    let backend = pick_backend(&backend_name);
+    println!();
+    println!(
+        "  \x1b[1mmr profile\x1b[0m — {} on {} ({} steps)",
+        path.display(),
+        backend.kind().as_str(),
+        steps
+    );
+    println!();
+
+    let lm = LoadedModel::load(&path).expect("load");
+    let mut model = LlamaModel::from_loaded(&lm).expect("build");
+    model.to_backend(&*backend).expect("upload");
+    model.enable_prof();
+
+    // Warmup first — kernel compile, allocator prime.
+    let _ = model.forward(0, &*backend).expect("warmup");
+    // Reset so warmup doesn't pollute numbers.
+    model.enable_prof();
+
+    for i in 0..steps {
+        let tok = (i + 1) as u32;
+        let _ = model.forward(tok, &*backend).expect("forward");
+    }
+
+    println!("{}", model.prof.summary());
+    println!();
 }
 
 fn bench(args: Vec<String>) {
