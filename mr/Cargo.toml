@@ -23,6 +23,10 @@ toml = "0.8"
 log = "0.4"
 env_logger = "0.11"
 
+# CPU performance
+rayon = "1.10"
+wide = "0.7"
+
 # portable GPU backend
 wgpu = { version = "24", features = ["wgsl"] }
 pollster = "0.4"
