@@ -90,6 +90,10 @@ fn matmul_q4_0(
 
 #[inline]
 fn q4_0_dot(x: &[f32], w_bytes: &[u8], blocks: usize) -> f32 {
+    // SIMD path: process each 32-value block as 4 f32x8 lanes.
+    // Layout: low nibbles of qs[0..16] → values 0..16, high nibbles → values 16..32.
+    // Values are (nibble - 8) pre-scaled by d.
+    let neg8 = f32x8::splat(-8.0);
     let mut sum = 0f32;
     for b in 0..blocks {
         let block = &w_bytes[b * 18..(b + 1) * 18];
@@ -98,17 +102,74 @@ fn q4_0_dot(x: &[f32], w_bytes: &[u8], blocks: usize) -> f32 {
         let d = half::f16::from_bits(d_bits).to_f32();
         let qs = &block[2..18];
 
-        // Low nibbles → first 16, high → last 16.
-        // Accumulate in f32 without allocating the 32-value dequantized array.
-        let mut acc = 0f32;
-        for j in 0..16 {
-            let lo = ((qs[j] & 0x0F) as i32 - 8) as f32;
-            let hi = ((qs[j] >> 4) as i32 - 8) as f32;
-            acc += x_block[j] * lo + x_block[j + 16] * hi;
+        // 16 nibble bytes → 2 chunks of 8 bytes. Each chunk contributes 8 lo + 8 hi nibbles.
+        let mut acc = f32x8::ZERO;
+        for chunk in 0..2 {
+            let off = chunk * 8;
+            let b8 = &qs[off..off + 8];
+            let lo = nibbles_low_f32x8(b8) + neg8;
+            let hi = nibbles_high_f32x8(b8) + neg8;
+            let x_lo = f32x8::from(slice8(&x_block[off..off + 8]));
+            let x_hi = f32x8::from(slice8(&x_block[16 + off..16 + off + 8]));
+            acc = lo.mul_add(x_lo, acc);
+            acc = hi.mul_add(x_hi, acc);
         }
-        sum += d * acc;
+        sum += d * acc.reduce_add();
     }
     sum
+}
+
+#[inline(always)]
+fn slice8(s: &[f32]) -> [f32; 8] {
+    [s[0], s[1], s[2], s[3], s[4], s[5], s[6], s[7]]
+}
+
+/// Extract low nibbles (byte & 0x0F) of 8 bytes as f32x8 in [0.0, 15.0].
+#[inline(always)]
+fn nibbles_low_f32x8(bytes: &[u8]) -> f32x8 {
+    debug_assert_eq!(bytes.len(), 8);
+    f32x8::from([
+        (bytes[0] & 0x0F) as f32,
+        (bytes[1] & 0x0F) as f32,
+        (bytes[2] & 0x0F) as f32,
+        (bytes[3] & 0x0F) as f32,
+        (bytes[4] & 0x0F) as f32,
+        (bytes[5] & 0x0F) as f32,
+        (bytes[6] & 0x0F) as f32,
+        (bytes[7] & 0x0F) as f32,
+    ])
+}
+
+/// Extract high nibbles (byte >> 4) of 8 bytes as f32x8 in [0.0, 15.0].
+#[inline(always)]
+fn nibbles_high_f32x8(bytes: &[u8]) -> f32x8 {
+    debug_assert_eq!(bytes.len(), 8);
+    f32x8::from([
+        (bytes[0] >> 4) as f32,
+        (bytes[1] >> 4) as f32,
+        (bytes[2] >> 4) as f32,
+        (bytes[3] >> 4) as f32,
+        (bytes[4] >> 4) as f32,
+        (bytes[5] >> 4) as f32,
+        (bytes[6] >> 4) as f32,
+        (bytes[7] >> 4) as f32,
+    ])
+}
+
+/// Convert 8 signed bytes to f32x8.
+#[inline(always)]
+fn i8_bytes_f32x8(bytes: &[u8]) -> f32x8 {
+    debug_assert_eq!(bytes.len(), 8);
+    f32x8::from([
+        bytes[0] as i8 as f32,
+        bytes[1] as i8 as f32,
+        bytes[2] as i8 as f32,
+        bytes[3] as i8 as f32,
+        bytes[4] as i8 as f32,
+        bytes[5] as i8 as f32,
+        bytes[6] as i8 as f32,
+        bytes[7] as i8 as f32,
+    ])
 }
 
 /// Q8_0: 34 bytes per 32 values. scale f16 + 32 i8.
@@ -145,12 +206,15 @@ fn matmul_q8_0(
                         w_row[base + 1],
                     ]))
                     .to_f32();
-                    let mut acc = 0f32;
-                    for j in 0..32 {
-                        let q = w_row[base + 2 + j] as i8;
-                        acc += x_row[blk * 32 + j] * q as f32;
+                    // 32 signed bytes → 4 chunks of 8 → 4 f32x8 FMA
+                    let mut acc = f32x8::ZERO;
+                    for chunk in 0..4 {
+                        let off = chunk * 8;
+                        let qf = i8_bytes_f32x8(&w_row[base + 2 + off..base + 2 + off + 8]);
+                        let xv = f32x8::from(slice8(&x_row[blk * 32 + off..blk * 32 + off + 8]));
+                        acc = qf.mul_add(xv, acc);
                     }
-                    sum += d * acc;
+                    sum += d * acc.reduce_add();
                 }
                 *y = sum;
             });
@@ -210,20 +274,22 @@ fn matmul_q4_k(
                         let qs_off = pair * 32;
 
                         let x_off = blk * 256 + j * 32;
-                        let mut acc = 0f32;
-                        let mut x_sum = 0f32;
-                        for l in 0..32 {
-                            let byte = qs[qs_off + l];
-                            let nibble = if is_upper == 0 {
-                                byte & 0x0F
+                        // 32 values per sub-block → 4 f32x8 lanes.
+                        let mut acc = f32x8::ZERO;
+                        let mut x_sum_v = f32x8::ZERO;
+                        for chunk in 0..4 {
+                            let off = chunk * 8;
+                            let b8 = &qs[qs_off + off..qs_off + off + 8];
+                            let nibs = if is_upper == 0 {
+                                nibbles_low_f32x8(b8)
                             } else {
-                                byte >> 4
-                            } as i32;
-                            let xv = x_row[x_off + l];
-                            acc += xv * nibble as f32;
-                            x_sum += xv;
+                                nibbles_high_f32x8(b8)
+                            };
+                            let xv = f32x8::from(slice8(&x_row[x_off + off..x_off + off + 8]));
+                            acc = nibs.mul_add(xv, acc);
+                            x_sum_v += xv;
                         }
-                        sum += d_scaled * acc - m_scaled * x_sum;
+                        sum += d_scaled * acc.reduce_add() - m_scaled * x_sum_v.reduce_add();
                     }
                 }
                 *y = sum;
@@ -271,31 +337,39 @@ fn matmul_q6_k(
                     .to_f32();
 
                     // Per dequantize_row_q6_K: 2 halves × 4 sets × 32 values.
+                    // Strategy: build 32 scalar coefficients (dequantized values)
+                    // then SIMD dot-product against the 32 corresponding x values.
                     for h in 0..2 {
                         for i_set in 0..4 {
                             let x_off = blk * 256 + h * 128 + i_set * 32;
-                            let mut acc_even = 0f32;
-                            let mut acc_odd = 0f32;
-                            for l in 0..32 {
-                                let ql_idx = h * 64 + i_set * 16 + (l % 16);
-                                let qh_idx = h * 32 + l;
-                                let ql_val = if l < 16 {
-                                    ql[ql_idx] & 0x0F
-                                } else {
-                                    ql[ql_idx] >> 4
-                                };
-                                let qh_val = (qh[qh_idx] >> (i_set * 2)) & 0x03;
+                            let ql_base = h * 64 + i_set * 16;
+                            let qh_base = h * 32;
+                            let shift = (i_set * 2) as u32;
+                            let sc_even = scales[h * 8 + i_set * 2] as i8 as f32;
+                            let sc_odd = scales[h * 8 + i_set * 2 + 1] as i8 as f32;
+
+                            let mut coeffs = [0f32; 32];
+                            for l in 0..16 {
+                                let ql_val = ql[ql_base + l] & 0x0F;
+                                let qh_val = (qh[qh_base + l] >> shift) & 0x03;
                                 let q6 = (ql_val as i32) | ((qh_val as i32) << 4);
-                                let sc_idx = h * 8 + i_set * 2 + l / 16;
-                                let sc = scales[sc_idx] as i8 as f32;
-                                let val = sc * (q6 - 32) as f32;
-                                if l < 16 {
-                                    acc_even += x_row[x_off + l] * val;
-                                } else {
-                                    acc_odd += x_row[x_off + l] * val;
-                                }
+                                coeffs[l] = sc_even * (q6 - 32) as f32;
                             }
-                            sum += d * (acc_even + acc_odd);
+                            for l in 0..16 {
+                                let ql_val = ql[ql_base + l] >> 4;
+                                let qh_val = (qh[qh_base + 16 + l] >> shift) & 0x03;
+                                let q6 = (ql_val as i32) | ((qh_val as i32) << 4);
+                                coeffs[16 + l] = sc_odd * (q6 - 32) as f32;
+                            }
+
+                            let mut acc = f32x8::ZERO;
+                            for chunk in 0..4 {
+                                let off = chunk * 8;
+                                let cv = f32x8::from(slice8(&coeffs[off..off + 8]));
+                                let xv = f32x8::from(slice8(&x_row[x_off + off..x_off + off + 8]));
+                                acc = cv.mul_add(xv, acc);
+                            }
+                            sum += d * acc.reduce_add();
                         }
                     }
                 }
