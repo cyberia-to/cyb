@@ -90,14 +90,13 @@ nothing else belongs in config. the number of signals, particles, cyberlinks, ax
 
 ## signals
 
-signals are variable-length: a 48-byte header followed by `n` link records of 96 bytes each. header fields are native-aligned so the whole section mmaps and reads without copying.
+signals are variable-length: a 44-byte header followed by `n` link records of 96 bytes each. header fields are native-aligned so the whole section mmaps and reads without copying.
 
 ```
-signal header (48 bytes):
+signal header (44 bytes):
   [0..32]   ν   neuron (hemera hash, 32 B)
   [32..40]  t   block height (u64 little-endian)
   [40..44]  n   link count (u32 little-endian, n ≥ 1)
-  [44..48]  k   signal type (u32 little-endian, 0 = standard)
 
 link record (96 bytes), repeated n times:
   [0..32]   p   from (hemera hash, 32 B)
@@ -108,9 +107,9 @@ link record (96 bytes), repeated n times:
   [85..96]  _   padding (zero)
 ```
 
-total signal size = `48 + 96·n` bytes.
+total signal size = `44 + 96·n` bytes.
 
-signals appear in canonical chain order: ascending block height, then ascending intra-block index. links within a signal appear in commit order — the sequence the neuron chose. `t` is always in `[1, config.block]`. `τ` is always a valid index into `config.tokens`. `k = 0` for standard signals; other values are reserved for signal types.
+signals appear in canonical chain order: ascending block height, then ascending intra-block index. links within a signal appear in commit order — the sequence the neuron chose. `t` is always in `[1, config.block]`. `τ` is always a valid index into `config.tokens`.
 
 ### what the header carries once
 
@@ -120,7 +119,7 @@ signals appear in canonical chain order: ascending block height, then ascending 
 
 ```
 for signal in signals:
-    ν, t, n, k = signal.header
+    ν, t, n = signal.header
     for link in signal.links:
         p, q, τ, a, v = link
         # compile using the full tuple (ν, p, q, τ, a, v, t)
