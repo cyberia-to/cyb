@@ -171,8 +171,9 @@ pub struct NativeModel {
     /// Quantization format for projections (Q4, Q8, or F32)
     quant_format: QuantFormat,
     model_params: ModelParamBuffers,
-    /// TurboQuant KV cache compressor (None = standard uncompressed cache)
-    pub kv_compressor: Option<crate::kv_compress::KvCompressor>,
+    /// TurboQuant KV cache compressor: was `Option<crate::kv_compress::KvCompressor>`
+    /// — kv_compress.rs moved to llm/experimental/ ahead of Phase F deletion.
+    pub kv_compressor: Option<()>,
     /// Persistent staging buffer for greedy argmax readback (avoids alloc per token)
     argmax_staging: wgpu::Buffer,
     /// Persistent decode buffers (reused every token, no allocation)
@@ -1431,20 +1432,11 @@ impl NativeModel {
         })
     }
 
-    /// Enable TurboQuant KV cache compression.
-    /// Call after model load, before inference. Reduces KV cache memory ~4x.
+    /// TurboQuant KV compression: impl moved to llm/experimental/kv_compress.rs
+    /// ahead of Phase F deletion. Call site was unused by the live runtime —
+    /// this stub preserves the public surface.
     pub fn enable_kv_compression(&mut self) {
-        let config = crate::kv_compress::KvCompressConfig {
-            head_dim: self.config.head_dim,
-            kv_heads: self.config.kv_num_heads,
-            num_layers: self.config.num_layers,
-            enabled: true,
-        };
-        self.kv_compressor = Some(crate::kv_compress::KvCompressor::new(config));
-        log::info!(
-            "TurboQuant KV compression enabled: head_dim={}, kv_heads={}, layers={}",
-            self.config.head_dim, self.config.kv_num_heads, self.config.num_layers
-        );
+        log::warn!("enable_kv_compression: impl parked in llm/experimental/kv_compress.rs");
     }
 
     /// Reset KV cache
@@ -1454,9 +1446,7 @@ impl NativeModel {
             cache.key = None;
             cache.value = None;
         }
-        if let Some(ref mut compressor) = self.kv_compressor {
-            compressor.reset();
-        }
+        // kv_compressor.reset() — impl parked in llm/experimental/kv_compress.rs
     }
 
     /// Run one forward pass: token_ids -> logits as Vec<f32>
