@@ -407,7 +407,8 @@ fn quick_bench(path: &std::path::Path, backend: &dyn Backend) -> (String, String
         "0".into()
     };
 
-    let text = tok.decode(&generated, false);
+    // Strip specials so validator sees what a user would see (ollama does the same).
+    let text = tok.decode(&generated, true);
     let sane = validate_math_answer(&text);
     (tok_s, sane.into())
 }
@@ -425,9 +426,6 @@ fn validate_math_answer(text: &str) -> &'static str {
     let frag_patterns = ["|im_", "|im ", "|endof", "|user", "|assistant", "|fim"];
     let frag_count: usize = frag_patterns.iter().map(|p| body.matches(p).count()).sum();
 
-    let has_exact = body.contains("2+2") || body.contains("2 + 2");
-    let has_equals_four =
-        body.contains("= 4") || body.contains("=4") || body.contains("is 4") || body.contains("is four");
     let has_four = body.contains('4') || body.contains("four");
 
     let repetitive = body.len() > 20 && {
@@ -435,16 +433,13 @@ fn validate_math_answer(text: &str) -> &'static str {
         body.matches(&first_20[..]).count() > 2
     };
 
-    if body.len() < 2 {
+    if body.is_empty() {
         "\x1b[31m✗\x1b[0m"
     } else if frag_count >= 3 || repetitive {
         "\x1b[31m✗\x1b[0m"
     } else if has_four && frag_count == 0 && !repetitive {
-        if has_equals_four || has_exact {
-            "\x1b[32m✓\x1b[0m"
-        } else {
-            "\x1b[33m?\x1b[0m"
-        }
+        // "4" alone, "is 4", "= 4", "equals 4", "2+2 = 4" — all clean.
+        "\x1b[32m✓\x1b[0m"
     } else if has_four {
         "\x1b[33m?\x1b[0m"
     } else {

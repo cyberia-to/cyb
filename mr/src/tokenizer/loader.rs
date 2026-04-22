@@ -4,13 +4,13 @@ use super::{Bpe, Tokenizer};
 use crate::format::{FormatError, LoadedModel};
 
 pub fn build_tokenizer(lm: &LoadedModel) -> Result<Tokenizer, FormatError> {
-    let (tokens, merges) = parse_vocab(&lm.file.vocab_toml)?;
-    let bpe = Bpe::new(tokens, merges);
+    let (mut tokens, merges) = parse_vocab(&lm.file.vocab_toml)?;
 
-    // eos_token_ids from config [tokenizer].eos_token_ids
     let cfg: toml::Value = toml::from_str(&lm.file.config)
         .map_err(|e| FormatError::Invalid(format!("config parse: {e}")))?;
-    let eos_token_ids = cfg
+
+    // eos_token_ids from config [tokenizer].eos_token_ids
+    let eos_token_ids: Vec<u32> = cfg
         .get("tokenizer")
         .and_then(|t| t.get("eos_token_ids"))
         .and_then(|v| v.as_array())
@@ -20,6 +20,16 @@ pub fn build_tokenizer(lm: &LoadedModel) -> Result<Tokenizer, FormatError> {
                 .collect()
         })
         .unwrap_or_default();
+
+    // Some imports (older cyb .model files) drop HF `added_tokens` — the
+    // specials like <|im_start|> / <|im_end|> / <|endoftext|> aren't in the
+    // [tokens] table even though the model's lm_head/embed rows for those
+    // IDs exist. Without them chatml-templated prompts decompose into
+    // single-char BPE pieces and the model outputs garbage. We reconstruct
+    // them from config.
+    inject_missing_specials(&mut tokens, &cfg, &eos_token_ids);
+
+    let bpe = Bpe::new(tokens, merges);
 
     // chat section (optional)
     let (chat_format, chat_template) = if lm.file.chat_toml.is_empty() {
@@ -152,6 +162,58 @@ fn parse_merge_pair(s: &str) -> Option<(String, String)> {
     let a = parse_toml_string(s[..comma].trim())?;
     let b = parse_toml_string(s[comma + 1..].trim())?;
     Some((a, b))
+}
+
+/// Patch `tokens` with specials that are referenced by config but missing
+/// from the [tokens] table. Uses three sources of information:
+///   1. [tokenizer].eos_token string + eos_token_ids[0] (name ↔ id)
+///   2. [tokenizer].pad_token string + eos_token_ids[1] (fallback pad id)
+///   3. Well-known family conventions (qwen chatml: im_start = im_end - 1,
+///      endoftext = im_start - 1)
+fn inject_missing_specials(
+    tokens: &mut Vec<(u32, String)>,
+    cfg: &toml::Value,
+    eos_ids: &[u32],
+) {
+    let have_id = |tokens: &[(u32, String)], id: u32| tokens.iter().any(|(i, _)| *i == id);
+    let have_str = |tokens: &[(u32, String)], s: &str| tokens.iter().any(|(_, t)| t == s);
+    let mut add = |tokens: &mut Vec<(u32, String)>, id: u32, name: String| {
+        if !have_id(tokens, id) && !have_str(tokens, &name) {
+            log::debug!("inject special: {id} = {name:?}");
+            tokens.push((id, name));
+        }
+    };
+
+    let tok_section = cfg.get("tokenizer");
+    let eos_name = tok_section
+        .and_then(|t| t.get("eos_token"))
+        .and_then(|v| v.as_str());
+    let pad_name = tok_section
+        .and_then(|t| t.get("pad_token"))
+        .and_then(|v| v.as_str());
+
+    // (eos name, eos id)
+    if let (Some(name), Some(&id)) = (eos_name, eos_ids.first()) {
+        add(tokens, id, name.to_string());
+    }
+    // Secondary eos / pad — eos_token_ids often lists [main_eos, endoftext_id]
+    if let (Some(name), Some(&id)) = (pad_name, eos_ids.get(1)) {
+        add(tokens, id, name.to_string());
+    }
+
+    // ChatML convention: qwen models place specials in a dense block ending
+    // at eos_token_ids[0]. If eos is `<|im_end|>`, <|im_start|> sits at id-1
+    // and <|endoftext|> at id-2.
+    if eos_name == Some("<|im_end|>") {
+        if let Some(&eos) = eos_ids.first() {
+            if eos >= 1 {
+                add(tokens, eos - 1, "<|im_start|>".into());
+            }
+            if eos >= 2 {
+                add(tokens, eos - 2, "<|endoftext|>".into());
+            }
+        }
+    }
 }
 
 fn detect_chat_format(bpe: &Bpe, model_type: &str) -> Option<String> {
