@@ -7,33 +7,8 @@ edition = "2024"
 name = "cyb-llm"
 path = "src/main.rs"
 
-[[bin]]
-name = "bench-metal"
-path = "bench/metal.rs"
-
-[[bin]]
-name = "bench-ane"
-path = "bench/ane.rs"
-
-[[bin]]
-name = "bench-e2e"
-path = "bench/e2e.rs"
-
-[[bin]]
-name = "bench-ane-compile"
-path = "bench/ane_compile.rs"
-
-[[bin]]
-name = "bench-ane-infer"
-path = "bench/ane_infer.rs"
-
-[[bin]]
-name = "bench-ane-train"
-path = "bench/ane_train.rs"
-
-[[bin]]
-name = "bench-speculative"
-path = "bench/speculative.rs"
+# bench-* binaries removed — they exercised the retired wgpu/metal/ANE
+# runtime paths. Benchmarking the live runtime happens through `mr bench`.
 
 [dependencies]
 # GPU compute

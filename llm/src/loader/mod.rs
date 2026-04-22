@@ -3,10 +3,9 @@
 pub mod onnx;
 pub mod safetensors;
 pub mod gguf;
-pub mod ggml;
-pub mod pytorch;
-pub mod bin;
-pub mod mlx;
+// ggml/pytorch/bin/mlx loaders deleted — the three manifest models ship as
+// safetensors or GGUF, and the dead loaders were either never triggered
+// (ggml, bin) or were skeletons that returned empty results (pytorch, mlx).
 
 use std::path::Path;
 
@@ -19,10 +18,6 @@ pub enum ModelFormat {
     Onnx,
     Safetensors,
     Gguf,
-    Ggml,
-    Pytorch,
-    Bin,
-    Npz,
 }
 
 /// Detect model format from file path and magic bytes
@@ -36,9 +31,6 @@ pub fn detect_format(path: &Path) -> Result<ModelFormat, String> {
         "onnx" => return Ok(ModelFormat::Onnx),
         "safetensors" => return Ok(ModelFormat::Safetensors),
         "gguf" => return Ok(ModelFormat::Gguf),
-        "pt" | "pth" => return Ok(ModelFormat::Pytorch),
-        "npz" => return Ok(ModelFormat::Npz),
-        // .bin is ambiguous — could be GGML, fasttext, or raw. Check magic first.
         _ => {}
     }
 
@@ -52,57 +44,17 @@ pub fn detect_format(path: &Path) -> Result<ModelFormat, String> {
         .map_err(|e| format!("Cannot read magic bytes: {e}"))?;
 
     if bytes_read >= 4 {
-        // CYB magic
         if &magic[0..4] == b"CYB\x01" {
             return Ok(ModelFormat::Cyb);
         }
-
-        // GGUF magic
         if &magic[0..4] == b"GGUF" {
             return Ok(ModelFormat::Gguf);
         }
-
-        // GGML magic (0x67676d6c = "ggml" little-endian)
-        if magic[0..4] == [0x6c, 0x6d, 0x67, 0x67] {
-            return Ok(ModelFormat::Ggml);
-        }
-
-        // ZIP magic (PK\x03\x04) — could be NPZ or PyTorch .pt
-        if &magic[0..4] == b"PK\x03\x04" {
-            // PyTorch .pt files are ZIP with archive/data.pkl
-            // NPZ files are ZIP with .npy entries
-            // Distinguish by extension or default to PyTorch
-            if ext == "npz" || ext == "npy" {
-                return Ok(ModelFormat::Npz);
-            }
-            return Ok(ModelFormat::Pytorch);
-        }
-
-        // NPY magic (\x93NUMPY) — single array file, treat as bin
-        if bytes_read >= 6 && &magic[0..6] == b"\x93NUMPY" {
-            return Ok(ModelFormat::Npz);
-        }
     }
 
-    // Safetensors starts with a u64 header size (first 8 bytes are numeric)
-    // ONNX protobuf starts with field tag bytes
-    // Heuristic: if first bytes look like a protobuf, assume ONNX
+    // ONNX protobuf starts with field tag bytes 0x08 or 0x0a.
     if bytes_read >= 4 && (magic[0] == 0x08 || magic[0] == 0x0a) {
         return Ok(ModelFormat::Onnx);
-    }
-
-    // FastText magic: 0x2f4f16ba (little-endian)
-    if bytes_read >= 4 && magic[0..4] == [0xba, 0x16, 0x4f, 0x2f] {
-        return Ok(ModelFormat::Bin);
-    }
-
-    // Check if it could be a fasttext .bin (first 4 bytes as i32 could be vocab_size)
-    if bytes_read >= 8 {
-        let first = i32::from_le_bytes([magic[0], magic[1], magic[2], magic[3]]);
-        let second = i32::from_le_bytes([magic[4], magic[5], magic[6], magic[7]]);
-        if first > 0 && first < 10_000_000 && second > 0 && second < 100_000 {
-            return Ok(ModelFormat::Bin);
-        }
     }
 
     Err(format!("Cannot detect format for {}", path.display()))
@@ -122,9 +74,5 @@ pub fn load_model(path: &Path) -> Result<Graph, String> {
         ModelFormat::Onnx => onnx::load_onnx(path),
         ModelFormat::Safetensors => safetensors::load_safetensors(path),
         ModelFormat::Gguf => gguf::load_gguf(path),
-        ModelFormat::Ggml => ggml::load_ggml(path),
-        ModelFormat::Pytorch => pytorch::load_pytorch(path),
-        ModelFormat::Bin => bin::load_bin(path),
-        ModelFormat::Npz => mlx::load_npz(path),
     }
 }
