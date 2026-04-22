@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["bevy", "nu", "llm", "mr"]
+members = ["bevy", "nu", "mr", "mi"]
 exclude = ["vendor/nushell", "leptos"]
 
 [workspace.dependencies]

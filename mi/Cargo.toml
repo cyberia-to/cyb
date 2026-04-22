@@ -1,0 +1,35 @@
+[package]
+name = "mi"
+version = "0.1.0"
+edition = "2024"
+description = "model importer — HF directory → cyb .model file"
+
+[[bin]]
+name = "mi"
+path = "src/main.rs"
+
+[lib]
+name = "mi"
+path = "src/lib.rs"
+
+[dependencies]
+# Model loading / writing
+prost = "0.13"
+memmap2 = "0.9"
+bytemuck = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+half = { version = "2", features = ["num-traits"] }
+
+# Tokenization (to validate imported tokenizer.json layout) + HF downloads
+tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
+hf-hub = { version = "0.5", features = ["default-tls"] }
+
+# CLI + logs
+clap = { version = "4", features = ["derive"] }
+log = "0.4"
+env_logger = "0.11"
+
+[build-dependencies]
+prost-build = "0.13"
