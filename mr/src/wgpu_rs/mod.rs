@@ -16,9 +16,11 @@ use crate::tensor::{BackendData, Tensor, TensorData};
 use std::any::Any;
 use std::sync::Arc;
 
+pub mod alloc;
 mod device;
 mod kernels;
 
+pub use alloc::{dispatch_2d, FrameAllocator};
 use device::Device;
 
 /// GPU-resident buffer handle.
