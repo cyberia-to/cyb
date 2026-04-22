@@ -17,7 +17,7 @@ one file. three sections. everything else is derivable.
 |------|--------|-------------|
 | card | .md | what this snapshot is |
 | config | .toml | chain id, block, capture time, token table |
-| signals | .records | the atomic broadcast units — signed bundles of cyberlinks |
+| signals | .signals | the atomic broadcast units — signed bundles of cyberlinks |
 
 no optional files. no other required files. `particles`, `cyberlinks` (as a flat stream), `semcons`, `focus`, `spectral_gap` — all derive from `signals` + `config` in milliseconds.
 
@@ -40,7 +40,7 @@ format = "toml"
 
 [[files]]
 name = "signals"
-format = "records"
+format = "signals"
 size = 312456720
 ```
 
