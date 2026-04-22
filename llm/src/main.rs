@@ -1380,18 +1380,25 @@ vocab = m.get('vocab', {{}})
 merges = m.get('merges', [])
 added = tok.get('added_tokens', [])
 lines = ['[tokens]']
+seen_ids = set()
 if isinstance(vocab, dict):
     for t, i in sorted(vocab.items(), key=lambda x: x[1]):
         lines.append(f'{{i}} = "{{esc(t)}}"')
-for at in added:
-    tid = at.get('id', -1)
-    content = at.get('content', '')
-    if tid >= 0 and content:
-        lines.append(f'{{tid}} = "{{esc(content)}}"')
+        seen_ids.add(i)
 else:
     for i, item in enumerate(vocab):
         t = item[0] if isinstance(item, list) else str(item)
         lines.append(f'{{i}} = "{{esc(t)}}"')
+        seen_ids.add(i)
+# HF special tokens (e.g. <|im_start|>=151644, <|im_end|>=151645) live in
+# added_tokens — they have model-valid IDs but aren't in the base vocab.
+# Without them, chat-templated prompts decompose into single-char BPE.
+for at in added:
+    tid = at.get('id', -1)
+    content = at.get('content', '')
+    if tid >= 0 and content and tid not in seen_ids:
+        lines.append(f'{{tid}} = "{{esc(content)}}"')
+        seen_ids.add(tid)
 if merges:
     lines.append('')
     lines.append('[merges]')
