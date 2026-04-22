@@ -214,4 +214,25 @@ impl Op {
             Op::FlashAttention { .. } => "FlashAttention",
         }
     }
+
+    /// True if this op carries state across forward calls (e.g. KV cache).
+    pub fn is_stateful(&self) -> bool {
+        matches!(self, Op::KvCache)
+    }
+
+    /// True if this op is a pure view / layout change — no compute, output
+    /// data aliases input data. Graph passes can elide these at no cost.
+    pub fn is_layout_only(&self) -> bool {
+        matches!(
+            self,
+            Op::Reshape { .. }
+                | Op::Transpose { .. }
+                | Op::Permute { .. }
+                | Op::Split { .. }
+                | Op::Chunk { .. }
+                | Op::PixelShuffle { .. }
+                | Op::PixelUnshuffle { .. }
+                | Op::Unpatchify
+        )
+    }
 }
