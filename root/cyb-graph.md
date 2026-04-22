@@ -95,7 +95,7 @@ signals are variable-length: a 44-byte header followed by `n` link records of 96
 ```
 signal header (44 bytes):
   [0..32]   ν   neuron (hemera hash, 32 B)
-  [32..40]  t   block height (u64 little-endian)
+  [32..40]  t   unix timestamp, seconds (u64 little-endian)
   [40..44]  n   link count (u32 little-endian, n ≥ 1)
 
 link record (96 bytes), repeated n times:
@@ -109,11 +109,13 @@ link record (96 bytes), repeated n times:
 
 total signal size = `44 + 96·n` bytes.
 
-signals appear in canonical chain order: ascending block height, then ascending intra-block index. links within a signal appear in commit order — the sequence the neuron chose. `t` is always in `[1, config.block]`. `τ` is always a valid index into `config.tokens`.
+signals appear in canonical time order: ascending `t`, then (for chain-sourced snapshots) ascending intra-block index. links within a signal appear in commit order — the sequence the neuron chose. `t ≤ config.captured_at`. `τ` is always a valid index into `config.tokens`.
+
+unix seconds is chain-agnostic. a chain-sourced `.graph` sets each signal's `t` from the chain header timestamp of the block the signal landed in; a user-defined graph (e.g. `mytoken`) sets `t` from wall-clock at commit. either way, consumers compare, sort, and range-query signals without knowing anything about blocks.
 
 ### what the header carries once
 
-`ν` and `t` are signal-level facts — one neuron, one block per atomic broadcast. storing them on the header saves redundancy (a 5-link signal stores `ν` and `t` once instead of five times) and preserves the atom the chain natively produces.
+`ν` and `t` are signal-level facts — one neuron, one moment per atomic broadcast. storing them on the header saves redundancy (a 5-link signal stores `ν` and `t` once instead of five times) and preserves the atom the chain (or user) natively produces.
 
 ### iteration
 
