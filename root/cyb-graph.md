@@ -62,16 +62,25 @@ chain identity, block height, capture metadata, and the token table. integers on
 
 ```toml
 ~~~config
-chain_id   = "bostrom-1"
-block      = 23195000
-captured_at = 1742740920
+chain_id       = "bostrom-1"
+block          = 23195000
+captured_at    = 1742740920
 format_version = 1
 
-[tokens]
-0 = { symbol = "BOOT",     weight = 1000 }
-1 = { symbol = "VOLT",     weight = 50000 }
-2 = { symbol = "AMPERE",   weight = 1000000 }
-3 = { symbol = "HYDROGEN", weight = 100000000 }
+[[tokens]]
+cid    = "0x1a2b3c4d..."
+symbol = "BOOT"
+weight = 1000
+
+[[tokens]]
+cid    = "0x5e6f7a8b..."
+symbol = "VOLT"
+weight = 50000
+
+[[tokens]]
+cid    = "0x9c0d1e2f..."
+symbol = "AMPERE"
+weight = 1000000
 ```
 
 | field | meaning |
@@ -80,11 +89,13 @@ format_version = 1
 | block | block height at which the snapshot was cut |
 | captured_at | unix seconds when the snapshot was emitted |
 | format_version | spec revision (currently `1`) |
-| [tokens] | denomination table: id → (symbol, weight) |
+| [[tokens]] | per-denomination entries: cid (hemera hash), symbol (human label), weight (multiplier) |
+
+tokens are first-class particles — each denomination is identified by its hemera hash, the same way every other node in the graph is. the link record carries `τ` as the 32-byte CID; the compiler looks up `weight` and `symbol` in this table by content match.
 
 the token table defines how the compiler combines cross-denomination stakes. weight is integer per-mille: `weight = 1000` means 1.0×. the table may come from chain governance (if the chain pins it) or from the snapshot publisher (if it is policy). either way, the snapshot commits to these specific weights — different token tables produce different snapshots.
 
-user-defined tokens are declared the same way. a private graph with `mytoken` just adds an entry to this table; no other change is needed.
+user-defined tokens are declared the same way. a private graph with `mytoken` just adds an entry; no other change is needed.
 
 nothing else belongs in config. the number of signals, particles, cyberlinks, axons, and semcons — all derivable from the `signals` section. keeping them out of config removes the consistency risk of denormalized counts.
 
@@ -98,16 +109,15 @@ signal header (44 bytes):
   [32..40]  t   unix timestamp, seconds (u64 little-endian)
   [40..44]  n   link count (u32 little-endian, n ≥ 1)
 
-link record (96 bytes), repeated n times:
-  [0..32]   p   from (hemera hash, 32 B)
-  [32..64]  q   to (hemera hash, 32 B)
-  [64..68]  τ   token denomination index (u32 little-endian)
-  [68..84]  a   stake amount (u128 little-endian, smallest unit)
-  [84..85]  v   valence (i8: -1, 0, +1)
-  [85..96]  _   padding (zero)
+link record (105 bytes), repeated n times:
+  [0..32]    p   from (hemera hash, 32 B)
+  [32..64]   q   to (hemera hash, 32 B)
+  [64..96]   τ   token (hemera hash, 32 B)
+  [96..104]  a   stake amount (Goldilocks field element, u64 little-endian, a < 2^64 − 2^32 + 1)
+  [104..105] v   valence (i8: -1, 0, +1)
 ```
 
-total signal size = `44 + 96·n` bytes.
+total signal size = `44 + 105·n` bytes. no padding — fields pack tight.
 
 signals appear in canonical time order: ascending `t`, then (for chain-sourced snapshots) ascending intra-block index. links within a signal appear in commit order — the sequence the neuron chose. `t ≤ config.captured_at`. `τ` is always a valid index into `config.tokens`.
 
