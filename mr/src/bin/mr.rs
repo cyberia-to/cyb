@@ -241,8 +241,33 @@ fn status() {
             ctx.to_string()
         };
 
-        // Progress indicator on stderr so stdout stays clean.
+        // Architecture probe: if the model can't even build, skip the per-backend
+        // benches and show one `unsupported: <reason>` spanning the backend cells.
         let clear = "\x1b[2K\r";
+        eprint!("{clear}  probe {}...", e.name);
+        let probe = probe_arch(&path);
+        if let Err(reason) = probe {
+            eprint!("{clear}");
+            let unsupported_msg = format!("\x1b[33munsupported\x1b[0m: {}", short_reason(&reason));
+            let llama_str = match e.ollama_tag {
+                Some(tag) => format!("{:>6}", bench_ollama(tag)),
+                None => format!("{:>6}", "—"),
+            };
+            println!(
+                "  {:<24} {:<12} {:<8} {:>6} {:>3} {:>5} {:>6}ms  {}  {}",
+                e.name,
+                e.family,
+                e.role,
+                format_size(disk_bytes),
+                layers_str,
+                ctx_str,
+                load_ms,
+                unsupported_msg,
+                llama_str
+            );
+            continue;
+        }
+
         let bench_col = |label: &str, width: usize, f: &dyn Fn() -> (String, String)| -> String {
             eprint!("{clear}  bench {label} {}...", e.name);
             let prev = std::panic::take_hook();
@@ -474,6 +499,42 @@ fn bench_ollama(tag: &str) -> String {
             }
         }
         _ => "—".into(),
+    }
+}
+
+/// Try to load + build the model. Cheap-ish: returns as soon as LlamaModel
+/// rejects the config/weights, which is what status cares about.
+fn probe_arch(path: &std::path::Path) -> Result<(), String> {
+    use mr::format::LoadedModel;
+    let prev = std::panic::take_hook();
+    std::panic::set_hook(Box::new(|_| {}));
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let lm = LoadedModel::load(path).map_err(|e| format!("{e}"))?;
+        LlamaModel::from_loaded(&lm).map(|_| ()).map_err(|e| format!("{e}"))
+    }));
+    std::panic::set_hook(prev);
+    match result {
+        Ok(Ok(())) => Ok(()),
+        Ok(Err(e)) => Err(e),
+        Err(_) => Err("panic during arch build".into()),
+    }
+}
+
+/// Compress a verbose load-error into a single-line status cell reason.
+fn short_reason(err: &str) -> String {
+    // Heuristics to tag a few known gaps succinctly.
+    if err.contains("q_proj.weight") && err.contains("declared shape") {
+        return "layer-variant q_dim (gemma4)".into();
+    }
+    if err.contains("post_attention_norm") || err.contains("post_ffw_norm") || err.contains("layer_output_scale") {
+        return "extra per-layer norms (gemma4)".into();
+    }
+    // Fallback: first 60 chars of the error.
+    let trimmed = err.trim().replace('\n', " ");
+    if trimmed.len() > 60 {
+        format!("{}…", &trimmed[..60])
+    } else {
+        trimmed
     }
 }
 
