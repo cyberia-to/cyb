@@ -33,10 +33,17 @@ const useParticle = (
         content,
         cid
         // (progress: number) => console.log(`${cid} progress: ${progress}`)
-      ).then((details) => {
-        setDetails(details);
-        setStatus('completed');
-      });
+      )
+        .then((details) => {
+          setDetails(details);
+          setStatus('completed');
+        })
+        .catch((e) => {
+          // parseArrayLikeToDetails has its own fallback, but belt-and-suspenders:
+          // never leave status on 'pending' if the parse chain rejects.
+          console.error('useParticle parse chain rejected', { cid, error: e });
+          setStatus('error');
+        });
     } else {
       setStatus(queueItemStatus);
     }
