@@ -98,63 +98,82 @@ export async function toReadableStreamWithMime(
 
 export type onProgressCallback = (progress: number) => void;
 
+export class StreamDrainTimeoutError extends Error {
+  constructor(timeoutMs: number) {
+    super(`stream drain timed out after ${timeoutMs}ms`);
+    this.name = 'StreamDrainTimeoutError';
+  }
+}
+
+// Default wall-clock budget for draining a content stream into a Uint8Array.
+// Must be larger than any per-source fetch timeout in QueueManager so that a
+// slow-but-progressing download isn't killed prematurely; short enough that a
+// peer that delivers a prefix and stalls doesn't hang the UI forever.
+export const STREAM_DRAIN_TIMEOUT_MS = 30_000;
+
 export const getResponseResult = async (
   response: Uint8ArrayLike,
-  onProgress?: onProgressCallback
-) => {
-  let bytesDownloaded = 0;
-  try {
-    if (response instanceof Uint8Array) {
-      onProgress?.(response.byteLength);
-      return response;
-    }
-    const chunks: Array<Uint8Array> = [];
+  onProgress?: onProgressCallback,
+  timeoutMs: number = STREAM_DRAIN_TIMEOUT_MS
+): Promise<Uint8Array | undefined> => {
+  if (response instanceof Uint8Array) {
+    onProgress?.(response.byteLength);
+    return response;
+  }
 
+  let bytesDownloaded = 0;
+  const chunks: Array<Uint8Array> = [];
+
+  const timeoutController = new AbortController();
+  const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
+
+  const drain = async (): Promise<Uint8Array | undefined> => {
     if (response instanceof ReadableStream) {
       const reader = response.getReader();
-
-      const readStream = async ({
-        done,
-        value,
-      }: ReadableStreamReadResult<Uint8Array>): Promise<Uint8Array> => {
-        if (done) {
-          return uint8ArrayConcat(chunks);
+      timeoutController.signal.addEventListener('abort', () => reader.cancel().catch(() => {}));
+      try {
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          if (value) {
+            chunks.push(value);
+            bytesDownloaded += value.byteLength;
+            onProgress?.(bytesDownloaded);
+          }
         }
-
-        chunks.push(value!);
-        bytesDownloaded += value!.byteLength;
-        onProgress?.(bytesDownloaded);
-        return reader.read().then(readStream);
-      };
-
-      const readArray: Uint8Array = await reader.read().then(readStream);
-
-      return readArray;
+      } finally {
+        reader.releaseLock();
+      }
+      return uint8ArrayConcat(chunks);
     }
 
     if (Symbol.asyncIterator in response) {
-      const reader = response[Symbol.asyncIterator]();
-
-      // if (cid === 'QmRqms6Utkk6L4mtyLQXY2spcQ8Pk7fBBTNjvxa9jTNrXp') {
-      //   debugger;
-      // }
-      // eslint-disable-next-line no-restricted-syntax
-      for await (const chunk of reader) {
+      const iterator = response[Symbol.asyncIterator]();
+      timeoutController.signal.addEventListener('abort', () => {
+        // Best-effort close; async iterators may not expose return().
+        iterator.return?.(undefined)?.catch(() => {});
+      });
+      for await (const chunk of { [Symbol.asyncIterator]: () => iterator }) {
         if (chunk instanceof Uint8Array) {
           chunks.push(chunk);
           bytesDownloaded += chunk.byteLength;
           onProgress?.(bytesDownloaded);
         }
       }
-      const result = uint8ArrayConcat(chunks);
-      return result;
+      return uint8ArrayConcat(chunks);
     }
+
     return undefined;
+  };
+
+  try {
+    return await drain();
   } catch (error) {
-    console.error(`Error reading stream/iterable.\r\n Probably Hot reload error!`, error);
-
-    // throw error;
-
-    return undefined;
+    if (timeoutController.signal.aborted) {
+      throw new StreamDrainTimeoutError(timeoutMs);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeoutId);
   }
 };

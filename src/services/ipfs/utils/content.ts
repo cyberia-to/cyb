@@ -77,118 +77,126 @@ export const parseArrayLikeToDetails = async (
   cid: string,
   onProgress?: onProgressCallback
 ): Promise<IPFSContentDetails> => {
-  // try {
-  if (!content || !content?.result) {
+  try {
+    if (!content || !content?.result) {
+      return {
+        gateway: true,
+        text: cid.toString(),
+        cid,
+        type: content?.meta?.contentType,
+      };
+    }
+
+    const { result, meta } = content;
+
+    const { mime, contentType } = meta;
+
+    if (!mime) {
+      return {
+        cid,
+        gateway: true,
+        text: `Can't detect MIME for ${cid.toString()}`,
+      };
+    }
+    const contentCid = content.cid;
+
+    const response: IPFSContentDetails = {
+      link: `/ipfs/${cid}`,
+      gateway: false,
+      cid: contentCid,
+      type: contentType,
+    };
+
+    if (detectGatewayContentType(mime)) {
+      return { ...response, gateway: true };
+    }
+
+    const rawData =
+      typeof result !== 'string' ? await getResponseResult(result, onProgress) : result;
+
+    const isStringData = typeof rawData === 'string';
+
+    if (!rawData) {
+      return {
+        ...response,
+        gateway: true,
+        text: `Can't parse content for ${cid.toString()}`,
+      };
+    }
+
+    // clarify text-content subtypes
+    if (response.type === 'text') {
+      // render svg as image
+      if (!isStringData && isSvg(new Uint8Array(rawData))) {
+        return {
+          ...response,
+          type: 'image',
+          content: createImgData(rawData, 'image/svg+xml'),
+        };
+      }
+
+      const str = isStringData ? rawData : uint8ArrayToAsciiString(rawData);
+
+      if (str.match(PATTERN_IPFS_HASH)) {
+        return {
+          ...response,
+          type: 'cid',
+          content: str,
+        };
+      }
+      if (str.match(PATTERN_HTTP)) {
+        return {
+          ...response,
+          type: 'link',
+          content: str,
+        };
+      }
+      if (isHtml(str)) {
+        return {
+          ...response,
+          type: 'html',
+          gateway: true,
+          content: cid.toString(),
+        };
+      }
+
+      // TODO: search can bel longer for 42???!
+      // also cover ipns links
+      return {
+        ...response,
+        link: str.length > 42 ? `/ipfs/${cid}` : `/search/${str}`,
+        type: 'text',
+        text: shortenString(str),
+        content: str,
+      };
+    }
+
+    if (!isStringData) {
+      if (response.type === 'image') {
+        return { ...response, content: createImgData(rawData, mime) }; // file
+      }
+      if (response.type === 'pdf') {
+        return {
+          ...response,
+          content: createObjectURL(rawData, mime),
+          gateway: true,
+        }; // file
+      }
+    }
+
+    return response;
+  } catch (e) {
+    // Never let a parse error leave useParticle stuck on 'pending'.
+    // Surface a gateway-fallback result so the caller can still render
+    // via the HTTP gateway and transition to 'completed'.
+    console.error('parseArrayLikeToDetails failed', { cid, error: e });
     return {
-      gateway: true,
-      text: cid.toString(),
       cid,
+      gateway: true,
+      text: `Can't parse content for ${cid.toString()}`,
       type: content?.meta?.contentType,
     };
   }
-
-  const { result, meta } = content;
-
-  const { mime, contentType } = meta;
-
-  if (!mime) {
-    return {
-      cid,
-      gateway: true,
-      text: `Can't detect MIME for ${cid.toString()}`,
-    };
-  }
-  const contentCid = content.cid;
-
-  const response: IPFSContentDetails = {
-    link: `/ipfs/${cid}`,
-    gateway: false,
-    cid: contentCid,
-    type: contentType,
-  };
-
-  if (detectGatewayContentType(mime)) {
-    return { ...response, gateway: true };
-  }
-
-  const rawData = typeof result !== 'string' ? await getResponseResult(result, onProgress) : result;
-
-  const isStringData = typeof rawData === 'string';
-
-  // console.log(rawData);
-  if (!rawData) {
-    return {
-      ...response,
-      gateway: true,
-      text: `Can't parse content for ${cid.toString()}`,
-    };
-  }
-
-  // clarify text-content subtypes
-  if (response.type === 'text') {
-    // render svg as image
-    if (!isStringData && isSvg(new Uint8Array(rawData))) {
-      return {
-        ...response,
-        type: 'image',
-        content: createImgData(rawData, 'image/svg+xml'),
-      };
-    }
-
-    const str = isStringData ? rawData : uint8ArrayToAsciiString(rawData);
-
-    if (str.match(PATTERN_IPFS_HASH)) {
-      return {
-        ...response,
-        type: 'cid',
-        content: str,
-      };
-    }
-    if (str.match(PATTERN_HTTP)) {
-      return {
-        ...response,
-        type: 'link',
-        content: str,
-      };
-    }
-    if (isHtml(str)) {
-      return {
-        ...response,
-        type: 'html',
-        gateway: true,
-        content: cid.toString(),
-      };
-    }
-
-    // TODO: search can bel longer for 42???!
-    // also cover ipns links
-    return {
-      ...response,
-      link: str.length > 42 ? `/ipfs/${cid}` : `/search/${str}`,
-      type: 'text',
-      text: shortenString(str),
-      content: str,
-    };
-  }
-
-  if (!isStringData) {
-    if (response.type === 'image') {
-      return { ...response, content: createImgData(rawData, mime) }; // file
-    }
-    if (response.type === 'pdf') {
-      return {
-        ...response,
-        content: createObjectURL(rawData, mime),
-        gateway: true,
-      }; // file
-    }
-  }
-
-  return response;
-  // } catch (e) {
-  //   console.log('----parseRawIpfsData', e, cid);
-  //   return undefined;
-  // }
 };
 
 export const contentToUint8Array = async (content: File | string): Promise<Uint8Array> => {
