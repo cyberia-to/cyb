@@ -7,6 +7,8 @@ pub struct Entry {
     pub family: &'static str,
     pub role: &'static str,
     pub notes: &'static str,
+    /// Ollama tag for the LLAMA reference column (None = not in ollama)
+    pub ollama_tag: Option<&'static str>,
 }
 
 pub const MANIFEST: &[Entry] = &[
@@ -15,24 +17,28 @@ pub const MANIFEST: &[Entry] = &[
         family: "LlamaStyle",
         role: "router",
         notes: "always-on classifier, qwen3 with qk_norm",
+        ollama_tag: Some("qwen3:0.6b"),
     },
     Entry {
         name: "qwen2.5-coder-1.5b-abl",
         family: "LlamaStyle",
         role: "code",
         notes: "small code model, qwen2 with attn_bias",
+        ollama_tag: Some("qwen2.5-coder:1.5b"),
     },
     Entry {
         name: "qwen2.5-coder-14b-abl",
         family: "LlamaStyle",
         role: "code",
         notes: "large code model, needs fused Q4_K matmul to load",
+        ollama_tag: Some("qwen2.5-coder:14b"),
     },
     Entry {
         name: "gemma-4-31b",
         family: "LlamaStyle+",
         role: "general",
         notes: "Gemma 3/4 extensions required (softcapping, sliding window, K=V)",
+        ollama_tag: None,
     },
 ];
 

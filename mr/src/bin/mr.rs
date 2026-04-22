@@ -201,70 +201,337 @@ fn bench(args: Vec<String>) {
 }
 
 fn status() {
-    use mr::format::LoadedModel;
     use mr::manifest::MANIFEST;
 
     let base = mr::manifest::models_dir();
     println!();
     println!("  \x1b[1mmr status\x1b[0m — {}", base.display());
     println!();
-    println!(
-        "  {:<26} {:<12} {:<8} {:<10} {:<20} {}",
-        "MODEL", "FAMILY", "ROLE", "LOAD", "FORWARD", "NOTES"
+    // Widths: MODEL 24, FAMILY 12, ROLE 8, SIZE 6, L 3, CTX 5, LOAD 7, CPU 9, WGPU+RS 9, HONEY 10, LLAMA 6
+    let hdr = format!(
+        "  {:<24} {:<12} {:<8} {:>6} {:>3} {:>5} {:>7} {:>9} {:>9} {:>10} {:>6}",
+        "MODEL", "FAMILY", "ROLE", "SIZE", "L", "CTX", "LOAD", "CPU", "WGPU+RS", "HONEYCRISP", "LLAMA"
     );
-    println!("  {}", "─".repeat(100));
+    let width = 113;
+    println!("{hdr}");
+    println!("  {}", "─".repeat(width));
 
     for e in MANIFEST {
         let path = base.join(format!("{}.model", e.name));
         if !path.exists() {
             println!(
-                "  {:<26} {:<12} {:<8} \x1b[33m{:<10}\x1b[0m {:<20} {}",
-                e.name, e.family, e.role, "missing", "—", e.notes
+                "  {:<24} {:<12} {:<8} {:>6} {:>3} {:>5} \x1b[33m{:>7}\x1b[0m {:>9} {:>9} {:>10} {:>6}",
+                e.name, e.family, e.role, "—", "—", "—", "missing", "—", "—", "—", "—"
             );
             continue;
         }
 
+        // Read config (fast — text only) for size / layers / ctx
+        let disk_bytes = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
         let t0 = Instant::now();
-        let loaded = LoadedModel::load(&path);
-        let load_s = t0.elapsed().as_secs_f64();
+        let (layers, ctx) = read_header_meta(&path);
+        let load_ms = t0.elapsed().as_millis();
 
-        let (load_status, forward_status) = match loaded {
-            Err(err) => (
-                format!("\x1b[31merr\x1b[0m"),
-                format!("— ({err})"),
-            ),
-            Ok(lm) => {
-                let load_ok = format!("\x1b[32m{:.1}s\x1b[0m", load_s);
-                match mr::llama_style::LlamaModel::from_loaded(&lm) {
-                    Err(e) => (load_ok, format!("\x1b[31march fail\x1b[0m: {e}")),
-                    Ok(mut model) => {
-                        let backend = mr::cpu::CpuBackend::new();
-                        let t_fwd = Instant::now();
-                        let result = model.forward(0, &backend);
-                        let fwd_s = t_fwd.elapsed().as_secs_f64();
-                        let fwd_status = match result {
-                            Ok(logits) => {
-                                let finite = logits.iter().all(|v| v.is_finite());
-                                if finite {
-                                    format!("\x1b[32m{:.1}s ok\x1b[0m", fwd_s)
-                                } else {
-                                    "\x1b[31mnon-finite\x1b[0m".into()
-                                }
-                            }
-                            Err(e) => format!("\x1b[31merr\x1b[0m: {e}"),
-                        };
-                        (load_ok, fwd_status)
-                    }
+        let layers_str = if layers == 0 { "—".into() } else { layers.to_string() };
+        let ctx_str = if ctx == 0 {
+            "—".into()
+        } else if ctx >= 1000 {
+            format!("{}K", ctx / 1000)
+        } else {
+            ctx.to_string()
+        };
+
+        // Progress indicator on stderr so stdout stays clean.
+        let clear = "\x1b[2K\r";
+        let bench_col = |label: &str, width: usize, f: &dyn Fn() -> (String, String)| -> String {
+            eprint!("{clear}  bench {label} {}...", e.name);
+            let prev = std::panic::take_hook();
+            std::panic::set_hook(Box::new(|_| {}));
+            let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+            std::panic::set_hook(prev);
+            match result {
+                Ok((tok_s, sane)) => pad_bench(&tok_s, &sane, width),
+                Err(_) => {
+                    let pad = width.saturating_sub(3);
+                    format!("{:>pad$}\x1b[31merr\x1b[0m", "", pad = pad)
                 }
             }
         };
+
+        let cpu_str = bench_col("cpu", 9, &|| {
+            let b = mr::cpu::CpuBackend::new();
+            quick_bench(&path, &b)
+        });
+        let wgpu_str = bench_col("wgpu+rs", 9, &|| match mr::wgpu_rs::WgpuRsBackend::new() {
+            Ok(b) => quick_bench(&path, &b),
+            Err(_) => ("—".into(), "—".into()),
+        });
+        #[cfg(target_os = "macos")]
+        let honey_str = bench_col("honeycrisp", 10, &|| match mr::honeycrisp::HoneycrispBackend::new() {
+            Ok(b) => quick_bench(&path, &b),
+            Err(_) => ("—".into(), "—".into()),
+        });
+        #[cfg(not(target_os = "macos"))]
+        let honey_str = format!("{:>10}", "—");
+
+        let llama_str = match e.ollama_tag {
+            Some(tag) => {
+                eprint!("{clear}  bench llama {}...", e.name);
+                format!("{:>6}", bench_ollama(tag))
+            }
+            None => format!("{:>6}", "—"),
+        };
+
+        eprint!("{clear}");
         println!(
-            "  {:<26} {:<12} {:<8} {:<10} {:<20} {}",
-            e.name, e.family, e.role, load_status, forward_status, e.notes
+            "  {:<24} {:<12} {:<8} {:>6} {:>3} {:>5} {:>6}ms {} {} {} {}",
+            e.name,
+            e.family,
+            e.role,
+            format_size(disk_bytes),
+            layers_str,
+            ctx_str,
+            load_ms,
+            cpu_str,
+            wgpu_str,
+            honey_str,
+            llama_str
         );
     }
-    println!("  {}", "─".repeat(100));
+    println!("  {}", "─".repeat(width));
     println!();
+    println!("  legend: \x1b[32m✓\x1b[0m clean answer  ·  \x1b[33m?\x1b[0m fragmented/rambling  ·  \x1b[31m✗\x1b[0m garbled");
+    println!();
+}
+
+/// Pad bench result "tok/s sanity" into `width` visible chars (ignoring ANSI).
+fn pad_bench(tok_s: &str, sane: &str, width: usize) -> String {
+    // Visible length = tok_s (strip ANSI) + " " + 1 (sanity glyph)
+    let visible = visible_len(tok_s) + 2;
+    let pad = width.saturating_sub(visible);
+    format!("{:>pad$}{tok_s} {sane}", "", pad = pad)
+}
+
+fn visible_len(s: &str) -> usize {
+    // Strip CSI sequences \x1b[...m
+    let mut count = 0usize;
+    let mut in_esc = false;
+    for c in s.chars() {
+        if c == '\x1b' {
+            in_esc = true;
+            continue;
+        }
+        if in_esc {
+            if c == 'm' {
+                in_esc = false;
+            }
+            continue;
+        }
+        count += 1;
+    }
+    count
+}
+
+fn format_size(bytes: u64) -> String {
+    if bytes >= 1 << 30 {
+        format!("{:.1}G", bytes as f64 / (1u64 << 30) as f64)
+    } else if bytes >= 1 << 20 {
+        format!("{}M", bytes >> 20)
+    } else if bytes >= 1 << 10 {
+        format!("{}K", bytes >> 10)
+    } else {
+        format!("{}B", bytes)
+    }
+}
+
+/// Quick benchmark: generate 32 tokens on "What is 2+2? /no_think" and
+/// return (tok/s text, colored sanity glyph).
+fn quick_bench(path: &std::path::Path, backend: &dyn Backend) -> (String, String) {
+    let lm = match LoadedModel::load(path) {
+        Ok(m) => m,
+        Err(_) => return ("\x1b[31merr\x1b[0m".into(), "—".into()),
+    };
+    let mut model = match LlamaModel::from_loaded(&lm) {
+        Ok(m) => m,
+        Err(_) => return ("\x1b[31merr\x1b[0m".into(), "—".into()),
+    };
+    let tok = match build_tokenizer(&lm) {
+        Ok(t) => t,
+        Err(_) => return ("\x1b[31merr\x1b[0m".into(), "—".into()),
+    };
+    if model.to_backend(backend).is_err() {
+        return ("\x1b[31merr\x1b[0m".into(), "—".into());
+    }
+
+    let msgs = vec![ChatMessage {
+        role: "user".into(),
+        content: "What is 2+2? /no_think".into(),
+    }];
+    let prompt = tok.apply_chat_template(&msgs, true);
+    let cfg = SampleConfig {
+        method: SampleKind::Greedy,
+        temperature: 1.0,
+        top_p: 0.95,
+        top_k: 40,
+    };
+
+    // Prefill + decode, measure decode-only time.
+    model.reset_kv_cache();
+    let prompt_ids = tok.encode(&prompt);
+    let mut logits: Vec<f32> = Vec::new();
+    for &tid in &prompt_ids {
+        match model.forward(tid, backend) {
+            Ok(l) => logits = l,
+            Err(_) => return ("\x1b[31merr\x1b[0m".into(), "—".into()),
+        }
+    }
+
+    let t_decode = Instant::now();
+    let mut generated: Vec<u32> = Vec::with_capacity(32);
+    for _ in 0..32 {
+        let next = mr::generate::sample(&logits, cfg);
+        if tok.is_eos(next) {
+            break;
+        }
+        generated.push(next);
+        match model.forward(next, backend) {
+            Ok(l) => logits = l,
+            Err(_) => break,
+        }
+    }
+    let dt = t_decode.elapsed().as_secs_f64();
+
+    let tok_s = if generated.len() > 0 && dt > 0.01 {
+        format!("{:.0}", generated.len() as f64 / dt)
+    } else {
+        "0".into()
+    };
+
+    let text = tok.decode(&generated, false);
+    let sane = validate_math_answer(&text);
+    (tok_s, sane.into())
+}
+
+/// Classify generation quality for "What is 2+2?" prompt.
+fn validate_math_answer(text: &str) -> &'static str {
+    let text = text.trim().to_lowercase();
+    let body = if let Some(pos) = text.find("</think>") {
+        &text[pos + 8..]
+    } else {
+        &text[..]
+    };
+    let body = body.trim();
+
+    let frag_patterns = ["|im_", "|im ", "|endof", "|user", "|assistant", "|fim"];
+    let frag_count: usize = frag_patterns.iter().map(|p| body.matches(p).count()).sum();
+
+    let has_exact = body.contains("2+2") || body.contains("2 + 2");
+    let has_equals_four =
+        body.contains("= 4") || body.contains("=4") || body.contains("is 4") || body.contains("is four");
+    let has_four = body.contains('4') || body.contains("four");
+
+    let repetitive = body.len() > 20 && {
+        let first_20: String = body.chars().take(20).collect();
+        body.matches(&first_20[..]).count() > 2
+    };
+
+    if body.len() < 2 {
+        "\x1b[31m✗\x1b[0m"
+    } else if frag_count >= 3 || repetitive {
+        "\x1b[31m✗\x1b[0m"
+    } else if has_four && frag_count == 0 && !repetitive {
+        if has_equals_four || has_exact {
+            "\x1b[32m✓\x1b[0m"
+        } else {
+            "\x1b[33m?\x1b[0m"
+        }
+    } else if has_four {
+        "\x1b[33m?\x1b[0m"
+    } else {
+        "\x1b[31m✗\x1b[0m"
+    }
+}
+
+/// Call local ollama, return tok/s as string.
+fn bench_ollama(tag: &str) -> String {
+    let body = format!(
+        r#"{{"model":"{tag}","prompt":"What is 2+2? /no_think","stream":false,"options":{{"num_predict":64,"temperature":0}}}}"#
+    );
+    let out = std::process::Command::new("curl")
+        .args([
+            "-s",
+            "--max-time",
+            "30",
+            "http://localhost:11434/api/generate",
+            "-d",
+            &body,
+        ])
+        .output();
+    match out {
+        Ok(o) if o.status.success() => {
+            let text = String::from_utf8_lossy(&o.stdout);
+            let eval_count = extract_json_u64(&text, "eval_count");
+            let eval_dur_ns = extract_json_u64(&text, "eval_duration");
+            if eval_count > 0 && eval_dur_ns > 0 {
+                format!("{:.0}", eval_count as f64 / (eval_dur_ns as f64 / 1e9))
+            } else {
+                "—".into()
+            }
+        }
+        _ => "—".into(),
+    }
+}
+
+/// Parse (num_hidden_layers, max_position_embeddings) from the text header
+/// without loading weights. Returns zeros on failure.
+fn read_header_meta(path: &std::path::Path) -> (usize, u64) {
+    use std::io::Read;
+    let mut f = match std::fs::File::open(path) {
+        Ok(f) => f,
+        Err(_) => return (0, 0),
+    };
+    let mut buf = vec![0u8; 2 * 1024 * 1024];
+    let n = f.read(&mut buf).unwrap_or(0);
+    buf.truncate(n);
+    // Arbitrary read boundary may split a UTF-8 codepoint; lossy is fine —
+    // we only scan line-based integers in the TOML header.
+    let text = String::from_utf8_lossy(&buf);
+    let layers = find_int(&text, "num_hidden_layers").unwrap_or(0) as usize;
+    let ctx = find_int(&text, "max_position_embeddings")
+        .or_else(|| find_int(&text, "context_length"))
+        .unwrap_or(0) as u64;
+    (layers, ctx)
+}
+
+fn find_int(text: &str, key: &str) -> Option<i64> {
+    for line in text.lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix(key) {
+            let rest = rest.trim_start();
+            if let Some(v) = rest.strip_prefix('=') {
+                let v = v.trim().trim_matches('"');
+                if let Ok(n) = v.parse::<i64>() {
+                    return Some(n);
+                }
+            }
+        }
+    }
+    None
+}
+
+fn extract_json_u64(json: &str, key: &str) -> u64 {
+    let pat = format!("\"{key}\":");
+    json.find(&pat)
+        .and_then(|p| {
+            let after = &json[p + pat.len()..];
+            let num: String = after
+                .chars()
+                .skip_while(|c| c.is_whitespace())
+                .take_while(|c| c.is_ascii_digit())
+                .collect();
+            num.parse().ok()
+        })
+        .unwrap_or(0)
 }
 
 fn list_backends() {
