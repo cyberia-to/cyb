@@ -172,7 +172,7 @@ curl -s https://node.bostrom.cybernode.ai/cyber/graph/snapshot?block=23195000 \
 the snapshot CID is
 
 ```
-CID(.graph) = BLAKE3(file bytes)
+CID(.graph) = hemera(file bytes)
 ```
 
 two snapshots with the same chain_id, block, token table, and cyberlinks produce byte-identical files and therefore the same CID.
@@ -204,7 +204,7 @@ signal.ν       ───►     neuron-level stats in eval; alignment partition
 signal ordering ───►    signal-respecting walks for the MLP pass
 config.tokens  ───►     per-denomination stake weighting
 config.block   ───►     [lineage].block in the compiled model
-BLAKE3(.graph) ───►     [lineage].source in the compiled model
+hemera(.graph) ───►     [lineage].source in the compiled model
 ```
 
 the compiled model's `[lineage]` section carries the exact snapshot CID, so every compile is provable against its input.
