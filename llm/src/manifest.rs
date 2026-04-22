@@ -23,11 +23,11 @@ pub enum Role {
 
 impl std::fmt::Display for Role {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Self::Router => write!(f, "router"),
-            Self::Specialist => write!(f, "specialist"),
-            Self::General => write!(f, "general"),
-        }
+        f.pad(match self {
+            Self::Router => "router",
+            Self::Specialist => "specialist",
+            Self::General => "general",
+        })
     }
 }
 
