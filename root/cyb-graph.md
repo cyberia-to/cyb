@@ -19,7 +19,7 @@ three required sections. four documented extensions. one external format ([[cyb-
 | config | .toml | chain id, block, capture time, token table, vocab refs |
 | signals | .signals | the atomic broadcast units — signed bundles of cyberlinks |
 
-three sections is the floor. `particles` (as a CID list), `cyberlinks` (as a flat stream), `semcons`, `focus`, `spectral_gap` — all derive from `signals` + `config` in milliseconds.
+three sections is the floor. the particle set, the flat cyberlink stream, semcons, focus, spectral gap — all derive from `signals` + `config` in milliseconds.
 
 the snapshot preserves the chain's atom: a [[cyber/signal|signal]] is the unit a [[neuron]] commits in one step, carrying an ordered vector of [[cyberlinks]] under one signature, one timestamp, one optional proof. flattening signals into a link stream throws away structure the chain pays for every block. the base spec keeps signals intact.
 
@@ -69,27 +69,27 @@ captured_at    = 1742740920
 format_version = 1
 
 [[tokens]]
-cid    = "0x1a2b3c4d..."
-symbol = "BOOT"
-weight = 1000
+particle = "0x1a2b3c4d..."
+symbol   = "BOOT"
+weight   = 1000
 
 [[tokens]]
-cid    = "0x5e6f7a8b..."
-symbol = "VOLT"
-weight = 50000
+particle = "0x5e6f7a8b..."
+symbol   = "VOLT"
+weight   = 50000
 
 [[tokens]]
-cid    = "0x9c0d1e2f..."
-symbol = "AMPERE"
-weight = 1000000
+particle = "0x9c0d1e2f..."
+symbol   = "AMPERE"
+weight   = 1000000
 
 [[vocab]]
-cid  = "0xaabbccdd..."
-name = "bostrom-23000000"
+particle = "0xaabbccdd..."
+name     = "bostrom-23000000"
 
 [[vocab]]
-cid  = "0xeeff0011..."
-name = "mytoken-private"
+particle = "0xeeff0011..."
+name     = "mytoken-private"
 ```
 
 | field | meaning |
@@ -98,12 +98,12 @@ name = "mytoken-private"
 | block | source-native sequence number; chain block height (omit for non-chain graphs) |
 | captured_at | unix seconds when the snapshot was emitted |
 | format_version | spec revision (currently `1`) |
-| [[tokens]] | per-denomination entries: cid (hemera hash), symbol (human label), weight (multiplier) |
-| [[vocab]] | optional list of [[cyb-vocab|.vocab]] files this snapshot defers to, in resolution order |
+| [[tokens]] | per-denomination entries: particle (the denomination's identity), symbol (human label), weight (multiplier) |
+| [[vocab]] | optional list of [[cyb-vocab|.vocab]] files this snapshot defers to, referenced by particle, in resolution order |
 
 ### tokens
 
-tokens are first-class particles — each denomination is identified by its hemera hash, the same way every other node in the graph is. the link record carries `τ` as the 32-byte CID; the compiler looks up `weight` and `symbol` in this table by content match. weight is integer per-mille: `weight = 1000` means 1.0×.
+tokens are first-class particles — each denomination is a particle the same way every other node in the graph is. the link record carries `τ` as a 32-byte particle; the compiler looks up `weight` and `symbol` in this table by content match. weight is integer per-mille: `weight = 1000` means 1.0×.
 
 the table may come from chain governance (if the chain pins it) or from the snapshot publisher (if it is policy). either way, the snapshot commits to these specific weights — different token tables produce different snapshots.
 
@@ -111,7 +111,7 @@ user-defined tokens are declared the same way. a private graph with `mytoken` ju
 
 ### vocab
 
-each `[[vocab]]` entry references an external [[cyb-vocab|.vocab]] file by its hemera CID. order matters: when resolving a particle CID to a vocab id, files are searched in declared order — first hit wins. particles found in `signals` but absent from all referenced vocab files are appended to the end at compile time.
+each `[[vocab]]` entry references an external [[cyb-vocab|.vocab]] file by its particle (the file's own hemera hash). order matters: when resolving a particle to a vocab id, files are searched in declared order — first hit wins. particles found in `signals` but absent from all referenced vocab files are appended to the end at compile time.
 
 a snapshot without any `[[vocab]]` entries derives its vocab entirely from its own signals. snapshots that share vocab files produce models with stable, comparable token id assignments — a particle has the same id across compiles that pull the same vocab.
 
@@ -135,7 +135,7 @@ link record (105 bytes), repeated n times:
 
 total signal size = `44 + 105·n` bytes. no padding — fields pack tight.
 
-example: a 2-link signal raw bytes (truncated CIDs for readability):
+example: a 2-link signal raw bytes (truncated particles for readability):
 
 ```
 header  = AA…AA  ‖  20180101_12:34:56  ‖  02
@@ -144,7 +144,7 @@ link 1  = P0…P0  ‖  Q1…Q1  ‖  TBOOT…  ‖  500   ‖  +1
 total   = 44 + 2·105 = 254 bytes
 ```
 
-signals appear in canonical time order: ascending `t`, then (for chain-sourced snapshots) ascending intra-batch index. links within a signal appear in commit order — the sequence the neuron chose. `t ≤ config.captured_at`. `τ` must match a `cid` in `config.tokens`; conforming consumers reject snapshots with unknown token CIDs.
+signals appear in canonical time order: ascending `t`, then (for chain-sourced snapshots) ascending intra-batch index. links within a signal appear in commit order — the sequence the neuron chose. `t ≤ config.captured_at`. `τ` must match a `particle` in `config.tokens`; conforming consumers reject snapshots with unknown token particles.
 
 unix seconds is chain-agnostic. a chain-sourced `.graph` sets each signal's `t` from the chain header timestamp of the block the signal landed in; a user-defined graph (e.g. `mytoken`) sets `t` from wall-clock at commit. either way, consumers compare, sort, and range-query signals without knowing anything about blocks.
 
@@ -195,13 +195,13 @@ curl -s https://node.bostrom.cybernode.ai/cyber/graph/snapshot?block=23195000 \
 
 ## snapshot identity
 
-the snapshot CID is
+a `.graph` file is itself a particle. its identity is
 
 ```
-CID(.graph) = hemera(file bytes)
+particle(.graph) = hemera(file bytes)
 ```
 
-two snapshots with the same frontmatter, card, config (including identical token table and vocab refs), and signals produce byte-identical files and the same CID. adding or removing any extension changes the file bytes and therefore the CID.
+two snapshots with the same frontmatter, card, config (including identical token table and vocab refs), and signals produce byte-identical files and the same particle. adding or removing any extension changes the file bytes and therefore the particle.
 
 ## extensions
 
@@ -238,7 +238,7 @@ pub fn focus(snap: Snapshot, cfg: Config) -> Vec<u64> {
 }
 ```
 
-every chain ships the same canonical program; user-defined graphs may substitute their own. the program section's hemera CID identifies the operator set the snapshot was produced with.
+every chain ships the same canonical program; user-defined graphs may substitute their own. the program section's particle (its hemera hash) identifies the operator set the snapshot was produced with.
 
 ### proof
 
@@ -284,21 +284,21 @@ layout:
 repeated n times:
   [0..4]               m  number of nonzero entries for this signal (u32 LE)
   repeated m times:
-    [0..32]            cid    (hemera hash of the affected particle)
-    [32..40]           delta  (Goldilocks field element, i64 LE — signed)
+    [0..32]            particle  (the affected particle, 32 B)
+    [32..40]           delta     (Goldilocks field element, i64 LE — signed)
 ```
 
 ordered identically to signals.
 
-### particle
+### particles
 
-inline content for some or all CIDs the snapshot references. the canonical mechanism for bundling particle bytes inside the file. combined with `[[vocab]]` references in config, this covers the spectrum from "topology only, fetch content elsewhere" to "fully self-contained".
+inline particle dictionary, identical layout to the [[cyb-vocab]] `particles` section. the canonical mechanism for bundling particle data inside the snapshot. combined with `[[vocab]]` references in config, this covers the spectrum from "topology only, fetch data elsewhere" to "fully self-contained".
 
 frontmatter entry:
 
 ```toml
 [[files]]
-name = "particle"
+name = "particles"
 format = "particles"
 size = 8478912
 ```
@@ -306,16 +306,17 @@ size = 8478912
 layout:
 
 ```
-[0..4]                 n  particle count (u32 LE)
-repeated n times:
-  [0..32]              cid    (hemera hash, 32 B)
-  [32..40]             len    (u64 LE)
-  [40..40+len]         bytes  (raw content; consumer interprets)
+~~~particles:
+  [0..4]               n  particle count (u32 LE)
+  repeated n times:
+    [0..32]            particle  (hemera hash, 32 B)
+    [32..40]           len       (u64 LE)
+    [40..40+len]       data      (raw bytes; hemera(data) = particle)
 ```
 
-`n = 0` is a valid empty section. entries appear in any order; a CID present in `~~~particle` overrides any same-CID lookup against vocab files.
+`n = 0` is a valid empty section. entries appear in any order; a particle present in `~~~particles` overrides any same-particle lookup against external vocab files.
 
-a snapshot that wants full self-containment puts every CID referenced by signals into `~~~particle`. a snapshot that wants compact + topology only omits the section entirely and relies on vocab refs in config.
+a snapshot that wants full self-containment puts every particle referenced by signals into `~~~particles`. a snapshot that wants compact + topology only omits the section entirely and relies on vocab refs in config.
 
 ## relation to .model
 
@@ -333,7 +334,7 @@ config.block   ───►     [lineage].block in the compiled model
 hemera(.graph) ───►     [lineage].source in the compiled model
 ```
 
-the compiled model's `[lineage]` section carries the exact snapshot CID, so every compile is provable against its input.
+the compiled model's `[lineage]` section carries the exact snapshot particle, so every compile is provable against its input.
 
 ## why three required sections
 
