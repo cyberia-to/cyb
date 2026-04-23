@@ -165,10 +165,70 @@ fn run_import(dir_path: &str) {
         .or_else(|| config_json["tie_word_embeddings"].as_bool())
         .unwrap_or(true);
 
+    // LlamaStyle+ (Gemma 3/4) optional fields. Each is omitted from the
+    // config when absent so plain LlamaStyle models stay clean.
+    // Spec: reference/runtime/format.md §"LlamaStyle+ extra fields"
+    let hidden_activation = text_config["hidden_activation"]
+        .as_str()
+        .map(|s| s.to_string());
+    let final_logit_softcapping = text_config["final_logit_softcapping"].as_f64();
+    let attention_k_eq_v = text_config["attention_k_eq_v"].as_bool();
+    let sliding_window = text_config["sliding_window"].as_u64();
+    let global_head_dim = text_config["global_head_dim"].as_u64();
+    let num_global_key_value_heads = text_config["num_global_key_value_heads"].as_u64();
+    let layer_types: Vec<String> = text_config["layer_types"]
+        .as_array()
+        .map(|a| {
+            a.iter()
+                .filter_map(|v| v.as_str().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
     println!(
         "Architecture: {model_type}, hidden={hidden_size}, heads={num_heads}/{kv_heads}, \
          layers={num_layers}, tie_embed={tie_word_embeddings}"
     );
+    if !layer_types.is_empty() {
+        let n_sliding = layer_types.iter().filter(|t| *t == "sliding_attention").count();
+        let n_full = layer_types.iter().filter(|t| *t == "full_attention").count();
+        println!(
+            "LlamaStyle+: layer_types={n_sliding} sliding / {n_full} full, \
+             gh_dim={global_head_dim:?}, n_gkv={num_global_key_value_heads:?}, \
+             k_eq_v={attention_k_eq_v:?}, softcap={final_logit_softcapping:?}, \
+             act={hidden_activation:?}"
+        );
+    }
+
+    // Build the optional LlamaStyle+ block. Each field is added on its own
+    // line so the spec ordering is preserved and absent fields produce no
+    // dangling whitespace.
+    let mut llamaplus = String::new();
+    if let Some(act) = &hidden_activation {
+        llamaplus.push_str(&format!("hidden_activation = \"{act}\"\n"));
+    }
+    if let Some(cap) = final_logit_softcapping {
+        llamaplus.push_str(&format!("final_logit_softcapping = {cap}\n"));
+    }
+    if let Some(k_eq_v) = attention_k_eq_v {
+        llamaplus.push_str(&format!("attention_k_eq_v = {k_eq_v}\n"));
+    }
+    if let Some(win) = sliding_window {
+        llamaplus.push_str(&format!("sliding_window = {win}\n"));
+    }
+    if let Some(gh) = global_head_dim {
+        llamaplus.push_str(&format!("global_head_dim = {gh}\n"));
+    }
+    if let Some(gkv) = num_global_key_value_heads {
+        llamaplus.push_str(&format!("num_global_key_value_heads = {gkv}\n"));
+    }
+    if !layer_types.is_empty() {
+        let quoted: Vec<String> = layer_types
+            .iter()
+            .map(|s| format!("\"{}\"", s))
+            .collect();
+        llamaplus.push_str(&format!("layer_types = [{}]\n", quoted.join(", ")));
+    }
 
     let config_toml = format!(
         r#"model_type = "{model_type}"
@@ -186,7 +246,7 @@ max_position_embeddings = {max_pos}
 rope_theta = {rope_theta}
 rms_norm_eps = {rms_norm_eps}
 tie_word_embeddings = {tie_word_embeddings}
-
+{llamaplus}
 [tokenizer]
 type = "bpe"
 eos_token = "{eos_token}"
@@ -312,6 +372,28 @@ print('\n'.join(lines))
     let mut tensor_names: Vec<&String> = weights.weights.keys().collect();
     tensor_names.sort();
 
+    // Existing HF-canonical names in the source. Used to detect K=V layers
+    // where v_proj is absent and must be materialised from k_proj.
+    let existing_hf: std::collections::HashSet<String> = tensor_names
+        .iter()
+        .map(|n| mi::import::gguf_to_hf(n))
+        .collect();
+    // Per spec (reference/runtime/import.md §"K=V shared projection"): when
+    // the layer is K=V at the source (no v_proj tensor), the importer emits
+    // a v_proj tensor with the same bytes as k_proj. Runtime stays one
+    // codepath. Gemma-4 only sets K=V on full_attention layers.
+    let kv_eq_layers: std::collections::HashSet<usize> =
+        if attention_k_eq_v == Some(true) {
+            layer_types
+                .iter()
+                .enumerate()
+                .filter(|(_, t)| *t == "full_attention")
+                .map(|(i, _)| i)
+                .collect()
+        } else {
+            std::collections::HashSet::new()
+        };
+
     for tname in &tensor_names {
         let w = &weights.weights[*tname];
 
@@ -372,6 +454,31 @@ print('\n'.join(lines))
         ));
         weight_data.extend_from_slice(data_ref);
         offset += size;
+
+        // K=V duplicate emission. If this is a k_proj for a K=V full layer
+        // and the source lacks v_proj, emit v_proj with identical bytes.
+        if let Some(rest) = hf_name.strip_prefix("model.layers.") {
+            if let Some(dot) = rest.find('.') {
+                if let Ok(layer_idx) = rest[..dot].parse::<usize>() {
+                    let suffix = &rest[dot + 1..];
+                    if suffix == "self_attn.k_proj.weight"
+                        && kv_eq_layers.contains(&layer_idx)
+                    {
+                        let v_name = format!(
+                            "model.layers.{layer_idx}.self_attn.v_proj.weight"
+                        );
+                        if !existing_hf.contains(&v_name) {
+                            tensors_lines.push(format!(
+                                "[\"{}\"]\nshape    = [{}]\nencoding = \"{}\"\noffset   = {}\nsize     = {}\n",
+                                v_name, shape_str, encoding, offset, size
+                            ));
+                            weight_data.extend_from_slice(data_ref);
+                            offset += size;
+                        }
+                    }
+                }
+            }
+        }
     }
     let tensors_toml = tensors_lines.join("\n");
 
