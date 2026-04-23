@@ -224,6 +224,10 @@ fn detect_chat_format(bpe: &Bpe, model_type: &str) -> Option<String> {
     if bpe.id("<|eot_id|>").is_some() {
         return Some("llama-3".into());
     }
+    // Gemma 4 uses <|turn> / <turn|> markers — distinct from Gemma 1/2/3.
+    if bpe.id("<|turn>").is_some() && bpe.id("<turn|>").is_some() {
+        return Some("gemma4".into());
+    }
     if bpe.id("<start_of_turn>").is_some() {
         return Some("gemma".into());
     }

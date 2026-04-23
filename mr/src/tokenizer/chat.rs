@@ -28,6 +28,7 @@ pub fn apply_chat_template(
         Some("chatml") => render_chatml(messages, add_generation_prompt),
         Some("llama-3") => render_llama3(messages, add_generation_prompt),
         Some("gemma") => render_gemma(messages, add_generation_prompt),
+        Some("gemma4") => render_gemma4(messages, add_generation_prompt),
         Some("plain") | None => match template {
             Some(t) => render_minimal_jinja(t, messages, add_generation_prompt),
             None => plain_concat(messages),
@@ -81,7 +82,7 @@ pub fn render_llama3(messages: &[ChatMessage], add_gen: bool) -> String {
     s
 }
 
-/// Gemma: `<start_of_turn>role\ncontent<end_of_turn>\n`
+/// Gemma 1/2/3: `<start_of_turn>role\ncontent<end_of_turn>\n`
 pub fn render_gemma(messages: &[ChatMessage], add_gen: bool) -> String {
     let mut s = String::new();
     for m in messages {
@@ -95,6 +96,26 @@ pub fn render_gemma(messages: &[ChatMessage], add_gen: bool) -> String {
     }
     if add_gen {
         s.push_str("<start_of_turn>model\n");
+    }
+    s
+}
+
+/// Gemma 4: `<bos><|turn>role\ncontent<turn|>\n` (different markers from
+/// Gemma 1/2/3 — the new tokens are `<|turn>` (id 105) and `<turn|>` (106)
+/// per the Gemma-4 vocab, not `<start_of_turn>` / `<end_of_turn>`).
+pub fn render_gemma4(messages: &[ChatMessage], add_gen: bool) -> String {
+    let mut s = String::new();
+    s.push_str("<bos>");
+    for m in messages {
+        s.push_str("<|turn>");
+        let role = if m.role == "assistant" { "model" } else { &m.role };
+        s.push_str(role);
+        s.push('\n');
+        s.push_str(&m.content);
+        s.push_str("<turn|>\n");
+    }
+    if add_gen {
+        s.push_str("<|turn>model\n");
     }
     s
 }

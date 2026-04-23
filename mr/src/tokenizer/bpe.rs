@@ -45,10 +45,18 @@ impl Bpe {
         let byte_encoder = byte_level::build_byte_encoder();
         let byte_decoder = byte_level::build_byte_decoder(&byte_encoder);
 
-        // Detect specials by pattern <|...|>
+        // Detect special tokens: anything that looks like a control token
+        // — angle-bracketed, no whitespace, short. Catches both ChatML/HF
+        // style (`<|im_start|>`, `<|eot_id|>`) and Gemma style (`<bos>`,
+        // `<|turn>`, `<turn|>`, `<end_of_turn>`).
         let specials: Vec<(String, u32)> = reverse
             .iter()
-            .filter(|(s, _)| s.starts_with("<|") && s.ends_with("|>"))
+            .filter(|(s, _)| {
+                s.starts_with('<')
+                    && s.ends_with('>')
+                    && s.len() <= 32
+                    && !s.contains(char::is_whitespace)
+            })
             .map(|(s, &id)| (s.clone(), id))
             .collect();
 
