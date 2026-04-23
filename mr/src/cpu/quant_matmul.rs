@@ -15,6 +15,10 @@ use crate::tensor::Tensor;
 use rayon::prelude::*;
 use wide::f32x8;
 
+/// Per-thread chunk of output rows. 64 rows = 256 bytes = 4 cache lines.
+/// Sized to amortize rayon dispatch and own whole cache lines per thread.
+const ROW_CHUNK: usize = 64;
+
 /// Matmul with quantized weight. `x` is f32 [..., K], `w_bytes` and `w_dtype`
 /// describe the weight matrix [N, K] in its native quant format.
 ///
@@ -77,12 +81,18 @@ fn matmul_q4_0(
     for b in 0..batch {
         let x_row = &x[b * k..(b + 1) * k];
         let out_row = &mut out[b * n..(b + 1) * n];
+        // Chunked: each thread owns whole cache lines (16 f32 = 64 bytes).
+        // Removes false sharing on output writes across threads.
         out_row
-            .par_iter_mut()
+            .par_chunks_mut(ROW_CHUNK)
             .enumerate()
-            .for_each(|(i, y)| {
-                let w_row = &w[i * row_bytes..(i + 1) * row_bytes];
-                *y = q4_0_dot(x_row, w_row, blocks_per_row);
+            .for_each(|(chunk_id, chunk)| {
+                let row_base = chunk_id * ROW_CHUNK;
+                for (offset, y) in chunk.iter_mut().enumerate() {
+                    let i = row_base + offset;
+                    let w_row = &w[i * row_bytes..(i + 1) * row_bytes];
+                    *y = q4_0_dot(x_row, w_row, blocks_per_row);
+                }
             });
     }
     Ok(())
@@ -194,29 +204,32 @@ fn matmul_q8_0(
         let x_row = &x[b * k..(b + 1) * k];
         let out_row = &mut out[b * n..(b + 1) * n];
         out_row
-            .par_iter_mut()
+            .par_chunks_mut(ROW_CHUNK)
             .enumerate()
-            .for_each(|(i, y)| {
-                let w_row = &w[i * row_bytes..(i + 1) * row_bytes];
-                let mut sum = 0f32;
-                for blk in 0..blocks_per_row {
-                    let base = blk * 34;
-                    let d = half::f16::from_bits(u16::from_le_bytes([
-                        w_row[base],
-                        w_row[base + 1],
-                    ]))
-                    .to_f32();
-                    // 32 signed bytes → 4 chunks of 8 → 4 f32x8 FMA
-                    let mut acc = f32x8::ZERO;
-                    for chunk in 0..4 {
-                        let off = chunk * 8;
-                        let qf = i8_bytes_f32x8(&w_row[base + 2 + off..base + 2 + off + 8]);
-                        let xv = f32x8::from(slice8(&x_row[blk * 32 + off..blk * 32 + off + 8]));
-                        acc = qf.mul_add(xv, acc);
+            .for_each(|(chunk_id, chunk)| {
+                let row_base = chunk_id * ROW_CHUNK;
+                for (offset, y) in chunk.iter_mut().enumerate() {
+                    let i = row_base + offset;
+                    let w_row = &w[i * row_bytes..(i + 1) * row_bytes];
+                    let mut sum = 0f32;
+                    for blk in 0..blocks_per_row {
+                        let base = blk * 34;
+                        let d = half::f16::from_bits(u16::from_le_bytes([
+                            w_row[base],
+                            w_row[base + 1],
+                        ]))
+                        .to_f32();
+                        let mut acc = f32x8::ZERO;
+                        for c in 0..4 {
+                            let off = c * 8;
+                            let qf = i8_bytes_f32x8(&w_row[base + 2 + off..base + 2 + off + 8]);
+                            let xv = f32x8::from(slice8(&x_row[blk * 32 + off..blk * 32 + off + 8]));
+                            acc = qf.mul_add(xv, acc);
+                        }
+                        sum += d * acc.reduce_add();
                     }
-                    sum += d * acc.reduce_add();
+                    *y = sum;
                 }
-                *y = sum;
             });
     }
     Ok(())
@@ -240,59 +253,82 @@ fn matmul_q4_k(
     let blocks_per_row = k / 256;
     let row_bytes = blocks_per_row * q4_k::BLOCK_BYTES;
 
+    // Precompute x sub-block sums once per matmul. Each Q4_K super-block
+    // covers 256 x values across 8 sub-blocks of 32. The per-sub-block sum
+    // of x is independent of weight, so it is reused across all N output rows.
+    let subblocks_per_batch = blocks_per_row * 8;
+    let mut x_subblock_sums = vec![0f32; batch * subblocks_per_batch];
     for b in 0..batch {
         let x_row = &x[b * k..(b + 1) * k];
+        let sums_row = &mut x_subblock_sums[b * subblocks_per_batch..(b + 1) * subblocks_per_batch];
+        for blk in 0..blocks_per_row {
+            for j in 0..8 {
+                let x_off = blk * 256 + j * 32;
+                let mut s = f32x8::ZERO;
+                for c in 0..4 {
+                    let off = c * 8;
+                    s += f32x8::from(slice8(&x_row[x_off + off..x_off + off + 8]));
+                }
+                sums_row[blk * 8 + j] = s.reduce_add();
+            }
+        }
+    }
+
+    for b in 0..batch {
+        let x_row = &x[b * k..(b + 1) * k];
+        let x_sums = &x_subblock_sums[b * subblocks_per_batch..(b + 1) * subblocks_per_batch];
         let out_row = &mut out[b * n..(b + 1) * n];
         out_row
-            .par_iter_mut()
+            .par_chunks_mut(ROW_CHUNK)
             .enumerate()
-            .for_each(|(i, y)| {
-                let w_row = &w[i * row_bytes..(i + 1) * row_bytes];
-                let mut sum = 0f32;
-                for blk in 0..blocks_per_row {
-                    let base = blk * 144;
-                    let d = half::f16::from_bits(u16::from_le_bytes([
-                        w_row[base],
-                        w_row[base + 1],
-                    ]))
-                    .to_f32();
-                    let dmin = half::f16::from_bits(u16::from_le_bytes([
-                        w_row[base + 2],
-                        w_row[base + 3],
-                    ]))
-                    .to_f32();
-                    let scales = &w_row[base + 4..base + 16];
-                    let qs = &w_row[base + 16..base + 144];
+            .for_each(|(chunk_id, chunk)| {
+                let row_base = chunk_id * ROW_CHUNK;
+                for (offset, y) in chunk.iter_mut().enumerate() {
+                    let i = row_base + offset;
+                    let w_row = &w[i * row_bytes..(i + 1) * row_bytes];
+                    let mut sum = 0f32;
+                    for blk in 0..blocks_per_row {
+                        let base = blk * 144;
+                        let d = half::f16::from_bits(u16::from_le_bytes([
+                            w_row[base],
+                            w_row[base + 1],
+                        ]))
+                        .to_f32();
+                        let dmin = half::f16::from_bits(u16::from_le_bytes([
+                            w_row[base + 2],
+                            w_row[base + 3],
+                        ]))
+                        .to_f32();
+                        let scales = &w_row[base + 4..base + 16];
+                        let qs = &w_row[base + 16..base + 144];
 
-                    for j in 0..8 {
-                        let (s, m) = q4_k::unpack_scale_min_k4_public(j, scales);
-                        let d_scaled = d * s as f32;
-                        let m_scaled = dmin * m as f32;
+                        for j in 0..8 {
+                            let (s, m) = q4_k::unpack_scale_min_k4_public(j, scales);
+                            let d_scaled = d * s as f32;
+                            let m_scaled = dmin * m as f32;
 
-                        let pair = j / 2;
-                        let is_upper = j % 2;
-                        let qs_off = pair * 32;
+                            let pair = j / 2;
+                            let is_upper = j % 2;
+                            let qs_off = pair * 32;
 
-                        let x_off = blk * 256 + j * 32;
-                        // 32 values per sub-block → 4 f32x8 lanes.
-                        let mut acc = f32x8::ZERO;
-                        let mut x_sum_v = f32x8::ZERO;
-                        for chunk in 0..4 {
-                            let off = chunk * 8;
-                            let b8 = &qs[qs_off + off..qs_off + off + 8];
-                            let nibs = if is_upper == 0 {
-                                nibbles_low_f32x8(b8)
-                            } else {
-                                nibbles_high_f32x8(b8)
-                            };
-                            let xv = f32x8::from(slice8(&x_row[x_off + off..x_off + off + 8]));
-                            acc = nibs.mul_add(xv, acc);
-                            x_sum_v += xv;
+                            let x_off = blk * 256 + j * 32;
+                            let mut acc = f32x8::ZERO;
+                            for c in 0..4 {
+                                let off = c * 8;
+                                let b8 = &qs[qs_off + off..qs_off + off + 8];
+                                let nibs = if is_upper == 0 {
+                                    nibbles_low_f32x8(b8)
+                                } else {
+                                    nibbles_high_f32x8(b8)
+                                };
+                                let xv = f32x8::from(slice8(&x_row[x_off + off..x_off + off + 8]));
+                                acc = nibs.mul_add(xv, acc);
+                            }
+                            sum += d_scaled * acc.reduce_add() - m_scaled * x_sums[blk * 8 + j];
                         }
-                        sum += d_scaled * acc.reduce_add() - m_scaled * x_sum_v.reduce_add();
                     }
+                    *y = sum;
                 }
-                *y = sum;
             });
     }
     Ok(())
@@ -320,60 +356,64 @@ fn matmul_q6_k(
         let x_row = &x[b * k..(b + 1) * k];
         let out_row = &mut out[b * n..(b + 1) * n];
         out_row
-            .par_iter_mut()
+            .par_chunks_mut(ROW_CHUNK)
             .enumerate()
-            .for_each(|(i, y)| {
-                let w_row = &w[i * row_bytes..(i + 1) * row_bytes];
-                let mut sum = 0f32;
-                for blk in 0..blocks_per_row {
-                    let base = blk * 210;
-                    let ql = &w_row[base..base + 128];
-                    let qh = &w_row[base + 128..base + 192];
-                    let scales = &w_row[base + 192..base + 208];
-                    let d = half::f16::from_bits(u16::from_le_bytes([
-                        w_row[base + 208],
-                        w_row[base + 209],
-                    ]))
-                    .to_f32();
+            .for_each(|(chunk_id, chunk)| {
+                let row_base = chunk_id * ROW_CHUNK;
+                for (offset, y) in chunk.iter_mut().enumerate() {
+                    let i = row_base + offset;
+                    let w_row = &w[i * row_bytes..(i + 1) * row_bytes];
+                    let mut sum = 0f32;
+                    for blk in 0..blocks_per_row {
+                        let base = blk * 210;
+                        let ql = &w_row[base..base + 128];
+                        let qh = &w_row[base + 128..base + 192];
+                        let scales = &w_row[base + 192..base + 208];
+                        let d = half::f16::from_bits(u16::from_le_bytes([
+                            w_row[base + 208],
+                            w_row[base + 209],
+                        ]))
+                        .to_f32();
 
-                    // Per dequantize_row_q6_K: 2 halves × 4 sets × 32 values.
-                    // Strategy: build 32 scalar coefficients (dequantized values)
-                    // then SIMD dot-product against the 32 corresponding x values.
-                    for h in 0..2 {
-                        for i_set in 0..4 {
-                            let x_off = blk * 256 + h * 128 + i_set * 32;
-                            let ql_base = h * 64 + i_set * 16;
-                            let qh_base = h * 32;
-                            let shift = (i_set * 2) as u32;
-                            let sc_even = scales[h * 8 + i_set * 2] as i8 as f32;
-                            let sc_odd = scales[h * 8 + i_set * 2 + 1] as i8 as f32;
+                        // Per dequantize_row_q6_K: 2 halves × 4 sets × 32 values.
+                        // Build 32 dequantized coefficients, SIMD dot vs x.
+                        for h in 0..2 {
+                            for i_set in 0..4 {
+                                let x_off = blk * 256 + h * 128 + i_set * 32;
+                                let ql_base = h * 64 + i_set * 16;
+                                let qh_base = h * 32;
+                                let shift = (i_set * 2) as u32;
+                                let sc_even = scales[h * 8 + i_set * 2] as i8 as f32;
+                                let sc_odd = scales[h * 8 + i_set * 2 + 1] as i8 as f32;
 
-                            let mut coeffs = [0f32; 32];
-                            for l in 0..16 {
-                                let ql_val = ql[ql_base + l] & 0x0F;
-                                let qh_val = (qh[qh_base + l] >> shift) & 0x03;
-                                let q6 = (ql_val as i32) | ((qh_val as i32) << 4);
-                                coeffs[l] = sc_even * (q6 - 32) as f32;
-                            }
-                            for l in 0..16 {
-                                let ql_val = ql[ql_base + l] >> 4;
-                                let qh_val = (qh[qh_base + 16 + l] >> shift) & 0x03;
-                                let q6 = (ql_val as i32) | ((qh_val as i32) << 4);
-                                coeffs[16 + l] = sc_odd * (q6 - 32) as f32;
-                            }
+                                let mut coeffs = [0f32; 32];
+                                for l in 0..16 {
+                                    let ql_val = ql[ql_base + l] & 0x0F;
+                                    let qh_val = (qh[qh_base + l] >> shift) & 0x03;
+                                    let q6 = (ql_val as i32) | ((qh_val as i32) << 4);
+                                    coeffs[l] = sc_even * (q6 - 32) as f32;
+                                }
+                                for l in 0..16 {
+                                    let ql_val = ql[ql_base + l] >> 4;
+                                    let qh_val = (qh[qh_base + 16 + l] >> shift) & 0x03;
+                                    let q6 = (ql_val as i32) | ((qh_val as i32) << 4);
+                                    coeffs[16 + l] = sc_odd * (q6 - 32) as f32;
+                                }
 
-                            let mut acc = f32x8::ZERO;
-                            for chunk in 0..4 {
-                                let off = chunk * 8;
-                                let cv = f32x8::from(slice8(&coeffs[off..off + 8]));
-                                let xv = f32x8::from(slice8(&x_row[x_off + off..x_off + off + 8]));
-                                acc = cv.mul_add(xv, acc);
+                                let mut acc = f32x8::ZERO;
+                                for c in 0..4 {
+                                    let off = c * 8;
+                                    let cv = f32x8::from(slice8(&coeffs[off..off + 8]));
+                                    let xv =
+                                        f32x8::from(slice8(&x_row[x_off + off..x_off + off + 8]));
+                                    acc = cv.mul_add(xv, acc);
+                                }
+                                sum += d * acc.reduce_add();
                             }
-                            sum += d * acc.reduce_add();
                         }
                     }
+                    *y = sum;
                 }
-                *y = sum;
             });
     }
     Ok(())

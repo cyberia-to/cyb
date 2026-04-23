@@ -15,9 +15,11 @@ density: 0.98
 
 # deterministic 3d rendering
 
-The [[tri-kernel]] converges to a unique [[focus]] distribution for any given [[cybergraph]] state. This uniqueness extends naturally to spatial layout: one graph, one set of parameters, one world. Every [[neuron]] running the same protocol on the same graph sees the same three-dimensional structure. No randomness, no server, no negotiation.
+The [[tri-kernel]] converges to a unique [[focus]] distribution for any given [[cybergraph]] state. This uniqueness extends to spatial layout: one graph, one set of parameters, one world. Every [[neuron]] running the same protocol on the same graph sees a topologically identical three-dimensional structure, with cluster membership and BVH geometry bit-identical, positions ε-identical, and pixel output perceptually indistinguishable.
 
 The rendering pipeline has three stages: spectral geometry from [[springs]], scale hierarchy from [[heat]], and flow dynamics from [[diffusion]]. Together they produce a complete, deterministic, navigable 3d world from raw graph topology.
+
+The formal specification is [[render]] (R-1.0). The T∞ tier uses the [[compiled transformers spec]] CT-1.1 model as its neural backbone, making render cost per-pixel rather than per-particle — the same frame budget holds from 10⁶ to 10¹⁵ particles. [[clifford]] defines the multivector primitive extensions that make the wedge product and shifted geometric product first-class operations across cybergraph, CT-1.1, and render T∞. The primary backend is [[honeycrisp]] (`aruminium` for Metal raster, `rane` for ANE inference, `acpu` for AMX eigensolve, `unimem` for zero-copy IOSurface).
 
 ## spectral geometry
 
