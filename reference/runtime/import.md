@@ -88,6 +88,26 @@ recognize and rename.
 `"Unknown tensor 'foo.bar.weight' in source; add mapping to
 import.md GGUF→canonical section"`.
 
+### K=V shared projection (Gemma 3/4)
+
+When the source declares K and V projections share weights
+(`attention_k_eq_v: true` in HF config, or a single fused tensor in
+GGUF), import emits **two canonical tensors** with identical bytes:
+
+```
+model.layers.{i}.self_attn.k_proj.weight
+model.layers.{i}.self_attn.v_proj.weight   # same bytes as k_proj
+```
+
+The runtime sees the standard layout and stays one codepath. The
+duplication cost (~kv_dim × hidden × bytes_per_elem per layer) is
+amortised against the simpler runtime — the alternative (a fused
+`kv_proj` tensor and a runtime-side split) would fork every backend's
+weight loading.
+
+The import sets `attention_k_eq_v = true` in the config so deduplicating
+storage is a possible later optimisation (load once, alias both names).
+
 ## Shape normalization
 
 GGUF stores weight matrices as `[in_features, out_features]` in

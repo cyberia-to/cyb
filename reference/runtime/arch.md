@@ -105,7 +105,27 @@ if layer.attention_type == "sliding":
     # in addition to causal mask
 ```
 
-Layer type pattern (Gemma 3): `[sliding, sliding, sliding, sliding, sliding, full, ...]`.
+Layer type pattern is per-layer, encoded in `config.layer_types`. Two
+layer kinds: `sliding` and `full`. Window size in `config.sliding_window`
+(typical: 1024).
+
+### Per-layer attention dimension switching (Gemma 4)
+
+Gemma 4 differs from Gemma 3: full-attention layers use a different
+head dimension and KV-head count than sliding-attention layers.
+
+| Layer kind | head_dim source | kv_heads source |
+|---|---|---|
+| `sliding` | `config.head_dim` | `config.num_key_value_heads` |
+| `full` | `config.global_head_dim` | `config.num_global_key_value_heads` |
+
+The number of query heads (`num_attention_heads`) is constant across layers.
+For Gemma-4-31b: 32 q-heads everywhere; sliding layers use 256 head_dim ×
+16 kv_heads, full layers use 512 head_dim × 4 kv_heads. Q/K/V projection
+shapes follow per-layer dims, so weight loading and forward both branch
+on `layer_types[i]`.
+
+Gemma 3 omits the `global_*` fields — every layer uses one shape.
 
 ### GELU activation instead of SiLU
 
@@ -113,24 +133,34 @@ Layer type pattern (Gemma 3): `[sliding, sliding, sliding, sliding, sliding, ful
 ffn = (Gelu_tanh(gate) ⊙ up) @ W_down^T
 ```
 
+Selected by `config.hidden_activation`. Canonical names:
+
+| Name | Op |
+|---|---|
+| `silu` (default) | `Silu` |
+| `gelu_pytorch_tanh` | `Gelu { approximate: true }` |
+| `gelu` | `Gelu { approximate: false }` |
+
 ### Final logit softcapping
 
 ```
-logits = tanh(logits / cap) * cap        # cap ~= 30.0
+logits = tanh(logits / cap) * cap        # cap = config.final_logit_softcapping
 ```
 
-Clamps logits to [-cap, cap], prevents runaway softmax.
+Clamps logits to [-cap, cap], prevents runaway softmax. Applied once
+after the LM head, before sampling. Skip when the field is absent or 0.
 
 ### Attention K=V shared projection
 
-`k_proj` and `v_proj` are the same tensor. Attention uses shared K/V:
+When `config.attention_k_eq_v` is true, the K and V projections share
+the same weights. The runtime sees two tensors named `k_proj.weight` and
+`v_proj.weight` with identical bytes — the import (mi) is responsible
+for splitting any fused `kv_proj` source into the two canonical names so
+the runtime stays one codepath.
 
-```
-kv = norm1 @ layer.self_attn.kv_proj.weight^T
-```
-
-Detected by absence of separate `k_proj.weight` and `v_proj.weight`;
-instead `kv_proj.weight` with shape `[2 * kv_dim, hidden]`.
+The shared-bytes case still uses GQA shapes: `kv_proj` ≡ `k_proj` ≡
+`v_proj` with shape `[kv_dim, hidden]`, where `kv_dim` follows the
+per-layer rule above.
 
 ## MoEStyle
 

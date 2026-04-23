@@ -115,6 +115,32 @@ Multimodal models store per-modality sub-sections if needed:
 `[architecture.text]`, `[architecture.vision]`, but `hidden_size`
 etc at `[architecture]` root refers to the primary modality.
 
+### LlamaStyle+ (Gemma 3/4) extra fields
+
+LlamaStyle+ models add the following optional fields to `[architecture]`:
+
+```toml
+hidden_activation = "gelu_pytorch_tanh"   # selects FFN activation
+final_logit_softcapping = 30.0            # clamp logits before sample
+attention_k_eq_v = true                   # K and V projections share weights
+sliding_window = 1024                     # window for sliding layers
+
+# Per-layer: one entry per layer, in order. Values: "sliding" | "full".
+layer_types = [
+  "sliding", "sliding", "sliding", "sliding", "sliding", "full",
+  # ... repeated for num_hidden_layers entries total
+]
+
+# Gemma-4 only: full-attention layers use different attention dims.
+# Omit for Gemma 3 (single attention shape across all layers).
+global_head_dim = 512
+num_global_key_value_heads = 4
+```
+
+A model is LlamaStyle (no plus) when none of the above are present and
+no `layer_types` array is set. Presence of any of these fields triggers
+the LlamaStyle+ codepath. See `arch.md` §LlamaStyle+ for semantics.
+
 ### VL config example (qwen2_vl)
 
 ```toml
