@@ -64,6 +64,11 @@ pub struct LlamaConfig {
     /// (`partial_rotary_factor`, e.g. 0.25). Sliding layers always rotate
     /// the full head_dim. None = no partial rotary.
     pub partial_rotary_factor_full: Option<f32>,
+    /// Gemma family: divisor for attention scaling. Default per HF Gemma 3
+    /// is 256 regardless of head_dim. LlamaStyle defaults to head_dim
+    /// (standard 1/sqrt(head_dim)). Affects full layers most because their
+    /// head_dim differs from sliding's.
+    pub query_pre_attn_scalar: Option<usize>,
 }
 
 impl LlamaConfig {
@@ -117,6 +122,23 @@ impl LlamaConfig {
             },
             _ => head_dim,
         }
+    }
+
+    /// Attention scaling. Three regimes:
+    ///   - Gemma 4: scaling = 1.0 (Q and K already pre-normalised by q_norm
+    ///     and k_norm, so the dot product is bounded; no extra sqrt scale).
+    ///   - Gemma 3 with `query_pre_attn_scalar`: 1/sqrt(scalar).
+    ///   - LlamaStyle (everything else): standard 1/sqrt(head_dim).
+    pub fn layer_attn_scale(&self, layer: usize) -> f32 {
+        // Gemma 4 only: identified by the presence of attention_k_eq_v
+        // alongside the model_type starting with "gemma".
+        if self.attention_k_eq_v && self.model_type.starts_with("gemma") {
+            return 1.0;
+        }
+        let scalar = self
+            .query_pre_attn_scalar
+            .unwrap_or(self.layer_head_dim(layer));
+        1.0 / (scalar as f32).sqrt()
     }
 }
 
@@ -304,6 +326,20 @@ impl LlamaConfig {
             .get("partial_rotary_factor_full")
             .and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)))
             .map(|f| f as f32);
+        // Gemma family uses query_pre_attn_scalar=256 by default per HF
+        // Gemma 3 (independent of head_dim). LlamaStyle leaves it None →
+        // attention scaling falls back to 1/sqrt(head_dim).
+        let query_pre_attn_scalar = arch
+            .get("query_pre_attn_scalar")
+            .and_then(|v| v.as_integer())
+            .map(|i| i as usize)
+            .or_else(|| {
+                if model_type.starts_with("gemma") {
+                    Some(256)
+                } else {
+                    None
+                }
+            });
 
         Ok(Self {
             model_type,
@@ -330,6 +366,7 @@ impl LlamaConfig {
             num_global_key_value_heads,
             rope_theta_full,
             partial_rotary_factor_full,
+            query_pre_attn_scalar,
         })
     }
 }

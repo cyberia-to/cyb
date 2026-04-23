@@ -397,8 +397,33 @@ fn forward_layer(
     acc_rope += t.elapsed().as_secs_f64() * 1000.0;
 
     // 4. Append to KV cache, build full K and V views for attention.
+    // Gemma 4: V additionally goes through RMSNorm-no-scale before caching
+    // (per HF Gemma4TextAttention v_norm with_scale=False). Skipped for
+    // models without LlamaStyle+; harmless to apply only when k=v case
+    // demands it via the layer's `attention_k_eq_v` config.
     let t = Instant::now();
-    let v_flat = v.to_f32_vec();
+    let v_flat = if config.attention_k_eq_v && config.model_type.starts_with("gemma") {
+        let mut v_data = v.to_f32_vec();
+        // Per-head RMSNorm without learned scale: divide each head's vector
+        // by sqrt(mean(x²) + eps).
+        let inv_d = 1.0 / head_dim as f32;
+        for h in 0..kv_heads {
+            let off = h * head_dim;
+            let mut sumsq = 0f32;
+            for j in 0..head_dim {
+                let val = v_data[off + j];
+                sumsq += val * val;
+            }
+            let rms = (sumsq * inv_d + eps).sqrt();
+            let scale = 1.0 / rms;
+            for j in 0..head_dim {
+                v_data[off + j] *= scale;
+            }
+        }
+        v_data
+    } else {
+        v.to_f32_vec()
+    };
     let k_flat = k_roped.to_f32_vec();
 
     // Cache layout: [kv_heads, max_seq, head_dim] flat row-major.
@@ -433,9 +458,13 @@ fn forward_layer(
 
     // 5. Scaled dot-product attention (decode: single query)
     // Q: [num_heads, 1, head_dim]; K,V: [num_heads, total_seq, head_dim]
+    // Per-layer attention scale: Gemma uses query_pre_attn_scalar (default
+    // 256) instead of head_dim, which matters for layers whose head_dim
+    // differs from that scalar (Gemma-4 full layers: head_dim=512 but
+    // scalar=256 → scaling = 1/sqrt(256), not 1/sqrt(512)).
     let q_heads = q_roped.to_f32_vec();
     let mut attn_out = vec![0f32; num_heads * head_dim];
-    let scale = 1.0 / (head_dim as f32).sqrt();
+    let scale = config.layer_attn_scale(layer_idx);
     // Sliding-window mask (LlamaStyle+, Gemma 3/4 sliding layers): position s
     // is valid iff s > current_pos - window. current_pos = total_seq - 1.
     // Spec: reference/runtime/arch.md §"Sliding window attention"
@@ -558,21 +587,24 @@ fn forward_layer(
     }
     acc_ffn += t.elapsed().as_secs_f64() * 1000.0;
 
-    // 9. Residual. Gemma-4 has a per-channel "layer_output_scale" learned
-    // gate on the residual contribution: hidden = residual + scale * ffn_out.
+    // 9. Residual. Gemma-4 multiplies the final layer output by a SCALAR
+    // `layer_scalar` (HF: `hidden_states *= self.layer_scalar`). The tensor
+    // is shape [1] in our .model.
     let _ = hidden_size;
     let t = Instant::now();
-    let out = if let Some(ref s) = layer.layer_output_scale {
-        let s_data = s.as_f32();
-        let mut h = hidden1.to_f32_vec();
-        let f = ffn_out.to_f32_vec();
-        for ((hv, fv), sv) in h.iter_mut().zip(f.iter()).zip(s_data.iter()) {
-            *hv += sv * fv;
+    let mut out = backend
+        .execute(&Op::Add, &[&hidden1, &ffn_out])?
+        .remove(0);
+    if let Some(ref s) = layer.layer_output_scale {
+        let scalar = s.as_f32()[0];
+        if (scalar - 1.0).abs() > 1e-8 {
+            let mut out_v = out.to_f32_vec();
+            for v in out_v.iter_mut() {
+                *v *= scalar;
+            }
+            out = Tensor::from_f32(out.shape.clone(), out_v);
         }
-        Tensor::from_f32(hidden1.shape.clone(), h)
-    } else {
-        backend.execute(&Op::Add, &[&hidden1, &ffn_out])?.remove(0)
-    };
+    }
     acc_residual += t.elapsed().as_secs_f64() * 1000.0;
 
     if let Some(p) = prof {

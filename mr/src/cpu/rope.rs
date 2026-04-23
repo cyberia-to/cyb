@@ -34,6 +34,7 @@ pub fn rope_f32(
             got: x.shape.clone(),
         });
     }
+    let half = head_dim / 2;
     let rope_half = rope_dim / 2;
 
     let n = x.numel() / head_dim;
@@ -58,18 +59,23 @@ pub fn rope_f32(
         let p = pos_data[p_idx];
         let x_row = &x_data[row * head_dim..(row + 1) * head_dim];
         let y_row = &mut out[row * head_dim..(row + 1) * head_dim];
-        // Rotate the first rope_dim dimensions, NeoX pairing within rope_dim.
+        // NeoX pairing across the FULL head_dim: dim j is paired with
+        // dim (j + head_dim/2). Partial rotary (rope_dim < head_dim) only
+        // rotates the first rope_half pairs; the remainder is identity.
+        // The frequency uses head_dim as the divisor (matches HF
+        // _compute_proportional_rope_parameters).
         for j in 0..rope_half {
-            let theta = p / base.powf(2.0 * j as f32 / rope_dim as f32);
+            let theta = p / base.powf(2.0 * j as f32 / head_dim as f32);
             let (s, c) = theta.sin_cos();
             let x1 = x_row[j];
-            let x2 = x_row[j + rope_half];
+            let x2 = x_row[j + half];
             y_row[j] = x1 * c - x2 * s;
-            y_row[j + rope_half] = x1 * s + x2 * c;
+            y_row[j + half] = x1 * s + x2 * c;
         }
-        // Passthrough the trailing head_dim - rope_dim dimensions.
-        for j in rope_dim..head_dim {
+        // Pass-through pairs (rope_half..half) — identity rotation.
+        for j in rope_half..half {
             y_row[j] = x_row[j];
+            y_row[j + half] = x_row[j + half];
         }
     }
 
@@ -111,8 +117,12 @@ mod tests {
 
     #[test]
     fn partial_rotary_passes_trailing_dims() {
-        // head_dim=8, rope_dim=4: dims 0..4 rotated, dims 4..8 passthrough.
-        // pos=0 → rotation = identity, full output should equal input.
+        // head_dim=8 (half=4), rope_dim=4 (rope_half=2): NeoX pairing across
+        // the full half=4 width — dim j paired with dim j+4. Only the first
+        // 2 pairs (j=0,1) get rotation; pairs (j=2,3) pass through.
+        // Matches HF _compute_proportional_rope_parameters (zero inv_freq for
+        // the trailing pairs → identity rotation).
+        // pos=0 → all rotations identity, output equals input.
         let x = Tensor::from_f32(vec![1, 8], vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0]);
         let pos = Tensor::from_f32(vec![1], vec![0.0]);
         let y = rope_f32(&x, &pos, 8, 4, 10000.0).unwrap().to_f32_vec();
@@ -120,20 +130,20 @@ mod tests {
             assert!((v - (i as f32 + 1.0)).abs() < 1e-6, "y[{i}]={v}");
         }
 
-        // pos=π/2, base=1, rope_dim=4: rotates first pair (j=0, j+2=2) by 90°.
-        // Input dims 0..4 = [1, 2, 3, 4]; dims 4..8 = passthrough [5, 6, 7, 8].
-        // Pair (x[0]=1, x[2]=3): y[0] = 1*cos - 3*sin = -3; y[2] = 1*sin + 3*cos = 1.
-        // Pair (x[1]=2, x[3]=4) at j=1: theta = π/2 / 1^(2*1/4) = π/2, same rotation.
-        // y[1] = 2*cos - 4*sin = -4; y[3] = 2*sin + 4*cos = 2.
+        // pos=π/2, base=1, head_dim=8, rope_dim=4 → rotate pairs (0,4) and (1,5)
+        // by 90° (theta = π/2). Pair (2,6) and (3,7) pass through.
+        // Pair (x[0]=1, x[4]=5): y[0] = 1*cos - 5*sin = -5; y[4] = 1*sin + 5*cos = 1.
+        // Pair (x[1]=2, x[5]=6): y[1] = -6; y[5] = 2.
         let pos90 = Tensor::from_f32(vec![1], vec![std::f32::consts::FRAC_PI_2]);
         let y2 = rope_f32(&x, &pos90, 8, 4, 1.0).unwrap().to_f32_vec();
-        assert!((y2[0] - -3.0).abs() < 1e-5, "y2[0]={}", y2[0]);
-        assert!((y2[2] - 1.0).abs() < 1e-5, "y2[2]={}", y2[2]);
-        assert!((y2[1] - -4.0).abs() < 1e-5, "y2[1]={}", y2[1]);
-        assert!((y2[3] - 2.0).abs() < 1e-5, "y2[3]={}", y2[3]);
-        // Passthrough dims unchanged.
-        for i in 4..8 {
-            assert!((y2[i] - (i as f32 + 1.0)).abs() < 1e-6, "y2[{i}]={}", y2[i]);
-        }
+        assert!((y2[0] - -5.0).abs() < 1e-5, "y2[0]={}", y2[0]);
+        assert!((y2[4] - 1.0).abs() < 1e-5, "y2[4]={}", y2[4]);
+        assert!((y2[1] - -6.0).abs() < 1e-5, "y2[1]={}", y2[1]);
+        assert!((y2[5] - 2.0).abs() < 1e-5, "y2[5]={}", y2[5]);
+        // Pairs (2,6) and (3,7) pass through unchanged.
+        assert!((y2[2] - 3.0).abs() < 1e-6, "y2[2]={}", y2[2]);
+        assert!((y2[6] - 7.0).abs() < 1e-6, "y2[6]={}", y2[6]);
+        assert!((y2[3] - 4.0).abs() < 1e-6, "y2[3]={}", y2[3]);
+        assert!((y2[7] - 8.0).abs() < 1e-6, "y2[7]={}", y2[7]);
     }
 }
