@@ -211,9 +211,11 @@ fn q4_k_dot(x: &[f32], w_bytes: &[u8], blocks: usize) -> f32 {
     sum
 }
 
-/// Q6_K: 210 bytes per 256 values. Layout per llama.cpp k-quants:
-/// 2 halves × 4 sets × 32 vals; ql holds low 4 bits, qh the high 2.
-/// Dequant: x = d · scale[sc_idx] · (q6 - 32).
+/// Q6_K: 210 bytes per 256 values. Layout per llama.cpp dequantize_row_q6_K:
+/// 2 halves of 128 values. Per half, l iterates 0..32 producing FOUR outputs
+/// (q1..q4) at flat offsets l+0, l+32, l+64, l+96 within the half. They differ
+/// in which qh-nibble is read (shifts 0/2/4/6) and which ql byte/nibble pairs
+/// with it. Dequant: x = d · scale[sc_idx] · (q6 - 32).
 #[inline(always)]
 fn q6_k_dot(x: &[f32], w_bytes: &[u8], blocks: usize) -> f32 {
     let mut sum = 0f32;
@@ -224,37 +226,45 @@ fn q6_k_dot(x: &[f32], w_bytes: &[u8], blocks: usize) -> f32 {
         let scales = &w_bytes[base + 192..base + 208];
         let d = read_f16(&w_bytes[base + 208..base + 210]);
 
-        for h in 0..2 {
-            for i_set in 0..4 {
-                let x_off = b * q6_k::BLOCK_SIZE + h * 128 + i_set * 32;
-                let ql_base = h * 64 + i_set * 16;
-                let qh_base = h * 32;
-                let shift = (i_set * 2) as u32;
-                let sc_even = scales[h * 8 + i_set * 2] as i8 as f32;
-                let sc_odd = scales[h * 8 + i_set * 2 + 1] as i8 as f32;
+        for half in 0..2 {
+            let ql_off = half * 64;
+            let qh_off = half * 32;
+            let sc_off = half * 8;
+            let x_off = b * q6_k::BLOCK_SIZE + half * 128;
 
-                // 32 dequantized coefficients, then SIMD dot vs x.
-                let mut coeffs = [0f32; 32];
-                for l in 0..16 {
-                    let q6 = ((ql[ql_base + l] & 0x0F) as i32)
-                        | (((qh[qh_base + l] >> shift) & 0x03) as i32) << 4;
-                    coeffs[l] = sc_even * (q6 - 32) as f32;
-                }
-                for l in 0..16 {
-                    let q6 = ((ql[ql_base + l] >> 4) as i32)
-                        | (((qh[qh_base + 16 + l] >> shift) & 0x03) as i32) << 4;
-                    coeffs[16 + l] = sc_odd * (q6 - 32) as f32;
-                }
-
-                let mut acc = f32x8::ZERO;
-                for c in 0..4 {
-                    let off = c * 8;
-                    let cv = f32x8::from(slice8(&coeffs[off..off + 8]));
-                    let xv = f32x8::from(slice8(&x[x_off + off..x_off + off + 8]));
-                    acc = cv.mul_add(xv, acc);
-                }
-                sum += d * acc.reduce_add();
+            // Build 128 dequantised coefficients for this half, then SIMD-dot
+            // with the matching 128 x values.
+            let mut coeffs = [0f32; 128];
+            for l in 0..32 {
+                let is = l / 16;
+                let qh_byte = qh[qh_off + l];
+                let q1 = ((ql[ql_off + l] & 0x0F) as i32
+                    | (((qh_byte & 0x03) as i32) << 4)) - 32;
+                let q2 = ((ql[ql_off + l + 32] & 0x0F) as i32
+                    | (((qh_byte & 0x0C) as i32) << 2)) - 32;
+                let q3 = ((ql[ql_off + l] >> 4) as i32
+                    | (((qh_byte & 0x30) as i32) << 0)) - 32;
+                let q4 = ((ql[ql_off + l + 32] >> 4) as i32
+                    | (((qh_byte & 0xC0) as i32) >> 2)) - 32;
+                let s1 = scales[sc_off + is + 0] as i8 as f32;
+                let s2 = scales[sc_off + is + 2] as i8 as f32;
+                let s3 = scales[sc_off + is + 4] as i8 as f32;
+                let s4 = scales[sc_off + is + 6] as i8 as f32;
+                coeffs[l + 0] = s1 * q1 as f32;
+                coeffs[l + 32] = s2 * q2 as f32;
+                coeffs[l + 64] = s3 * q3 as f32;
+                coeffs[l + 96] = s4 * q4 as f32;
             }
+
+            // SIMD dot of 128 vals: 16 lanes of f32x8.
+            let mut acc = f32x8::ZERO;
+            for c in 0..16 {
+                let off = c * 8;
+                let cv = f32x8::from(slice8(&coeffs[off..off + 8]));
+                let xv = f32x8::from(slice8(&x[x_off + off..x_off + off + 8]));
+                acc = cv.mul_add(xv, acc);
+            }
+            sum += d * acc.reduce_add();
         }
     }
     sum
