@@ -127,6 +127,25 @@ on `layer_types[i]`.
 
 Gemma 3 omits the `global_*` fields — every layer uses one shape.
 
+### Per-layer RoPE (Gemma 4)
+
+Full-attention and sliding-attention layers use independent RoPE
+configurations:
+
+| Layer kind | rope_theta | rope_dim |
+|---|---|---|
+| `sliding` | `config.rope_theta` | full `head_dim` |
+| `full` | `config.rope_theta_full` | `head_dim × config.partial_rotary_factor_full` |
+
+Gemma-4-31b: sliding uses θ=10⁴ over the full 256-dim head; full uses θ=10⁶
+over the first 128 of 512 dims (`partial_rotary_factor=0.25`), with the
+remaining 384 dims passed through unrotated. Wrong RoPE on either kind
+yields fluent-but-incoherent output (model emits next tokens but loses
+coherence within one full layer's attention).
+
+`Op::Rope` carries a `rope_dim` field for partial rotary; defaults to
+`head_dim` so non-Gemma-4 callers stay unchanged.
+
 ### GELU activation instead of SiLU
 
 ```

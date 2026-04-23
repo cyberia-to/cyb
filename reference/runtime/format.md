@@ -135,6 +135,13 @@ layer_types = [
 # Omit for Gemma 3 (single attention shape across all layers).
 global_head_dim = 512
 num_global_key_value_heads = 4
+
+# Gemma-4 only: per-kind RoPE. rope_theta (above) is the sliding value.
+# rope_theta_full is the full-attention value.
+# partial_rotary_factor_full is the fraction of head_dim that gets
+# rotated for full layers (rest pass through unrotated).
+rope_theta_full = 1000000.0
+partial_rotary_factor_full = 0.25
 ```
 
 A model is LlamaStyle (no plus) when none of the above are present and

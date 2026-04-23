@@ -33,7 +33,12 @@ pub enum Op {
     KvCache,
     KvCompress { head_dim: u32, bits: u32 },
     KvDecompress { head_dim: u32, bits: u32 },
-    Rope { head_dim: u32, base: f32 },
+    /// Rotary positional embedding (NeoX pairing).
+    /// `rope_dim` rotated dims (≤ head_dim); the rest pass through unchanged.
+    /// Default `rope_dim == head_dim` is the standard full-rotary case;
+    /// Gemma-4 full-attention layers use `rope_dim = head_dim / 4`
+    /// (`partial_rotary_factor = 0.25`).
+    Rope { head_dim: u32, rope_dim: u32, base: f32 },
     SinusoidalEmbed { dim: u32 },
     RelativePosEmbedding { num_buckets: u32 },
     TokenEmbed,

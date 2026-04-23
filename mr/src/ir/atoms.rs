@@ -401,7 +401,7 @@ mod tests {
             Op::KvCache,
             Op::KvCompress { head_dim: 64, bits: 4 },
             Op::KvDecompress { head_dim: 64, bits: 4 },
-            Op::Rope { head_dim: 64, base: 10_000.0 },
+            Op::Rope { head_dim: 64, rope_dim: 64, base: 10_000.0 },
             Op::SinusoidalEmbed { dim: 256 },
             Op::RelativePosEmbedding { num_buckets: 32 },
             Op::TokenEmbed, Op::PosEmbed,

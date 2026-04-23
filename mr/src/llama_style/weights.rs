@@ -47,10 +47,17 @@ pub struct LayerWeights {
     pub v_proj_bias: Option<Tensor>,
     pub q_norm: Option<Tensor>,
     pub k_norm: Option<Tensor>,
+    /// Pre-FFN norm. (HF "post_attention_layernorm" / GGUF "ffn_norm".)
     pub post_norm: Tensor,
     pub gate_proj: QuantWeight,
     pub up_proj: QuantWeight,
     pub down_proj: QuantWeight,
+    /// Gemma 2/3/4: norm applied to attention output before residual.
+    pub post_attn_norm: Option<Tensor>,
+    /// Gemma 2/3/4: norm applied to FFN output before residual.
+    pub post_ffw_norm: Option<Tensor>,
+    /// Gemma-4: per-channel scale applied to the residual layer output.
+    pub layer_output_scale: Option<Tensor>,
 }
 
 pub struct Weights {
@@ -233,5 +240,8 @@ fn load_layer(
         gate_proj: quant_nk("mlp.gate_proj.weight", intermediate, hidden)?,
         up_proj: quant_nk("mlp.up_proj.weight", intermediate, hidden)?,
         down_proj: quant_nk("mlp.down_proj.weight", hidden, intermediate)?,
+        post_attn_norm: try_load_f32("post_attention_norm.weight"),
+        post_ffw_norm: try_load_f32("post_ffw_norm.weight"),
+        layer_output_scale: try_load_f32("layer_output_scale.weight"),
     })
 }

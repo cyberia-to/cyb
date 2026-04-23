@@ -355,8 +355,12 @@ fn forward_layer(
     }
     acc_qk_norm += t.elapsed().as_secs_f64() * 1000.0;
 
-    // 3. RoPE on Q, K
+    // 3. RoPE on Q, K — per-layer base + rope_dim (Gemma-4 full layers
+    // use rope_theta_full and partial rotary factor; sliding + LlamaStyle
+    // use the regular rope_theta and full head_dim).
     let t = Instant::now();
+    let layer_rope_base = config.layer_rope_theta(layer_idx);
+    let layer_rope_dim = config.layer_rope_dim(layer_idx);
     let q_shape = vec![num_heads, head_dim];
     let k_shape = vec![kv_heads, head_dim];
     let q_reshaped = Tensor::from_f32(q_shape.clone(), q.to_f32_vec());
@@ -365,7 +369,8 @@ fn forward_layer(
         .execute(
             &Op::Rope {
                 head_dim: head_dim as u32,
-                base: config.rope_theta,
+                rope_dim: layer_rope_dim as u32,
+                base: layer_rope_base,
             },
             &[&q_reshaped, pos],
         )?
@@ -374,7 +379,8 @@ fn forward_layer(
         .execute(
             &Op::Rope {
                 head_dim: head_dim as u32,
-                base: config.rope_theta,
+                rope_dim: layer_rope_dim as u32,
+                base: layer_rope_base,
             },
             &[&k_reshaped, pos],
         )?
@@ -471,7 +477,13 @@ fn forward_layer(
     // 6. Output projection — quant matmul.
     let t = Instant::now();
     let attn_tensor = Tensor::from_f32(vec![1, num_heads * head_dim], attn_out);
-    let attn_proj = qw_matmul(&attn_tensor, &layer.o_proj)?;
+    let mut attn_proj = qw_matmul(&attn_tensor, &layer.o_proj)?;
+    // Gemma 2/3/4: norm applied to attention output before residual.
+    if let Some(ref n) = layer.post_attn_norm {
+        attn_proj = backend
+            .execute(&Op::RmsNorm { eps }, &[&attn_proj, n])?
+            .remove(0);
+    }
     acc_o_proj += t.elapsed().as_secs_f64() * 1000.0;
 
     // 7. Residual
@@ -528,15 +540,25 @@ fn forward_layer(
         *m = act(*m) * *u;
     }
     let mid_t = Tensor::from_f32(gate.shape.clone(), mid);
-    let ffn_out = qw_matmul(&mid_t, &layer.down_proj)?;
+    let mut ffn_out = qw_matmul(&mid_t, &layer.down_proj)?;
+    // Gemma 2/3/4: norm applied to FFN output before residual.
+    if let Some(ref n) = layer.post_ffw_norm {
+        ffn_out = backend
+            .execute(&Op::RmsNorm { eps }, &[&ffn_out, n])?
+            .remove(0);
+    }
     acc_ffn += t.elapsed().as_secs_f64() * 1000.0;
 
     // 9. Residual
     let _ = hidden_size;
     let t = Instant::now();
-    let out = backend
+    let mut out = backend
         .execute(&Op::Add, &[&hidden1, &ffn_out])?
         .remove(0);
+    // Gemma-4: per-channel scale on the layer output.
+    if let Some(ref s) = layer.layer_output_scale {
+        out = backend.execute(&Op::Mul, &[&out, s])?.remove(0);
+    }
     acc_residual += t.elapsed().as_secs_f64() * 1000.0;
 
     if let Some(p) = prof {

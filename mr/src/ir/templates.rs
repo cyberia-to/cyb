@@ -119,6 +119,7 @@ pub fn transformer_decoder(config: &TransformerConfig) -> Graph {
         g.add_node(
             Op::Rope {
                 head_dim: config.head_dim as u32,
+                rope_dim: config.head_dim as u32,
                 base: config.rope_theta,
             },
             vec![qkv_out],
@@ -322,6 +323,7 @@ pub fn transformer_decoder_for_exec(config: &TransformerConfig) -> Graph {
         g.add_node_with_attrs(
             Op::Rope {
                 head_dim: config.head_dim as u32,
+                rope_dim: config.head_dim as u32,
                 base: config.rope_theta,
             },
             vec![q],
@@ -333,6 +335,7 @@ pub fn transformer_decoder_for_exec(config: &TransformerConfig) -> Graph {
         g.add_node_with_attrs(
             Op::Rope {
                 head_dim: config.head_dim as u32,
+                rope_dim: config.head_dim as u32,
                 base: config.rope_theta,
             },
             vec![k],

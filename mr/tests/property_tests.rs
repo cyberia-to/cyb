@@ -152,6 +152,7 @@ fn property_rope() {
         check_cross_backend(
             &Op::Rope {
                 head_dim: head_dim as u32,
+                rope_dim: head_dim as u32,
                 base: 10000.0,
             },
             &[&x, &pos],

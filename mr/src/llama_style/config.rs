@@ -56,6 +56,14 @@ pub struct LlamaConfig {
     /// Gemma-4: kv_heads used by `Full` layers.
     /// None = `Full` layers use the regular `num_key_value_heads`.
     pub num_global_key_value_heads: Option<usize>,
+    /// Gemma-4: per-layer-kind rope_theta. `Full` layers use `rope_theta_full`
+    /// (typically 1e6), `Sliding` layers use the regular `rope_theta` (1e4).
+    /// None = both kinds use the same `rope_theta`.
+    pub rope_theta_full: Option<f32>,
+    /// Gemma-4: fraction of head_dim that gets rotated for `Full` layers
+    /// (`partial_rotary_factor`, e.g. 0.25). Sliding layers always rotate
+    /// the full head_dim. None = no partial rotary.
+    pub partial_rotary_factor_full: Option<f32>,
 }
 
 impl LlamaConfig {
@@ -82,6 +90,32 @@ impl LlamaConfig {
         match self.layer_types.get(layer).copied() {
             Some(LayerKind::Sliding) => self.sliding_window,
             _ => None,
+        }
+    }
+
+    /// Per-layer RoPE base. Gemma-4 full layers use `rope_theta_full` (1e6);
+    /// sliding layers and LlamaStyle use `rope_theta` (1e4 default).
+    pub fn layer_rope_theta(&self, layer: usize) -> f32 {
+        match self.layer_types.get(layer).copied() {
+            Some(LayerKind::Full) => self.rope_theta_full.unwrap_or(self.rope_theta),
+            _ => self.rope_theta,
+        }
+    }
+
+    /// Per-layer rotated dim. Gemma-4 full layers use partial_rotary_factor.
+    /// Returns even count ≤ head_dim.
+    pub fn layer_rope_dim(&self, layer: usize) -> usize {
+        let head_dim = self.layer_head_dim(layer);
+        match self.layer_types.get(layer).copied() {
+            Some(LayerKind::Full) => match self.partial_rotary_factor_full {
+                Some(f) if f > 0.0 && f < 1.0 => {
+                    let d = (head_dim as f32 * f) as usize;
+                    // round down to even
+                    d & !1
+                }
+                _ => head_dim,
+            },
+            _ => head_dim,
         }
     }
 }
@@ -262,6 +296,14 @@ impl LlamaConfig {
             .get("num_global_key_value_heads")
             .and_then(|v| v.as_integer())
             .map(|i| i as usize);
+        let rope_theta_full = arch
+            .get("rope_theta_full")
+            .and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)))
+            .map(|f| f as f32);
+        let partial_rotary_factor_full = arch
+            .get("partial_rotary_factor_full")
+            .and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)))
+            .map(|f| f as f32);
 
         Ok(Self {
             model_type,
@@ -286,6 +328,8 @@ impl LlamaConfig {
             attention_k_eq_v,
             global_head_dim,
             num_global_key_value_heads,
+            rope_theta_full,
+            partial_rotary_factor_full,
         })
     }
 }

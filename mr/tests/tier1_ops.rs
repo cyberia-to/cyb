@@ -197,6 +197,7 @@ fn rope_pos_zero_is_identity() {
             .execute(
                 &Op::Rope {
                     head_dim: 4,
+                    rope_dim: 4,
                     base: 10000.0,
                 },
                 &[&x, &pos],
@@ -222,6 +223,7 @@ fn rope_odd_head_dim_errors() {
             b.execute(
                 &Op::Rope {
                     head_dim: 3,
+                    rope_dim: 3,
                     base: 10000.0,
                 },
                 &[&x, &pos]

@@ -179,11 +179,13 @@ impl Backend for WgpuRsBackend {
                 let out_buf = kernels::rmsnorm::dispatch(&self.device, &x_buf, &g_buf, batch, d, *eps);
                 Ok(vec![self.from_gpu_f32(&out_buf, x.shape.clone())])
             }
-            Op::Rope { head_dim, base } => {
-                if *head_dim % 2 != 0 {
+            Op::Rope { head_dim, rope_dim, base } => {
+                if *rope_dim == 0 || *rope_dim % 2 != 0 || *rope_dim > *head_dim {
                     return Err(BackendError::InvalidInput {
                         op: "Rope",
-                        reason: format!("head_dim must be even, got {head_dim}"),
+                        reason: format!(
+                            "rope_dim must be even and ≤ head_dim, got {rope_dim} / {head_dim}"
+                        ),
                     });
                 }
                 if inputs.len() != 2 {
@@ -191,6 +193,12 @@ impl Backend for WgpuRsBackend {
                         op: "Rope",
                         reason: format!("expected 2 inputs, got {}", inputs.len()),
                     });
+                }
+                // Partial rotary not yet implemented in wgpu kernel — fall back
+                // to cpu reference (correctness > speed). Track in Phase 0.4 of
+                // .claude/plans/cyb-mvp.md.
+                if *rope_dim != *head_dim {
+                    return self.cpu.execute(op, inputs);
                 }
                 let x = inputs[0];
                 let pos = inputs[1];

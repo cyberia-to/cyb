@@ -158,7 +158,23 @@ fn run_import(dir_path: &str) {
     let max_pos = text_config["max_position_embeddings"]
         .as_u64()
         .unwrap_or(8192);
-    let rope_theta = text_config["rope_theta"].as_f64().unwrap_or(10000.0);
+    // Per-kind RoPE (Gemma-4): rope_parameters.{full_attention, sliding_attention}.
+    // Flat rope_theta is the LlamaStyle / Gemma-3 case; the nested form
+    // extracts sliding's theta here and full's theta+partial_rotary later.
+    let rope_params = text_config.get("rope_parameters");
+    let rope_sliding = rope_params.and_then(|p| p.get("sliding_attention"));
+    let rope_full = rope_params.and_then(|p| p.get("full_attention"));
+    let rope_theta = rope_sliding
+        .and_then(|s| s.get("rope_theta"))
+        .and_then(|v| v.as_f64())
+        .or_else(|| text_config["rope_theta"].as_f64())
+        .unwrap_or(10000.0);
+    let rope_theta_full = rope_full
+        .and_then(|f| f.get("rope_theta"))
+        .and_then(|v| v.as_f64());
+    let partial_rotary_factor_full = rope_full
+        .and_then(|f| f.get("partial_rotary_factor"))
+        .and_then(|v| v.as_f64());
     let rms_norm_eps = text_config["rms_norm_eps"].as_f64().unwrap_or(1e-6);
     let tie_word_embeddings = text_config["tie_word_embeddings"]
         .as_bool()
@@ -228,6 +244,12 @@ fn run_import(dir_path: &str) {
             .map(|s| format!("\"{}\"", s))
             .collect();
         llamaplus.push_str(&format!("layer_types = [{}]\n", quoted.join(", ")));
+    }
+    if let Some(rt_full) = rope_theta_full {
+        llamaplus.push_str(&format!("rope_theta_full = {rt_full}\n"));
+    }
+    if let Some(prf) = partial_rotary_factor_full {
+        llamaplus.push_str(&format!("partial_rotary_factor_full = {prf}\n"));
     }
 
     let config_toml = format!(

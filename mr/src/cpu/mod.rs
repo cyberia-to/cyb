@@ -66,10 +66,10 @@ impl Backend for CpuBackend {
                 let out = matmul_f32(x, w)?;
                 Ok(vec![out])
             }
-            Op::Rope { head_dim, base } => {
+            Op::Rope { head_dim, rope_dim, base } => {
                 // x, pos_ids
                 let [x, pos] = require(inputs, 2, op)?;
-                let out = rope_f32(x, pos, *head_dim as usize, *base)?;
+                let out = rope_f32(x, pos, *head_dim as usize, *rope_dim as usize, *base)?;
                 Ok(vec![out])
             }
             Op::Softmax { dim } => {
