@@ -234,6 +234,43 @@ in pure f32, used for:
 Consequence: **any model runs anywhere**, at worst in pure Rust
 on CPU. Speed degrades to compute bound, correctness never degrades.
 
+#### Principles
+
+The CPU library is the reference. It is read by humans verifying the
+spec and by GPU kernels generating goldens. Five constraints, in
+priority order:
+
+1. Correctness — matches the spec, bit-for-bit deterministic.
+2. Reliability — no panics, no UB, no silent wrong output.
+3. Readability — a reader new to the project understands an op from
+   one file. Algorithm before micro-optimization.
+4. Compactness — every line earns its keep. Delete before adding.
+5. Speed — fast when achievable inside the constraints above.
+
+Speed never trumps the first four. If a fast version costs readability
+or compactness, push it down to a specialized backend instead.
+
+#### Portability discipline
+
+CPU code targets every architecture cyb may run on. To keep this real:
+
+- No arch-specific intrinsics (`core::arch::aarch64`, `core::arch::x86_64`).
+- No `#[cfg(target_arch = "...")]` paths inside CPU ops.
+- No `target_feature` attributes.
+- No `target-cpu=native` build assumptions.
+
+Allowed abstractions that stay portable:
+
+- `wide::f32x8` for SIMD (compiler picks NEON / AVX / WASM SIMD).
+- `rayon` for thread-level parallelism.
+- `std::simd` once stabilized.
+
+If a kernel needs hand-written NEON, AMX, AVX-512, etc., that work
+belongs in honeycrisp (Apple Silicon), wgpu+rs kernels (GPU), or nox
+(deterministic VM) — never in `cpu/`. The CPU reference is what
+proves those backends correct; specialization in the reference defeats
+the point.
+
 ## Evolution
 
 The three paths are not eternal. They converge:
