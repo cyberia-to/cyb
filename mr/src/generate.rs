@@ -176,6 +176,18 @@ pub fn generate(
     // Tokenize prompt
     let prompt_ids = tok.encode(prompt);
     log::debug!("prompt tokens: {}", prompt_ids.len());
+    if std::env::var("MR_DEBUG_TOKENS").is_ok() {
+        let pieces: Vec<String> = prompt_ids
+            .iter()
+            .map(|&t| {
+                format!(
+                    "{t}=\"{}\"",
+                    tok.decode(&[t], false).replace('\n', "\\n")
+                )
+            })
+            .collect();
+        eprintln!("prompt encoded: [{}]", pieces.join(" "));
+    }
 
     // Prefill: run forward for each prompt token, keep logits from last.
     let mut logits: Vec<f32> = Vec::new();

@@ -224,6 +224,13 @@ impl LlamaModel {
         let pos = self.past_seq_len as f32;
         let pos_tensor = Tensor::from_f32(vec![1], vec![pos]);
 
+        let debug_layers = std::env::var("MR_DEBUG_LAYERS").is_ok();
+        if debug_layers {
+            let h = hidden.try_as_f32()?;
+            let m = h.iter().map(|v| v.abs()).fold(0f32, f32::max);
+            let s = (h.iter().map(|v| v * v).sum::<f32>() / h.len() as f32).sqrt();
+            eprintln!("post-embed     abs_max={m:.4} rms={s:.4}");
+        }
         for i in 0..c.num_hidden_layers {
             hidden = forward_layer(
                 &hidden,
@@ -236,6 +243,16 @@ impl LlamaModel {
                 self.past_seq_len,
                 if prof_enabled { Some(&mut self.prof) } else { None },
             )?;
+            if debug_layers {
+                let h = hidden.try_as_f32()?;
+                let m = h.iter().map(|v| v.abs()).fold(0f32, f32::max);
+                let s = (h.iter().map(|v| v * v).sum::<f32>() / h.len() as f32).sqrt();
+                let kind = match c.layer_types.get(i).copied() {
+                    Some(crate::llama_style::config::LayerKind::Full) => "full",
+                    _ => "slid",
+                };
+                eprintln!("layer {i:>3} {kind} abs_max={m:>9.4} rms={s:>8.4}");
+            }
         }
 
         let t_final = Instant::now();
@@ -258,7 +275,19 @@ impl LlamaModel {
             .lm_head
             .as_ref()
             .unwrap_or(&self.weights.embed_tokens_quant);
+        if debug_layers {
+            let h = final_normed.try_as_f32()?;
+            let m = h.iter().map(|v| v.abs()).fold(0f32, f32::max);
+            let s = (h.iter().map(|v| v * v).sum::<f32>() / h.len() as f32).sqrt();
+            eprintln!("post-final-norm abs_max={m:.4} rms={s:.4}");
+        }
         let logits = qw_matmul(&final_normed, lm_head_qw)?;
+        if debug_layers {
+            let h = backend.download_f32(&logits)?;
+            let m = h.iter().map(|v| v.abs()).fold(0f32, f32::max);
+            let s = (h.iter().map(|v| v * v).sum::<f32>() / h.len() as f32).sqrt();
+            eprintln!("post-lm-head    abs_max={m:.4} rms={s:.4}");
+        }
         if prof_enabled {
             self.prof.lm_head_ms += t_lm.elapsed().as_secs_f64() * 1000.0;
         }
@@ -595,15 +624,17 @@ fn forward_layer(
     let mut out = backend
         .execute(&Op::Add, &[&hidden1, &ffn_out])?
         .remove(0);
+    // Gemma-4 layer_scalar (HF: hidden_states *= self.layer_scalar). The
+    // register_buffer is initialised to 1.0 but checkpoint values can differ
+    // (per-layer trained scalar). Without this scale, activations explode
+    // through the residual stream.
     if let Some(ref s) = layer.layer_output_scale {
         let scalar = s.as_f32()[0];
-        if (scalar - 1.0).abs() > 1e-8 {
-            let mut out_v = out.to_f32_vec();
-            for v in out_v.iter_mut() {
-                *v *= scalar;
-            }
-            out = Tensor::from_f32(out.shape.clone(), out_v);
+        let mut out_v = out.to_f32_vec();
+        for v in out_v.iter_mut() {
+            *v *= scalar;
         }
+        out = Tensor::from_f32(out.shape.clone(), out_v);
     }
     acc_residual += t.elapsed().as_secs_f64() * 1000.0;
 
