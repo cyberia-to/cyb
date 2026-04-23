@@ -201,19 +201,31 @@ pub fn generate(
     for step in 0..max_tokens {
         let next = sample(&logits, sample_cfg);
         if debug_tokens {
-            // Top-5 logits + sampled id, for diagnosing empty-output failures.
             let mut idx: Vec<usize> = (0..logits.len()).collect();
             idx.sort_unstable_by(|&a, &b| logits[b].partial_cmp(&logits[a]).unwrap());
-            let top5: Vec<String> = idx
+            let top10: Vec<String> = idx
                 .iter()
-                .take(5)
-                .map(|&i| format!("{i}={:.2}", logits[i]))
+                .take(10)
+                .map(|&i| format!(
+                    "{i}={:.2}\"{}\"",
+                    logits[i],
+                    tok.decode(&[i as u32], false).replace('\n', "\\n").replace('"', "\\\"")
+                ))
                 .collect();
+            // Show rank+logit of a probe token if MR_DEBUG_PROBE is set (e.g. 9079 for ▁Paris)
+            let probe = std::env::var("MR_DEBUG_PROBE")
+                .ok()
+                .and_then(|s| s.parse::<usize>().ok());
+            let probe_str = probe
+                .map(|p| {
+                    let rank = idx.iter().position(|&i| i == p).unwrap_or(usize::MAX);
+                    format!(" probe[{p}]=#{rank}@{:.2}", logits.get(p).copied().unwrap_or(0.0))
+                })
+                .unwrap_or_default();
             eprintln!(
-                "step {step:3}: sampled={next} \"{}\" eos?={} top5={}",
+                "step {step:3}: sampled={next}\"{}\" top10=[{}]{probe_str}",
                 tok.decode(&[next], false).replace('\n', "\\n"),
-                tok.is_eos(next),
-                top5.join(" "),
+                top10.join(" "),
             );
         }
         if tok.is_eos(next) {

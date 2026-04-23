@@ -427,11 +427,13 @@ fn forward_layer(
 
     // 4. Append to KV cache, build full K and V views for attention.
     // Gemma 4: V additionally goes through RMSNorm-no-scale before caching
-    // (per HF Gemma4TextAttention v_norm with_scale=False). Skipped for
-    // models without LlamaStyle+; harmless to apply only when k=v case
-    // demands it via the layer's `attention_k_eq_v` config.
+    // (per HF Gemma4TextAttention v_norm with_scale=False). Applied on
+    // EVERY layer (sliding and full alike) — the `is_kv_shared_layer`
+    // branch in HF only skips re-projecting K and V, but the norm is
+    // unconditional for non-shared layers. Our num_kv_shared_layers is 0
+    // for gemma-4-31b so we apply to all.
     let t = Instant::now();
-    let v_flat = if config.attention_k_eq_v && config.model_type.starts_with("gemma") {
+    let v_flat = if config.model_type.starts_with("gemma4") {
         let mut v_data = v.to_f32_vec();
         // Per-head RMSNorm without learned scale: divide each head's vector
         // by sqrt(mean(x²) + eps).
