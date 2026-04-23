@@ -205,7 +205,16 @@ impl LlamaModel {
         let embed_table = &self.weights.embed_tokens;
         let hidden_size = c.hidden_size;
         let row_start = (token_id as usize) * hidden_size;
-        let embed_row: Vec<f32> = embed_table.try_as_f32()?[row_start..row_start + hidden_size].to_vec();
+        let mut embed_row: Vec<f32> = embed_table.try_as_f32()?[row_start..row_start + hidden_size].to_vec();
+        // Gemma family: scale embeddings by sqrt(hidden_size) before the first
+        // layer. Llama/Qwen don't do this. Keyed off model_type prefix so we
+        // catch gemma, gemma2, gemma3, gemma4 without per-version flags.
+        if c.model_type.starts_with("gemma") {
+            let scale = (hidden_size as f32).sqrt();
+            for v in embed_row.iter_mut() {
+                *v *= scale;
+            }
+        }
         let mut hidden = Tensor::try_from_f32(vec![1, hidden_size], embed_row)?;
 
         if prof_enabled {
@@ -549,16 +558,21 @@ fn forward_layer(
     }
     acc_ffn += t.elapsed().as_secs_f64() * 1000.0;
 
-    // 9. Residual
+    // 9. Residual. Gemma-4 has a per-channel "layer_output_scale" learned
+    // gate on the residual contribution: hidden = residual + scale * ffn_out.
     let _ = hidden_size;
     let t = Instant::now();
-    let mut out = backend
-        .execute(&Op::Add, &[&hidden1, &ffn_out])?
-        .remove(0);
-    // Gemma-4: per-channel scale on the layer output.
-    if let Some(ref s) = layer.layer_output_scale {
-        out = backend.execute(&Op::Mul, &[&out, s])?.remove(0);
-    }
+    let out = if let Some(ref s) = layer.layer_output_scale {
+        let s_data = s.as_f32();
+        let mut h = hidden1.to_f32_vec();
+        let f = ffn_out.to_f32_vec();
+        for ((hv, fv), sv) in h.iter_mut().zip(f.iter()).zip(s_data.iter()) {
+            *hv += sv * fv;
+        }
+        Tensor::from_f32(hidden1.shape.clone(), h)
+    } else {
+        backend.execute(&Op::Add, &[&hidden1, &ffn_out])?.remove(0)
+    };
     acc_residual += t.elapsed().as_secs_f64() * 1000.0;
 
     if let Some(p) = prof {

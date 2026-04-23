@@ -75,10 +75,15 @@ pub struct Weights {
 impl Weights {
     /// Load all weights using per-layer attention dims from `config`.
     /// LlamaStyle has uniform dims; LlamaStyle+ (Gemma-4) varies by layer.
+    ///
+    /// Gemma family quirk: RMSNorm is `(1 + w) * x / rms` instead of
+    /// `w * x / rms`. Norm weights are stored as offsets from 1.0; we
+    /// add 1.0 at load so the runtime stays one RmsNorm codepath.
     pub fn load(lm: &LoadedModel, config: &LlamaConfig) -> Result<Self, FormatError> {
         let hidden_size = config.hidden_size;
         let vocab_size = config.vocab_size;
         let intermediate_size = config.intermediate_size;
+        let gemma_norm_offset = config.model_type.starts_with("gemma");
 
         // Embed: some imports have [vocab, hidden] (HF-style), others
         // [hidden, vocab] (GGUF-native metadata). Physical byte layout is
@@ -95,7 +100,10 @@ impl Weights {
             vec![vocab_size, hidden_size],
         )?;
 
-        let final_norm = load_tensor_f32(lm, "model.norm.weight")?;
+        let mut final_norm = load_tensor_f32(lm, "model.norm.weight")?;
+        if gemma_norm_offset {
+            offset_norm_by_one(&mut final_norm);
+        }
 
         let lm_head = if config.tie_word_embeddings {
             None
@@ -111,14 +119,31 @@ impl Weights {
         for i in 0..config.num_hidden_layers {
             let q_dim = config.num_attention_heads * config.layer_head_dim(i);
             let kv_dim = config.layer_kv_heads(i) * config.layer_head_dim(i);
-            layers.push(load_layer(
+            let mut layer = load_layer(
                 lm,
                 i,
                 hidden_size,
                 q_dim,
                 kv_dim,
                 intermediate_size,
-            )?);
+            )?;
+            if gemma_norm_offset {
+                offset_norm_by_one(&mut layer.input_norm);
+                offset_norm_by_one(&mut layer.post_norm);
+                if let Some(ref mut n) = layer.q_norm {
+                    offset_norm_by_one(n);
+                }
+                if let Some(ref mut n) = layer.k_norm {
+                    offset_norm_by_one(n);
+                }
+                if let Some(ref mut n) = layer.post_attn_norm {
+                    offset_norm_by_one(n);
+                }
+                if let Some(ref mut n) = layer.post_ffw_norm {
+                    offset_norm_by_one(n);
+                }
+            }
+            layers.push(layer);
         }
 
         Ok(Self {
@@ -129,6 +154,17 @@ impl Weights {
             lm_head,
         })
     }
+}
+
+/// Add 1.0 to every element of a norm weight tensor in place.
+/// Gemma family RMSNorm applies `(1 + w) * x / rms`; storing weights with
+/// the +1 baked in lets the runtime use a single `Op::RmsNorm` codepath.
+fn offset_norm_by_one(t: &mut Tensor) {
+    let mut data = t.to_f32_vec();
+    for v in data.iter_mut() {
+        *v += 1.0;
+    }
+    *t = Tensor::from_f32(t.shape.clone(), data);
 }
 
 fn load_tensor_f32(lm: &LoadedModel, name: &str) -> Result<Tensor, FormatError> {

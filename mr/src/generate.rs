@@ -184,9 +184,26 @@ pub fn generate(
     }
 
     // Decode: sample next token, feed back in, repeat.
+    let debug_tokens = std::env::var("MR_DEBUG_TOKENS").is_ok();
     let mut generated = Vec::with_capacity(max_tokens);
-    for _ in 0..max_tokens {
+    for step in 0..max_tokens {
         let next = sample(&logits, sample_cfg);
+        if debug_tokens {
+            // Top-5 logits + sampled id, for diagnosing empty-output failures.
+            let mut idx: Vec<usize> = (0..logits.len()).collect();
+            idx.sort_unstable_by(|&a, &b| logits[b].partial_cmp(&logits[a]).unwrap());
+            let top5: Vec<String> = idx
+                .iter()
+                .take(5)
+                .map(|&i| format!("{i}={:.2}", logits[i]))
+                .collect();
+            eprintln!(
+                "step {step:3}: sampled={next} \"{}\" eos?={} top5={}",
+                tok.decode(&[next], false).replace('\n', "\\n"),
+                tok.is_eos(next),
+                top5.join(" "),
+            );
+        }
         if tok.is_eos(next) {
             break;
         }
