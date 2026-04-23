@@ -2,6 +2,23 @@
 
 use crate::format::FormatError;
 
+/// Per-layer attention kind. LlamaStyle has all `Sliding` (single shape).
+/// LlamaStyle+ (Gemma 3/4) interleaves `Sliding` and `Full`; full layers
+/// in Gemma 4 use `global_head_dim` / `num_global_key_value_heads`.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum LayerKind {
+    Sliding,
+    Full,
+}
+
+/// Activation function for the FFN gate.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HiddenActivation {
+    Silu,
+    GeluTanh,
+    GeluErf,
+}
+
 #[derive(Clone, Debug)]
 pub struct LlamaConfig {
     pub model_type: String,
@@ -20,6 +37,53 @@ pub struct LlamaConfig {
     pub has_qk_norm: bool,
     pub has_attn_bias: bool,
     pub eos_token_ids: Vec<u32>,
+
+    // ── LlamaStyle+ (Gemma 3/4) optional fields ──
+    /// One entry per layer. LlamaStyle defaults to all `Sliding`.
+    pub layer_types: Vec<LayerKind>,
+    /// Window size for `Sliding` layers (Gemma 3/4 typical: 1024).
+    pub sliding_window: Option<usize>,
+    /// FFN activation. Default `Silu`.
+    pub hidden_activation: HiddenActivation,
+    /// Logit softcapping value applied after lm_head. None or 0.0 = skip.
+    pub final_logit_softcapping: Option<f32>,
+    /// K and V projections share weights (mi materialises both names).
+    /// Informational; the runtime always sees both tensors.
+    pub attention_k_eq_v: bool,
+    /// Gemma-4: head_dim used by `Full` layers (per arch.md §LlamaStyle+).
+    /// None = `Full` layers use the regular `head_dim`.
+    pub global_head_dim: Option<usize>,
+    /// Gemma-4: kv_heads used by `Full` layers.
+    /// None = `Full` layers use the regular `num_key_value_heads`.
+    pub num_global_key_value_heads: Option<usize>,
+}
+
+impl LlamaConfig {
+    /// Per-layer head_dim. Gemma-4 full layers use `global_head_dim`.
+    pub fn layer_head_dim(&self, layer: usize) -> usize {
+        match self.layer_types.get(layer).copied() {
+            Some(LayerKind::Full) => self.global_head_dim.unwrap_or(self.head_dim),
+            _ => self.head_dim,
+        }
+    }
+
+    /// Per-layer kv_heads. Gemma-4 full layers use `num_global_key_value_heads`.
+    pub fn layer_kv_heads(&self, layer: usize) -> usize {
+        match self.layer_types.get(layer).copied() {
+            Some(LayerKind::Full) => self
+                .num_global_key_value_heads
+                .unwrap_or(self.num_key_value_heads),
+            _ => self.num_key_value_heads,
+        }
+    }
+
+    /// Returns the sliding-window mask boundary for a layer, or None for full attention.
+    pub fn layer_window(&self, layer: usize) -> Option<usize> {
+        match self.layer_types.get(layer).copied() {
+            Some(LayerKind::Sliding) => self.sliding_window,
+            _ => None,
+        }
+    }
 }
 
 impl LlamaConfig {
@@ -146,6 +210,59 @@ impl LlamaConfig {
             })
             .unwrap_or_default();
 
+        // ── LlamaStyle+ (Gemma 3/4) parsing ──
+        // Spec: reference/runtime/format.md §"LlamaStyle+ extra fields"
+        let layer_types: Vec<LayerKind> = arch
+            .get("layer_types")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str())
+                    .map(|s| match s {
+                        "full_attention" | "full" => LayerKind::Full,
+                        _ => LayerKind::Sliding,
+                    })
+                    .collect()
+            })
+            .unwrap_or_else(|| vec![LayerKind::Sliding; num_hidden_layers]);
+        if layer_types.len() != num_hidden_layers {
+            return Err(FormatError::Invalid(format!(
+                "layer_types length {} != num_hidden_layers {}",
+                layer_types.len(),
+                num_hidden_layers
+            )));
+        }
+        let sliding_window = arch
+            .get("sliding_window")
+            .and_then(|v| v.as_integer())
+            .map(|i| i as usize);
+        let hidden_activation = arch
+            .get("hidden_activation")
+            .and_then(|v| v.as_str())
+            .map(|s| match s {
+                "gelu_pytorch_tanh" | "gelu_tanh" => HiddenActivation::GeluTanh,
+                "gelu" | "gelu_erf" => HiddenActivation::GeluErf,
+                _ => HiddenActivation::Silu,
+            })
+            .unwrap_or(HiddenActivation::Silu);
+        let final_logit_softcapping = arch
+            .get("final_logit_softcapping")
+            .and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)))
+            .map(|f| f as f32)
+            .filter(|&f| f > 0.0);
+        let attention_k_eq_v = arch
+            .get("attention_k_eq_v")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let global_head_dim = arch
+            .get("global_head_dim")
+            .and_then(|v| v.as_integer())
+            .map(|i| i as usize);
+        let num_global_key_value_heads = arch
+            .get("num_global_key_value_heads")
+            .and_then(|v| v.as_integer())
+            .map(|i| i as usize);
+
         Ok(Self {
             model_type,
             hidden_size,
@@ -162,6 +279,13 @@ impl LlamaConfig {
             has_qk_norm,
             has_attn_bias,
             eos_token_ids,
+            layer_types,
+            sliding_window,
+            hidden_activation,
+            final_logit_softcapping,
+            attention_k_eq_v,
+            global_head_dim,
+            num_global_key_value_heads,
         })
     }
 }

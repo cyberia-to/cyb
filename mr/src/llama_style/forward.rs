@@ -107,22 +107,15 @@ impl LlamaModel {
 
     pub fn from_loaded(lm: &LoadedModel) -> Result<Self, FormatError> {
         let config = LlamaConfig::parse(&lm.file.config, &lm.tensors)?;
-        let q_dim = config.num_attention_heads * config.head_dim;
-        let kv_dim = config.num_key_value_heads * config.head_dim;
-        let weights = Weights::load(
-            lm,
-            config.num_hidden_layers,
-            config.tie_word_embeddings,
-            config.vocab_size,
-            config.hidden_size,
-            q_dim,
-            kv_dim,
-            config.intermediate_size,
-        )?;
+        let weights = Weights::load(lm, &config)?;
         let max_seq = config.max_position_embeddings.min(8192);
-        let kv_size = config.num_key_value_heads * max_seq * config.head_dim;
+        // Per-layer KV cache sizing: Gemma-4 full layers use different
+        // (kv_heads, head_dim) than sliding layers.
         let kv_cache = (0..config.num_hidden_layers)
-            .map(|_| (vec![0f32; kv_size], vec![0f32; kv_size]))
+            .map(|i| {
+                let sz = config.layer_kv_heads(i) * max_seq * config.layer_head_dim(i);
+                (vec![0f32; sz], vec![0f32; sz])
+            })
             .collect();
         Ok(Self {
             config,
@@ -225,6 +218,7 @@ impl LlamaModel {
         for i in 0..c.num_hidden_layers {
             hidden = forward_layer(
                 &hidden,
+                i,
                 &self.weights.layers[i],
                 c,
                 &pos_tensor,
@@ -264,7 +258,15 @@ impl LlamaModel {
             self.prof.forwards += 1;
         }
         self.past_seq_len += 1;
-        let logits_vec = backend.download_f32(&logits)?;
+        let mut logits_vec = backend.download_f32(&logits)?;
+
+        // LlamaStyle+ (Gemma 3/4): final logit softcapping.
+        // Spec: reference/runtime/arch.md §"Final logit softcapping"
+        if let Some(cap) = c.final_logit_softcapping {
+            for v in logits_vec.iter_mut() {
+                *v = (*v / cap).tanh() * cap;
+            }
+        }
 
         // NaN/Inf detection at the forward boundary.
         if logits_vec.iter().any(|v| !v.is_finite()) {
@@ -281,6 +283,7 @@ impl LlamaModel {
 
 fn forward_layer(
     hidden: &Tensor,
+    layer_idx: usize,
     layer: &LayerWeights,
     config: &LlamaConfig,
     pos: &Tensor,
@@ -292,9 +295,11 @@ fn forward_layer(
     use std::time::Instant;
     let eps = config.rms_norm_eps;
     let hidden_size = config.hidden_size;
-    let head_dim = config.head_dim;
+    // LlamaStyle+ (Gemma-4) per-layer dims. LlamaStyle returns the global ones.
+    let head_dim = config.layer_head_dim(layer_idx);
     let num_heads = config.num_attention_heads;
-    let kv_heads = config.num_key_value_heads;
+    let kv_heads = config.layer_kv_heads(layer_idx);
+    let sliding_window = config.layer_window(layer_idx);
 
     // accumulator helpers
     let mut acc_input_norm = 0f64;
@@ -416,6 +421,11 @@ fn forward_layer(
     let q_heads = q_roped.to_f32_vec();
     let mut attn_out = vec![0f32; num_heads * head_dim];
     let scale = 1.0 / (head_dim as f32).sqrt();
+    // Sliding-window mask (LlamaStyle+, Gemma 3/4 sliding layers): position s
+    // is valid iff s > current_pos - window. current_pos = total_seq - 1.
+    // Spec: reference/runtime/arch.md §"Sliding window attention"
+    let window_start: Option<usize> = sliding_window.map(|w| total_seq.saturating_sub(w));
+
     for h in 0..num_heads {
         // scores[s] = sum_d Q[h,d] * K[h,s,d] * scale
         let mut scores = vec![0f32; total_seq];
@@ -430,6 +440,12 @@ fn forward_layer(
         }
         // Causal mask: scores[s] valid only for s <= past_seq_len
         // During decode (total_seq = past_seq_len+1), all positions ≤ current, no mask needed.
+        // Sliding-window mask: zero out positions outside the window.
+        if let Some(start) = window_start {
+            for s in 0..start {
+                scores[s] = f32::NEG_INFINITY;
+            }
+        }
         // Softmax over scores
         let max_s = scores.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
         let mut sum = 0f32;
@@ -472,16 +488,44 @@ fn forward_layer(
         .remove(0);
     acc_post_norm += t.elapsed().as_secs_f64() * 1000.0;
 
-    // SwiGLU FFN as 3 quant matmuls + elementwise silu*up.
+    // FFN: 3 quant matmuls + elementwise activation(gate) * up.
+    // Activation per `config.hidden_activation` (LlamaStyle: SiLU; Gemma uses GELU).
     let t = Instant::now();
     let gate = qw_matmul(&normed2, &layer.gate_proj)?;
     let up = qw_matmul(&normed2, &layer.up_proj)?;
-    // Fused silu(gate) * up in-place.
     let mut mid = gate.to_f32_vec();
     let up_vec = up.to_f32_vec();
+    use crate::llama_style::config::HiddenActivation;
+    let act: fn(f32) -> f32 = match config.hidden_activation {
+        HiddenActivation::Silu => |x| x / (1.0 + (-x).exp()),
+        HiddenActivation::GeluTanh => |x| {
+            // 0.5 x (1 + tanh(sqrt(2/π) (x + 0.044715 x³)))
+            let c = (2.0_f32 / std::f32::consts::PI).sqrt();
+            0.5 * x * (1.0 + (c * (x + 0.044715 * x * x * x)).tanh())
+        },
+        HiddenActivation::GeluErf => |x| {
+            // 0.5 x (1 + erf(x / sqrt(2)))
+            let inv_sqrt2 = 1.0_f32 / std::f32::consts::SQRT_2;
+            // libm erf via approximation matching cpu/activation.rs::erf_approx
+            let z = x * inv_sqrt2;
+            let sign = if z < 0.0 { -1.0 } else { 1.0 };
+            let zabs = z.abs();
+            let p = 0.327_591_1_f32;
+            let a1 = 0.254_829_592_f32;
+            let a2 = -0.284_496_736_f32;
+            let a3 = 1.421_413_741_f32;
+            let a4 = -1.453_152_027_f32;
+            let a5 = 1.061_405_429_f32;
+            let t_ = 1.0 / (1.0 + p * zabs);
+            let y = 1.0
+                - ((((a5 * t_ + a4) * t_ + a3) * t_ + a2) * t_ + a1)
+                    * t_
+                    * (-zabs * zabs).exp();
+            0.5 * x * (1.0 + sign * y)
+        },
+    };
     for (m, u) in mid.iter_mut().zip(up_vec.iter()) {
-        let s = *m / (1.0 + (-*m).exp());
-        *m = s * u;
+        *m = act(*m) * *u;
     }
     let mid_t = Tensor::from_f32(gate.shape.clone(), mid);
     let ffn_out = qw_matmul(&mid_t, &layer.down_proj)?;

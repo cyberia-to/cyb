@@ -10,6 +10,7 @@
 use crate::cpu::quant::try_dequantize_to_f32;
 use crate::dtype::DType;
 use crate::format::{FormatError, LoadedModel};
+use crate::llama_style::config::LlamaConfig;
 use crate::tensor::Tensor;
 
 /// A weight that may be stored quantized (kept as raw bytes) or
@@ -65,28 +66,31 @@ pub struct Weights {
 }
 
 impl Weights {
-    pub fn load(
-        lm: &LoadedModel,
-        num_layers: usize,
-        tie_word_embeddings: bool,
-        vocab_size: usize,
-        hidden_size: usize,
-        q_dim: usize,
-        kv_dim: usize,
-        intermediate_size: usize,
-    ) -> Result<Self, FormatError> {
+    /// Load all weights using per-layer attention dims from `config`.
+    /// LlamaStyle has uniform dims; LlamaStyle+ (Gemma-4) varies by layer.
+    pub fn load(lm: &LoadedModel, config: &LlamaConfig) -> Result<Self, FormatError> {
+        let hidden_size = config.hidden_size;
+        let vocab_size = config.vocab_size;
+        let intermediate_size = config.intermediate_size;
+
         // Embed: some imports have [vocab, hidden] (HF-style), others
         // [hidden, vocab] (GGUF-native metadata). Physical byte layout is
         // always [vocab × hidden] values row-major, so we just force the
         // shape to [vocab, hidden] regardless of what the metadata says.
-        let embed_tokens =
-            load_tensor_f32_reshaped(lm, "model.embed_tokens.weight", vec![vocab_size, hidden_size])?;
-        let embed_tokens_quant =
-            load_quant_weight_reshaped(lm, "model.embed_tokens.weight", vec![vocab_size, hidden_size])?;
+        let embed_tokens = load_tensor_f32_reshaped(
+            lm,
+            "model.embed_tokens.weight",
+            vec![vocab_size, hidden_size],
+        )?;
+        let embed_tokens_quant = load_quant_weight_reshaped(
+            lm,
+            "model.embed_tokens.weight",
+            vec![vocab_size, hidden_size],
+        )?;
 
         let final_norm = load_tensor_f32(lm, "model.norm.weight")?;
 
-        let lm_head = if tie_word_embeddings {
+        let lm_head = if config.tie_word_embeddings {
             None
         } else {
             Some(load_quant_weight_reshaped(
@@ -96,8 +100,10 @@ impl Weights {
             )?)
         };
 
-        let mut layers = Vec::with_capacity(num_layers);
-        for i in 0..num_layers {
+        let mut layers = Vec::with_capacity(config.num_hidden_layers);
+        for i in 0..config.num_hidden_layers {
+            let q_dim = config.num_attention_heads * config.layer_head_dim(i);
+            let kv_dim = config.layer_kv_heads(i) * config.layer_head_dim(i);
             layers.push(load_layer(
                 lm,
                 i,
