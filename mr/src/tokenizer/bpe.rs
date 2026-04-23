@@ -18,6 +18,10 @@ pub struct Bpe {
     byte_decoder: HashMap<char, u8>,
     /// Special tokens (name + id). Matched greedily before BPE.
     specials: Vec<(String, u32)>,
+    /// SentencePiece (Gemma, Llama) tokenizers prefix words with U+2581 ▁
+    /// (metaspace) instead of GPT-2 byte-level encoding. Auto-detected by
+    /// presence of ▁-prefixed tokens in the vocab.
+    metaspace: bool,
 }
 
 impl Bpe {
@@ -48,6 +52,10 @@ impl Bpe {
             .map(|(s, &id)| (s.clone(), id))
             .collect();
 
+        // Auto-detect SentencePiece (metaspace) tokenizer: vocab contains
+        // tokens prefixed with U+2581 (▁). Llama, Mistral, Gemma all use this.
+        let metaspace = reverse.keys().any(|k| k.starts_with('\u{2581}'));
+
         Self {
             tokens: tok_vec,
             reverse,
@@ -55,6 +63,7 @@ impl Bpe {
             byte_encoder,
             byte_decoder,
             specials,
+            metaspace,
         }
     }
 
@@ -87,8 +96,28 @@ impl Bpe {
                     if s.is_empty() {
                         continue;
                     }
-                    let encoded = byte_level::encode_bytes(&self.byte_encoder, &s);
-                    self.bpe_encode_segment(&encoded, &mut out);
+                    let preprocessed = if self.metaspace {
+                        // SentencePiece: replace literal space with ▁ and
+                        // prepend ▁ at the start of the segment so the first
+                        // word lookup hits a "▁word" vocab entry. BPE merges
+                        // operate on UTF-8 chars (the metaspace ▁ is U+2581,
+                        // 3 bytes — chars() splits it into one symbol).
+                        let mut p = String::with_capacity(s.len() + 3);
+                        if !s.starts_with(' ') && !s.starts_with('\u{2581}') {
+                            p.push('\u{2581}');
+                        }
+                        for c in s.chars() {
+                            if c == ' ' {
+                                p.push('\u{2581}');
+                            } else {
+                                p.push(c);
+                            }
+                        }
+                        p
+                    } else {
+                        byte_level::encode_bytes(&self.byte_encoder, &s)
+                    };
+                    self.bpe_encode_segment(&preprocessed, &mut out);
                 }
             }
         }
@@ -189,10 +218,13 @@ impl Bpe {
             }
         }
 
-        // Byte-level decode the accumulated buffer for non-special parts.
-        // Simpler: accumulate non-special tokens into one big byte-level
-        // string and specials into literal breaks.
-        // Done above; now decode byte-level chars to UTF-8 bytes.
+        // SentencePiece path: vocab strings are UTF-8 with ▁ for spaces.
+        // Just replace ▁ → space and we're done.
+        if self.metaspace {
+            return buffer.replace('\u{2581}', " ");
+        }
+
+        // GPT-2 byte-level decode for the accumulated buffer.
         let bytes = byte_level::decode_bytes(&self.byte_decoder, &buffer);
         // Bytes may include the specials as their literal string (they're
         // already valid UTF-8 since stored as such). This is actually fine

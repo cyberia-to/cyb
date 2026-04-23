@@ -76,14 +76,21 @@ impl Weights {
     /// Load all weights using per-layer attention dims from `config`.
     /// LlamaStyle has uniform dims; LlamaStyle+ (Gemma-4) varies by layer.
     ///
-    /// Gemma family quirk: RMSNorm is `(1 + w) * x / rms` instead of
+    /// Gemma 2 / 3 quirk: RMSNorm is `(1 + w) * x / rms` instead of
     /// `w * x / rms`. Norm weights are stored as offsets from 1.0; we
     /// add 1.0 at load so the runtime stays one RmsNorm codepath.
+    /// Gemma 4 reverted to standard RMSNorm (`w * x / rms`) — see
+    /// Gemma4RMSNorm.forward in transformers — so the offset must NOT
+    /// be applied. Detect the version by model_type.
     pub fn load(lm: &LoadedModel, config: &LlamaConfig) -> Result<Self, FormatError> {
         let hidden_size = config.hidden_size;
         let vocab_size = config.vocab_size;
         let intermediate_size = config.intermediate_size;
-        let gemma_norm_offset = config.model_type.starts_with("gemma");
+        // Gemma 2 and Gemma 3 only — Gemma 4 uses standard RMSNorm.
+        let gemma_norm_offset = matches!(
+            config.model_type.as_str(),
+            "gemma" | "gemma2" | "gemma3"
+        );
 
         // Embed: some imports have [vocab, hidden] (HF-style), others
         // [hidden, vocab] (GGUF-native metadata). Physical byte layout is
