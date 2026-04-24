@@ -176,7 +176,7 @@ pub fn generate(
     // Tokenize prompt
     let prompt_ids = tok.encode(prompt);
     log::debug!("prompt tokens: {}", prompt_ids.len());
-    if std::env::var("MR_DEBUG_TOKENS").is_ok() {
+    if std::env::var("RUN_DEBUG_TOKENS").is_ok() {
         let pieces: Vec<String> = prompt_ids
             .iter()
             .map(|&t| {
@@ -196,7 +196,7 @@ pub fn generate(
     }
 
     // Decode: sample next token, feed back in, repeat.
-    let debug_tokens = std::env::var("MR_DEBUG_TOKENS").is_ok();
+    let debug_tokens = std::env::var("RUN_DEBUG_TOKENS").is_ok();
     // Cap initial capacity — callers may pass usize::MAX for "unlimited".
     let mut generated = Vec::with_capacity(max_tokens.min(1024));
     for step in 0..max_tokens {
@@ -213,8 +213,8 @@ pub fn generate(
                     tok.decode(&[i as u32], false).replace('\n', "\\n").replace('"', "\\\"")
                 ))
                 .collect();
-            // Show rank+logit of a probe token if MR_DEBUG_PROBE is set (e.g. 9079 for ▁Paris)
-            let probe = std::env::var("MR_DEBUG_PROBE")
+            // Show rank+logit of a probe token if RUN_DEBUG_PROBE is set (e.g. 9079 for ▁Paris)
+            let probe = std::env::var("RUN_DEBUG_PROBE")
                 .ok()
                 .and_then(|s| s.parse::<usize>().ok());
             let probe_str = probe

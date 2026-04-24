@@ -239,7 +239,7 @@ impl LlamaModel {
         let pos = self.past_seq_len as f32;
         let pos_tensor = Tensor::from_f32(vec![1], vec![pos]);
 
-        let debug_layers = std::env::var("MR_DEBUG_LAYERS").is_ok();
+        let debug_layers = std::env::var("RUN_DEBUG_LAYERS").is_ok();
         if debug_layers {
             let h = hidden.try_as_f32()?;
             let m = h.iter().map(|v| v.abs()).fold(0f32, f32::max);

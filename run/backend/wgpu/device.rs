@@ -37,7 +37,7 @@ impl Device {
         let (device, queue) = adapter
             .request_device(
                 &wgpu::DeviceDescriptor {
-                    label: Some("mr"),
+                    label: Some("run"),
                     required_features: wgpu::Features::empty(),
                     required_limits: limits,
                     memory_hints: Default::default(),
