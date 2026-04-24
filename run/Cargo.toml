@@ -1,0 +1,66 @@
+[package]
+name = "run"
+version = "0.1.0"
+edition = "2021"
+description = "Model runtime — universal, portable, spec-driven"
+
+[lib]
+name = "run"
+path = "lib.rs"
+
+[[bin]]
+name = "mr"
+path = "bin/mr.rs"
+
+[dependencies]
+# core
+half = { version = "2", features = ["num-traits"] }
+bytemuck = { version = "1", features = ["derive"] }
+thiserror = "1"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+log = "0.4"
+env_logger = "0.11"
+
+# CPU performance
+rayon = "1.10"
+wide = "0.7"
+
+# portable GPU backend
+wgpu = { version = "24", features = ["wgsl"] }
+pollster = "0.4"
+
+# file loading
+memmap2 = "0.9"
+
+# Apple Silicon turbo backend (macOS only)
+[target.'cfg(target_os = "macos")'.dependencies]
+aruminium = { path = "../../honeycrisp/aruminium" }
+
+[dev-dependencies]
+serde_json = "1"
+
+[[test]]
+name = "tier0_import"
+path = "tests/tier0_import.rs"
+
+[[test]]
+name = "tier1_ops"
+path = "tests/tier1_ops.rs"
+
+[[test]]
+name = "tier2_layers"
+path = "tests/tier2_layers.rs"
+
+[[test]]
+name = "tier3_models"
+path = "tests/tier3_models.rs"
+
+[[test]]
+name = "property_tests"
+path = "tests/property_tests.rs"
+
+[[test]]
+name = "tier3_goldens"
+path = "tests/tier3_goldens.rs"
