@@ -1,4 +1,4 @@
-//! mr CLI.
+//! run CLI entry point.
 
 mod cmd;
 mod util;
@@ -36,8 +36,8 @@ fn help() {
     println!("commands:");
     println!("  backends                         list available backends");
     println!("  status                           honest report on manifest models");
-    println!("  bench <model> [--steps N]        phase breakdown + tok/s per backend");
-    println!("  profile <model> [--steps N] [--backend X]    per-op time breakdown");
+    println!("  bench <model> [--steps N] [--max-secs N]   phase breakdown + tok/s per backend");
+    println!("  profile <model> [--steps N] [--backend X]  per-op time breakdown");
     println!("  run <model> --prompt <text>      generate text from a model");
     println!("    options:");
     println!("      --max-tokens N               (default: unlimited — stops at EOS / turn boundary)");

@@ -88,10 +88,15 @@ impl E2EBench {
 
 /// End-to-end bench: load model, upload weights, run N forward steps.
 /// Reports phase breakdown to illuminate what dominates.
+///
+/// `budget_secs` caps the subsequent-step loop: after the first (warmup)
+/// forward, the allowed step count is min(steps, budget / first_forward_time),
+/// with a floor of 3. Pass f64::INFINITY to disable the cap.
 pub fn bench_e2e(
     path: &std::path::Path,
     backend: &dyn Backend,
     steps: usize,
+    budget_secs: f64,
 ) -> Result<E2EBench, String> {
     let t_load = Instant::now();
     let lm = crate::format::LoadedModel::load(path).map_err(|e| format!("{e}"))?;
@@ -107,8 +112,17 @@ pub fn bench_e2e(
     let _ = model.forward(0, backend).map_err(|e| format!("{e}"))?;
     let first_forward_ms = t_first.elapsed().as_secs_f64() * 1000.0;
 
-    let mut forwards = Vec::with_capacity(steps);
-    for i in 0..steps {
+    // Cap subsequent steps to fit within budget.
+    let actual_steps = if first_forward_ms > 0.0 && budget_secs.is_finite() {
+        let budget_ms = budget_secs * 1000.0;
+        let allowed = (budget_ms / first_forward_ms).floor() as usize;
+        steps.min(allowed.max(3))
+    } else {
+        steps
+    };
+
+    let mut forwards = Vec::with_capacity(actual_steps);
+    for i in 0..actual_steps {
         let tok = (i % 100) as u32;
         let t = Instant::now();
         let _ = model.forward(tok, backend).map_err(|e| format!("{e}"))?;

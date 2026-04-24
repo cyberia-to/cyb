@@ -1,6 +1,6 @@
 //! Tier 3 with HF golden values.
 //!
-//! Uses dumps from mr/scripts/dump_hf_golden.py as ground truth.
+//! Uses dumps from run/scripts/dump_hf_golden.py as ground truth.
 //! Skipped if golden file is missing (not everyone has transformers+torch).
 //!
 //! Spec: specs/test.md#tier-3-model-golden-tests
@@ -30,7 +30,7 @@ struct GoldenRecord {
 
 fn find_golden(name: &str) -> Option<PathBuf> {
     let candidates = [
-        format!("mr/goldens/{name}.json"),
+        format!("run/goldens/{name}.json"),
         format!("goldens/{name}.json"),
     ];
     candidates
@@ -49,8 +49,8 @@ fn qwen3_0_6b_matches_hf_golden() {
     let Some(golden_path) = find_golden("qwen3-0.6b") else {
         eprintln!(
             "skip: no golden at mr/goldens/qwen3-0.6b.json — run:\n\
-             python3 mr/scripts/dump_hf_golden.py \\\n\
-               --model Qwen/Qwen3-0.6B --output mr/goldens/qwen3-0.6b.json"
+             python3 run/scripts/dump_hf_golden.py \\\n\
+               --model Qwen/Qwen3-0.6B --output run/goldens/qwen3-0.6b.json"
         );
         return;
     };

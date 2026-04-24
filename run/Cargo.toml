@@ -10,7 +10,7 @@ path = "lib.rs"
 
 [[bin]]
 name = "mr"
-path = "cli/mr.rs"
+path = "cli/main.rs"
 
 [dependencies]
 # core
