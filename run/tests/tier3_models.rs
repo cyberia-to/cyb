@@ -4,7 +4,7 @@
 //! Full golden-value comparison against HF reference comes next
 //! (requires Python dump script to generate expected).
 //!
-//! Spec: reference/runtime/test.md#tier-3-model-golden-tests
+//! Spec: specs/test.md#tier-3-model-golden-tests
 
 use run::arch::decoder::LlamaModel;
 use std::path::PathBuf;

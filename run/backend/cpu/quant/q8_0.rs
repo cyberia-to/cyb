@@ -6,7 +6,7 @@
 //!
 //! Dequant: x[i] = d * qs[i].
 //!
-//! Spec: reference/runtime/quant.md
+//! Spec: specs/quant.md
 
 pub const BLOCK_SIZE: usize = 32;
 pub const BLOCK_BYTES: usize = 34;

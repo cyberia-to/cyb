@@ -1,6 +1,6 @@
 //! Tensor element data types.
 //!
-//! Spec: reference/runtime/tensor.md, reference/runtime/quant.md
+//! Spec: specs/tensor.md, specs/quant.md
 
 use serde::{Deserialize, Serialize};
 

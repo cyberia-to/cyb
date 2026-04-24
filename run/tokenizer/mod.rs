@@ -1,6 +1,6 @@
 //! Tokenizer — BPE + byte-level + chat templates.
 //!
-//! Spec: reference/runtime/tokenizer.md
+//! Spec: specs/tokenizer.md
 
 mod bpe;
 mod byte_level;

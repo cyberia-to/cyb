@@ -268,7 +268,7 @@ impl LlamaConfig {
             .unwrap_or_default();
 
         // ── LlamaStyle+ (Gemma 3/4) parsing ──
-        // Spec: reference/runtime/format.md §"LlamaStyle+ extra fields"
+        // Spec: specs/format.md §"LlamaStyle+ extra fields"
         let layer_types: Vec<LayerKind> = arch
             .get("layer_types")
             .and_then(|v| v.as_array())

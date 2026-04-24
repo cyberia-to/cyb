@@ -5,7 +5,7 @@
 //!           backend/honeycrisp (Apple Silicon turbo).
 //! Future backend: nox (convergent VM).
 //!
-//! Spec: reference/runtime/ in the repo root.
+//! Spec: specs/ in the repo root.
 
 pub mod arch;
 pub mod backend;

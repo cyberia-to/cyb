@@ -20,7 +20,7 @@ pub struct QuantWeight {
     pub shape: Vec<usize>,
     pub dtype: DType,
     /// Raw bytes. For F32/F16 this is the natural layout; for quantized
-    /// it's the packed block format described in reference/runtime/quant.md.
+    /// it's the packed block format described in specs/quant.md.
     pub bytes: std::sync::Arc<Vec<u8>>,
 }
 

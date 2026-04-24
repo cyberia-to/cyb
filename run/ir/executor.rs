@@ -17,7 +17,7 @@
 //! - Weight residency: upload resident weights once at `prepare()`; reuse
 //!   buffers via a frame allocator.
 //!
-//! Spec: reference/runtime/ir.md §"Walking the graph"
+//! Spec: specs/ir.md §"Walking the graph"
 
 use super::graph::Graph;
 use crate::backend::{Backend, BackendError};

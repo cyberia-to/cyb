@@ -1,6 +1,6 @@
 //! Autoregressive text generation — prefill + decode + sampling.
 //!
-//! Spec: reference/runtime/execution.md, reference/runtime/ops.md §8
+//! Spec: specs/execution.md, specs/ops.md §8
 
 use crate::backend::Backend;
 use crate::arch::decoder::LlamaModel;

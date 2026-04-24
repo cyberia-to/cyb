@@ -1,6 +1,6 @@
 //! Rotary Position Embedding — NeoX-style pairing.
 //!
-//! Spec: reference/runtime/ops.md §3
+//! Spec: specs/ops.md §3
 
 use crate::backend::BackendError;
 use crate::core::tensor::Tensor;

@@ -3,7 +3,7 @@
 //! LlamaStyle attention + FFN sub-layers. CPU reference is the golden;
 //! other backends must match within tolerance.
 //!
-//! Spec: reference/runtime/arch.md#llamastyle, reference/runtime/test.md
+//! Spec: specs/arch.md#llamastyle, specs/test.md
 
 use run::{Backend, Op, Tensor};
 

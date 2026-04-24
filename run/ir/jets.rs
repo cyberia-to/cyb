@@ -13,7 +13,7 @@
 //! the hash alone. This matches the old runtime's behavior — jet lookup
 //! is an *optimization hint*, not the canonical dispatch key.
 //!
-//! Spec: reference/runtime/ir.md
+//! Spec: specs/ir.md
 
 use super::atoms::{decompose, Atom, CmpOp, ReduceOp, SlidePattern};
 use crate::core::op::Op;

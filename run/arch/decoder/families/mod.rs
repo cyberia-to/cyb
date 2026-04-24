@@ -17,7 +17,7 @@
 //!   2. Set it in each family's `profile()`.
 //!   3. Read `config.family.shared_qk_weight` at the one site that cares.
 //!
-//! Spec: reference/runtime/arch.md §LlamaStyle / §LlamaStyle+.
+//! Spec: specs/arch.md §LlamaStyle / §LlamaStyle+.
 
 mod baseline;
 mod gemma;

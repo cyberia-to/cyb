@@ -1,6 +1,6 @@
 //! Op enum — one variant per primitive operation.
 //!
-//! Spec: reference/runtime/ops.md, reference/runtime/ir.md
+//! Spec: specs/ops.md, specs/ir.md
 
 use serde::{Deserialize, Serialize};
 

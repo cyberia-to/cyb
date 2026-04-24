@@ -1,6 +1,6 @@
 //! LlamaStyle forward pass.
 //!
-//! Spec: reference/runtime/arch.md#llamastyle
+//! Spec: specs/arch.md#llamastyle
 
 use super::config::LlamaConfig;
 use super::weights::{LayerWeights, QuantWeight, Weights};
@@ -298,7 +298,7 @@ impl LlamaModel {
         let mut logits_vec = backend.download_f32(&logits)?;
 
         // LlamaStyle+ (Gemma 3/4): final logit softcapping.
-        // Spec: reference/runtime/arch.md §"Final logit softcapping"
+        // Spec: specs/arch.md §"Final logit softcapping"
         if let Some(cap) = c.final_logit_softcapping {
             for v in logits_vec.iter_mut() {
                 *v = (*v / cap).tanh() * cap;
@@ -494,7 +494,7 @@ fn forward_layer(
     let scale = config.layer_attn_scale(layer_idx);
     // Sliding-window mask (LlamaStyle+, Gemma 3/4 sliding layers): position s
     // is valid iff s > current_pos - window. current_pos = total_seq - 1.
-    // Spec: reference/runtime/arch.md §"Sliding window attention"
+    // Spec: specs/arch.md §"Sliding window attention"
     let window_start: Option<usize> = sliding_window.map(|w| total_seq.saturating_sub(w));
 
     for h in 0..num_heads {

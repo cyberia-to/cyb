@@ -3,7 +3,7 @@
 //! For each real model we have locally: load, verify structure, check
 //! a sample tensor dequants to sane values.
 //!
-//! Spec: reference/runtime/test.md#tier-0-import-round-trip
+//! Spec: specs/test.md#tier-0-import-round-trip
 
 use run::backend::cpu::dequantize_to_f32;
 use run::format::LoadedModel;

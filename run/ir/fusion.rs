@@ -7,7 +7,7 @@
 //! pre-built consumers map to avoid the O(n²) consumer scan that the
 //! old llm/ port had.
 //!
-//! Spec: reference/runtime/ir.md, reference/runtime/execution.md
+//! Spec: specs/ir.md, specs/execution.md
 
 use super::atoms::{self, AtomInterpreter};
 use super::graph::{Graph, WeightData};

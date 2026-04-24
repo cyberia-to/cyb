@@ -3,7 +3,7 @@
 //! Supports: `{%- for m in messages -%}`, `{%- if cond -%}`, `{{ expr }}`.
 //! Whitespace control via `-%}` / `{%-`.
 //!
-//! Spec: reference/runtime/tokenizer.md#chat-templates
+//! Spec: specs/tokenizer.md#chat-templates
 
 use std::collections::HashMap;
 

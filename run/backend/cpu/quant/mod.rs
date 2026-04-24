@@ -1,6 +1,6 @@
 //! Block quantization dequant — CPU reference.
 //!
-//! Spec: reference/runtime/quant.md
+//! Spec: specs/quant.md
 
 pub mod q4_0;
 pub mod q4_k;
@@ -20,7 +20,7 @@ pub fn try_dequantize_to_f32(bytes: &[u8], dtype: DType) -> Result<Vec<f32>, Bac
             return Err(BackendError::UnsupportedDtype {
                 backend: "cpu",
                 dtype: DType::Q5_K,
-                blocker: "Q5_K dequant not implemented; see reference/runtime/quant.md",
+                blocker: "Q5_K dequant not implemented; see specs/quant.md",
             });
         }
         DType::Q6_K => q6_k::dequantize(bytes),

@@ -4,7 +4,7 @@
 //! these outputs. The library is also the fallback inside wgpu+rs for
 //! ops the GPU cannot dispatch.
 //!
-//! Spec: reference/runtime/ops.md
+//! Spec: specs/ops.md
 
 use crate::backend::{Backend, BackendError, BackendKind};
 use crate::core::dtype::DType;

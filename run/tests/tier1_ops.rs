@@ -2,9 +2,9 @@
 //!
 //! Each op is exercised on every available backend with fixed-seed inputs
 //! and golden values. Goldens are the CPU reference output — the
-//! correctness authority (see reference/runtime/test.md).
+//! correctness authority (see specs/test.md).
 //!
-//! Spec: reference/runtime/ops.md, reference/runtime/test.md
+//! Spec: specs/ops.md, specs/test.md
 
 use run::{Backend, DType, Op, Tensor};
 

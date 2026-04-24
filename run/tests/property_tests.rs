@@ -6,7 +6,7 @@
 //! Catches bugs that fixed-input tests miss: edge cases in sizes,
 //! accumulation precision, backend-specific overflow / rounding.
 //!
-//! Spec: reference/runtime/test.md
+//! Spec: specs/test.md
 
 use run::{Backend, Op, Tensor};
 

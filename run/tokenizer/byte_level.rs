@@ -4,7 +4,7 @@
 //! code point. Visible ASCII + printable Latin-1 map to themselves;
 //! control bytes and space (0x20) are remapped to u+0100..u+013F range.
 //!
-//! Spec: reference/runtime/tokenizer.md
+//! Spec: specs/tokenizer.md
 
 /// Build the byte → unicode char mapping. This is constant but we construct
 /// it at runtime (once) rather than hardcoding.

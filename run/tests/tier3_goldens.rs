@@ -3,7 +3,7 @@
 //! Uses dumps from mr/scripts/dump_hf_golden.py as ground truth.
 //! Skipped if golden file is missing (not everyone has transformers+torch).
 //!
-//! Spec: reference/runtime/test.md#tier-3-model-golden-tests
+//! Spec: specs/test.md#tier-3-model-golden-tests
 
 use run::backend::cpu::CpuBackend;
 use run::arch::decoder::LlamaModel;

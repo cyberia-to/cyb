@@ -1,6 +1,6 @@
 //! Element-wise activations: Silu, Gelu, SwiGlu.
 //!
-//! Spec: reference/runtime/ops.md §4
+//! Spec: specs/ops.md §4
 
 use crate::backend::BackendError;
 use crate::backend::cpu::matmul::matmul_f32;

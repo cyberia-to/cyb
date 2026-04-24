@@ -7,7 +7,7 @@
 //! Correctness is unchanged; the scalar reference is preserved in
 //! `matmul_f32_scalar` for comparison tests.
 //!
-//! Spec: reference/runtime/ops.md §1
+//! Spec: specs/ops.md §1
 
 use crate::backend::BackendError;
 use crate::core::tensor::Tensor;

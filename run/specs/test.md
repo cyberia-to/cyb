@@ -64,7 +64,7 @@ Per family (LlamaStyle, BertStyle, etc.), one test per layer
 primitive:
 
 ```
-tests/layers/llama_style/
+tests/layers/decoder/
     attention_layer.rs       # embed → norm → QKV → rope → sdpa → o_proj → skip
     ffn_layer.rs             # norm → gate/up → silu+mul → down → skip
     full_block.rs            # attention_layer + ffn_layer
@@ -219,7 +219,7 @@ reproduces it.
 Tier 0: import/gguf/qwen3-0.6b  ✓   (312 tensors, max_diff 1.4e-2)
 Tier 1: op/rmsnorm              ✓   (f32 ε<1e-6, f16 ε<9e-4)
 Tier 1: op/sdpa                 ✓
-Tier 2: layers/llama_style/attention_layer  ✗  at qk_norm output (first divergence 3.2e-2)
+Tier 2: layers/decoder/attention_layer  ✗  at qk_norm output (first divergence 3.2e-2)
 Tier 3: models/qwen3-0.6b       ✗  (divergence at token 4)
 
 Summary: 5/26 models passing Tier 3.

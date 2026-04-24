@@ -1,6 +1,6 @@
 //! BPE encode/decode.
 //!
-//! Spec: reference/runtime/tokenizer.md
+//! Spec: specs/tokenizer.md
 
 use super::byte_level;
 use std::collections::HashMap;

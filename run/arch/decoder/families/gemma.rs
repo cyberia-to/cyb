@@ -13,7 +13,7 @@
 //! `hidden_activation`, `post_attn_norm` tensor presence) because they are
 //! configurable per model, not per family.
 //!
-//! Spec: reference/runtime/arch.md §LlamaStyle+.
+//! Spec: specs/arch.md §LlamaStyle+.
 
 use super::{AttnScale, FamilyProfile};
 

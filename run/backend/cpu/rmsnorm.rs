@@ -1,6 +1,6 @@
 //! RMS normalization.
 //!
-//! Spec: reference/runtime/ops.md §2
+//! Spec: specs/ops.md §2
 //!
 //! y = (x / sqrt(mean(x²) + ε)) * g
 //!

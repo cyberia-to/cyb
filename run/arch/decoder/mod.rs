@@ -8,7 +8,7 @@
 //! attention scale, v-norm) are captured in `families/` — no string
 //! matching on model_type outside that folder.
 //!
-//! Spec: reference/runtime/arch.md §decoder
+//! Spec: specs/arch.md §decoder
 
 pub mod config;
 pub mod families;

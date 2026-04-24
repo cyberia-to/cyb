@@ -1,6 +1,6 @@
 //! Softmax — numerically stable (subtract max).
 //!
-//! Spec: reference/runtime/ops.md §4
+//! Spec: specs/ops.md §4
 
 use crate::backend::BackendError;
 use crate::core::tensor::Tensor;

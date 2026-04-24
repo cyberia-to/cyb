@@ -3,7 +3,7 @@
 //! Trait + implementations: cpu (portable reference), wgpu (GPU),
 //! honeycrisp (Apple Silicon turbo). Adding a backend = new submodule here.
 //!
-//! Spec: reference/runtime/execution.md, reference/runtime/architecture.md
+//! Spec: specs/execution.md, specs/architecture.md
 
 pub mod cpu;
 pub mod wgpu;

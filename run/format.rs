@@ -1,6 +1,6 @@
 //! .model file reader.
 //!
-//! Spec: reference/runtime/format.md
+//! Spec: specs/format.md
 
 use crate::core::dtype::DType;
 use std::collections::HashMap;

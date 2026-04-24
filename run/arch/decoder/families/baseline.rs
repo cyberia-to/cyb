@@ -7,7 +7,7 @@
 //! different RoPE theta / head_dim) are captured by tensor presence and
 //! plain config fields — no profile-level flags needed.
 //!
-//! Spec: reference/runtime/arch.md §LlamaStyle.
+//! Spec: specs/arch.md §LlamaStyle.
 
 use super::{AttnScale, FamilyProfile};
 

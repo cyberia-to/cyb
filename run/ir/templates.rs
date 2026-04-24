@@ -15,7 +15,7 @@
 //!        CNN detector — not yet ported. Called code panics with a clear
 //!        "port pending" message so the gap is visible, not silent.
 //!
-//! Spec: reference/runtime/ir.md, reference/runtime/execution.md
+//! Spec: specs/ir.md, specs/execution.md
 
 use super::graph::{Attrs, AttrValue, Dim, Graph, Residency, TensorMeta};
 use crate::core::dtype::DType;

@@ -18,7 +18,7 @@
 //! Retained from Gemma 1/2/3:
 //!   - Embedding scale × sqrt(hidden_size).
 //!
-//! Spec: reference/runtime/arch.md §LlamaStyle+.
+//! Spec: specs/arch.md §LlamaStyle+.
 
 use super::{AttnScale, FamilyProfile};
 

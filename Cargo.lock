@@ -77,7 +77,7 @@ dependencies = [
 
 [[package]]
 name = "acpu"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "unimem",
 ]
@@ -409,7 +409,7 @@ checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
 
 [[package]]
 name = "aruminium"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "acpu",
  "mutants",
@@ -6735,26 +6735,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mr"
-version = "0.1.0"
-dependencies = [
- "aruminium",
- "bytemuck",
- "env_logger 0.11.9",
- "half",
- "log",
- "memmap2 0.9.10",
- "pollster",
- "rayon",
- "serde",
- "serde_json",
- "thiserror 1.0.69",
- "toml 0.8.2",
- "wgpu 24.0.5",
- "wide",
-]
-
-[[package]]
 name = "muda"
 version = "0.17.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9559,6 +9539,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "run"
+version = "0.1.0"
+dependencies = [
+ "aruminium",
+ "bytemuck",
+ "env_logger 0.11.9",
+ "half",
+ "log",
+ "memmap2 0.9.10",
+ "pollster",
+ "rayon",
+ "serde",
+ "serde_json",
+ "thiserror 1.0.69",
+ "toml 0.8.2",
+ "wgpu 24.0.5",
+ "wide",
+]
+
+[[package]]
 name = "rust-stemmers"
 version = "1.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11611,7 +11611,7 @@ checksum = "39ec24b3121d976906ece63c9daad25b85969647682eee313cb5779fdd69e14e"
 
 [[package]]
 name = "unimem"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "crossbeam-queue",
  "mutants",

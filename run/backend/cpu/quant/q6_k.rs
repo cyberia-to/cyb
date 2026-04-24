@@ -8,7 +8,7 @@
 //!
 //! Dequant: x = d * scale[j] * (q - 32), where q is the 6-bit reconstructed value.
 //!
-//! Spec: reference/runtime/quant.md
+//! Spec: specs/quant.md
 
 pub const BLOCK_SIZE: usize = 256;
 pub const BLOCK_BYTES: usize = 210;

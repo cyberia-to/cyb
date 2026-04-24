@@ -8,7 +8,7 @@
 //! [`AtomInterpreter`] is the correctness authority: any Op runs through
 //! `decompose → execute` on f32 CPU and must match backend output within ε.
 //!
-//! Spec: reference/runtime/ir.md
+//! Spec: specs/ir.md
 //!
 //! [`formula_hash`]: super::jets::formula_hash
 

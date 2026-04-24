@@ -8,7 +8,7 @@
 //!
 //! Dequant: x[i] = d * s[j] * nibble - dmin * m[j], where j = sub-block index.
 //!
-//! Spec: reference/runtime/quant.md
+//! Spec: specs/quant.md
 
 pub const BLOCK_SIZE: usize = 256;
 pub const BLOCK_BYTES: usize = 144;

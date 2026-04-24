@@ -4,7 +4,7 @@
 //! Currently implements Metal compute kernels for hot f32 ops;
 //! ANE/AMX integration is future.
 //!
-//! Spec: reference/runtime/architecture.md#honeycrisp
+//! Spec: specs/architecture.md#honeycrisp
 
 #![cfg(target_os = "macos")]
 

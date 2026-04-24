@@ -1,6 +1,6 @@
 //! Tensor — shape, layout, dtype, host or backend-resident data.
 //!
-//! Spec: reference/runtime/tensor.md
+//! Spec: specs/tensor.md
 
 use crate::core::dtype::DType;
 use std::sync::Arc;

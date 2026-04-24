@@ -1,10 +1,10 @@
 //! Graph IR — typed DAG for model representation.
 //!
-//! Used by the graph-executor fallback path (see reference/runtime/architecture.md)
+//! Used by the graph-executor fallback path (see specs/architecture.md)
 //! whenever a model doesn't fit a curated forward. The IR is acyclic, has symbolic
 //! shapes (`Dim::Dynamic`), memory-residency policy, and a pre-execution memory plan.
 //!
-//! Spec: reference/runtime/ir.md
+//! Spec: specs/ir.md
 
 use crate::core::dtype::DType;
 use crate::core::op::Op;

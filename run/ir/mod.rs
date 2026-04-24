@@ -1,6 +1,6 @@
 //! Graph IR — fallback execution tier of the hybrid runtime.
 //!
-//! The hybrid strategy (reference/runtime/architecture.md) has three tiers:
+//! The hybrid strategy (specs/architecture.md) has three tiers:
 //!   1. **Curated** — hand-written Rust forward paths per architecture
 //!      family (see `arch/decoder/`).
 //!   2. **Graph** — generic IR walked by [`GraphExecutor`]; handles models
@@ -9,7 +9,7 @@
 //!
 //! This module is tier 2. It is *not* dead code; it is the fallback that
 //! makes the runtime "work for anything you can express as ops from
-//! `reference/runtime/ops.md`."
+//! `specs/ops.md`."
 //!
 //! Submodules:
 //! - [`graph`] — `Graph`, `Node`, `TensorMeta`, `WeightData`, `memory_plan`
