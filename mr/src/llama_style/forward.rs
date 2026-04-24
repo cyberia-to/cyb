@@ -206,10 +206,9 @@ impl LlamaModel {
         let hidden_size = c.hidden_size;
         let row_start = (token_id as usize) * hidden_size;
         let mut embed_row: Vec<f32> = embed_table.try_as_f32()?[row_start..row_start + hidden_size].to_vec();
-        // Gemma family: scale embeddings by sqrt(hidden_size) before the first
-        // layer. Llama/Qwen don't do this. Keyed off model_type prefix so we
-        // catch gemma, gemma2, gemma3, gemma4 without per-version flags.
-        if c.model_type.starts_with("gemma") {
+        // Families that scale embeddings by sqrt(hidden_size) on lookup
+        // (Gemma 1/2/3/4). The flag is set once on the family profile.
+        if c.family.scaled_embeddings {
             let scale = (hidden_size as f32).sqrt();
             for v in embed_row.iter_mut() {
                 *v *= scale;
@@ -426,14 +425,11 @@ fn forward_layer(
     acc_rope += t.elapsed().as_secs_f64() * 1000.0;
 
     // 4. Append to KV cache, build full K and V views for attention.
-    // Gemma 4: V additionally goes through RMSNorm-no-scale before caching
-    // (per HF Gemma4TextAttention v_norm with_scale=False). Applied on
-    // EVERY layer (sliding and full alike) — the `is_kv_shared_layer`
-    // branch in HF only skips re-projecting K and V, but the norm is
-    // unconditional for non-shared layers. Our num_kv_shared_layers is 0
-    // for gemma-4-31b so we apply to all.
+    // Families that apply RMSNorm-no-scale to V per head before caching
+    // (Gemma 4, via FamilyProfile::v_norm_per_head). Applied on EVERY
+    // layer (sliding and full alike).
     let t = Instant::now();
-    let v_flat = if config.model_type.starts_with("gemma4") {
+    let v_flat = if config.family.v_norm_per_head {
         let mut v_data = v.to_f32_vec();
         // Per-head RMSNorm without learned scale: divide each head's vector
         // by sqrt(mean(x²) + eps).

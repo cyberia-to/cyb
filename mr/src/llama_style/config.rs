@@ -1,6 +1,7 @@
 //! LlamaStyle configuration parsed from .model config section.
 
 use crate::format::FormatError;
+use crate::llama_style::family::{AttnScale, FamilyProfile};
 
 /// Per-layer attention kind. LlamaStyle has all `Sliding` (single shape).
 /// LlamaStyle+ (Gemma 3/4) interleaves `Sliding` and `Full`; full layers
@@ -69,6 +70,11 @@ pub struct LlamaConfig {
     /// (standard 1/sqrt(head_dim)). Affects full layers most because their
     /// head_dim differs from sliding's.
     pub query_pre_attn_scalar: Option<usize>,
+
+    /// Per-family quirks derived from `model_type` at parse time.
+    /// Runtime code reads `family.*` fields instead of matching on the
+    /// string — see family.rs for the full axis list.
+    pub family: FamilyProfile,
 }
 
 impl LlamaConfig {
@@ -124,21 +130,16 @@ impl LlamaConfig {
         }
     }
 
-    /// Attention scaling. Three regimes:
-    ///   - Gemma 4: scaling = 1.0 (Q and K already pre-normalised by q_norm
-    ///     and k_norm, so the dot product is bounded; no extra sqrt scale).
-    ///   - Gemma 3 with `query_pre_attn_scalar`: 1/sqrt(scalar).
-    ///   - LlamaStyle (everything else): standard 1/sqrt(head_dim).
+    /// Attention scaling per the family profile:
+    ///   - `Unity` (Gemma 4): 1.0 — Q and K are pre-normalised.
+    ///   - `FixedDivisor(n)` (Gemma 2/3): 1/sqrt(n), independent of head_dim.
+    ///   - `PerHeadDim` (LlamaStyle): 1/sqrt(layer_head_dim).
     pub fn layer_attn_scale(&self, layer: usize) -> f32 {
-        // Gemma 4 only: identified by the presence of attention_k_eq_v
-        // alongside the model_type starting with "gemma".
-        if self.attention_k_eq_v && self.model_type.starts_with("gemma") {
-            return 1.0;
+        match self.family.attn_scale {
+            AttnScale::Unity => 1.0,
+            AttnScale::FixedDivisor(n) => 1.0 / (n as f32).sqrt(),
+            AttnScale::PerHeadDim => 1.0 / (self.layer_head_dim(layer) as f32).sqrt(),
         }
-        let scalar = self
-            .query_pre_attn_scalar
-            .unwrap_or(self.layer_head_dim(layer));
-        1.0 / (scalar as f32).sqrt()
     }
 }
 
@@ -326,20 +327,13 @@ impl LlamaConfig {
             .get("partial_rotary_factor_full")
             .and_then(|v| v.as_float().or_else(|| v.as_integer().map(|i| i as f64)))
             .map(|f| f as f32);
-        // Gemma family uses query_pre_attn_scalar=256 by default per HF
-        // Gemma 3 (independent of head_dim). LlamaStyle leaves it None →
-        // attention scaling falls back to 1/sqrt(head_dim).
+        // Explicit config value wins; family profile supplies defaults for
+        // families that need a non-head_dim scalar.
         let query_pre_attn_scalar = arch
             .get("query_pre_attn_scalar")
             .and_then(|v| v.as_integer())
-            .map(|i| i as usize)
-            .or_else(|| {
-                if model_type.starts_with("gemma") {
-                    Some(256)
-                } else {
-                    None
-                }
-            });
+            .map(|i| i as usize);
+        let family = FamilyProfile::for_model_type(&model_type, query_pre_attn_scalar);
 
         Ok(Self {
             model_type,
@@ -367,6 +361,7 @@ impl LlamaConfig {
             rope_theta_full,
             partial_rotary_factor_full,
             query_pre_attn_scalar,
+            family,
         })
     }
 }
