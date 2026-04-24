@@ -6,12 +6,20 @@ What runs today vs what the spec targets. Updated each session.
 
 The 4 models in `manifest.rs` are the acceptance criterion.
 
-| Model | Family | Load | Run | Output | tok/s (CPU) |
-|---|---|---|---|---|---|
-| qwen3-0.6b-abl | decoder/baseline | ✓ | ✓ | ✓ verified correct | ~9 |
-| qwen2.5-coder-1.5b-abl | decoder/baseline | ✓ | ✓ | ✓ verified correct | ~4 |
-| qwen2.5-coder-14b-abl | decoder/baseline | ✓ | ✓ | ✓ verified correct | ~0.4 |
-| gemma-4-31b | decoder/gemma4 | ✓ | ✓ | ✓ verified correct | ~0.4 |
+| Model | Family | Load | Run | Output | tok/s CPU | tok/s honeycrisp |
+|---|---|---|---|---|---|---|
+| qwen3-0.6b-abl | decoder/baseline | ✓ | ✓ | ✓ HF golden pass | ~26 | ~5 |
+| qwen2.5-coder-1.5b-abl | decoder/baseline | ✓ | ✓ | ✓ verified correct | ~16 | ~7 |
+| qwen2.5-coder-14b-abl | decoder/baseline | ✓ | ✓ | ✓ verified correct | ~0.4 | ~2 |
+| gemma-4-31b | decoder/gemma4 | ✓ | ✓ | ✓ verified correct | ~0.5 | n/a (OOM) |
+
+CPU backend: pure Rust Q4_K matmul, rayon-parallel where applicable.
+Honeycrisp (Apple M-series Metal): faster than CPU for large models where
+matmul dominates; slower for tiny models (0.6b, 1.5b) where Metal dispatch
+overhead outweighs compute savings. CPU backend is ~4-8× behind llama.cpp
+(expected — no hand-tuned NEON intrinsics yet).
+
+qwen3-0.6b passes HF per-op activation golden regression (tier3_goldens).
 
 All 4 produce sensible factual answers on "What is the sun?" and math prompts.
 qwen3-0.6b passes HF per-op activation golden regression (tier3_goldens).

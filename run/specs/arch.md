@@ -94,6 +94,63 @@ eos_token_ids = [151645, 151643]
 
 Adds to LlamaStyle:
 
+### Embedding scale (Gemma 1/2/3/4)
+
+```
+h = embed[tokens] * sqrt(hidden_size)
+```
+
+Applied on every Gemma generation. Llama/Qwen/Mistral do not scale.
+Controlled by `FamilyProfile::scaled_embeddings`.
+
+### RMSNorm weight encoding (Gemma 2/3)
+
+Gemma 2/3 store norm weights as offsets from 1 (`w_stored = w_true − 1`). At
+load time each norm tensor is adjusted to `w_true = w_stored + 1` so the
+runtime uses the standard `w * x / rms` formula unchanged. Controlled by
+`FamilyProfile::rmsnorm_plus_one`. Gemma 4 uses standard encoding.
+
+### Pre-residual norms on attention and FFN output (Gemma 2/3/4)
+
+LlamaStyle has bare residuals. Gemma 2/3/4 apply an extra RMSNorm to each
+sublayer output *before* adding to the residual stream:
+
+```
+# After attention output projection:
+attn_out = RmsNorm(attn_out, layer.post_attention_norm.weight, eps)
+h = h + attn_out
+
+# After FFN down projection:
+ffn_out = RmsNorm(ffn_out, layer.post_ffw_norm.weight, eps)
+h = h + ffn_out
+```
+
+Both are optional tensors — present/absent determined by tensor existence.
+
+### V-norm per head (Gemma 4)
+
+Before writing V to the KV cache, each head vector is divided by its own RMS
+(no learned scale — pure RMS normalise):
+
+```
+for h in 0..kv_heads:
+    v[h] = v[h] / sqrt(mean(v[h]²) + eps)
+```
+
+Applied on every layer kind (sliding and full alike). Controlled by
+`FamilyProfile::v_norm_per_head`.
+
+### Layer residual scalar (Gemma 4)
+
+After both residual adds within a layer:
+
+```
+h = (h + ffn_out) * layer_output_scale     # layer_output_scale is a scalar [1] tensor
+```
+
+`layer_output_scale` is trained per-layer (HF: `self.layer_scalar`). Without it,
+activations grow without bound through the residual stream.
+
 ### Sliding window attention
 
 Some layers use full attention, others restrict to a window of

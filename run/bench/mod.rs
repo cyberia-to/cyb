@@ -154,7 +154,7 @@ pub struct LayerBreakdown {
     pub total_layer_ms: f64,
 }
 
-pub fn format_e2e(b: &E2EBench, prompt_tokens: usize) -> String {
+pub fn format_e2e(b: &E2EBench) -> String {
     let avg = b.avg_forward_ms();
     format!(
         "{:<12}  load {:>6.0}ms  upload {:>6.0}ms  first {:>6.0}ms  avg {:>6.1}ms/tok  →  {:>5.1} tok/s",
