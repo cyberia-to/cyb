@@ -2,7 +2,7 @@
 //!
 //! Spec: reference/runtime/format.md
 
-use crate::dtype::DType;
+use crate::core::dtype::DType;
 use std::collections::HashMap;
 use std::io;
 use std::path::Path;

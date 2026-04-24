@@ -7,8 +7,8 @@ use super::weights::{LayerWeights, QuantWeight, Weights};
 use crate::backend::{Backend, BackendError};
 use crate::backend::cpu::matmul_quant_f32;
 use crate::format::{FormatError, LoadedModel};
-use crate::op::Op;
-use crate::tensor::Tensor;
+use crate::core::op::Op;
+use crate::core::tensor::Tensor;
 use std::path::Path;
 
 /// Fused quant matmul via CPU kernel. Returns f32 Tensor.

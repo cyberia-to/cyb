@@ -4,7 +4,7 @@
 
 use crate::backend::BackendError;
 use crate::backend::cpu::matmul::matmul_f32;
-use crate::tensor::Tensor;
+use crate::core::tensor::Tensor;
 
 pub fn silu_f32(x: &Tensor) -> Result<Tensor, BackendError> {
     let data = x.as_f32();

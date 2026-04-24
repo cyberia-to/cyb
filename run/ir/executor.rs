@@ -21,7 +21,7 @@
 
 use super::graph::Graph;
 use crate::backend::{Backend, BackendError};
-use crate::tensor::Tensor;
+use crate::core::tensor::Tensor;
 use std::collections::HashMap;
 
 /// Knobs for execution. Most graph invocations can leave these at default.

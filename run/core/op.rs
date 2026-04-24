@@ -107,7 +107,7 @@ pub enum Op {
     FlowStep,
 
     // ==== Quantization ====
-    Quantize { dtype: crate::dtype::DType },
+    Quantize { dtype: crate::core::dtype::DType },
     Dequantize,
 
     // ==== Sampling ====

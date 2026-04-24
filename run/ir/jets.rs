@@ -16,7 +16,7 @@
 //! Spec: reference/runtime/ir.md
 
 use super::atoms::{decompose, Atom, CmpOp, ReduceOp, SlidePattern};
-use crate::op::Op;
+use crate::core::op::Op;
 use std::collections::HashMap;
 
 /// Deterministic hash of an atom sequence. Stable across runs and platforms.

@@ -6,8 +6,8 @@
 //!
 //! Spec: reference/runtime/ir.md
 
-use crate::dtype::DType;
-use crate::op::Op;
+use crate::core::dtype::DType;
+use crate::core::op::Op;
 use std::collections::HashMap;
 
 /// Tensor name — weight key or intermediate label.

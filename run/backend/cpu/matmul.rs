@@ -10,7 +10,7 @@
 //! Spec: reference/runtime/ops.md §1
 
 use crate::backend::BackendError;
-use crate::tensor::Tensor;
+use crate::core::tensor::Tensor;
 use rayon::prelude::*;
 use wide::f32x8;
 

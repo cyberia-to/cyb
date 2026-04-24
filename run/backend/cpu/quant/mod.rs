@@ -9,7 +9,7 @@ pub mod q6_k;
 pub mod q8_0;
 
 use crate::backend::BackendError;
-use crate::dtype::DType;
+use crate::core::dtype::DType;
 
 /// Fallible dequant — returns structured error for unsupported dtypes.
 pub fn try_dequantize_to_f32(bytes: &[u8], dtype: DType) -> Result<Vec<f32>, BackendError> {

@@ -12,7 +12,7 @@
 //!
 //! [`formula_hash`]: super::jets::formula_hash
 
-use crate::op::Op;
+use crate::core::op::Op;
 
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum Atom {
@@ -383,7 +383,7 @@ mod tests {
     fn every_op_variant_decomposes_without_panic() {
         // Exercise each variant of run::Op at least once; any new variant
         // added without a `decompose` arm will fail to compile, not panic.
-        use crate::op::{InterpolateMode, PoolMode, SampleMethod};
+        use crate::core::op::{InterpolateMode, PoolMode, SampleMethod};
         let ops = [
             Op::Matmul, Op::Add, Op::Mul, Op::Sub, Op::Div,
             Op::Transpose { perm: vec![0, 1] },
@@ -437,7 +437,7 @@ mod tests {
             Op::PatchEmbed { patch_size: 16 },
             Op::Unpatchify,
             Op::NoiseSchedule, Op::FlowStep,
-            Op::Quantize { dtype: crate::dtype::DType::Q4_0 },
+            Op::Quantize { dtype: crate::core::dtype::DType::Q4_0 },
             Op::Dequantize,
             Op::Sample { method: SampleMethod::Greedy },
             Op::LoraApply { rank: 16, alpha: 1.0 },

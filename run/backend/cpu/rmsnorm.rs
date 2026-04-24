@@ -7,7 +7,7 @@
 //! Critical: ε is added to mean-of-squares BEFORE sqrt.
 
 use crate::backend::BackendError;
-use crate::tensor::Tensor;
+use crate::core::tensor::Tensor;
 
 /// RMSNorm over the last dimension.
 ///

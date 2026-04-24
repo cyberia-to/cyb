@@ -10,9 +10,9 @@
 
 use crate::backend::{Backend, BackendError, BackendKind};
 use crate::backend::cpu::CpuBackend;
-use crate::dtype::DType;
-use crate::op::Op;
-use crate::tensor::{BackendData, Tensor, TensorData};
+use crate::core::dtype::DType;
+use crate::core::op::Op;
+use crate::core::tensor::{BackendData, Tensor, TensorData};
 use std::any::Any;
 use std::sync::Arc;
 

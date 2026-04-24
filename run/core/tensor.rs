@@ -2,7 +2,7 @@
 //!
 //! Spec: reference/runtime/tensor.md
 
-use crate::dtype::DType;
+use crate::core::dtype::DType;
 use std::sync::Arc;
 
 /// Row-major tensor shape. Most-significant dim first.

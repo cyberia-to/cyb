@@ -7,9 +7,9 @@
 //! Spec: reference/runtime/ops.md
 
 use crate::backend::{Backend, BackendError, BackendKind};
-use crate::dtype::DType;
-use crate::op::Op;
-use crate::tensor::{Tensor, TensorData};
+use crate::core::dtype::DType;
+use crate::core::op::Op;
+use crate::core::tensor::{Tensor, TensorData};
 use std::sync::Arc;
 
 mod matmul;

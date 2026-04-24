@@ -8,10 +8,10 @@
 //! dequantized at load.
 
 use crate::backend::cpu::quant::try_dequantize_to_f32;
-use crate::dtype::DType;
+use crate::core::dtype::DType;
 use crate::format::{FormatError, LoadedModel};
 use crate::arch::decoder::config::LlamaConfig;
-use crate::tensor::Tensor;
+use crate::core::tensor::Tensor;
 
 /// A weight that may be stored quantized (kept as raw bytes) or
 /// dequantized (f32 tensor).

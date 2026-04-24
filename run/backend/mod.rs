@@ -11,9 +11,9 @@ pub mod wgpu;
 #[cfg(target_os = "macos")]
 pub mod honeycrisp;
 
-use crate::dtype::DType;
-use crate::op::Op;
-use crate::tensor::Tensor;
+use crate::core::dtype::DType;
+use crate::core::op::Op;
+use crate::core::tensor::Tensor;
 use thiserror::Error;
 
 /// Three backends + cpu reference library.
@@ -91,7 +91,7 @@ pub enum BackendError {
     },
 
     #[error("tensor: {0}")]
-    Tensor(#[from] crate::tensor::TensorError),
+    Tensor(#[from] crate::core::tensor::TensorError),
 
     #[error("internal: {0}")]
     Internal(String),
@@ -129,10 +129,10 @@ pub trait Backend: Send + Sync {
     /// uploads raw bytes; backends may override for zero-copy paths.
     fn to_backend(&self, t: &Tensor) -> Result<Tensor, BackendError> {
         match &t.data {
-            crate::tensor::TensorData::Host(bytes) => {
+            crate::core::tensor::TensorData::Host(bytes) => {
                 self.upload(bytes.as_slice(), t.shape.clone(), t.dtype)
             }
-            crate::tensor::TensorData::Backend(_) => Ok(t.clone()),
+            crate::core::tensor::TensorData::Backend(_) => Ok(t.clone()),
         }
     }
 

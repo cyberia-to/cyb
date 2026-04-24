@@ -3,7 +3,7 @@
 //! Spec: reference/runtime/ops.md §3
 
 use crate::backend::BackendError;
-use crate::tensor::Tensor;
+use crate::core::tensor::Tensor;
 
 /// Apply RoPE to the last `head_dim` axis (NeoX pairing).
 ///

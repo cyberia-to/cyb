@@ -11,8 +11,8 @@
 
 use super::atoms::{self, AtomInterpreter};
 use super::graph::{Graph, WeightData};
-use crate::dtype::DType;
-use crate::op::Op;
+use crate::core::dtype::DType;
+use crate::core::op::Op;
 use std::collections::{HashMap, HashSet};
 
 /// Structural fusion pattern hint — reported by [`detect_fusions`].

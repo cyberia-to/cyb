@@ -7,8 +7,8 @@
 
 use crate::backend::Backend;
 use crate::arch::decoder::LlamaModel;
-use crate::op::Op;
-use crate::tensor::Tensor;
+use crate::core::op::Op;
+use crate::core::tensor::Tensor;
 use std::time::{Duration, Instant};
 
 pub struct OpBench {

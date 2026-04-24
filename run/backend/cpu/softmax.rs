@@ -3,7 +3,7 @@
 //! Spec: reference/runtime/ops.md §4
 
 use crate::backend::BackendError;
-use crate::tensor::Tensor;
+use crate::core::tensor::Tensor;
 
 pub fn softmax_f32(x: &Tensor, dim: i32) -> Result<Tensor, BackendError> {
     let rank = x.rank() as i32;

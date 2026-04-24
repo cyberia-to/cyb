@@ -14,8 +14,8 @@
 
 use crate::backend::BackendError;
 use crate::backend::cpu::quant::{q4_0, q4_k, q6_k, q8_0};
-use crate::dtype::DType;
-use crate::tensor::Tensor;
+use crate::core::dtype::DType;
+use crate::core::tensor::Tensor;
 use rayon::prelude::*;
 use wide::f32x8;
 
