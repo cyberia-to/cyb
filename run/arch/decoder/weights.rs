@@ -9,31 +9,29 @@
 
 use crate::backend::cpu::quant::try_dequantize_to_f32;
 use crate::core::dtype::DType;
+use crate::core::tensor::{Tensor, TensorData};
 use crate::format::{FormatError, LoadedModel};
 use crate::arch::decoder::config::LlamaConfig;
-use crate::core::tensor::Tensor;
+use std::sync::Arc;
 
-/// A weight that may be stored quantized (kept as raw bytes) or
-/// dequantized (f32 tensor).
+/// Quantized matmul weight. Bytes stay in their native quant format;
+/// `tensor` mirrors them as a Tensor so backends can upload to GPU once
+/// during `to_backend()` and skip per-call uploads during inference.
 #[derive(Clone)]
 pub struct QuantWeight {
     pub shape: Vec<usize>,
     pub dtype: DType,
-    /// Raw bytes. For F32/F16 this is the natural layout; for quantized
-    /// it's the packed block format described in specs/quant.md.
-    pub bytes: std::sync::Arc<Vec<u8>>,
+    /// Raw quant bytes on host — always valid as the CPU fallback.
+    pub bytes: Arc<Vec<u8>>,
+    /// Same bytes wrapped as a Tensor. After `to_backend()` this is
+    /// GPU-resident; before it's a host Tensor backed by `bytes`.
+    pub tensor: Tensor,
 }
 
 impl QuantWeight {
-    pub fn numel(&self) -> usize {
-        self.shape.iter().product()
-    }
-    pub fn n(&self) -> usize {
-        self.shape[0]
-    }
-    pub fn k(&self) -> usize {
-        self.shape[1]
-    }
+    pub fn numel(&self) -> usize { self.shape.iter().product() }
+    pub fn n(&self) -> usize { self.shape[0] }
+    pub fn k(&self) -> usize { self.shape[1] }
 }
 
 pub struct LayerWeights {
@@ -192,10 +190,17 @@ fn load_quant_weight(lm: &LoadedModel, name: &str) -> Result<QuantWeight, Format
     let bytes = lm
         .tensor_bytes(name)
         .ok_or_else(|| FormatError::Invalid(format!("bytes missing for {name}")))?;
+    let raw: Arc<Vec<u8>> = Arc::new(bytes.to_vec());
+    let tensor = Tensor {
+        shape: meta.shape.clone(),
+        dtype: meta.dtype,
+        data: TensorData::Host(raw.clone()),
+    };
     Ok(QuantWeight {
         shape: meta.shape.clone(),
         dtype: meta.dtype,
-        bytes: std::sync::Arc::new(bytes.to_vec()),
+        bytes: raw,
+        tensor,
     })
 }
 
@@ -234,7 +239,12 @@ fn load_quant_weight_reshaped(
             qw.shape, declared, shape, expected
         )));
     }
-    qw.shape = shape;
+    qw.shape = shape.clone();
+    qw.tensor = Tensor {
+        shape,
+        dtype: qw.dtype,
+        data: TensorData::Host(qw.bytes.clone()),
+    };
     Ok(qw)
 }
 

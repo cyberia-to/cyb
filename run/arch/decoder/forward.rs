@@ -5,15 +5,15 @@
 use super::config::LlamaConfig;
 use super::weights::{LayerWeights, QuantWeight, Weights};
 use crate::backend::{Backend, BackendError};
-use crate::backend::cpu::matmul_quant_f32;
 use crate::format::{FormatError, LoadedModel};
 use crate::core::op::Op;
 use crate::core::tensor::Tensor;
 use std::path::Path;
 
-/// Fused quant matmul via CPU kernel. Returns f32 Tensor.
-fn qw_matmul(x: &Tensor, w: &QuantWeight) -> Result<Tensor, BackendError> {
-    matmul_quant_f32(x, w.bytes.as_slice(), w.dtype, w.n(), w.k())
+/// Fused quant matmul — dispatches to backend (Metal on honeycrisp, CPU otherwise).
+/// Uses w.tensor which is GPU-resident after to_backend(), avoiding per-call uploads.
+fn qw_matmul(x: &Tensor, w: &QuantWeight, backend: &dyn Backend) -> Result<Tensor, BackendError> {
+    backend.quant_matmul(x, &w.tensor)
 }
 
 pub struct LlamaModel {
@@ -134,12 +134,19 @@ impl LlamaModel {
         };
     }
 
-    /// Move norm/embed tensors to the backend (if it supports persistent
-    /// upload). Matmul weights are QuantWeight (raw bytes on host) and
-    /// dispatch to CPU quant matmul regardless of "backend" selected;
-    /// GPU speedup requires per-backend quant matmul kernel (future).
+    /// Upload all weights to the backend. Norm/embed tensors go as f32;
+    /// quant weights upload their raw bytes so the backend can dispatch
+    /// fused dequant+matmul kernels without per-call re-uploads.
     pub fn to_backend(&mut self, backend: &dyn Backend) -> Result<(), BackendError> {
         self.weights.final_norm = backend.to_backend(&self.weights.final_norm)?;
+        let upload_quant = backend.uploads_quant_weights();
+        if upload_quant {
+            self.weights.embed_tokens_quant.tensor =
+                backend.to_backend(&self.weights.embed_tokens_quant.tensor)?;
+            if let Some(ref mut lm) = self.weights.lm_head {
+                lm.tensor = backend.to_backend(&lm.tensor)?;
+            }
+        }
         for layer in &mut self.weights.layers {
             layer.input_norm = backend.to_backend(&layer.input_norm)?;
             layer.post_norm = backend.to_backend(&layer.post_norm)?;
@@ -157,6 +164,15 @@ impl LlamaModel {
             }
             if let Some(ref n) = layer.k_norm {
                 layer.k_norm = Some(backend.to_backend(n)?);
+            }
+            if upload_quant {
+                layer.q_proj.tensor    = backend.to_backend(&layer.q_proj.tensor)?;
+                layer.k_proj.tensor    = backend.to_backend(&layer.k_proj.tensor)?;
+                layer.v_proj.tensor    = backend.to_backend(&layer.v_proj.tensor)?;
+                layer.o_proj.tensor    = backend.to_backend(&layer.o_proj.tensor)?;
+                layer.gate_proj.tensor = backend.to_backend(&layer.gate_proj.tensor)?;
+                layer.up_proj.tensor   = backend.to_backend(&layer.up_proj.tensor)?;
+                layer.down_proj.tensor = backend.to_backend(&layer.down_proj.tensor)?;
             }
         }
         Ok(())
@@ -280,7 +296,7 @@ impl LlamaModel {
             let s = (h.iter().map(|v| v * v).sum::<f32>() / h.len() as f32).sqrt();
             eprintln!("post-final-norm abs_max={m:.4} rms={s:.4}");
         }
-        let logits = qw_matmul(&final_normed, lm_head_qw)?;
+        let logits = qw_matmul(&final_normed, lm_head_qw, backend)?;
         if debug_layers {
             let h = backend.download_f32(&logits)?;
             let m = h.iter().map(|v| v.abs()).fold(0f32, f32::max);
@@ -359,9 +375,9 @@ fn forward_layer(
 
     // 2. QKV projections — fused dequant+matmul on CPU.
     let t = Instant::now();
-    let mut q = qw_matmul(&normed, &layer.q_proj)?;
-    let mut k = qw_matmul(&normed, &layer.k_proj)?;
-    let mut v = qw_matmul(&normed, &layer.v_proj)?;
+    let mut q = qw_matmul(&normed, &layer.q_proj, backend)?;
+    let mut k = qw_matmul(&normed, &layer.k_proj, backend)?;
+    let mut v = qw_matmul(&normed, &layer.v_proj, backend)?;
 
     // Attention biases (Qwen2)
     if let Some(bias) = &layer.q_proj_bias {
@@ -544,7 +560,7 @@ fn forward_layer(
     // 6. Output projection — quant matmul.
     let t = Instant::now();
     let attn_tensor = Tensor::from_f32(vec![1, num_heads * head_dim], attn_out);
-    let mut attn_proj = qw_matmul(&attn_tensor, &layer.o_proj)?;
+    let mut attn_proj = qw_matmul(&attn_tensor, &layer.o_proj, backend)?;
     // Gemma 2/3/4: norm applied to attention output before residual.
     if let Some(ref n) = layer.post_attn_norm {
         attn_proj = backend
@@ -570,8 +586,8 @@ fn forward_layer(
     // FFN: 3 quant matmuls + elementwise activation(gate) * up.
     // Activation per `config.hidden_activation` (LlamaStyle: SiLU; Gemma uses GELU).
     let t = Instant::now();
-    let gate = qw_matmul(&normed2, &layer.gate_proj)?;
-    let up = qw_matmul(&normed2, &layer.up_proj)?;
+    let gate = qw_matmul(&normed2, &layer.gate_proj, backend)?;
+    let up = qw_matmul(&normed2, &layer.up_proj, backend)?;
     let mut mid = gate.to_f32_vec();
     let up_vec = up.to_f32_vec();
     use crate::arch::decoder::config::HiddenActivation;
@@ -607,7 +623,7 @@ fn forward_layer(
         *m = act(*m) * *u;
     }
     let mid_t = Tensor::from_f32(gate.shape.clone(), mid);
-    let mut ffn_out = qw_matmul(&mid_t, &layer.down_proj)?;
+    let mut ffn_out = qw_matmul(&mid_t, &layer.down_proj, backend)?;
     // Gemma 2/3/4: norm applied to FFN output before residual.
     if let Some(ref n) = layer.post_ffw_norm {
         ffn_out = backend

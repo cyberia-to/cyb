@@ -139,4 +139,25 @@ pub trait Backend: Send + Sync {
     /// Download tensor to host memory as F32.
     /// For quantized inputs, dequantizes to F32 on download.
     fn download_f32(&self, t: &Tensor) -> Result<Vec<f32>, BackendError>;
+
+    /// True if this backend pre-uploads quant weight bytes during to_backend().
+    /// Backends that override quant_matmul to use GPU-resident tensors return true.
+    /// Default false: quant weight tensors stay host-resident.
+    fn uploads_quant_weights(&self) -> bool { false }
+
+    /// Fused dequantize+matmul for quantized weight matrices.
+    ///
+    /// `x` is f32 [..., K]. `w` is a weight Tensor with dtype Q4_K/Q6_K/etc
+    /// and shape [N, K]. After `to_backend()`, `w` may be GPU-resident.
+    ///
+    /// Default: extracts host bytes from `w` and delegates to CPU kernel.
+    /// GPU backends override to run on-device kernels using `w` directly.
+    fn quant_matmul(&self, x: &Tensor, w: &Tensor) -> Result<Tensor, BackendError> {
+        let bytes = w.as_host_bytes().ok_or_else(|| BackendError::Internal(
+            "quant_matmul default: w is not host-resident (backend missing override)".into(),
+        ))?;
+        let n = w.shape[0];
+        let k = w.shape[1];
+        crate::backend::cpu::matmul_quant_f32(x, bytes, w.dtype, n, k)
+    }
 }

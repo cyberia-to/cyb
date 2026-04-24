@@ -3,7 +3,7 @@
 use crate::backend::BackendError;
 use crate::backend::honeycrisp::device::HoneycrispDevice;
 
-const MSL: &str = r#"
+pub const MSL: &str = r#"
 #include <metal_stdlib>
 using namespace metal;
 
@@ -51,13 +51,13 @@ kernel void kmain(
 
 pub fn dispatch(
     dev: &HoneycrispDevice,
+    pipeline: &aruminium::Pipeline,
     x: &aruminium::Buffer,
     g: &aruminium::Buffer,
     batch: u32,
     d: u32,
     eps: f32,
 ) -> Result<aruminium::Buffer, BackendError> {
-    let pipeline = dev.pipeline(MSL)?;
     let out = dev.alloc((batch * d * 4) as usize)?;
 
     #[repr(C)]
@@ -78,7 +78,7 @@ pub fn dispatch(
     unsafe {
         aruminium::autorelease_pool(|| {
             dev.dispatch.batch_raw(|b_enc| {
-                b_enc.bind(&pipeline);
+                b_enc.bind(pipeline);
                 b_enc.bind_buffer(x, 0, 0);
                 b_enc.bind_buffer(g, 0, 1);
                 b_enc.bind_buffer(&out, 0, 2);

@@ -1,9 +1,9 @@
-//! Metal matmul: y = x @ W^T
+//! Metal matmul: y = x @ W^T (F32 × F32)
 
 use crate::backend::BackendError;
 use crate::backend::honeycrisp::device::HoneycrispDevice;
 
-const MSL: &str = r#"
+pub const MSL: &str = r#"
 #include <metal_stdlib>
 using namespace metal;
 
@@ -35,13 +35,13 @@ kernel void kmain(
 
 pub fn dispatch(
     dev: &HoneycrispDevice,
+    pipeline: &aruminium::Pipeline,
     x: &aruminium::Buffer,
     w: &aruminium::Buffer,
     batch: u32,
     n: u32,
     k: u32,
 ) -> Result<aruminium::Buffer, BackendError> {
-    let pipeline = dev.pipeline(MSL)?;
     let out_size = (batch * n * 4) as usize;
     let out = dev.alloc(out_size)?;
 
@@ -63,7 +63,7 @@ pub fn dispatch(
     unsafe {
         aruminium::autorelease_pool(|| {
             dev.dispatch.batch_raw(|batch_enc| {
-                batch_enc.bind(&pipeline);
+                batch_enc.bind(pipeline);
                 batch_enc.bind_buffer(x, 0, 0);
                 batch_enc.bind_buffer(w, 0, 1);
                 batch_enc.bind_buffer(&out, 0, 2);
