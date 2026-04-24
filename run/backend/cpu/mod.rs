@@ -108,6 +108,116 @@ impl Backend for CpuBackend {
                 let out = swiglu_f32(x, wg, wu, wd)?;
                 Ok(vec![out])
             }
+            Op::Reshape { shape } => {
+                let [x] = require(inputs, 1, op)?;
+                let x_numel = x.numel();
+                let mut out_shape: Vec<usize> = Vec::with_capacity(shape.len());
+                let mut infer_idx: Option<usize> = None;
+                let mut product = 1usize;
+                for (i, &d) in shape.iter().enumerate() {
+                    if d == -1 {
+                        if infer_idx.is_some() {
+                            return Err(BackendError::InvalidInput {
+                                op: "Reshape",
+                                reason: "at most one -1 dim allowed".into(),
+                            });
+                        }
+                        infer_idx = Some(i);
+                        out_shape.push(0);
+                    } else {
+                        out_shape.push(d as usize);
+                        product *= d as usize;
+                    }
+                }
+                if let Some(idx) = infer_idx {
+                    if product == 0 || x_numel % product != 0 {
+                        return Err(BackendError::InvalidInput {
+                            op: "Reshape",
+                            reason: format!("cannot infer dim: {x_numel} / {product} has remainder"),
+                        });
+                    }
+                    out_shape[idx] = x_numel / product;
+                } else if out_shape.iter().product::<usize>() != x_numel {
+                    return Err(BackendError::InvalidInput {
+                        op: "Reshape",
+                        reason: format!(
+                            "element count mismatch: shape {:?} = {} ≠ input {}",
+                            out_shape,
+                            out_shape.iter().product::<usize>(),
+                            x_numel
+                        ),
+                    });
+                }
+                Ok(vec![Tensor { shape: out_shape, dtype: x.dtype, data: x.data.clone() }])
+            }
+            Op::TokenEmbed => {
+                // inputs[0]: token ids as f32 [seq] (values are token IDs cast to f32)
+                // inputs[1]: embed weight f32 [vocab_size, hidden]
+                let [ids, w] = require(inputs, 2, op)?;
+                if w.rank() != 2 {
+                    return Err(BackendError::InvalidInput {
+                        op: "TokenEmbed",
+                        reason: format!("weight must be rank 2, got {:?}", w.shape),
+                    });
+                }
+                let hidden = w.shape[1];
+                let id_data = ids.as_f32();
+                let w_data = w.as_f32();
+                let seq = id_data.len();
+                let mut out = vec![0f32; seq * hidden];
+                for (s, &tok_f) in id_data.iter().enumerate() {
+                    let tok = tok_f as usize;
+                    let src = &w_data[tok * hidden..(tok + 1) * hidden];
+                    out[s * hidden..(s + 1) * hidden].copy_from_slice(src);
+                }
+                Ok(vec![Tensor::from_f32(vec![seq, hidden], out)])
+            }
+            Op::Sdpa { num_heads, kv_heads, head_dim, .. } => {
+                // Q: [num_heads, head_dim]
+                // K: [total_seq, kv_heads * head_dim]
+                // V: [total_seq, kv_heads * head_dim]
+                // Output: [num_heads, head_dim]
+                let [q, k, v] = require(inputs, 3, op)?;
+                let nh = *num_heads as usize;
+                let kvh = *kv_heads as usize;
+                let hd = *head_dim as usize;
+                let groups = if kvh == 0 { 1 } else { nh / kvh };
+                let kv_flat = kvh * hd;
+                let total_seq = if k.shape.len() >= 1 { k.shape[0] } else { 1 };
+                let scale = (hd as f32).sqrt().recip();
+
+                let q_data = q.as_f32();
+                let k_data = k.as_f32();
+                let v_data = v.as_f32();
+                let mut out = vec![0f32; nh * hd];
+
+                for h in 0..nh {
+                    let kv_head = h / groups;
+                    let q_h = &q_data[h * hd..(h + 1) * hd];
+
+                    let mut scores: Vec<f32> = (0..total_seq)
+                        .map(|t| {
+                            let k_off = t * kv_flat + kv_head * hd;
+                            let k_slice = &k_data[k_off..k_off + hd];
+                            q_h.iter().zip(k_slice).map(|(a, b)| a * b).sum::<f32>() * scale
+                        })
+                        .collect();
+
+                    let max = scores.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+                    let mut sum = 0f32;
+                    for s in scores.iter_mut() { *s = (*s - max).exp(); sum += *s; }
+                    if sum > 0.0 { for s in scores.iter_mut() { *s /= sum; } }
+
+                    let out_h = &mut out[h * hd..(h + 1) * hd];
+                    for t in 0..total_seq {
+                        let v_off = t * kv_flat + kv_head * hd;
+                        let v_slice = &v_data[v_off..v_off + hd];
+                        for d in 0..hd { out_h[d] += scores[t] * v_slice[d]; }
+                    }
+                }
+
+                Ok(vec![Tensor::from_f32(vec![nh, hd], out)])
+            }
             other => Err(BackendError::UnsupportedOp {
                 backend: "cpu",
                 op: other.name(),

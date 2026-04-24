@@ -64,3 +64,7 @@ path = "tests/property_tests.rs"
 [[test]]
 name = "tier3_goldens"
 path = "tests/tier3_goldens.rs"
+
+[[test]]
+name = "tier4_ir_exec"
+path = "tests/tier4_ir_exec.rs"

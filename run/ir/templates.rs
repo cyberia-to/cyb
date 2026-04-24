@@ -42,6 +42,8 @@ pub struct TransformerConfig {
     pub rope_theta: f32,
     pub max_seq_len: usize,
     pub activation: Activation,
+    /// Qwen3 per-head RmsNorm on Q and K after projection (before Rope).
+    pub has_qk_norm: bool,
 }
 
 impl Default for TransformerConfig {
@@ -58,6 +60,7 @@ impl Default for TransformerConfig {
             rope_theta: 10_000.0,
             max_seq_len: 4096,
             activation: Activation::Silu,
+            has_qk_norm: false,
         }
     }
 }
@@ -246,18 +249,29 @@ pub fn transformer_decoder(config: &TransformerConfig) -> Graph {
 /// Generate a decoder graph with **HF-convention weight names** and
 /// per-node attributes for the graph executor. Separate Q/K/V Matmul nodes
 /// (no merged QKV), Rope applied to Q and K independently.
+///
+/// Shape flow for single-token decode (num_heads=16, kv_heads=8, head_dim=64):
+///   input_ids [1] → embed [1,hidden] → norm [1,hidden]
+///   → Q matmul [1,q_dim] → reshape [nh,hd] → rope [nh,hd]
+///   → K matmul [1,kv_dim] → reshape [kvh,hd] → rope [kvh,hd]
+///   → V matmul [1,kv_dim] → reshape [kvh,hd]
+///   → KvCache(K,V) → kv_k [seq,kvh*hd], kv_v [seq,kvh*hd]
+///   → Sdpa(Q,kv_k,kv_v) [nh,hd] → reshape [1,hidden]
+///   → o_proj [1,hidden] → residual → ffn → residual
+///   → final_norm → lm_head → logits [1,vocab]
 pub fn transformer_decoder_for_exec(config: &TransformerConfig) -> Graph {
     let mut g = Graph::new();
     let seq_dim = Dim::Dynamic("seq_len".to_string());
     let hidden = config.hidden_size;
     let inter = config.intermediate_size;
-    let kv_dim = config.kv_num_heads * config.head_dim;
+    let kv_flat = config.kv_num_heads * config.head_dim;
     let q_dim = config.num_heads * config.head_dim;
+    let head_dim = config.head_dim;
 
     let embed_out = "embed_out".to_string();
     g.add_node_with_attrs(
         Op::TokenEmbed,
-        vec!["input_ids".into()],
+        vec!["input_ids".into(), "model.embed_tokens.weight".into()],
         vec![embed_out.clone()],
         make_attrs(&[("hidden", hidden as i64)]),
         None,
@@ -266,7 +280,7 @@ pub fn transformer_decoder_for_exec(config: &TransformerConfig) -> Graph {
         "input_ids".into(),
         TensorMeta {
             shape: vec![seq_dim.clone()],
-            dtype: DType::U8,
+            dtype: DType::F32,
             residency: Residency::Streamed,
         },
     );
@@ -294,31 +308,88 @@ pub fn transformer_decoder_for_exec(config: &TransformerConfig) -> Graph {
             None,
         );
 
-        let q = format!("{p}.q_out");
+        let q_flat = format!("{p}.q_flat");
         g.add_node_with_attrs(
             Op::Matmul,
             vec![norm1.clone(), format!("{hf}.self_attn.q_proj.weight")],
-            vec![q.clone()],
+            vec![q_flat.clone()],
             make_attrs(&[("n", q_dim as i64), ("k", hidden as i64)]),
             None,
         );
-        let k = format!("{p}.k_out");
+        let k_flat = format!("{p}.k_flat");
         g.add_node_with_attrs(
             Op::Matmul,
             vec![norm1.clone(), format!("{hf}.self_attn.k_proj.weight")],
-            vec![k.clone()],
-            make_attrs(&[("n", kv_dim as i64), ("k", hidden as i64)]),
+            vec![k_flat.clone()],
+            make_attrs(&[("n", kv_flat as i64), ("k", hidden as i64)]),
             None,
         );
-        let v = format!("{p}.v_out");
+        let v_flat = format!("{p}.v_flat");
         g.add_node_with_attrs(
             Op::Matmul,
             vec![norm1, format!("{hf}.self_attn.v_proj.weight")],
-            vec![v.clone()],
-            make_attrs(&[("n", kv_dim as i64), ("k", hidden as i64)]),
+            vec![v_flat.clone()],
+            make_attrs(&[("n", kv_flat as i64), ("k", hidden as i64)]),
             None,
         );
 
+        // Reshape Q/K/V from [1, n*head_dim] to [n, head_dim] so rope_f32
+        // sees last dim == head_dim (its hard requirement).
+        let q_2d = format!("{p}.q_2d");
+        g.add_node_with_attrs(
+            Op::Reshape { shape: vec![-1, head_dim as i64] },
+            vec![q_flat],
+            vec![q_2d.clone()],
+            make_attrs(&[("nh", config.num_heads as i64), ("hd", head_dim as i64)]),
+            None,
+        );
+        let k_2d = format!("{p}.k_2d");
+        g.add_node_with_attrs(
+            Op::Reshape { shape: vec![-1, head_dim as i64] },
+            vec![k_flat],
+            vec![k_2d.clone()],
+            make_attrs(&[("nh", config.kv_num_heads as i64), ("hd", head_dim as i64)]),
+            None,
+        );
+        let v_2d = format!("{p}.v_2d");
+        g.add_node_with_attrs(
+            Op::Reshape { shape: vec![-1, head_dim as i64] },
+            vec![v_flat],
+            vec![v_2d.clone()],
+            make_attrs(&[("nh", config.kv_num_heads as i64), ("hd", head_dim as i64)]),
+            None,
+        );
+
+        // Qwen3-style per-head QK RmsNorm: applied after reshape, before Rope.
+        let q_pre_rope = if config.has_qk_norm {
+            let q_normed = format!("{p}.q_qknorm");
+            g.add_node_with_attrs(
+                Op::RmsNorm { eps: config.eps },
+                vec![q_2d, format!("{hf}.self_attn.q_norm.weight")],
+                vec![q_normed.clone()],
+                make_attrs(&[("hd", head_dim as i64)]),
+                None,
+            );
+            q_normed
+        } else {
+            q_2d
+        };
+        let k_pre_rope = if config.has_qk_norm {
+            let k_normed = format!("{p}.k_qknorm");
+            g.add_node_with_attrs(
+                Op::RmsNorm { eps: config.eps },
+                vec![k_2d, format!("{hf}.self_attn.k_norm.weight")],
+                vec![k_normed.clone()],
+                make_attrs(&[("hd", head_dim as i64)]),
+                None,
+            );
+            k_normed
+        } else {
+            k_2d
+        };
+
+        // Rope requires the "pos" input; executor auto-injects it as a
+        // scalar f32 tensor holding the current sequence position.
         let q_rope = format!("{p}.q_roped");
         g.add_node_with_attrs(
             Op::Rope {
@@ -326,9 +397,9 @@ pub fn transformer_decoder_for_exec(config: &TransformerConfig) -> Graph {
                 rope_dim: config.head_dim as u32,
                 base: config.rope_theta,
             },
-            vec![q],
+            vec![q_pre_rope, "pos".into()],
             vec![q_rope.clone()],
-            make_attrs(&[("total_elements", q_dim as i64), ("n", q_dim as i64)]),
+            make_attrs(&[("n", config.num_heads as i64)]),
             None,
         );
         let k_rope = format!("{p}.k_roped");
@@ -338,27 +409,41 @@ pub fn transformer_decoder_for_exec(config: &TransformerConfig) -> Graph {
                 rope_dim: config.head_dim as u32,
                 base: config.rope_theta,
             },
-            vec![k],
+            vec![k_pre_rope, "pos".into()],
             vec![k_rope.clone()],
-            make_attrs(&[("total_elements", kv_dim as i64), ("n", kv_dim as i64)]),
+            make_attrs(&[("n", config.kv_num_heads as i64)]),
             None,
         );
 
-        let kv = format!("{p}.kv_cached");
-        g.add_node(Op::KvCache, vec![k_rope.clone()], vec![kv.clone()]);
+        // KvCache takes both K and V; outputs two separate accumulated tensors
+        // so Sdpa can receive them directly without an attr indirection.
+        let kv_k = format!("{p}.kv_k");
+        let kv_v = format!("{p}.kv_v");
+        g.add_node(
+            Op::KvCache,
+            vec![k_rope.clone(), v_2d.clone()],
+            vec![kv_k.clone(), kv_v.clone()],
+        );
         g.add_tensor(
-            kv.clone(),
+            kv_k.clone(),
             TensorMeta {
-                shape: vec![Dim::Dynamic("total_seq".to_string()), Dim::Fixed(kv_dim)],
+                shape: vec![Dim::Dynamic("total_seq".to_string()), Dim::Fixed(kv_flat)],
+                dtype: DType::F32,
+                residency: Residency::Cached,
+            },
+        );
+        g.add_tensor(
+            kv_v.clone(),
+            TensorMeta {
+                shape: vec![Dim::Dynamic("total_seq".to_string()), Dim::Fixed(kv_flat)],
                 dtype: DType::F32,
                 residency: Residency::Cached,
             },
         );
 
-        // SDPA with `v_tensor` attr so the executor can find V buffer by name.
+        // Sdpa takes Q [nh,hd], K [seq,kvh*hd], V [seq,kvh*hd].
+        // Output: [nh, hd].
         let attn = format!("{p}.attn_out");
-        let mut sdpa_attrs = make_attrs(&[("hidden", hidden as i64)]);
-        sdpa_attrs.insert("v_tensor".into(), AttrValue::String(v.clone()));
         g.add_node_with_attrs(
             Op::Sdpa {
                 num_heads: config.num_heads as u32,
@@ -366,16 +451,28 @@ pub fn transformer_decoder_for_exec(config: &TransformerConfig) -> Graph {
                 head_dim: config.head_dim as u32,
                 causal: true,
             },
-            vec![q_rope, kv],
+            vec![q_rope, kv_k, kv_v],
             vec![attn.clone()],
-            sdpa_attrs,
+            make_attrs(&[("hidden", hidden as i64)]),
+            None,
+        );
+
+        // Flatten [nh, hd] back to [1, q_dim] before the output projection.
+        // Note: q_dim = num_heads * head_dim, which may differ from hidden_size
+        // (e.g. qwen3 uses head_dim=128 with 16 heads → q_dim=2048, hidden=1024).
+        let attn_flat = format!("{p}.attn_flat");
+        g.add_node_with_attrs(
+            Op::Reshape { shape: vec![1, q_dim as i64] },
+            vec![attn],
+            vec![attn_flat.clone()],
+            make_attrs(&[("q_dim", q_dim as i64)]),
             None,
         );
 
         let o = format!("{p}.o_proj_out");
         g.add_node_with_attrs(
             Op::Matmul,
-            vec![attn, format!("{hf}.self_attn.o_proj.weight")],
+            vec![attn_flat, format!("{hf}.self_attn.o_proj.weight")],
             vec![o.clone()],
             make_attrs(&[("n", hidden as i64), ("k", q_dim as i64)]),
             None,
