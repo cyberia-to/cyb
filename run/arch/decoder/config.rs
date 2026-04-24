@@ -209,12 +209,20 @@ impl LlamaConfig {
             .and_then(|v| v.as_integer())
             .map(|i| i as usize)
             .or_else(|| {
-                tensors
+                let inferred = tensors
                     .iter()
                     .find(|t| t.name == "model.layers.0.self_attn.q_proj.weight")
-                    .map(|t| t.shape[0] / num_attention_heads)
+                    .map(|t| t.shape[0] / num_attention_heads);
+                if inferred.is_some() {
+                    log::warn!("head_dim not in config — inferred {} from q_proj shape; add head_dim to config for reliability", inferred.unwrap());
+                }
+                inferred
             })
-            .unwrap_or(hidden_size / num_attention_heads);
+            .unwrap_or_else(|| {
+                let fallback = hidden_size / num_attention_heads;
+                log::warn!("head_dim not in config and q_proj tensor missing — falling back to hidden_size/num_heads = {fallback}");
+                fallback
+            });
 
         // Spec validation per arch.md LlamaStyle.
         if head_dim == 0 || head_dim % 2 != 0 {

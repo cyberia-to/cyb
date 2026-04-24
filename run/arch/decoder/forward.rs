@@ -512,9 +512,11 @@ fn forward_layer(
         // Causal mask: scores[s] valid only for s <= past_seq_len
         // During decode (total_seq = past_seq_len+1), all positions ≤ current, no mask needed.
         // Sliding-window mask: zero out positions outside the window.
+        // Use -1e4 rather than NEG_INFINITY: exp(-1e4) ≈ 0 for F32 and avoids
+        // -inf arithmetic in F16 GPU paths (NEG_INFINITY - NEG_INFINITY = NaN).
         if let Some(start) = window_start {
             for s in 0..start {
-                scores[s] = f32::NEG_INFINITY;
+                scores[s] = -1e4;
             }
         }
         // Softmax over scores
