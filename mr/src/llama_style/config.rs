@@ -1,7 +1,7 @@
 //! LlamaStyle configuration parsed from .model config section.
 
+use crate::llama_style::families::{AttnScale, FamilyProfile};
 use crate::format::FormatError;
-use crate::llama_style::family::{AttnScale, FamilyProfile};
 
 /// Per-layer attention kind. LlamaStyle has all `Sliding` (single shape).
 /// LlamaStyle+ (Gemma 3/4) interleaves `Sliding` and `Full`; full layers
@@ -73,7 +73,7 @@ pub struct LlamaConfig {
 
     /// Per-family quirks derived from `model_type` at parse time.
     /// Runtime code reads `family.*` fields instead of matching on the
-    /// string — see family.rs for the full axis list.
+    /// string — see `families/` for the per-family profiles.
     pub family: FamilyProfile,
 }
 

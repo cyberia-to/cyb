@@ -6,11 +6,10 @@
 //! Spec: reference/runtime/arch.md#llamastyle
 
 pub mod config;
-pub mod family;
+pub mod families;
 mod forward;
 mod weights;
 
 pub use config::LlamaConfig;
-pub use family::{AttnScale, FamilyProfile};
 pub use forward::LlamaModel;
 pub use weights::LayerWeights;
