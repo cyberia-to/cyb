@@ -45,7 +45,7 @@ fn help() {
     println!("  profile <model> [--steps N] [--backend X]    per-op time breakdown");
     println!("  run <model> --prompt <text>      generate text from a model");
     println!("    options:");
-    println!("      --max-tokens N               (default 64)");
+    println!("      --max-tokens N               (default: unlimited — stops at EOS / turn boundary)");
     println!("      --temperature T              (default 0 = greedy)");
     println!("      --backend NAME               cpu|wgpu+rs|honeycrisp");
     println!("      --no-chat                    skip chat template, use raw prompt");
@@ -616,7 +616,10 @@ fn run(args: Vec<String>) {
     }
     let model_arg = &args[0];
     let mut prompt = String::new();
-    let mut max_tokens: usize = 64;
+    // Default to the model's full context window — the model stops at EOS
+    // or its turn-boundary alias (registered by the tokenizer). Users who
+    // want a shorter cap pass --max-tokens N explicitly.
+    let mut max_tokens: usize = usize::MAX;
     let mut temperature: f32 = 0.0;
     let mut backend_name: String = "auto".into();
     let mut use_chat = true;
@@ -630,7 +633,7 @@ fn run(args: Vec<String>) {
             }
             "--max-tokens" => {
                 i += 1;
-                max_tokens = args[i].parse().unwrap_or(64);
+                max_tokens = args[i].parse().unwrap_or(usize::MAX);
             }
             "--temperature" => {
                 i += 1;

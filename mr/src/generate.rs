@@ -197,7 +197,8 @@ pub fn generate(
 
     // Decode: sample next token, feed back in, repeat.
     let debug_tokens = std::env::var("MR_DEBUG_TOKENS").is_ok();
-    let mut generated = Vec::with_capacity(max_tokens);
+    // Cap initial capacity — callers may pass usize::MAX for "unlimited".
+    let mut generated = Vec::with_capacity(max_tokens.min(1024));
     for step in 0..max_tokens {
         let next = sample(&logits, sample_cfg);
         if debug_tokens {
