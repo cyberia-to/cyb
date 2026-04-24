@@ -10,7 +10,7 @@ pub fn build_tokenizer(lm: &LoadedModel) -> Result<Tokenizer, FormatError> {
         .map_err(|e| FormatError::Invalid(format!("config parse: {e}")))?;
 
     // eos_token_ids from config [tokenizer].eos_token_ids
-    let eos_token_ids: Vec<u32> = cfg
+    let mut eos_token_ids: Vec<u32> = cfg
         .get("tokenizer")
         .and_then(|t| t.get("eos_token_ids"))
         .and_then(|v| v.as_array())
@@ -20,6 +20,11 @@ pub fn build_tokenizer(lm: &LoadedModel) -> Result<Tokenizer, FormatError> {
                 .collect()
         })
         .unwrap_or_default();
+    // Architectural EOS aliases: some families end a chat response with a
+    // turn-boundary marker rather than <eos>. Gemma 4 uses <turn|>; qwen
+    // families use <|im_end|>. Adding these ensures generate() stops at the
+    // end of the model's response instead of running into the next turn.
+    // (We still need eos_token_ids to find the token string in vocab.)
 
     // Some imports (older cyb .model files) drop HF `added_tokens` — the
     // specials like <|im_start|> / <|im_end|> / <|endoftext|> aren't in the
@@ -30,6 +35,17 @@ pub fn build_tokenizer(lm: &LoadedModel) -> Result<Tokenizer, FormatError> {
     inject_missing_specials(&mut tokens, &cfg, &eos_token_ids);
 
     let bpe = Bpe::new(tokens, merges);
+
+    // Architectural turn-boundary aliases. If the model uses chat turn
+    // markers that aren't already in eos_token_ids, add them so generate()
+    // stops at end-of-response. Spec: see chat.rs for the per-family markers.
+    for alias in ["<turn|>", "<|im_end|>", "<end_of_turn>", "<|eot_id|>"] {
+        if let Some(id) = bpe.id(alias) {
+            if !eos_token_ids.contains(&id) {
+                eos_token_ids.push(id);
+            }
+        }
+    }
 
     // chat section (optional)
     let (chat_format, chat_template) = if lm.file.chat_toml.is_empty() {
