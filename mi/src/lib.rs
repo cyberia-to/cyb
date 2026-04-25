@@ -13,7 +13,6 @@ pub mod hub;
 pub mod import;
 pub mod loader;
 pub mod manifest;
-pub mod quantize;
 pub mod types;
 
 // Generated ONNX protobuf bindings (shared with `loader::onnx`).
