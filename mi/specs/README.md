@@ -15,10 +15,10 @@ at all. The boundary is the `.model` invariants in [import.md](import.md).
 
 - [import.md](import.md) — invariants, name/shape/dtype/config
   normalization, validation, multi-shard handling
-- *(planned)* `manifest.md` — what makes a model MVP-eligible
-- *(planned)* `hub.md` — HuggingFace fetch policy: caching, retry, recovery
-- *(planned)* `cli.md` — `mi <subcommand>` surface
-- *(planned)* `graph.md` — when a graph IR section is emitted at import time
+- [manifest.md](manifest.md) — what makes a model MVP-eligible
+- [hub.md](hub.md) — HuggingFace fetch policy: caching, ONNX probe, gaps
+- [cli.md](cli.md) — `mi <subcommand>` surface
+- [graph.md](graph.md) — when a graph IR section is emitted at import time
 
 ## Cross-references (shared with runtime)
 
