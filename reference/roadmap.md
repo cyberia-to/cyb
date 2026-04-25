@@ -1,36 +1,47 @@
-# Roadmap: приведение проекта в порядок
+# Roadmap: project cleanup and improvements
 
-## 1. Закоммитить и навести порядок в текущих изменениях
-- [ ] Закоммитить текущие незакоммиченные изменения (error handling, analytics API update, CSS fix)
-- [ ] Найти реальные дупликации кода и вынести в shared-утилиты
-- [ ] Починить pre-existing TS ошибку (`reflect-metadata` в tsconfig)
+## 1. Commit and clean up current changes
+- [ ] Commit pending uncommitted changes (error handling, analytics API update, CSS fix)
+- [ ] Find real code duplications and extract into shared utilities
+- [ ] Fix pre-existing TS error (`reflect-metadata` in tsconfig)
 
-## 2. Структура кода
-- [ ] Провести аудит `components/`, `containers/`, `pages/`, `features/` — выработать единую конвенцию
-- [ ] Определить границы: что page, что feature, что container
-- [ ] Постепенно мигрировать к единой структуре
+## 2. Code structure
+- [ ] Audit `components/`, `containers/`, `pages/`, `features/` — establish a single convention
+- [ ] Define boundaries: what is a page, feature, container
+- [ ] Gradually migrate to a unified structure
 
-## 3. Аудит зависимостей
-- [ ] Найти неиспользуемые пакеты (depcheck или аналог)
-- [ ] Оценить дубли (lodash vs ramda, ethers vs web3, etc.)
-- [ ] Убрать лишнее, обновить критичное
+## 3. Dependency audit
+- [ ] Find unused packages (depcheck or similar)
+- [ ] Evaluate duplicates (lodash vs ramda, ethers vs web3, etc.)
+- [ ] Remove unused, update critical
 
-## 4. Упрощение state management
-- [ ] Провести аудит: что в Redux, что в React Query, что в контекстах
-- [ ] Определить стратегию: серверный стейт -> React Query, клиентский -> Redux/Context
-- [ ] Постепенно убирать Redux Observable где не нужен
+## 4. State management simplification
+- [ ] Audit: what lives in Redux, React Query, contexts
+- [ ] Define strategy: server state -> React Query, client state -> Redux/Context
+- [ ] Gradually remove Redux Observable where unnecessary
 
-## 5. TypeScript строгость
-- [ ] Проверить tsconfig на strict mode
-- [ ] Найти `any` типы и неиспользуемые типы
-- [ ] Включить strict постепенно, файл за файлом если нужно
+## 5. TypeScript strictness
+- [ ] Check tsconfig for strict mode
+- [ ] Find `any` types and unused types
+- [ ] Enable strict gradually, file by file if needed
 
-## 6. Тесты
-- [ ] Оценить текущее покрытие
-- [ ] Определить критичные пути для тестирования
-- [ ] Добавить тесты на ключевые утилиты и сервисы
+## 6. Tests
+- [ ] Evaluate current coverage
+- [ ] Identify critical paths for testing
+- [ ] Add tests for key utilities and services
 
-## 7. Линтинг и код-стайл
-- [ ] Прогнать ESLint, оценить количество warnings/errors
-- [ ] Настроить stricter правила где нужно
-- [ ] Прогнать stylelint для CSS/SCSS
+## 7. Warp (DEX / Liquidity Pools)
+- [x] Add APR (fees) display per pool and in dashboard summary
+- [x] Show Vol 24h on every pool card (always visible, even when zero)
+- [x] Add pool sorting (TVL / APR / Vol 24h)
+- [x] On-chain fallback for volume data when warp-dex API is down
+- [ ] PnL calculator for LP positions (entry price vs current value)
+- [ ] Impermanent loss calculator
+- [ ] Historical fee chart per pool
+- [ ] Farming rewards contract (CosmWasm) to incentivize LPs
+- [ ] Refactor: deduplicate pool caching in localStorage (warp.ts vs usePoolsAssetAmount)
+
+## 8. Linting and code style
+- [ ] Run ESLint, evaluate warnings/errors count
+- [ ] Configure stricter rules where needed
+- [ ] Run stylelint for CSS/SCSS

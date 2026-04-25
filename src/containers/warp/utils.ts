@@ -60,6 +60,19 @@ function pow(coinDecimals) {
   return new BigNumber(1).multipliedBy(new BigNumber(10).pow(coinDecimals));
 }
 
+const SWAP_FEE_RATE = 0.003;
+const DAYS_IN_YEAR = 365;
+
+/**
+ * APR from swap fees: (volume24h × feeRate × 365) / TVL × 100
+ */
+export function calcPoolApr(volume24h: number, tvl: number): number {
+  if (tvl <= 0 || volume24h <= 0) {
+    return 0;
+  }
+  return (volume24h * SWAP_FEE_RATE * DAYS_IN_YEAR) / tvl * 100;
+}
+
 export function calculateCounterPairAmount(values, state) {
   const inputAmount = values;
 
