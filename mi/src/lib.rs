@@ -8,7 +8,6 @@
 //!
 //! [`Weights`]: types::Weights
 
-pub mod config;
 pub mod cyb_format;
 pub mod hub;
 pub mod import;
