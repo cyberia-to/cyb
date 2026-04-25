@@ -1,6 +1,6 @@
 //! Model manifest — source of truth for cyb-llm runtime.
 //!
-//! Three MVP target models covering the product range.
+//! Four MVP target models covering the product range.
 //! Manifest drives status, fetch, and serve commands.
 
 use std::path::PathBuf;
@@ -48,7 +48,7 @@ pub struct ModelSpec {
     pub notes: &'static str,
 }
 
-/// MVP manifest — 3 target models
+/// MVP manifest — 4 target models
 pub const MANIFEST: &[ModelSpec] = &[
     ModelSpec {
         name: "qwen3-0.6b-abl",
@@ -59,12 +59,20 @@ pub const MANIFEST: &[ModelSpec] = &[
         notes: "always on, classifies queries, 300+ tok/s target",
     },
     ModelSpec {
+        name: "qwen2.5-coder-1.5b-abl",
+        hf_repo: "Qwen/Qwen2.5-Coder-1.5B",
+        ollama_tag: Some("qwen2.5-coder:1.5b"),
+        role: Role::Specialist,
+        ram_mb: 1100,
+        notes: "code generation small, LlamaStyle attn_bias, 100+ tok/s target",
+    },
+    ModelSpec {
         name: "qwen2.5-coder-14b-abl",
         hf_repo: "Qwen/Qwen2.5-Coder-14B",
         ollama_tag: Some("qwen2.5-coder:14b"),
         role: Role::Specialist,
         ram_mb: 9000,
-        notes: "code generation, Q4, 25+ tok/s target",
+        notes: "code generation large, fused Q4_K matmul, 25+ tok/s target",
     },
     ModelSpec {
         name: "gemma-4-31b",
@@ -72,7 +80,7 @@ pub const MANIFEST: &[ModelSpec] = &[
         ollama_tag: None, // not yet in ollama
         role: Role::General,
         ram_mb: 18000,
-        notes: "multimodal, 60 layers, 30+ tok/s target",
+        notes: "multimodal LlamaStyle+, 60 layers, 30+ tok/s target",
     },
 ];
 
