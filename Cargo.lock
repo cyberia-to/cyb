@@ -6541,6 +6541,7 @@ dependencies = [
  "memmap2 0.9.10",
  "prost",
  "prost-build",
+ "run",
  "serde",
  "serde_json",
  "tokenizers",

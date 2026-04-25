@@ -26,6 +26,9 @@ half = { version = "2", features = ["num-traits"] }
 tokenizers = { version = "0.22", default-features = false, features = ["onig"] }
 hf-hub = { version = "0.5", features = ["default-tls"] }
 
+# Graph IR embedding at import time
+run = { path = "../run" }
+
 # CLI + logs
 clap = { version = "4", features = ["derive"] }
 log = "0.4"

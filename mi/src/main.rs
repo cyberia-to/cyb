@@ -516,6 +516,31 @@ print('\n'.join(lines))
         weight_data.len() as f64 / 1e9
     );
 
+    // Build the binary Graph IR and hex-encode it for embedding.
+    // LlamaConfig::parse needs the tensor list to detect has_qk_norm /
+    // has_attn_bias and to infer head_dim when the config omits it
+    // (e.g. Qwen3 has head_dim=128 independent of hidden_size/num_heads).
+    let tensor_metas = run::format::parse_tensors_toml(&tensors_toml).unwrap_or_default();
+    let graph_hex: Option<String> = run::arch::decoder::config::LlamaConfig::parse(
+        &config_toml,
+        &tensor_metas,
+    )
+    .ok()
+    .and_then(|llama_cfg| run::ir::family_graph(&llama_cfg))
+    .map(|graph| {
+        let bytes = run::ir::serialize(&graph);
+        let hex = run::ir::hex_encode(&bytes);
+        println!(
+            "Graph IR: {} nodes, {} bytes binary",
+            graph.len(),
+            bytes.len()
+        );
+        hex
+    });
+    if graph_hex.is_none() {
+        println!("Graph IR: no template for '{model_type}' — skipping graph section");
+    }
+
     let output_name = name.replace("-import", "");
     let output_path = mi::manifest::models_dir().join(format!("{output_name}.model"));
     println!("Writing {}...", output_path.display());
@@ -527,6 +552,7 @@ print('\n'.join(lines))
         &config_toml,
         "",
         "rs",
+        graph_hex.as_deref(),
         &tensors_toml,
         &vocab_toml,
         "",
