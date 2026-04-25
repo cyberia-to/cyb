@@ -156,6 +156,160 @@ fn unknown_op_tag_returns_error() {
     assert!(result.is_err(), "unknown op tag must return error");
 }
 
+// ── parametric op field roundtrip ─────────────────────────────────────────────
+
+#[test]
+fn serial_roundtrip_parametric_op_fields() {
+    use run::ir::graph::{Attrs, Graph, Node};
+    use run::core::op::{Op, SampleMethod};
+
+    // Build a tiny graph with several parametric ops so we can verify
+    // their scalar fields survive serialize → deserialize.
+    let mut graph = Graph::new();
+
+    // RmsNorm with specific eps
+    graph.nodes.push(Node {
+        id: 0,
+        op: Op::RmsNorm { eps: 1e-6 },
+        inputs: vec!["x".into(), "g".into()],
+        outputs: vec!["normed".into()],
+        attrs: Attrs::new(),
+        backend_hint: None,
+    });
+
+    // Rope with specific head_dim, rope_dim, base
+    graph.nodes.push(Node {
+        id: 1,
+        op: Op::Rope { head_dim: 128, rope_dim: 64, base: 1_000_000.0 },
+        inputs: vec!["normed".into(), "pos".into()],
+        outputs: vec!["roped".into()],
+        attrs: Attrs::new(),
+        backend_hint: None,
+    });
+
+    // Sdpa with specific num_heads/kv_heads/head_dim/causal
+    graph.nodes.push(Node {
+        id: 2,
+        op: Op::Sdpa { num_heads: 16, kv_heads: 4, head_dim: 128, causal: true },
+        inputs: vec!["roped".into(), "k".into(), "v".into()],
+        outputs: vec!["attn".into()],
+        attrs: Attrs::new(),
+        backend_hint: None,
+    });
+
+    // Gelu approximate=true
+    graph.nodes.push(Node {
+        id: 3,
+        op: Op::Gelu { approximate: true },
+        inputs: vec!["attn".into()],
+        outputs: vec!["act".into()],
+        attrs: Attrs::new(),
+        backend_hint: None,
+    });
+
+    // Reshape with -1 inference dim
+    graph.nodes.push(Node {
+        id: 4,
+        op: Op::Reshape { shape: vec![1, -1, 128] },
+        inputs: vec!["act".into()],
+        outputs: vec!["out".into()],
+        attrs: Attrs::new(),
+        backend_hint: None,
+    });
+
+    // Softmax with negative dim
+    graph.nodes.push(Node {
+        id: 5,
+        op: Op::Softmax { dim: -1 },
+        inputs: vec!["out".into()],
+        outputs: vec!["probs".into()],
+        attrs: Attrs::new(),
+        backend_hint: None,
+    });
+
+    let bytes = serialize(&graph);
+    let g2 = deserialize(&bytes).expect("deserialize");
+
+    // Verify each op's parameters survived exactly.
+    match &g2.nodes[0].op {
+        Op::RmsNorm { eps } => assert!((eps - 1e-6f32).abs() < 1e-10, "RmsNorm eps"),
+        other => panic!("node 0 expected RmsNorm, got {}", other.name()),
+    }
+    match &g2.nodes[1].op {
+        Op::Rope { head_dim, rope_dim, base } => {
+            assert_eq!(*head_dim, 128, "Rope head_dim");
+            assert_eq!(*rope_dim, 64, "Rope rope_dim");
+            assert_eq!(*base, 1_000_000.0f32, "Rope base");
+        }
+        other => panic!("node 1 expected Rope, got {}", other.name()),
+    }
+    match &g2.nodes[2].op {
+        Op::Sdpa { num_heads, kv_heads, head_dim, causal } => {
+            assert_eq!(*num_heads, 16, "Sdpa num_heads");
+            assert_eq!(*kv_heads, 4, "Sdpa kv_heads");
+            assert_eq!(*head_dim, 128, "Sdpa head_dim");
+            assert!(*causal, "Sdpa causal");
+        }
+        other => panic!("node 2 expected Sdpa, got {}", other.name()),
+    }
+    match &g2.nodes[3].op {
+        Op::Gelu { approximate } => assert!(*approximate, "Gelu approximate"),
+        other => panic!("node 3 expected Gelu, got {}", other.name()),
+    }
+    match &g2.nodes[4].op {
+        Op::Reshape { shape } => assert_eq!(shape, &[1i64, -1, 128], "Reshape shape"),
+        other => panic!("node 4 expected Reshape, got {}", other.name()),
+    }
+    match &g2.nodes[5].op {
+        Op::Softmax { dim } => assert_eq!(*dim, -1i32, "Softmax dim"),
+        other => panic!("node 5 expected Softmax, got {}", other.name()),
+    }
+}
+
+#[test]
+fn serial_roundtrip_conv_parameters() {
+    use run::ir::graph::{Attrs, Graph, Node};
+    use run::core::op::Op;
+
+    let mut graph = Graph::new();
+    graph.nodes.push(Node {
+        id: 0,
+        op: Op::Conv2d {
+            kernel: (3, 5), stride: (2, 1), padding: (1, 2),
+            dilation: (1, 1), groups: 4,
+        },
+        inputs: vec!["x".into()],
+        outputs: vec!["y".into()],
+        attrs: Attrs::new(),
+        backend_hint: None,
+    });
+    graph.nodes.push(Node {
+        id: 1,
+        op: Op::LeakyRelu { slope: 0.01 },
+        inputs: vec!["y".into()],
+        outputs: vec!["z".into()],
+        attrs: Attrs::new(),
+        backend_hint: None,
+    });
+
+    let g2 = deserialize(&serialize(&graph)).unwrap();
+
+    match &g2.nodes[0].op {
+        Op::Conv2d { kernel, stride, padding, dilation, groups } => {
+            assert_eq!(*kernel, (3, 5));
+            assert_eq!(*stride, (2, 1));
+            assert_eq!(*padding, (1, 2));
+            assert_eq!(*dilation, (1, 1));
+            assert_eq!(*groups, 4);
+        }
+        other => panic!("expected Conv2d, got {}", other.name()),
+    }
+    match &g2.nodes[1].op {
+        Op::LeakyRelu { slope } => assert!((slope - 0.01f32).abs() < 1e-7, "LeakyRelu slope"),
+        other => panic!("expected LeakyRelu, got {}", other.name()),
+    }
+}
+
 // ── helper: extract a named ~~~section from text ──────────────────────────────
 
 fn extract_section(text: &str, section_name: &str) -> Option<String> {
