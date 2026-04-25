@@ -1,6 +1,7 @@
 import { Coin } from '@cosmjs/launchpad';
 import { ContainerGradientText, FormatNumberTokens } from 'src/components';
 import { DENOM_LIQUID } from 'src/constants/config';
+import { calcPoolApr } from '../utils';
 import styles from './styles.module.scss';
 
 type Props = {
@@ -44,6 +45,17 @@ function PoolsInfo({ totalCap, myCap, useMyProcent, vol24 }: Props) {
           />
         </div>
         <div className={styles.PoolsInfoContainerText}>Volume 24h</div>
+      </ContainerGradientText>
+      <ContainerGradientText>
+        <div className={styles.PoolsInfoContainerValue}>
+          <FormatNumberTokens
+            value={calcPoolApr(vol24?.amount ? parseFloat(vol24.amount) : 0, totalCap)}
+            styleValue={{ fontSize: '18px' }}
+            float
+            customText="%"
+          />
+        </div>
+        <div className={styles.PoolsInfoContainerText}>Avg APR (fees)</div>
       </ContainerGradientText>
     </div>
   );

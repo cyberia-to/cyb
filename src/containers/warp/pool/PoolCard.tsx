@@ -7,6 +7,7 @@ import { ObjKeyValue } from 'src/types/data';
 import { v4 as uuidv4 } from 'uuid';
 import { exponentialToDecimal } from '../../../utils/utils';
 import { PoolsWithAssetsCapType } from '../type';
+import { calcPoolApr } from '../utils';
 import PoolItemsList from './pollItems';
 import styles from './styles.module.scss';
 import TitlePool from './TitlePoolCard';
@@ -74,14 +75,26 @@ function PoolCard({ pool, totalSupplyData, accountBalances, vol24 }: PoolCardPro
         })}
       </div>
 
-      {vol24 && (
-        <div className={styles.PoolCardContainerMyShares}>
-          <div className={styles.PoolCardContainerMySharesTitle}>Vol 24h</div>
-          <div>
-            <FormatNumberTokens value={vol24.amount} text={vol24.denom} />
-          </div>
+      <div className={styles.PoolCardContainerMyShares}>
+        <div className={styles.PoolCardContainerMySharesTitle}>Vol 24h</div>
+        <div>
+          <FormatNumberTokens
+            value={vol24?.amount ?? '0'}
+            text={vol24?.denom ?? 'BOOT'}
+          />
         </div>
-      )}
+      </div>
+
+      <div className={styles.PoolCardContainerMyShares}>
+        <div className={styles.PoolCardContainerMySharesTitle}>APR (fees)</div>
+        <div>
+          <FormatNumberTokens
+            value={calcPoolApr(vol24 ? parseFloat(vol24.amount) : 0, pool.cap)}
+            float
+            customText="%"
+          />
+        </div>
+      </div>
 
       {sharesToken !== null && (
         <div className={styles.PoolCardContainerMyShares}>
