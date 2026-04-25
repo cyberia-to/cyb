@@ -90,7 +90,11 @@ impl GraphExecutor {
             Tensor::from_f32(vec![1], vec![self.past_seq_len as f32]),
         );
 
-        for node in &self.graph.nodes {
+        // Pre-compute last_use[tensor_name] = max node index that reads it.
+        // After a node runs, any tensor whose last_use == that index is freed.
+        let last_use = build_last_use(&self.graph.nodes);
+
+        for (node_idx, node) in self.graph.nodes.iter().enumerate() {
             match &node.op {
                 Op::KvCache => {
                     // Stateful: append this step's K and V to the per-layer cache.
@@ -130,6 +134,18 @@ impl GraphExecutor {
                         Tensor::from_f32(vec![seq, row_size], v_cache.clone()),
                     );
                 }
+                // Layout-only ops handled in the executor — no backend dispatch.
+                Op::Reshape { shape } => {
+                    let x = lookup(&tensors, &self.weights, &node.inputs[0])?.clone();
+                    let out = exec_reshape(x, shape)?;
+                    tensors.insert(node.outputs[0].clone(), out);
+                }
+                Op::TokenEmbed => {
+                    let ids = lookup(&tensors, &self.weights, &node.inputs[0])?.clone();
+                    let w   = lookup(&tensors, &self.weights, &node.inputs[1])?.clone();
+                    let out = exec_token_embed(&ids, &w)?;
+                    tensors.insert(node.outputs[0].clone(), out);
+                }
                 op => {
                     let in_refs: Vec<&Tensor> = node
                         .inputs
@@ -140,6 +156,13 @@ impl GraphExecutor {
                     for (name, t) in node.outputs.iter().zip(outs.into_iter()) {
                         tensors.insert(name.clone(), t);
                     }
+                }
+            }
+
+            // Free any intermediates whose last consumer just ran.
+            for input_name in &node.inputs {
+                if last_use.get(input_name.as_str()) == Some(&node_idx) {
+                    tensors.remove(input_name);
                 }
             }
         }
@@ -154,6 +177,21 @@ impl GraphExecutor {
     }
 }
 
+/// Pre-compute `last_use[tensor_name]` = the highest node index that lists
+/// the tensor as an input. Weights are not tracked (they live for the whole
+/// forward). Only intermediate tensors need freeing.
+fn build_last_use(nodes: &[super::graph::Node]) -> HashMap<String, usize> {
+    let mut map: HashMap<String, usize> = HashMap::new();
+    for (i, node) in nodes.iter().enumerate() {
+        for name in &node.inputs {
+            map.entry(name.clone())
+                .and_modify(|prev| { if i > *prev { *prev = i; } })
+                .or_insert(i);
+        }
+    }
+    map
+}
+
 fn lookup<'a>(
     intermediates: &'a HashMap<String, Tensor>,
     weights: &'a HashMap<String, Tensor>,
@@ -163,4 +201,69 @@ fn lookup<'a>(
         .get(name)
         .or_else(|| weights.get(name))
         .ok_or_else(|| BackendError::Internal(format!("tensor not found: {name}")))
+}
+
+/// Pure view — reinterpret the tensor's data with a new shape.
+/// Handles one `-1` inference dim. Shares the underlying data arc (zero-copy).
+fn exec_reshape(x: Tensor, shape: &[i64]) -> Result<Tensor, BackendError> {
+    let x_numel = x.numel();
+    let mut out_shape: Vec<usize> = Vec::with_capacity(shape.len());
+    let mut infer_idx: Option<usize> = None;
+    let mut product = 1usize;
+    for (i, &d) in shape.iter().enumerate() {
+        if d == -1 {
+            if infer_idx.is_some() {
+                return Err(BackendError::InvalidInput {
+                    op: "Reshape",
+                    reason: "at most one -1 dim allowed".into(),
+                });
+            }
+            infer_idx = Some(i);
+            out_shape.push(0);
+        } else {
+            out_shape.push(d as usize);
+            product *= d as usize;
+        }
+    }
+    if let Some(idx) = infer_idx {
+        if product == 0 || x_numel % product != 0 {
+            return Err(BackendError::InvalidInput {
+                op: "Reshape",
+                reason: format!("cannot infer dim: {x_numel} / {product} has remainder"),
+            });
+        }
+        out_shape[idx] = x_numel / product;
+    } else if out_shape.iter().product::<usize>() != x_numel {
+        return Err(BackendError::InvalidInput {
+            op: "Reshape",
+            reason: format!(
+                "element count mismatch: shape {:?} = {} ≠ input {}",
+                out_shape,
+                out_shape.iter().product::<usize>(),
+                x_numel
+            ),
+        });
+    }
+    Ok(Tensor { shape: out_shape, dtype: x.dtype, data: x.data })
+}
+
+/// Embedding table lookup: ids as f32 [seq], weight [vocab, hidden] → [seq, hidden].
+fn exec_token_embed(ids: &Tensor, w: &Tensor) -> Result<Tensor, BackendError> {
+    if w.rank() != 2 {
+        return Err(BackendError::InvalidInput {
+            op: "TokenEmbed",
+            reason: format!("weight must be rank 2, got {:?}", w.shape),
+        });
+    }
+    let hidden = w.shape[1];
+    let id_data = ids.as_f32();
+    let w_data = w.as_f32();
+    let seq = id_data.len();
+    let mut out = vec![0f32; seq * hidden];
+    for (s, &tok_f) in id_data.iter().enumerate() {
+        let tok = tok_f as usize;
+        let src = &w_data[tok * hidden..(tok + 1) * hidden];
+        out[s * hidden..(s + 1) * hidden].copy_from_slice(src);
+    }
+    Ok(Tensor::from_f32(vec![seq, hidden], out))
 }

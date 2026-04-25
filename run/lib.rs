@@ -18,6 +18,8 @@ pub mod manifest;
 pub mod tokenizer;
 
 pub use backend::{Backend, BackendError, BackendKind};
+pub use generate::ModelRunner;
+pub use ir::GraphRunner;
 pub use core::{DType, Op, PoolMode, InterpolateMode, SampleMethod, Tensor, Shape};
 pub use format::{read_model_file, LoadedModel, ModelFile, TensorMeta};
 pub use tokenizer::{Tokenizer, ChatMessage};

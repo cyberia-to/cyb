@@ -113,6 +113,28 @@ impl DType {
         matches!(self, DType::F32 | DType::F16 | DType::BF16)
     }
 
+    /// Stable u8 tag for binary serialization (e.g. graph section).
+    pub fn tag(self) -> u8 {
+        match self {
+            DType::F32 => 0, DType::F16 => 1, DType::BF16 => 2,
+            DType::I8 => 3,  DType::U8 => 4,  DType::Bool => 5,
+            DType::Q8_0 => 6, DType::Q4_0 => 7,
+            DType::Q2_K => 8, DType::Q3_K => 9, DType::Q4_K => 10,
+            DType::Q5_K => 11, DType::Q6_K => 12, DType::Ternary => 13,
+        }
+    }
+
+    pub fn from_tag(tag: u8) -> Option<Self> {
+        Some(match tag {
+            0 => DType::F32, 1 => DType::F16, 2 => DType::BF16,
+            3 => DType::I8,  4 => DType::U8,  5 => DType::Bool,
+            6 => DType::Q8_0, 7 => DType::Q4_0,
+            8 => DType::Q2_K, 9 => DType::Q3_K, 10 => DType::Q4_K,
+            11 => DType::Q5_K, 12 => DType::Q6_K, 13 => DType::Ternary,
+            _ => return None,
+        })
+    }
+
     /// True if this is a block-quantized type (needs dequant to use).
     pub fn is_quantized(self) -> bool {
         matches!(

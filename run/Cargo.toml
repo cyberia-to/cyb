@@ -68,3 +68,7 @@ path = "tests/tier3_goldens.rs"
 [[test]]
 name = "tier4_ir_exec"
 path = "tests/tier4_ir_exec.rs"
+
+[[test]]
+name = "tier5_graph_ir"
+path = "tests/tier5_graph_ir.rs"

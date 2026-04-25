@@ -65,14 +65,20 @@ node 5:
 Intermediate names are scoped to the graph; no naming collision
 guarantee across models.
 
-## Op attributes
+## Node attributes
 
-Each op's required attrs follow its signature in [ops.md](ops.md). Examples:
+Each op carries its non-tensor parameters directly inside the `Op` enum
+variant (see `core/op.rs`). The `Node.attrs` field (`HashMap<String, AttrValue>`)
+holds supplementary free-form hints (e.g. fusion hints) — it is *not* the
+primary store for op parameters.
 
-- `RmsNorm { eps: f32 }` → `Attrs::Map({"eps": Float(1e-6)})`
-- `Rope { head_dim: u32, base: f32 }` → `Attrs::Map({"head_dim": Int(64), "base": Float(10000.0)})`
-- `Sdpa { num_heads, kv_heads, head_dim, causal }` → all 4 as Map entries
-- `Reshape { shape: Vec<i64> }` → `Attrs::Ints(vec![...])`
+`AttrValue` variants (matching `ir/graph.rs`):
+- `AttrValue::Int(i64)`
+- `AttrValue::Float(f32)`
+- `AttrValue::String(String)`
+- `AttrValue::Ints(Vec<i64>)`
+- `AttrValue::Floats(Vec<f32>)`
+- `AttrValue::Bool(bool)`
 
 ## Serialization (binary)
 
@@ -185,6 +191,37 @@ Stable u16 values for serialization. Never reused. New ops append.
 199 Argmax
 ```
 
+## Stateful execution
+
+The `GraphExecutor` is stateful across `run()` calls:
+
+- **`KvCache` op**: inputs `[K_new, V_new]`, outputs `[K_full, V_full]`.
+  The executor appends `K_new` and `V_new` rows to per-layer accumulators
+  and returns the full accumulated `[seq, kv_heads*head_dim]` tensors.
+  Accumulators survive across `run()` calls (i.e. across generation steps).
+
+- **`pos` auto-injection**: before each `run()`, the executor inserts
+  `"pos"` = `Tensor::from_f32([1], [past_seq_len as f32])` into the
+  working tensors. Rope nodes consume this as their position argument.
+  `past_seq_len` starts at 0 and increments by 1 each `run()` call.
+
+- **`reset()`**: clears all KV accumulators and resets `past_seq_len` to 0.
+  Equivalent to starting a new conversation.
+
+## Weight loading
+
+Two categories of weights:
+
+- **Matmul weights** (embedding, projections): passed as quantized
+  `&Tensor` to `backend.quant_matmul()`. The backend handles
+  dequantization internally — no pre-dequant needed for correctness
+  or performance.
+
+- **Norm / Rope / other non-matmul weights**: always small (shape `[H]`).
+  Dequantize to f32 once at executor prepare time and store as f32
+  `Tensor` in the weights map. This avoids per-step dequant overhead
+  for kernels that don't have a quantized path.
+
 ## Op payload encoding
 
 Op-specific fields after `op_tag`. Examples:
@@ -192,6 +229,7 @@ Op-specific fields after `op_tag`. Examples:
 ```
 Rope:
   u32 head_dim
+  u32 rope_dim    # rotated dims (≤ head_dim); rope_dim == head_dim for full rotation
   f32 base
 
 RmsNorm, LayerNorm, BatchNorm, GroupNorm, InstanceNorm:

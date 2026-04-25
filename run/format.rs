@@ -25,6 +25,9 @@ pub struct ModelFile {
     pub card: String,
     pub config: String,
     pub program: String,
+    /// Serialized IR graph bytes, if the `~~~graph` section is present.
+    /// Hex-decoded from the text section at load time. See specs/format.md.
+    pub graph: Option<Vec<u8>>,
     pub tensors_toml: String,
     pub vocab_toml: String,
     pub chat_toml: String,
@@ -90,10 +93,18 @@ pub fn read_model_file(path: &Path) -> Result<ModelFile, FormatError> {
         data[weights_start..weights_end].to_vec()
     };
 
+    // Decode the optional hex-encoded graph section.
+    let graph = sections.get("graph").and_then(|hex| {
+        crate::ir::hex_decode(hex)
+            .map_err(|e| log::warn!("graph section hex decode failed: {e}"))
+            .ok()
+    });
+
     Ok(ModelFile {
         card: sections.get("card").cloned().unwrap_or_default(),
         config: sections.get("config").cloned().unwrap_or_default(),
         program: sections.get("program").cloned().unwrap_or_default(),
+        graph,
         tensors_toml: sections.get("tensors").cloned().unwrap_or_default(),
         vocab_toml: sections.get("vocab").cloned().unwrap_or_default(),
         chat_toml: sections.get("chat").cloned().unwrap_or_default(),
@@ -206,6 +217,14 @@ impl LoadedModel {
         let file = read_model_file(path)?;
         let tensors = parse_tensors_toml(&file.tensors_toml)?;
         Ok(Self { file, tensors })
+    }
+
+    /// Deserialize the graph section into a `Graph`, if present.
+    pub fn graph(&self) -> Option<crate::ir::graph::Graph> {
+        let bytes = self.file.graph.as_deref()?;
+        crate::ir::deserialize(bytes)
+            .map_err(|e| log::warn!("graph deserialize failed: {e}"))
+            .ok()
     }
 
     /// Get raw bytes for a named tensor.

@@ -2,9 +2,29 @@
 //!
 //! Spec: specs/execution.md, specs/ops.md §8
 
-use crate::backend::Backend;
+use crate::backend::{Backend, BackendError};
 use crate::arch::decoder::LlamaModel;
 use crate::tokenizer::{ChatMessage, Tokenizer};
+
+/// Uniform interface for any model that can run one forward step and return logits.
+///
+/// Implemented by [`LlamaModel`] (curated path) and graph executor wrappers
+/// (graph path). The caller drives the generation loop; the runner owns state.
+pub trait ModelRunner {
+    /// Run one forward step for a single token. Returns logits [vocab].
+    fn step(&mut self, token: u32, backend: &dyn Backend) -> Result<Vec<f32>, BackendError>;
+    /// Reset KV state (start a new conversation).
+    fn reset(&mut self);
+}
+
+impl ModelRunner for LlamaModel {
+    fn step(&mut self, token: u32, backend: &dyn Backend) -> Result<Vec<f32>, BackendError> {
+        self.forward(token, backend)
+    }
+    fn reset(&mut self) {
+        self.reset_kv_cache();
+    }
+}
 
 #[derive(Clone, Copy, Debug)]
 pub struct SampleConfig {
@@ -160,18 +180,18 @@ fn rand_f32() -> f32 {
     (x as f32) / (u64::MAX as f32)
 }
 
-/// Generate text autoregressively.
+/// Generate text autoregressively. Works with any [`ModelRunner`].
 ///
 /// Returns (generated_text, generated_token_count).
 pub fn generate(
-    model: &mut LlamaModel,
+    model: &mut dyn ModelRunner,
     tok: &Tokenizer,
     backend: &dyn Backend,
     prompt: &str,
     max_tokens: usize,
     sample_cfg: SampleConfig,
-) -> Result<(String, usize), crate::backend::BackendError> {
-    model.reset_kv_cache();
+) -> Result<(String, usize), BackendError> {
+    model.reset();
 
     // Tokenize prompt
     let prompt_ids = tok.encode(prompt);
@@ -192,7 +212,7 @@ pub fn generate(
     // Prefill: run forward for each prompt token, keep logits from last.
     let mut logits: Vec<f32> = Vec::new();
     for &tid in &prompt_ids {
-        logits = model.forward(tid, backend)?;
+        logits = model.step(tid, backend)?;
     }
 
     // Decode: sample next token, feed back in, repeat.
@@ -233,7 +253,7 @@ pub fn generate(
             break;
         }
         generated.push(next);
-        logits = model.forward(next, backend)?;
+        logits = model.step(next, backend)?;
     }
 
     let text = tok.decode(&generated, false);

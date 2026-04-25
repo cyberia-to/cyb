@@ -28,6 +28,8 @@ pub mod executor;
 pub mod fusion;
 pub mod graph;
 pub mod jets;
+pub mod runner;
+pub mod serial;
 pub mod templates;
 
 pub use atoms::{decompose, Atom, AtomInterpreter, CmpOp, ReduceOp, SlidePattern};
@@ -41,9 +43,11 @@ pub use graph::{
     TensorId, TensorMeta, WeightData,
 };
 pub use jets::{formula_hash, FormulaHash, Jet, JetRegistry};
+pub use runner::GraphRunner;
+pub use serial::{deserialize, hex_decode, hex_encode, serialize, SerialError};
 pub use templates::{
-    bert_encoder, cnn_detector, diffusion_dit, encoder_decoder, modernbert_encoder, moe_decoder,
-    transformer_decoder, transformer_decoder_for_exec, transformer_encoder,
+    bert_encoder, cnn_detector, diffusion_dit, encoder_decoder, family_graph, modernbert_encoder,
+    moe_decoder, transformer_decoder, transformer_decoder_for_exec, transformer_encoder,
     whisper_encoder_decoder, Activation, BertConfig, CnnDetectorConfig, DiTConfig,
     MoeDecoderConfig, TransformerConfig, WhisperConfig,
 };

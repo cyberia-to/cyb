@@ -718,6 +718,49 @@ pub fn encoder_decoder(_: &TransformerConfig, _: &TransformerConfig) -> Graph {
     unimplemented!("template not yet ported")
 }
 
+impl TransformerConfig {
+    /// Build a `TransformerConfig` from a parsed `LlamaConfig`.
+    ///
+    /// All LlamaStyle families (llama, mistral, qwen2/3, phi, gemma, smollm,
+    /// deepseek-dense, etc.) share the same graph shape — differences in
+    /// norm-plus-one, attention scaling, and so on are curated-path concerns.
+    /// The graph executor correctness path uses f32 throughout.
+    pub fn from_llama(c: &crate::arch::decoder::LlamaConfig) -> Self {
+        use crate::arch::decoder::config::HiddenActivation;
+        let activation = match c.hidden_activation {
+            HiddenActivation::Silu    => Activation::Silu,
+            HiddenActivation::GeluTanh => Activation::Gelu,
+            HiddenActivation::GeluErf  => Activation::Gelu,
+        };
+        Self {
+            hidden_size:       c.hidden_size,
+            num_heads:         c.num_attention_heads,
+            kv_num_heads:      c.num_key_value_heads,
+            head_dim:          c.head_dim,
+            num_layers:        c.num_hidden_layers,
+            intermediate_size: c.intermediate_size,
+            vocab_size:        c.vocab_size,
+            eps:               c.rms_norm_eps,
+            rope_theta:        c.rope_theta,
+            max_seq_len:       c.max_position_embeddings.min(8192),
+            activation,
+            has_qk_norm:       c.has_qk_norm,
+        }
+    }
+}
+
+/// Build a [`Graph`] for a model whose `model_type` falls into a known
+/// LlamaStyle family. Returns `None` for architectures with no template yet
+/// (MoE, DiT, Whisper, BERT, CNN).
+///
+/// Used by `mr graph <model>` to embed a graph section at import time.
+pub fn family_graph(llama_config: &crate::arch::decoder::LlamaConfig) -> Option<Graph> {
+    // All LlamaStyle families (dense decoders) use the same template.
+    // MoE, diffusion, encoder-only etc. are a separate future task.
+    let tc = TransformerConfig::from_llama(llama_config);
+    Some(transformer_decoder_for_exec(&tc))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

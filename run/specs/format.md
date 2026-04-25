@@ -19,6 +19,9 @@ file = model identity).
 │ ~~~program             │   Rust-like source (future: nox bytecode)
 │ ...                    │
 ├────────────────────────┤
+│ ~~~graph               │   hex-encoded binary IR graph (optional)
+│ ...                    │
+├────────────────────────┤
 │ ~~~tensors             │   TOML: tensor index (name, shape, dtype, offset, size)
 │ ...                    │
 ├────────────────────────┤
@@ -235,11 +238,16 @@ Presence of `graph` section signals the graph executor can run this
 model. A model with neither a matching curated family nor a graph
 section is unrunnable (import should have rejected it).
 
+The graph binary is hex-encoded (lowercase) in the text section so it
+lives before `~~~weights\n` without breaking the UTF-8 text header
+scan. The binary is ~80–120 KB for a 28-layer decoder; hex-encoded
+that is ~160–240 KB — well within the 32 MB scan limit.
+
 Frontmatter entry:
 ```toml
 [[files]]
 name = "graph"
-format = "bin"                 # binary IR, see ir.md
+format = "hex"                 # hex-encoded binary IR, see ir.md
 ```
 
 ## chat section (optional)
