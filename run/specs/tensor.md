@@ -102,7 +102,7 @@ model.norm.weight
 lm_head.weight                        — or tied to embed_tokens
 ```
 
-[import.md](import.md) defines how other conventions (GGUF `blk.i.attn_q`,
+[import.md](../../mi/specs/import.md) defines how other conventions (GGUF `blk.i.attn_q`,
 Whisper, DiT, ...) map to this canonical set.
 
 ## Weight matrix convention

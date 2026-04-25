@@ -1,10 +1,10 @@
 //! mi — model importer. HuggingFace / GGUF / safetensors → cyb `.model`.
 //!
-//! Runtime (inference) lives in the `mr/` crate. `mi` owns the ingest side:
+//! Runtime (inference) lives in the `run/` crate. `mi` owns the ingest side:
 //!   load source → [`Weights`] table → re-pack into a `.model` file that
-//!   `mr/` can mmap.
+//!   `run/` can mmap.
 //!
-//! Spec: `reference/runtime/import.md`.
+//! Spec: `mi/specs/import.md`.
 //!
 //! [`Weights`]: types::Weights
 

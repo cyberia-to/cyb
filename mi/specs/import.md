@@ -4,8 +4,8 @@ Converting external model formats (GGUF, safetensors, HF PyTorch,
 MLX, ONNX) to canonical `.model` files.
 
 Import is the boundary where external variance becomes internal
-normalization. After import, every `.model` follows [format.md](format.md)
-and [tensor.md](tensor.md) conventions exactly — the runtime never
+normalization. After import, every `.model` follows [format.md](../../run/specs/format.md)
+and [tensor.md](../../run/specs/tensor.md) conventions exactly — the runtime never
 deals with source-format quirks.
 
 ## Inputs
@@ -32,7 +32,7 @@ After import, the `.model` file MUST satisfy:
    `[vocab, hidden]` for embeddings.
 3. **Canonical dtypes** — no BF16 in weights (converted to F16).
    Q4_0 normalized to Q4_K where possible.
-4. **Canonical config** — flat schema matching [format.md](format.md).
+4. **Canonical config** — flat schema matching [format.md](../../run/specs/format.md).
 5. **Special tokens registered** — every `<|...|>` pattern in vocab
    appears as added token with correct ID.
 6. **All tensors required by declared `model_type` present** —
@@ -248,5 +248,5 @@ back from `.model`, re-dequantize, compare with source:
 - Dequantized values within format tolerance (Q4_K: 1.5e-2 per weight)
 - Same tokenizer output for test strings
 
-Import that fails this is broken. [test.md](test.md) defines the
+Import that fails this is broken. [test.md](../../run/specs/test.md) defines the
 specific test.

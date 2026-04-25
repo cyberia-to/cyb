@@ -183,7 +183,7 @@ fn run_import(dir_path: &str) {
 
     // LlamaStyle+ (Gemma 3/4) optional fields. Each is omitted from the
     // config when absent so plain LlamaStyle models stay clean.
-    // Spec: reference/runtime/format.md §"LlamaStyle+ extra fields"
+    // Spec: run/specs/format.md §"LlamaStyle+ extra fields"
     let hidden_activation = text_config["hidden_activation"]
         .as_str()
         .map(|s| s.to_string());
@@ -400,7 +400,7 @@ print('\n'.join(lines))
         .iter()
         .map(|n| mi::naming::gguf_to_hf(n))
         .collect();
-    // Per spec (reference/runtime/import.md §"K=V shared projection"): when
+    // Per spec (mi/specs/import.md §"K=V shared projection"): when
     // the layer is K=V at the source (no v_proj tensor), the importer emits
     // a v_proj tensor with the same bytes as k_proj. Runtime stays one
     // codepath. Gemma-4 only sets K=V on full_attention layers.

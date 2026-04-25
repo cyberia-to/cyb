@@ -376,7 +376,7 @@ hash. Model versions are separate files with separate CIDs.
 
 ## Reading
 
-Loader procedure (see [import.md](import.md) for writing):
+Loader procedure (see [import.md](../../mi/specs/import.md) for writing):
 
 1. Read up to some reasonable limit (default 32 MB — some models
    have large text sections).

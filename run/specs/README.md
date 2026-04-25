@@ -18,7 +18,6 @@ is a spec bug — fix spec first, then code.
 - [tokenizer.md](tokenizer.md) — BPE algorithm, special tokens, chat templates
 - [arch.md](arch.md) — graph templates per family: LlamaStyle, BertStyle, DiTDiffusion, etc
 - [format.md](format.md) — .model file layout, tensor index, sections
-- [import.md](import.md) — GGUF/HF → .model, invariants preserved
 - [execution.md](execution.md) — backend contract, dispatch rules, fused op policy
 - [test.md](test.md) — four-tier test strategy: import, op, layer, e2e
 - [reality.md](reality.md) — what actually runs today (5/26), gap analysis
