@@ -26,6 +26,8 @@ pub enum SerialError {
     UnknownOpTag(u16),
     #[error("truncated: {0}")]
     Truncated(&'static str),
+    #[error("malformed: {0}")]
+    Malformed(&'static str),
 }
 
 // ── write helpers ────────────────────────────────────────────────────────────
@@ -595,6 +597,9 @@ pub fn deserialize(bytes: &[u8]) -> Result<Graph, SerialError> {
     for _ in 0..num_nodes {
         let node = deserialize_node(&mut r)?;
         graph.nodes.push(node);
+    }
+    if r.position() as usize != bytes.len() {
+        return Err(SerialError::Malformed("trailing bytes after graph"));
     }
     Ok(graph)
 }
