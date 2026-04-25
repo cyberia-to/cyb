@@ -10,9 +10,10 @@
 
 pub mod cyb_format;
 pub mod hub;
-pub mod import;
 pub mod loader;
 pub mod manifest;
+pub mod naming;
+pub mod quant;
 pub mod types;
 
 // Generated ONNX protobuf bindings (shared with `loader::onnx`).

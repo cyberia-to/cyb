@@ -398,7 +398,7 @@ print('\n'.join(lines))
     // where v_proj is absent and must be materialised from k_proj.
     let existing_hf: std::collections::HashSet<String> = tensor_names
         .iter()
-        .map(|n| mi::import::gguf_to_hf(n))
+        .map(|n| mi::naming::gguf_to_hf(n))
         .collect();
     // Per spec (reference/runtime/import.md §"K=V shared projection"): when
     // the layer is K=V at the source (no v_proj tensor), the importer emits
@@ -440,7 +440,7 @@ print('\n'.join(lines))
                 let f32s = mi::dequantize_to_f32(&w.data, w.dtype);
                 let n = w.shape.first().copied().unwrap_or(1);
                 let k = if w.shape.len() >= 2 { w.shape[1] } else { f32s.len() / n.max(1) };
-                let q = mi::import::quantize_f32_to_q4k(&f32s, n, k);
+                let q = mi::quant::f32_to_q4k(&f32s, n, k);
                 ("q4k", Some(q))
             }
             mi::DType::Q4_1 => {
@@ -448,7 +448,7 @@ print('\n'.join(lines))
                 let f32s = mi::dequantize_to_f32(&w.data, w.dtype);
                 let n = w.shape.first().copied().unwrap_or(1);
                 let k = if w.shape.len() >= 2 { w.shape[1] } else { f32s.len() / n.max(1) };
-                let q = mi::import::quantize_f32_to_q4k(&f32s, n, k);
+                let q = mi::quant::f32_to_q4k(&f32s, n, k);
                 ("q4k", Some(q))
             }
             mi::DType::Q8_0 => ("q8", None),
@@ -468,7 +468,7 @@ print('\n'.join(lines))
             .map(|s| s.to_string())
             .collect::<Vec<_>>()
             .join(", ");
-        let hf_name = mi::import::gguf_to_hf(tname);
+        let hf_name = mi::naming::gguf_to_hf(tname);
 
         tensors_lines.push(format!(
             "[\"{}\"]\nshape    = [{}]\nencoding = \"{}\"\noffset   = {}\nsize     = {}\n",
