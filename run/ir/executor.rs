@@ -220,9 +220,14 @@ fn exec_reshape(x: Tensor, shape: &[i64]) -> Result<Tensor, BackendError> {
             }
             infer_idx = Some(i);
             out_shape.push(0);
-        } else {
+        } else if d >= 0 {
             out_shape.push(d as usize);
             product *= d as usize;
+        } else {
+            return Err(BackendError::InvalidInput {
+                op: "Reshape",
+                reason: format!("invalid dim {d}: only -1 is allowed as inferred dim"),
+            });
         }
     }
     if let Some(idx) = infer_idx {
@@ -249,19 +254,32 @@ fn exec_reshape(x: Tensor, shape: &[i64]) -> Result<Tensor, BackendError> {
 
 /// Embedding table lookup: ids as f32 [seq], weight [vocab, hidden] → [seq, hidden].
 fn exec_token_embed(ids: &Tensor, w: &Tensor) -> Result<Tensor, BackendError> {
+    if ids.rank() != 1 {
+        return Err(BackendError::InvalidInput {
+            op: "TokenEmbed",
+            reason: format!("ids must be rank 1, got rank {}", ids.rank()),
+        });
+    }
     if w.rank() != 2 {
         return Err(BackendError::InvalidInput {
             op: "TokenEmbed",
             reason: format!("weight must be rank 2, got {:?}", w.shape),
         });
     }
+    let vocab = w.shape[0];
     let hidden = w.shape[1];
     let id_data = ids.as_f32();
     let w_data = w.as_f32();
-    let seq = id_data.len();
+    let seq = ids.shape[0];
     let mut out = vec![0f32; seq * hidden];
     for (s, &tok_f) in id_data.iter().enumerate() {
         let tok = tok_f as usize;
+        if tok >= vocab {
+            return Err(BackendError::InvalidInput {
+                op: "TokenEmbed",
+                reason: format!("token ID {tok} out of vocab range {vocab}"),
+            });
+        }
         let src = &w_data[tok * hidden..(tok + 1) * hidden];
         out[s * hidden..(s + 1) * hidden].copy_from_slice(src);
     }
