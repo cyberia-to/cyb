@@ -65,8 +65,12 @@ impl Default for TransformerConfig {
     }
 }
 
-/// Generate a decoder graph with merged QKV projection. Good for curated
-/// codepaths that fuse QKV into one matmul and reshape downstream.
+/// Generate a decoder graph with merged QKV projection.
+///
+/// **Not compatible with `GraphExecutor`** — the merged Rope and KvCache
+/// inputs assume a backend that handles QKV splitting internally (i.e. the
+/// curated `LlamaModel` forward path). Use [`transformer_decoder_for_exec`]
+/// for any graph-executor or serialization use.
 ///
 /// Per layer: RmsNorm → QKV Matmul → Rope → KvCache → Sdpa → O_Proj Matmul
 ///            → residual Add → RmsNorm → Gate + Up Matmul → act → Down Matmul
