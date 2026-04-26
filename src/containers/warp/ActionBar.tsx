@@ -77,11 +77,14 @@ function ActionBar({ stateActionBar }: Props) {
   } = stateActionBar;
 
   useEffect(() => {
+    let cancelled = false;
+
     const confirmTx = async () => {
       if (queryClient && txHash) {
         setStage(STAGE_CONFIRMING);
         const response = await queryClient.getTx(txHash);
         console.log('response :>> ', response);
+        if (cancelled) return;
         if (response !== null) {
           if (response.code === 0) {
             setStage(STAGE_CONFIRMED);
@@ -102,6 +105,10 @@ function ActionBar({ stateActionBar }: Props) {
       }
     };
     confirmTx();
+
+    return () => {
+      cancelled = true;
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [queryClient, txHash, updateFunc]);
 
