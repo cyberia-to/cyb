@@ -492,21 +492,23 @@ print('\n'.join(lines))
         }
 
         let encoding = import::naming::canonical_encoding_for(&hf_name);
-        let canonical_bytes: Vec<u8> = match encoding {
+        // q4/q8/ternary require length % 32 == 0. Tensors whose element
+        // count isn't aligned (e.g. gemma-4's per-layer scalar) fall back
+        // to u32, which has no block-size constraint.
+        let needs_block = matches!(encoding, "q4" | "q8" | "ternary");
+        let written_enc: &'static str = if needs_block && f32s.len() % 32 != 0 {
+            eprintln!(
+                "warn: {hf_name} has {} elements, not a multiple of 32 — falling back to u32",
+                f32s.len()
+            );
+            "u32"
+        } else {
+            encoding
+        };
+        let canonical_bytes: Vec<u8> = match written_enc {
             "u32" => import::quant::canonical::f32_to_u32(&f32s),
             "u16" => import::quant::canonical::f32_to_u16(&f32s),
-            "q4" => {
-                if f32s.len() % 32 != 0 {
-                    eprintln!(
-                        "warn: {hf_name} has {} elements, not a multiple of 32 — falling back to u32",
-                        f32s.len()
-                    );
-                    counts_by_enc.entry("u32_fallback").and_modify(|c| *c += 1).or_insert(1);
-                    import::quant::canonical::f32_to_u32(&f32s)
-                } else {
-                    import::quant::canonical::f32_to_q4(&f32s)
-                }
-            }
+            "q4" => import::quant::canonical::f32_to_q4(&f32s),
             "q8" => import::quant::canonical::f32_to_q8(&f32s),
             "ternary" => import::quant::canonical::f32_to_ternary(&f32s),
             other => {
@@ -514,8 +516,6 @@ print('\n'.join(lines))
                 import::quant::canonical::f32_to_u32(&f32s)
             }
         };
-        // Track the encoding written (after fallback resolution).
-        let written_enc = if encoding == "q4" && f32s.len() % 32 != 0 { "u32" } else { encoding };
         counts_by_enc.entry(written_enc).and_modify(|c| *c += 1).or_insert(1);
 
         let size = canonical_bytes.len();
