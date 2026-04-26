@@ -35,6 +35,7 @@ pub fn write_model_file(
     writeln!(f, "[cyb]")?;
     writeln!(f, "types = [\"model\"]")?;
     writeln!(f, "name = \"{name}\"")?;
+    writeln!(f, "format_version = 2")?;
     writeln!(f)?;
     for (section, format) in [
         ("card", "md"),

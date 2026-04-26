@@ -46,6 +46,12 @@ pub struct TensorMeta {
     pub size: u64,
 }
 
+/// Canonical .model format version. Files without `format_version = 2` in
+/// frontmatter are pre-canonical (legacy) and refuse to load — they encode
+/// data under the same encoding strings ("u32", "q4") with different
+/// semantics, so accepting them would silently produce garbage.
+pub const CANONICAL_FORMAT_VERSION: u32 = 2;
+
 /// Read a .model file. Large files are mmap'd; the weights slice is
 /// copied out once (for simplicity). Zero-copy mmap access can be
 /// added later by exposing a separate reader with &[u8] borrows.
@@ -69,6 +75,15 @@ pub fn read_model_file(path: &Path) -> Result<ModelFile, FormatError> {
 
     let text_part = std::str::from_utf8(&header[..marker_pos])
         .map_err(|e| FormatError::Invalid(format!("non-utf8 text header: {e}")))?;
+
+    // Reject pre-canonical files. Frontmatter must declare the canonical
+    // format version. See cyb/cyb-model for the canonical .model spec.
+    let version = parse_format_version(text_part)?;
+    if version != CANONICAL_FORMAT_VERSION {
+        return Err(FormatError::Invalid(format!(
+            "format_version {version} not supported (this build expects {CANONICAL_FORMAT_VERSION}); re-import the source model"
+        )));
+    }
 
     // Extract declared weights size from frontmatter `size = N` under [[files]] for weights.
     // Simple approach: scan for the first `size = <integer>` AFTER "weights" mention.
@@ -111,6 +126,22 @@ pub fn read_model_file(path: &Path) -> Result<ModelFile, FormatError> {
         eval_toml: sections.get("eval").cloned().unwrap_or_default(),
         weights,
     })
+}
+
+fn parse_format_version(text: &str) -> Result<u32, FormatError> {
+    // Find `format_version = N` anywhere in the text part. Pre-canonical
+    // files don't have this field at all, in which case we report version 1
+    // (which is then rejected by the caller).
+    for line in text.lines() {
+        let t = line.trim();
+        if let Some(rest) = t.strip_prefix("format_version") {
+            let v = rest.trim_start_matches(|c: char| c == '=' || c.is_whitespace());
+            if let Ok(n) = v.trim().parse::<u32>() {
+                return Ok(n);
+            }
+        }
+    }
+    Ok(1)
 }
 
 fn parse_weights_size(text: &str) -> Result<usize, FormatError> {
