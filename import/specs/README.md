@@ -32,8 +32,3 @@ consumes them; `import` follows them on the producer side:
 - [quant.md](../../run/specs/quant.md) — Q4_0/Q4_K/Q5_K/Q6_K/Q8/ternary bit layouts
 - [tokenizer.md](../../run/specs/tokenizer.md) — special tokens, chat templates
 - [test.md](../../run/specs/test.md) — four-tier test strategy
-
-## Source of truth
-
-When code and spec disagree: spec is authoritative. If spec is wrong,
-update spec first (one commit), then propagate to code (separate commit).
