@@ -63,12 +63,18 @@ Every source tensor maps to exactly one canonical name; mappings live
 in code so the spec doesn't drift:
 
 - GGUF → canonical: `naming::gguf_to_hf` in `import/naming.rs`.
-- HF safetensors → canonical: identity for HF-named decoders. Encoder
-  models (`embeddings.word_embeddings.weight`,
-  `encoder.layer.{i}.*`) need a position-swap mapping that is **not
-  yet implemented** — the safetensors loader is currently unreachable
-  from the import CLI.
-- HF PyTorch / MLX / ONNX: not implemented.
+- HF safetensors → canonical: identity for HF-named decoder weights;
+  encoder models need a position-swap mapping
+  (`embeddings.word_embeddings.weight` → `model.embed_tokens.weight`,
+  `encoder.layer.{i}.*` → `model.layers.{i}.*`).
+- HF PyTorch / MLX / ONNX → canonical: not yet specified.
+
+**Implementation status** (safetensors): two distinct gaps.
+
+| Gap | Where |
+|---|---|
+| No `safetensors_to_hf` function in `naming.rs` | even the trivial decoder identity case is unimplemented |
+| `main.rs::run_import` only locates `*.gguf` | the safetensors loader (`loader/safetensors.rs`) is reachable via `loader::load_model` for `.safetensors` paths, but the CLI never feeds it any |
 
 A source tensor that no mapping recognizes is a fatal import error
 with an actionable message:
@@ -157,26 +163,16 @@ Before writing the `.model`, import verifies the invariants hold.
 A failed check aborts the write — no partial `.model` ever lands on
 disk.
 
-Today's validation:
+| Check | Status | What it asserts |
+|---|---|---|
+| Tensor completeness | enforced | required tensors for the declared `model_type` are all present |
+| Shape consistency | planned | embed is `[vocab_size, hidden_size]`; Q proj is `[num_heads × head_dim, hidden_size]`; etc. |
+| Dtype uniformity | planned | a single tensor uses one dtype (mixed across tensors is fine) |
+| Weight count | planned | sum of tensor element counts matches a per-arch budget derived from config |
+| Round-trip token | planned | encode → decode of `"hello world"` reproduces the input within tokenizer lossiness |
+| EOS-id coherence | planned | tokenizer's EOS id matches the value in config |
 
-- **Tensor completeness**: missing required tensors for the declared
-  `model_type` raises an error before write.
-
-Planned (declared in this spec, **not yet implemented**):
-
-- Shape consistency against config (embed must be
-  `[vocab_size, hidden_size]`; Q proj must be
-  `[num_heads × head_dim, hidden_size]`).
-- Dtype uniformity within a tensor (mixed dtypes per tensor
-  unsupported; mixed across tensors is fine).
-- Weight count: sum of tensor element counts matches a per-arch
-  budget derived from the config.
-- Round-trip token test: encode → decode of `"hello world"`
-  reproduces the input within tokenizer lossiness.
-- EOS-id coherence: the tokenizer's EOS id matches the config.
-
-When the planned checks ship, this list flips to `today's validation`
-and the planned section shrinks.
+As planned checks ship, their `Status` column flips to `enforced`.
 
 ## Failure modes
 
