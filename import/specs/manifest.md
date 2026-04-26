@@ -66,20 +66,9 @@ discipline. Per [.claude/plans/cyb-mvp.md](../../.claude/plans/cyb-mvp.md):
 "new families enter the manifest only after the existing four are
 perfect and fast."
 
-## Promotion: experiment → manifest
+## Out of manifest
 
-Out-of-manifest models live in `~/llm/` alongside manifest models;
-nothing prevents loading them. They simply don't get the
-"verified-correct + fast" guarantees. To promote:
-
-1. Demonstrate the variant exercises a runtime path no current member
-   does (or covers a soma role gap).
-2. Open a manifest entry with the rationale in `notes`.
-3. Drive it to verified-correct on all backends before merging.
-
-## Demotion: drop from manifest
-
-A manifest entry is removed when its rationale collapses (e.g. the
-runtime path it exercised is now covered better by another member, or
-the upstream model was pulled). Demotion is a deliberate decision, not
-silent attrition.
+Models that don't belong in the manifest can still live in `~/llm/`;
+nothing prevents loading them. They just don't get the "verified-
+correct + fast" guarantees. The manifest is a discipline, not an
+allowlist.
