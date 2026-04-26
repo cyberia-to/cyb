@@ -1,4 +1,4 @@
-# Import contract
+# import contract
 
 How external model formats become canonical `.model` files.
 
