@@ -2,6 +2,7 @@
 //!
 //! Spec: specs/quant.md
 
+pub mod canonical;
 pub mod q4_0;
 pub mod q4_k;
 pub mod q5_k;
