@@ -3,16 +3,16 @@
 When and how the binary IR graph is embedded into a `.model` file at
 import time.
 
-## Why embed at import
+## Why embed
 
-The `.model` file is the lingua franca: render, compile, reverse, and
-run all read it. Embedding the graph IR lets the runtime — and the
-graph compiler / browser — see the model's computation as a directed
-graph of canonical ops without re-deriving it from config.
+The graph is derivable from the config plus an arch template, but
+embedding it at import time means consumers (runtime, graph
+compiler, browser) read it directly instead of re-running the
+template each load.
 
-The embedded graph is exec-compatible (matches `transformer_decoder_for_exec`,
-not the merged-QKV variant) and round-trips through
-`run::format::read_model_file` → `LoadedModel::graph()`.
+The embedded graph is the executor-compatible template (one matmul
+per QKV projection), not the merged-QKV variant. It round-trips
+through `run::format::read_model_file` → `LoadedModel::graph()`.
 
 ## When emitted
 
