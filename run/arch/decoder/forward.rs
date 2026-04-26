@@ -220,6 +220,26 @@ impl LlamaModel {
         // Embed lookup: one row of embed_tokens.
         let embed_table = &self.weights.embed_tokens;
         let hidden_size = c.hidden_size;
+        // One-shot diagnostic: dump stats for specific rows on first call.
+        if std::env::var("RUN_DEBUG_EMBED_ROWS").is_ok() && self.past_seq_len == 0 {
+            let table = embed_table.try_as_f32()?;
+            let rows_to_check: Vec<usize> = std::env::var("RUN_DEBUG_EMBED_ROWS")
+                .ok()
+                .map(|s| {
+                    s.split(',')
+                        .filter_map(|x| x.trim().parse::<usize>().ok())
+                        .collect()
+                })
+                .unwrap_or_default();
+            for r in &rows_to_check {
+                let s = r * hidden_size;
+                let row = &table[s..s + hidden_size];
+                let m = row.iter().map(|v| v.abs()).fold(0f32, f32::max);
+                let rms = (row.iter().map(|v| v * v).sum::<f32>() / hidden_size as f32).sqrt();
+                let mean = row.iter().sum::<f32>() / hidden_size as f32;
+                eprintln!("embed row {r:>6}: abs_max={m:>8.4} rms={rms:>7.4} mean={mean:>9.5}");
+            }
+        }
         let row_start = (token_id as usize) * hidden_size;
         let mut embed_row: Vec<f32> = embed_table.try_as_f32()?[row_start..row_start + hidden_size].to_vec();
         // Families that scale embeddings by sqrt(hidden_size) on lookup
@@ -657,6 +677,9 @@ fn forward_layer(
     // through the residual stream.
     if let Some(ref s) = layer.layer_output_scale {
         let scalar = s.as_f32()[0];
+        if std::env::var("RUN_DEBUG_LAYERS").is_ok() {
+            eprintln!("  layer {layer_idx:>3} layer_output_scale = {scalar:.6}");
+        }
         let mut out_v = out.to_f32_vec();
         for v in out_v.iter_mut() {
             *v *= scalar;
