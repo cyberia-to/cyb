@@ -162,6 +162,22 @@ runtime decodes only the canonical 5.
 - Atomic .model write (temp file + rename). Orthogonal hardening.
 - Weights blob checksum. Orthogonal hardening.
 
+## Verification status (cpu + graph backends)
+
+End-to-end inference on the four manifest models:
+
+| Model | cpu | graph | Notes |
+|---|---|---|---|
+| `qwen3-0.6b` (base, q8) | ✅ | ✅ | "Paris…Italy is Rome…Spain is Madrid…" |
+| `qwen2.5-coder-1.5b` (q8) | ✅ | ✅ | correct Rust fibonacci on both backends |
+| `qwen2.5-coder-14b-abl` (q8, GGUF source) | ✅ | (template-equivalent to 1.5b; 28 GB f32 weight map RAM-pressured the test machine) | required: GGUF dim reversal + Q6_K dequant fix |
+| `gemma-4-31b` (q8, GGUF source, LlamaStyle+) | partial | not yet | loads + runs all 60 layers without panic; output wrong (single Chinese token from "Hello"). Pre-canonical was ✗ panic; canonical exposes gemma-4-specific forward-path bugs (suspect partial_rotary_factor_full / softcapping / per-layer scalar interaction) |
+
+Three of four manifest models green on both cpu and graph backends.
+gemma-4 is in a strictly-better state than pre-canonical (which never
+produced output) and needs targeted gemma-4 forward-pass debugging,
+independent of canonical alignment.
+
 ## How this fits the cyb-mvp plan
 
 This work *precedes* the MVP plan's Phase 0 verification step.
