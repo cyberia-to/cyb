@@ -97,18 +97,30 @@ malformed).
 
 ### Dtypes
 
-Source dtypes upgrade to the canonical set on the way in:
+Every source tensor is dequantized to f32 then re-encoded into one of
+the canonical five encodings (`u32`, `u16`, `q8`, `q4`, `ternary`)
+defined by [`cyb/cyb-model`](https://cyber.page/cyb/cyb-model). The
+canonical encoding for each tensor is chosen by role
+(`import/naming::canonical_encoding_for`):
 
-| Source dtype | Canonical |
+| Tensor role | Canonical encoding |
 |---|---|
-| BF16 | F16 |
-| Q4_0 | Q4_K |
-| Q4_1 | Q4_K |
-| IQ2 / IQ3 / IQ4 | corresponding K-quant |
+| layer norms (`*norm.weight`, `model.norm.weight`) | `u32` |
+| biases (`*.bias`) | `u32` |
+| matmul weights (q/k/v/o_proj, mlp gate/up/down, embed_tokens, lm_head) | `q8` (default; q4 for compact-storage targets) |
 
-The canonical set and bit layouts are defined in
-[run/specs/quant.md](../../run/specs/quant.md). `import` implements
-the encoder side; the reader implements the decoder side.
+Block-size constraint: q4 / q8 / ternary require element count
+divisible by 32. Tensors below that threshold (e.g. gemma-4's
+per-layer scalar `layer_output_scale`) fall back to u32 with a
+warning.
+
+Source dtype is irrelevant to the output layout — only the canonical
+policy decides what bytes land on disk. Source dtypes the loader
+recognizes today: F32 / F16 / BF16 (safetensors), GGUF Q4_0 / Q4_1 /
+Q4_K / Q5_K / Q6_K / Q8_0.
+
+Bit layouts for the canonical five live in
+[run/specs/quant.md](../../run/specs/quant.md).
 
 ### K=V shared projection (Gemma 3/4)
 

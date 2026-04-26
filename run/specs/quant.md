@@ -1,25 +1,57 @@
 # Quantization formats
 
-Exact bit layouts for quantized weights. Matches llama.cpp GGUF
-conventions so imports are byte-compatible.
+> **Canonical reference**: the authoritative encoding set is
+> [`cyb/cyb-model`](https://cyber.page/cyb/cyb-model) §weights — five
+> fixed encodings (`u32`, `u16`, `q8`, `q4`, `ternary`). Layouts below
+> are the runtime decoder contract; encoders live in
+> [`import::quant::canonical`](../../import/quant.rs).
 
-## Overview
+## Canonical encodings (`.model` on-disk)
 
-| Format | Bits/value | Block size | Bytes/block | Error |
+The only encodings allowed in a canonical `.model` tensor index:
+
+| Format | Bits/value | Block size | Bytes/block | Notes |
 |---|---|---|---|---|
-| F32 | 32 | - | 4 | 0 |
-| F16 | 16 | - | 2 | 6e-4 |
-| BF16 | 16 | - | 2 | 4e-3 |
-| Q8_0 | 8.5 | 32 | 34 | 6e-4 |
-| Q4_0 | 4.5 | 32 | 18 | 2e-3 |
-| Q2_K | 2.625 | 256 | 84 | 2e-2 |
-| Q3_K | 3.4375 | 256 | 110 | 8e-3 |
-| Q4_K | 4.5 | 256 | 144 | 2e-3 |
-| Q5_K | 5.5 | 256 | 176 | 1e-3 |
-| Q6_K | 6.5625 | 256 | 210 | 5e-4 |
-| Ternary | 1.58 | - | (4 values / byte) | 3e-2 |
+| `u32` | 32 | 1 | 4 | 16.16 fixed-point integer; full precision (norms, biases) |
+| `u16` | 16 | 1 | 2 | 8.8 fixed-point integer; half precision |
+| `q8` | 8.5 | 32 | 34 | i16 scale (8.8) + 32 i8s; default for matmul weights |
+| `q4` | 4.5 | 32 | 18 | i16 scale (8.8) + 16 packed nibbles (split layout); compact storage |
+| `ternary` | 1.58 | 4 (per byte) | — | 2 bits/value: 00=0 / 01=+1 / 10=-1 |
 
-Error is RMSE vs F32 reference on Llama-2-7B weights, indicative.
+Bytes-on-disk identities (verified by round-trip tests in
+`import/tests/canonical_quant_roundtrip.rs`):
+
+- `u32`: i32 little-endian; dequant `f = i32 / 65536`
+- `u16`: i16 little-endian; dequant `f = i16 / 256`
+- `q8` block: `[i16 scale][i8 × 32]`; dequant `f[i] = i8[i] * scale_f / 127` where `scale_f = i16 / 256`
+- `q4` block: `[i16 scale][packed nibbles × 16]`, **split layout** —
+  byte `i` holds `value[i]` in the low nibble and `value[i + 16]` in
+  the high nibble; dequant `(nibble - 8) * scale_f / 8`
+- `ternary` byte: 4 values packed 2 bits each; codes 00 / 01 / 10 = 0.0 / +1.0 / −1.0; 11 reserved (decoded as 0)
+
+## Source-side dtypes (import-only)
+
+The `import` crate also reads source files (HF safetensors, GGUF) at
+import time. Source dtypes never appear in a canonical `.model`; they
+are dequantized to f32 on the way through, then re-encoded into the
+canonical set above.
+
+| Source format | Bits/value | Bytes/block | Used in |
+|---|---|---|---|
+| F32 | 32 | 4 | safetensors |
+| F16 | 16 | 2 | safetensors |
+| BF16 | 16 | 2 | safetensors (most HF models) |
+| Q8_0 | 8.5 | 34 | GGUF |
+| Q4_0 | 4.5 | 18 | GGUF |
+| Q4_K | 4.5 | 144 (256-block) | GGUF |
+| Q5_K | 5.5 | 176 (256-block) | GGUF |
+| Q6_K | 6.5625 | 210 (256-block) | GGUF |
+| Q2_K | 2.625 | 84 (256-block) | GGUF |
+| Q3_K | 3.4375 | 110 (256-block) | GGUF |
+
+The source decoders live in `run/backend/cpu/quant/{q4_0,q4_k,q5_k,q6_k,q8_0}.rs`
+and `import/types.rs::dequantize_to_f32`. Both ports of llama.cpp's
+reference k-quant kernels.
 
 ## Endianness
 

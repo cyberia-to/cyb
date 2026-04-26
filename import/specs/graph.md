@@ -1,94 +1,77 @@
-# import graph IR embedding
+# import graph IR
 
-When and how the binary IR graph is embedded into a `.model` file at
-import time.
+How the runtime gets a Graph IR for execution under
+[`cyb/cyb-model`](https://cyber.page/cyb/cyb-model).
 
-## Why embed
+## Where the graph comes from
 
-The graph is derivable from the config plus an arch template, but
-embedding it at import time means consumers (runtime, graph
-compiler, browser) read it directly instead of re-running the
-template each load.
-
-The embedded graph is the executor-compatible template (one matmul
-per QKV projection), not the merged-QKV variant. It round-trips
-through `run::format::read_model_file` → `LoadedModel::graph()`.
-
-## When emitted
-
-After tensors and config are normalized, `import` attempts:
+The canonical `.model` does **not** embed a graph section. The graph
+is rebuilt at runtime load time from the config + arch template:
 
 ```
-let metas = run::format::parse_tensors_toml(&tensors_toml)?;
-let cfg   = run::arch::decoder::config::LlamaConfig::parse(&config_toml, &metas)?;
-let graph = run::ir::family_graph(&cfg)?;
+GraphRunner::from_loaded(lm, llama_cfg, backend)
+  -> family_graph(llama_cfg)        // template by family
+  -> GraphExecutor::prepare(graph, build_weight_map(lm), backend)
 ```
 
-The `~~~graph` section is emitted iff **all three** succeed:
+Rebuilding from config keeps canonical files small and avoids a
+parallel-source-of-truth drift between the embedded graph and what
+the template would produce today.
 
-1. `parse_tensors_toml` — already-normalized tensor index parses.
-2. `LlamaConfig::parse` — config matches the LlamaStyle schema.
-   This is the real gate: a config that isn't LlamaStyle (MoE, DiT,
-   encoder-only, vision tower, …) fails to parse here and the graph
-   emission is skipped. The tensor list passed to `parse` lets it
-   detect `has_qk_norm` / `has_attn_bias` and infer `head_dim` when
-   the config omits it (Qwen3 has `head_dim=128` independent of
-   `hidden_size / num_heads`).
-3. `family_graph` — produces a `Graph` from the parsed config. Today
-   it always returns `Some` for any `LlamaConfig`; the `Option`
-   leaves room for future model-type gating once non-LlamaStyle
-   templates land.
+`mr run --path=graph <model>` forces this code path. The default
+`mr run` uses the curated forward path (faster); `--path=graph` is
+the verification reference.
 
-If any step fails, `import` prints a one-line skip notice and writes
-the `.model` without a `~~~graph` section. The runtime continues to
-work because the curated forward path doesn't need it.
+## Template
 
-## Section layout
+`run::ir::family_graph(LlamaConfig)` returns a `Graph` for a parsed
+LlamaStyle config. Today's template (`transformer_decoder_for_exec`)
+carries:
 
-```
-[[files]]
-name = "graph"
-format = "hex"
+- per-layer `RmsNorm → QKV matmul → (optional bias add) → reshape →
+  (optional QK norm) → RoPE → KvCache → SDPA → o_proj matmul →
+  residual add`
+- `RmsNorm → gate/up matmul → activation → mul → down_proj matmul →
+  residual add`
+- final `RmsNorm → lm_head matmul → logits`
 
-~~~graph
-<lowercase hex of the binary IR>
-```
+Two config-driven branches are wired:
 
-Position: between `~~~config` and `~~~tensors`. Hex encoding keeps the
-section text-safe (the file is mostly text up to `~~~weights\n`); the
-binary form is canonical-bytes serialization defined in
-[run/specs/ir.md](../../run/specs/ir.md).
+| Field | Effect |
+|---|---|
+| `has_qk_norm` | inserts `RmsNorm` on Q and K **after** reshape, **before** RoPE |
+| `has_attn_bias` | inserts `Add` of `q_proj.bias` / `k_proj.bias` / `v_proj.bias` after each matmul |
 
-## Implementation status (LlamaStyle+ faithfulness gap)
+Tied embeddings are handled in `build_weight_map` — when the source
+omits `lm_head.weight`, it's aliased to `model.embed_tokens.weight`.
 
-`TransformerConfig::from_llama` flattens the LlamaConfig down to the
-LlamaStyle base. LlamaStyle+ extras (final logit softcapping, sliding
-window, layer kinds, K=V projection sharing, query pre-attention
-scalar, global head dim, RoPE-full theta, partial rotary factor) are
-**not** carried into the embedded graph today.
+## Implementation status
 
-For models that use those features (Gemma 3, Gemma 4), the embedded
-graph approximates the LlamaStyle base and would diverge from the
-actual runtime forward path. Two paths to close this:
+LlamaStyle+ extras (final logit softcapping, per-layer sliding/full
+attention window, K=V shared projection, per-layer attention head dim
+switching, RoPE-full / partial-rotary-factor, per-layer scalar on
+residual output) are **not yet emitted** by the template.
 
-1. Extend `TransformerConfig` + `transformer_decoder_for_exec` to
-   carry the LlamaStyle+ fields and emit corresponding ops.
-2. Gate `family_graph` on `model_type` so unsupported families return
-   `None` until (1) lands.
+For models that use those features (Gemma 3, Gemma 4), the graph
+executor produces approximation output relative to the curated
+forward path. The curated path supports them; the graph path does
+not yet. Closing path: extend `TransformerConfig::from_llama` to
+carry the extras and emit corresponding `Op` variants in the
+template.
 
-Path (2) is the honest stopgap; path (1) is the real fix. Until one
-ships, `import` continues to emit best-effort graphs only for plain
-LlamaStyle (qk_norm and attn_bias variants).
+## Verification
 
-## Round-trip test
+End-to-end on cpu graph backend (`mr run --path=graph`):
 
-`import/tests/graph_section_roundtrip.rs` covers the writer ↔ reader
-seam: a `.model` written with `Some(hex)` round-trips through
-`read_model_file` to identical bytes; a `.model` written with `None`
-has no graph section.
+| Model | Graph status |
+|---|---|
+| `qwen3-0.6b.canonical` (qk_norm, tied) | sensical |
+| `qwen2.5-coder-1.5b.canonical` (attn_bias, tied) | sensical |
+| `qwen2.5-coder-14b-abl.canonical` (attn_bias) | template-equivalent to 1.5b; RAM-pressured to verify directly |
+| `gemma-4-31b.canonical` (LlamaStyle+) | not yet — pending template extras |
 
 ## Related specs
 
 - [run/specs/ir.md](../../run/specs/ir.md) — binary IR encoding
 - [run/specs/arch.md](../../run/specs/arch.md) — graph templates per family
-- [import.md](import.md) — the larger import contract this fits inside
+- [import.md](import.md) — the larger import contract

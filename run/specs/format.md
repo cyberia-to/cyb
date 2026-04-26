@@ -4,6 +4,20 @@ Single-file self-contained model package. All metadata, vocabulary,
 program, and binary weights in one file. Content-addressed (hash of
 file = model identity).
 
+> **Canonical reference**: this file documents the runtime reader
+> contract. The authoritative `.model` definition lives in the cyber
+> knowledge graph at [`cyb/cyb-model`](https://cyber.page/cyb/cyb-model).
+> When the two diverge, the graph page wins and this spec is updated.
+
+## Format version
+
+Canonical `.model` files declare `format_version = 2` in the
+frontmatter `[cyb]` block. The reader rejects files without this
+field (or with version != 2) — pre-canonical files have the same
+encoding strings (`"u32"`, `"q4"`) but legacy semantics (IEEE F32,
+GGUF Q4_0), so accepting them silently produces garbage. Re-import
+the source model through `mi import` to upgrade.
+
 ## File layout
 
 ```
@@ -50,6 +64,7 @@ Minimal metadata at the top of the file, before any `~~~` section:
 [cyb]
 types = ["model"]
 name = "qwen3-0.6b-abl"
+format_version = 2
 
 [[files]]
 name = "card"
