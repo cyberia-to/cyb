@@ -226,7 +226,8 @@ function Warp() {
   ]);
 
   const amountChangeHandler = useCallback(
-    (inputAmount: string, e: React.ChangeEvent) => {
+    (inputAmount: string, e?: React.ChangeEvent) => {
+      if (!e) return;
       let counterPairValue = new BigNumber(0);
       const isReverse = e.target.id !== 'tokenAAmount';
 
@@ -257,7 +258,8 @@ function Warp() {
     [tokenAPoolAmount, tokenBPoolAmount, tokenB, tokenA, tokenACoinDecimals, tokenBCoinDecimals]
   );
 
-  const amountChangeHandlerCreatePool = useCallback((values: string, e: React.ChangeEvent) => {
+  const amountChangeHandlerCreatePool = useCallback((values: string, e?: React.ChangeEvent) => {
+    if (!e) return;
     const inputAmount = values;
 
     const isReverse = e.target.id !== 'tokenAAmount';
