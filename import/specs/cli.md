@@ -37,7 +37,7 @@ The `.model` invariants are enforced by [import.md](import.md).
 
 Fetch a model from HuggingFace into the local `hf-hub` cache. The
 contract — artifact priority, sibling metadata, failure modes —
-lives in [hub.md](hub.md). Output: paths under
+lives in [hf.md](hf.md). Output: paths under
 `~/.cache/huggingface/hub/`, suitable as input for `mi import <DIR>`.
 
 ## Out-of-scope today

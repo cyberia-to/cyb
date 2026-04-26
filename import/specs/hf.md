@@ -1,7 +1,7 @@
-# import hub fetch
+# import hf fetch
 
 How `import` retrieves source files from HuggingFace Hub. Implemented
-in `import/hub/mod.rs` as a thin layer over `hf-hub`'s sync API.
+in `import/hf.rs` as a thin layer over the `hf-hub` crate's sync API.
 
 ## Contract
 
@@ -23,7 +23,7 @@ Sibling files always fetched when present:
 ## Surface
 
 ```
-hub::download_model(model_id) -> PathBuf  // fetches the artifact, returns its path
+hf::download_model(model_id) -> PathBuf  // fetches the artifact, returns its path
 ```
 
 Wired into the CLI as [`mi download`](cli.md#mi-download-repo-contract).

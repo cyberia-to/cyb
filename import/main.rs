@@ -66,7 +66,7 @@ fn run_list() {
 
 fn run_download(model_id: &str) {
     println!("Downloading {model_id}...");
-    match import::hub::download_model(model_id) {
+    match import::hf::download_model(model_id) {
         Ok(path) => println!("Downloaded to: {}", path.display()),
         Err(e) => eprintln!("Error: {e}"),
     }

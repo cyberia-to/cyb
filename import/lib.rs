@@ -9,7 +9,7 @@
 //! [`Weights`]: types::Weights
 
 pub mod cyb_format;
-pub mod hub;
+pub mod hf;
 pub mod loader;
 pub mod manifest;
 pub mod naming;
