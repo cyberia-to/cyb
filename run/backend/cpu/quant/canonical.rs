@@ -48,19 +48,22 @@ pub fn q8_to_f32(bytes: &[u8]) -> Vec<f32> {
 }
 
 /// Decode canonical `q4` → f32. Block layout: [u16 scale (8.8) | 16 × packed nibbles].
+/// Split nibble layout (matches GGUF Q4_0): byte `i` holds value `i` (low
+/// nibble) and value `i + 16` (high nibble).
 pub fn q4_to_f32(bytes: &[u8]) -> Vec<f32> {
     let block_bytes = 2 + BLOCK / 2;
     let blocks = bytes.len() / block_bytes;
-    let mut out = Vec::with_capacity(blocks * BLOCK);
+    let mut out = vec![0f32; blocks * BLOCK];
     for b in 0..blocks {
         let off = b * block_bytes;
         let scale = i16::from_le_bytes([bytes[off], bytes[off + 1]]) as f32 / 256.0;
+        let block_start = b * BLOCK;
         for i in 0..(BLOCK / 2) {
             let byte = bytes[off + 2 + i];
             let lo = (byte & 0x0F) as i32 - 8;
             let hi = ((byte >> 4) & 0x0F) as i32 - 8;
-            out.push(lo as f32 * scale / 8.0);
-            out.push(hi as f32 * scale / 8.0);
+            out[block_start + i] = lo as f32 * scale / 8.0;
+            out[block_start + i + 16] = hi as f32 * scale / 8.0;
         }
     }
     out

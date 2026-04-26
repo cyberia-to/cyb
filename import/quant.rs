@@ -173,10 +173,12 @@ pub mod canonical {
 
     /// Encode f32 as canonical `q4` (32-value blocks, u16 scale + 16 packed nibbles).
     ///
-    /// Per block (18 bytes): scale stored as canonical `u16` (8.8), then 32
-    /// 4-bit nibbles packed two-per-byte (low nibble first). Dequant:
-    /// `(nibble - 8) * scale / 8`. Range covered by one block: roughly
-    /// `[-scale, +scale]`.
+    /// Per block (18 bytes): scale stored as canonical `u16` (8.8), then 16
+    /// bytes of packed nibbles in **split** layout — byte `i` holds the
+    /// low nibble of value `i` (first half, indices 0..16) and the high
+    /// nibble of value `i + 16` (second half, indices 16..32). Same
+    /// convention as GGUF Q4_0, fits SIMD lane-pairing kernels naturally.
+    /// Dequant: `value[i] = (nibble - 8) * scale / 8`.
     pub fn f32_to_q4(values: &[f32]) -> Vec<u8> {
         assert!(
             values.len() % BLOCK == 0,
@@ -192,14 +194,14 @@ pub mod canonical {
                 .iter()
                 .fold(0.0f32, |acc, &v| acc.max(v.abs()));
             let dst = b * (2 + BLOCK / 2);
-            // scale represents amax → nibble offset 7 (=  +max of the signed range)
             let scale = amax;
             let u16_scale = (scale * 256.0).round().clamp(0.0, i16::MAX as f32) as i16;
             out[dst..dst + 2].copy_from_slice(&u16_scale.to_le_bytes());
             let inv = if scale > 0.0 { 8.0 / scale } else { 0.0 };
+            // Split layout: byte i contains value[i] (low) and value[i+16] (high).
             for i in 0..(BLOCK / 2) {
-                let lo = (block[2 * i] * inv).round().clamp(-8.0, 7.0) as i32;
-                let hi = (block[2 * i + 1] * inv).round().clamp(-8.0, 7.0) as i32;
+                let lo = (block[i] * inv).round().clamp(-8.0, 7.0) as i32;
+                let hi = (block[i + 16] * inv).round().clamp(-8.0, 7.0) as i32;
                 let n_lo = ((lo + 8) & 0xF) as u8;
                 let n_hi = ((hi + 8) & 0xF) as u8;
                 out[dst + 2 + i] = n_lo | (n_hi << 4);

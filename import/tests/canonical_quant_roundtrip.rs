@@ -178,17 +178,17 @@ fn ternary_quantizes_by_threshold() {
 
 #[test]
 fn q4_first_byte_is_u16_scale_lo_byte() {
-    // For values [+max, -max, 0, 0, ..., 0] with max = 1.0, scale = 1.0.
+    // Split layout: byte 2 holds value[0] in the low nibble and value[16] in
+    // the high nibble. With values[0]=+1, values[16]=-1, scale=1.0.
     // u16 encoding of 1.0 = round(1.0 * 256) = 256 → bytes [0x00, 0x01].
     let mut input = vec![0.0f32; 32];
     input[0] = 1.0;
-    input[1] = -1.0;
+    input[16] = -1.0;
     let bytes = enc::f32_to_q4(&input);
     assert_eq!(bytes[0], 0x00, "u16 scale lo byte");
     assert_eq!(bytes[1], 0x01, "u16 scale hi byte");
-    // Nibble pair (lo=index 0=+1.0→7+8=15=0xF; hi=index 1=-1.0→-8+8=0=0x0)
-    // Packed: lo | (hi << 4) = 0x0F.
-    assert_eq!(bytes[2], 0x0F, "first nibble pair");
+    // byte 2 = value[0] in low (+1 → 7+8=0xF) | value[16] in high (-1 → -8+8=0x0)
+    assert_eq!(bytes[2], 0x0F, "first nibble byte (split layout)");
 }
 
 #[test]

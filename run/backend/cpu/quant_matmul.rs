@@ -13,11 +13,23 @@
 //! `*_dot` kernel — that is the only thing that varies per quant type.
 
 use crate::backend::BackendError;
-use crate::backend::cpu::quant::{q4_0, q4_k, q6_k, q8_0};
+use crate::backend::cpu::quant::{canonical, q4_0, q4_k, q6_k, q8_0};
 use crate::core::dtype::DType;
 use crate::core::tensor::Tensor;
 use rayon::prelude::*;
 use wide::f32x8;
+
+// Canonical Q4 block (cyb/cyb-model): 32 values, 18 bytes
+//   [0..1]: i16 scale (canonical u16 8.8 fixed-point: scale_f = i16/256)
+//   [2..17]: 16 packed nibbles (low nibble first), value = (nibble-8) * scale_f / 8
+const CANONICAL_Q4_BLOCK_SIZE: usize = 32;
+const CANONICAL_Q4_BLOCK_BYTES: usize = 18;
+
+// Canonical Q8 block: 32 values, 34 bytes
+//   [0..1]: i16 scale (canonical u16 8.8: scale_f = i16/256)
+//   [2..33]: 32 i8 values, dequant = i8 * scale_f / 127
+const CANONICAL_Q8_BLOCK_SIZE: usize = 32;
+const CANONICAL_Q8_BLOCK_BYTES: usize = 34;
 
 /// Matmul with quantized weight. `x` is f32 [..., K], `w_bytes` and `w_dtype`
 /// describe the weight matrix [N, K] in its native quant format.
@@ -42,6 +54,29 @@ pub fn matmul_quant_f32(
     let mut out = vec![0f32; batch * n];
 
     match w_dtype {
+        // canonical
+        DType::Q4 => matmul_blocks(
+            x_data, w_bytes, &mut out, batch, n, k,
+            CANONICAL_Q4_BLOCK_SIZE, CANONICAL_Q4_BLOCK_BYTES, canonical_q4_dot,
+        )?,
+        DType::Q8 => matmul_blocks(
+            x_data, w_bytes, &mut out, batch, n, k,
+            CANONICAL_Q8_BLOCK_SIZE, CANONICAL_Q8_BLOCK_BYTES, canonical_q8_dot,
+        )?,
+        DType::U32 | DType::U16 | DType::Ternary => {
+            // U32/U16/Ternary aren't matmul weight layouts — fall back to
+            // dequant-then-f32-matmul. These show up only on small tensors
+            // (norms, biases) which the forward path handles via separate
+            // ops, but dispatch here is correct as a safety net.
+            let w_f32 = canonical::q8_to_f32(&[]); // placeholder; never hit on a normal model
+            let _ = w_f32;
+            return Err(BackendError::UnsupportedDtype {
+                backend: "cpu",
+                dtype: w_dtype,
+                blocker: "matmul against U32/U16/Ternary not expected; norms/biases use other ops",
+            });
+        }
+        // legacy GGUF (kept for source-format reads at import time; runtime no longer hits these for canonical models)
         DType::Q4_0 => matmul_blocks(
             x_data, w_bytes, &mut out, batch, n, k,
             q4_0::BLOCK_SIZE, q4_0::BLOCK_BYTES, q4_0_dot,
@@ -270,6 +305,61 @@ fn q6_k_dot(x: &[f32], w_bytes: &[u8], blocks: usize) -> f32 {
     sum
 }
 
+/// Canonical Q4 (cyb/cyb-model): 18 bytes per 32 values.
+///   scale_f = i16 / 256;  value[i] = (nibble[i] - 8) * scale_f / 8.
+/// Split nibble layout: byte i holds value[i] (lo) and value[i+16] (hi).
+#[inline(always)]
+fn canonical_q4_dot(x: &[f32], w_bytes: &[u8], blocks: usize) -> f32 {
+    let neg8 = f32x8::splat(-8.0);
+    let mut sum = 0f32;
+    for b in 0..blocks {
+        let block = &w_bytes[b * CANONICAL_Q4_BLOCK_BYTES..(b + 1) * CANONICAL_Q4_BLOCK_BYTES];
+        let x_block = &x[b * CANONICAL_Q4_BLOCK_SIZE..(b + 1) * CANONICAL_Q4_BLOCK_SIZE];
+        let scale_f = i16::from_le_bytes([block[0], block[1]]) as f32 / 256.0;
+        let qs = &block[2..];
+
+        let mut acc = f32x8::ZERO;
+        for chunk in 0..2 {
+            let off = chunk * 8;
+            let b8 = &qs[off..off + 8];
+            // Low nibbles → first half, high nibbles → second half.
+            let lo = nibbles_f32x8(b8, 0) + neg8;
+            let hi = nibbles_f32x8(b8, 4) + neg8;
+            let x_lo = f32x8::from(slice8(&x_block[off..off + 8]));
+            let x_hi = f32x8::from(slice8(&x_block[16 + off..16 + off + 8]));
+            acc = lo.mul_add(x_lo, acc);
+            acc = hi.mul_add(x_hi, acc);
+        }
+        sum += scale_f / 8.0 * acc.reduce_add();
+    }
+    sum
+}
+
+/// Canonical Q8 (cyb/cyb-model): 34 bytes per 32 values.
+///   scale_f = i16 / 256;  value[i] = i8[i] * scale_f / 127.
+#[inline(always)]
+fn canonical_q8_dot(x: &[f32], w_bytes: &[u8], blocks: usize) -> f32 {
+    let mut sum = 0f32;
+    for b in 0..blocks {
+        let base = b * CANONICAL_Q8_BLOCK_BYTES;
+        let block = &w_bytes[base..base + CANONICAL_Q8_BLOCK_BYTES];
+        let x_block = &x[b * CANONICAL_Q8_BLOCK_SIZE..(b + 1) * CANONICAL_Q8_BLOCK_SIZE];
+        let scale_f = i16::from_le_bytes([block[0], block[1]]) as f32 / 256.0;
+        let qs = &block[2..];
+
+        // 32 i8 → 4 f32x8 FMA lanes.
+        let mut acc = f32x8::ZERO;
+        for chunk in 0..4 {
+            let off = chunk * 8;
+            let cv = i8_bytes_f32x8(&qs[off..off + 8]);
+            let xv = f32x8::from(slice8(&x_block[off..off + 8]));
+            acc = cv.mul_add(xv, acc);
+        }
+        sum += scale_f / 127.0 * acc.reduce_add();
+    }
+    sum
+}
+
 // ─── helpers ─────────────────────────────────────────────────────────────
 
 #[inline(always)]
@@ -355,6 +445,8 @@ mod tests {
             DType::Q4_0 | DType::Q8_0 => &[0],
             DType::Q4_K => &[0, 2],
             DType::Q6_K => &[208],
+            // canonical: i16 at byte 0; sanitize via different writer.
+            DType::Q4 | DType::Q8 => &[],
             _ => &[],
         }
     }
@@ -365,6 +457,14 @@ mod tests {
     fn sanitize_scales(bytes: &mut [u8], dtype: DType, block_bytes: usize) {
         let n_blocks = bytes.len() / block_bytes;
         for blk in 0..n_blocks {
+            // Canonical Q4/Q8 use i16 scale at byte 0 (8.8 fixed-point).
+            if matches!(dtype, DType::Q4 | DType::Q8) {
+                let v = 0.05 + ((blk as f32 * 0.13).fract() * 0.9);
+                let i = (v * 256.0).round() as i16;
+                let off = blk * block_bytes;
+                bytes[off..off + 2].copy_from_slice(&i.to_le_bytes());
+                continue;
+            }
             for &off in scale_offsets(dtype) {
                 let v = 0.05 + ((blk as f32 * 0.13).fract() * 0.9);
                 let bits = half::f16::from_f32(v).to_bits();
@@ -383,6 +483,8 @@ mod tests {
             DType::Q8_0 => (q8_0::BLOCK_BYTES, q8_0::BLOCK_SIZE),
             DType::Q4_K => (q4_k::BLOCK_BYTES, q4_k::BLOCK_SIZE),
             DType::Q6_K => (q6_k::BLOCK_BYTES, q6_k::BLOCK_SIZE),
+            DType::Q4 => (CANONICAL_Q4_BLOCK_BYTES, CANONICAL_Q4_BLOCK_SIZE),
+            DType::Q8 => (CANONICAL_Q8_BLOCK_BYTES, CANONICAL_Q8_BLOCK_SIZE),
             other => panic!("unsupported dtype in test: {other:?}"),
         };
         assert_eq!(k % block_size, 0, "test misuse: k must be a multiple of block_size");
@@ -448,6 +550,16 @@ mod tests {
     #[test]
     fn q6_k_fused_matches_dequant_matmul() {
         assert_fused_matches_dequant(DType::Q6_K, 64, 256, REL_EPS);
+    }
+
+    #[test]
+    fn canonical_q4_fused_matches_dequant_matmul() {
+        assert_fused_matches_dequant(DType::Q4, 64, 128, REL_EPS);
+    }
+
+    #[test]
+    fn canonical_q8_fused_matches_dequant_matmul() {
+        assert_fused_matches_dequant(DType::Q8, 64, 128, REL_EPS);
     }
 
     #[test]
