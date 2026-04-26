@@ -80,16 +80,25 @@ fn run_import(dir_path: &str) {
         std::process::exit(1);
     }
 
-    // Locate the GGUF file.
-    let gguf_path = match std::fs::read_dir(dir).ok().and_then(|entries| {
-        entries
-            .flatten()
-            .find(|e| e.path().extension().map(|x| x == "gguf").unwrap_or(false))
-            .map(|e| e.path())
-    }) {
-        Some(p) => p,
-        None => {
+    // Locate the GGUF file. Spec requires exactly one.
+    let gguf_paths: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+        .ok()
+        .map(|entries| {
+            entries
+                .flatten()
+                .filter(|e| e.path().extension().map(|x| x == "gguf").unwrap_or(false))
+                .map(|e| e.path())
+                .collect()
+        })
+        .unwrap_or_default();
+    let gguf_path = match gguf_paths.len() {
+        1 => gguf_paths.into_iter().next().unwrap(),
+        0 => {
             eprintln!("No .gguf file found in {}", dir.display());
+            std::process::exit(1);
+        }
+        n => {
+            eprintln!("Expected exactly one .gguf in {}, found {}", dir.display(), n);
             std::process::exit(1);
         }
     };
@@ -541,8 +550,13 @@ print('\n'.join(lines))
         println!("Graph IR: no template for '{model_type}' — skipping graph section");
     }
 
-    let output_name = name.replace("-import", "");
-    let output_path = import::manifest::models_dir().join(format!("{output_name}.model"));
+    let output_name = name.strip_suffix("-import").unwrap_or(name);
+    let models_dir = import::manifest::models_dir();
+    if let Err(e) = std::fs::create_dir_all(&models_dir) {
+        eprintln!("Cannot create {}: {e}", models_dir.display());
+        std::process::exit(1);
+    }
+    let output_path = models_dir.join(format!("{output_name}.model"));
     println!("Writing {}...", output_path.display());
 
     match import::cyb_format::write_model_file(
