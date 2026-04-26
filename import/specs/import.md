@@ -166,13 +166,13 @@ disk.
 | Check | Status | What it asserts |
 |---|---|---|
 | Tensor completeness | enforced | required tensors for the declared `model_type` are all present |
-| Shape consistency | planned | embed is `[vocab_size, hidden_size]`; Q proj is `[num_heads × head_dim, hidden_size]`; etc. |
-| Dtype uniformity | planned | a single tensor uses one dtype (mixed across tensors is fine) |
-| Weight count | planned | sum of tensor element counts matches a per-arch budget derived from config |
-| Round-trip token | planned | encode → decode of `"hello world"` reproduces the input within tokenizer lossiness |
-| EOS-id coherence | planned | tokenizer's EOS id matches the value in config |
+| Shape consistency | not implemented | embed is `[vocab_size, hidden_size]`; Q proj is `[num_heads × head_dim, hidden_size]`; etc. |
+| Dtype uniformity | not implemented | a single tensor uses one dtype (mixed across tensors is fine) |
+| Weight count | not implemented | sum of tensor element counts matches a per-arch budget derived from config |
+| Round-trip token | not implemented | encode → decode of `"hello world"` reproduces the input within tokenizer lossiness |
+| EOS-id coherence | not implemented | tokenizer's EOS id matches the value in config |
 
-As planned checks ship, their `Status` column flips to `enforced`.
+As checks ship, their `Status` column flips to `enforced`.
 
 ## Failure modes
 
