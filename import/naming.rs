@@ -1,5 +1,32 @@
 //! Tensor name normalization. Source-format names → canonical HuggingFace
 //! naming as defined in `specs/import.md`.
+//!
+//! Also: canonical-encoding policy — which of the five canonical on-disk
+//! encodings to use for each canonical tensor name.
+
+/// Choose the canonical encoding for a tensor by its canonical (HF) name.
+///
+/// Per `cyb/cyb-model`:
+///   `u32` (16.16 fixed-point) — norms, biases, full-precision scalars
+///   `q4`  (4-bit block)       — every matmul-shaped weight (attention,
+///                              MLP, embeddings, lm_head)
+///
+/// Caller is responsible for tensor-shape constraints (q4 requires the
+/// element count to be a multiple of 32).
+pub fn canonical_encoding_for(canonical_name: &str) -> &'static str {
+    // Norms — every name with `norm` in it (model.norm, input_layernorm,
+    // post_attention_layernorm, q_norm, k_norm).
+    if canonical_name.contains("norm") {
+        return "u32";
+    }
+    // Biases — small per-layer vectors, precision matters.
+    if canonical_name.ends_with(".bias") {
+        return "u32";
+    }
+    // Everything else (embeddings, lm_head, attention projections, MLP
+    // projections) is a matmul weight: 4-bit block-quantized.
+    "q4"
+}
 
 /// Map a GGUF tensor name to its HuggingFace canonical equivalent.
 ///

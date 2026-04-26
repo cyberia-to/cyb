@@ -261,6 +261,15 @@ fn run_import(dir_path: &str) {
         llamaplus.push_str(&format!("partial_rotary_factor_full = {prf}\n"));
     }
 
+    // Canonical config — integers only. eps stored as 1/ε; rope_theta is
+    // already integer-valued in source (10000, 500000, 1_000_000 etc.).
+    let rms_norm_eps_inv = if rms_norm_eps > 0.0 && rms_norm_eps < 1.0 {
+        (1.0 / rms_norm_eps).round() as u64
+    } else {
+        // Source already provided 1/ε integer form; preserve.
+        rms_norm_eps.round() as u64
+    };
+    let rope_theta_int = rope_theta.round() as u64;
     let config_toml = format!(
         r#"model_type = "{model_type}"
 parameters = {params}
@@ -274,8 +283,8 @@ num_hidden_layers = {num_layers}
 intermediate_size = {intermediate_size}
 vocab_size = {vocab_size}
 max_position_embeddings = {max_pos}
-rope_theta = {rope_theta}
-rms_norm_eps = {rms_norm_eps}
+rope_theta = {rope_theta_int}
+rms_norm_eps = {rms_norm_eps_inv}
 tie_word_embeddings = {tie_word_embeddings}
 {llamaplus}
 [tokenizer]
@@ -396,10 +405,6 @@ print('\n'.join(lines))
     let mut weight_data: Vec<u8> = Vec::new();
     let mut offset = 0usize;
 
-    let mut q4_0_to_q4k = 0usize;
-    let mut q4_1_to_q4k = 0usize;
-    let mut bf16_to_f16 = 0usize;
-
     let mut tensor_names: Vec<&String> = weights.weights.keys().collect();
     tensor_names.sort();
 
@@ -425,66 +430,63 @@ print('\n'.join(lines))
             std::collections::HashSet::new()
         };
 
+    let mut counts_by_enc: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+
     for tname in &tensor_names {
         let w = &weights.weights[*tname];
+        let hf_name = import::naming::gguf_to_hf(tname);
 
-        // Normalize legacy dtypes to the canonical output set:
-        //   Q4_0 / Q4_1 → Q4_K  (dequant + requant)
-        //   BF16        → F16
-        //   everything else: passthrough.
-        let (encoding, converted_data): (&str, Option<Vec<u8>>) = match w.dtype {
-            import::DType::F32 => ("u32", None),
-            import::DType::F16 => ("u16", None),
-            import::DType::BF16 => {
-                bf16_to_f16 += 1;
-                let f32s = import::dequantize_to_f32(&w.data, w.dtype);
-                let f16_bytes: Vec<u8> = f32s
-                    .iter()
-                    .flat_map(|&v| half::f16::from_f32(v).to_le_bytes())
-                    .collect();
-                ("u16", Some(f16_bytes))
+        // Canonical alignment: every tensor goes source → f32 → canonical encoding.
+        // Source dtype is irrelevant to the *output* layout; only the canonical
+        // policy (by tensor name) decides what the bytes look like on disk.
+        let f32s = import::dequantize_to_f32(&w.data, w.dtype);
+        if f32s.is_empty() {
+            eprintln!("warn: {tname} dequant returned empty (dtype {:?})", w.dtype);
+            continue;
+        }
+
+        let encoding = import::naming::canonical_encoding_for(&hf_name);
+        let canonical_bytes: Vec<u8> = match encoding {
+            "u32" => import::quant::canonical::f32_to_u32(&f32s),
+            "u16" => import::quant::canonical::f32_to_u16(&f32s),
+            "q4" => {
+                if f32s.len() % 32 != 0 {
+                    eprintln!(
+                        "warn: {hf_name} has {} elements, not a multiple of 32 — falling back to u32",
+                        f32s.len()
+                    );
+                    counts_by_enc.entry("u32_fallback").and_modify(|c| *c += 1).or_insert(1);
+                    import::quant::canonical::f32_to_u32(&f32s)
+                } else {
+                    import::quant::canonical::f32_to_q4(&f32s)
+                }
             }
-            import::DType::Q4_0 => {
-                q4_0_to_q4k += 1;
-                let f32s = import::dequantize_to_f32(&w.data, w.dtype);
-                let n = w.shape.first().copied().unwrap_or(1);
-                let k = if w.shape.len() >= 2 { w.shape[1] } else { f32s.len() / n.max(1) };
-                let q = import::quant::f32_to_q4k(&f32s, n, k);
-                ("q4k", Some(q))
+            "q8" => import::quant::canonical::f32_to_q8(&f32s),
+            "ternary" => import::quant::canonical::f32_to_ternary(&f32s),
+            other => {
+                eprintln!("warn: unknown canonical encoding {other} for {hf_name}; using u32");
+                import::quant::canonical::f32_to_u32(&f32s)
             }
-            import::DType::Q4_1 => {
-                q4_1_to_q4k += 1;
-                let f32s = import::dequantize_to_f32(&w.data, w.dtype);
-                let n = w.shape.first().copied().unwrap_or(1);
-                let k = if w.shape.len() >= 2 { w.shape[1] } else { f32s.len() / n.max(1) };
-                let q = import::quant::f32_to_q4k(&f32s, n, k);
-                ("q4k", Some(q))
-            }
-            import::DType::Q8_0 => ("q8", None),
-            import::DType::Ternary | import::DType::U8 => ("ternary", None),
-            import::DType::Q4_K => ("q4k", None),
-            import::DType::Q6_K => ("q6k", None),
-            import::DType::Q2_K => ("q2k", None),
-            import::DType::Q3_K => ("q3k", None),
-            import::DType::Q5_K => ("q5k", None),
-            _ => ("u32", None),
         };
-        let data_ref = converted_data.as_deref().unwrap_or(&w.data);
-        let size = data_ref.len();
+        // Track the encoding written (after fallback resolution).
+        let written_enc = if encoding == "q4" && f32s.len() % 32 != 0 { "u32" } else { encoding };
+        counts_by_enc.entry(written_enc).and_modify(|c| *c += 1).or_insert(1);
+
+        let size = canonical_bytes.len();
         let shape_str = w
             .shape
             .iter()
             .map(|s| s.to_string())
             .collect::<Vec<_>>()
             .join(", ");
-        let hf_name = import::naming::gguf_to_hf(tname);
 
         tensors_lines.push(format!(
             "[\"{}\"]\nshape    = [{}]\nencoding = \"{}\"\noffset   = {}\nsize     = {}\n",
-            hf_name, shape_str, encoding, offset, size
+            hf_name, shape_str, written_enc, offset, size
         ));
-        weight_data.extend_from_slice(data_ref);
+        weight_data.extend_from_slice(&canonical_bytes);
         offset += size;
+        let data_ref: &[u8] = &canonical_bytes;
 
         // K=V duplicate emission. If this is a k_proj for a K=V full layer
         // and the source lacks v_proj, emit v_proj with identical bytes.
@@ -501,7 +503,7 @@ print('\n'.join(lines))
                         if !existing_hf.contains(&v_name) {
                             tensors_lines.push(format!(
                                 "[\"{}\"]\nshape    = [{}]\nencoding = \"{}\"\noffset   = {}\nsize     = {}\n",
-                                v_name, shape_str, encoding, offset, size
+                                v_name, shape_str, written_enc, offset, size
                             ));
                             weight_data.extend_from_slice(data_ref);
                             offset += size;
@@ -513,11 +515,11 @@ print('\n'.join(lines))
     }
     let tensors_toml = tensors_lines.join("\n");
 
-    if q4_0_to_q4k > 0 || q4_1_to_q4k > 0 || bf16_to_f16 > 0 {
-        println!(
-            "Converted: {} Q4_0 → Q4_K, {} Q4_1 → Q4_K, {} BF16 → F16",
-            q4_0_to_q4k, q4_1_to_q4k, bf16_to_f16
-        );
+    println!("Canonical encoding distribution:");
+    let mut entries: Vec<_> = counts_by_enc.iter().collect();
+    entries.sort_by_key(|(k, _)| *k);
+    for (enc, count) in entries {
+        println!("  {enc}: {count} tensors");
     }
     println!(
         "  weights: {} bytes ({:.1} GB)",
@@ -525,30 +527,8 @@ print('\n'.join(lines))
         weight_data.len() as f64 / 1e9
     );
 
-    // Build the binary Graph IR and hex-encode it for embedding.
-    // LlamaConfig::parse needs the tensor list to detect has_qk_norm /
-    // has_attn_bias and to infer head_dim when the config omits it
-    // (e.g. Qwen3 has head_dim=128 independent of hidden_size/num_heads).
-    let tensor_metas = run::format::parse_tensors_toml(&tensors_toml).unwrap_or_default();
-    let graph_hex: Option<String> = run::arch::decoder::config::LlamaConfig::parse(
-        &config_toml,
-        &tensor_metas,
-    )
-    .ok()
-    .and_then(|llama_cfg| run::ir::family_graph(&llama_cfg))
-    .map(|graph| {
-        let bytes = run::ir::serialize(&graph);
-        let hex = run::ir::hex_encode(&bytes);
-        println!(
-            "Graph IR: {} nodes, {} bytes binary",
-            graph.len(),
-            bytes.len()
-        );
-        hex
-    });
-    if graph_hex.is_none() {
-        println!("Graph IR: no template for '{model_type}' — skipping graph section");
-    }
+    // The optional ~~~graph section is not part of the canonical .model
+    // spec (cyb/cyb-model). Re-introduce as a formal extension if useful.
 
     let output_name = name.strip_suffix("-import").unwrap_or(name);
     let models_dir = import::manifest::models_dir();
@@ -566,7 +546,7 @@ print('\n'.join(lines))
         &config_toml,
         "",
         "rs",
-        graph_hex.as_deref(),
+        None,
         &tensors_toml,
         &vocab_toml,
         "",
