@@ -28,17 +28,20 @@ The `~~~graph` section is emitted iff **all three** succeed:
 
 1. `parse_tensors_toml` — already-normalized tensor index parses.
 2. `LlamaConfig::parse` — config matches the LlamaStyle schema.
-   Tensor list is required to detect `has_qk_norm` / `has_attn_bias`
-   and to infer `head_dim` when the config omits it (e.g. Qwen3 with
-   `head_dim=128` independent of `hidden_size/num_heads`).
-3. `family_graph` — returns `Some(Graph)` for the `model_type`.
-   Currently every parsed `LlamaConfig` produces a graph (no
-   model-type gating); MoE / DiT / Whisper / BERT will return `None`
-   when their templates land.
+   This is the real gate: a config that isn't LlamaStyle (MoE, DiT,
+   encoder-only, vision tower, …) fails to parse here and the graph
+   emission is skipped. The tensor list passed to `parse` lets it
+   detect `has_qk_norm` / `has_attn_bias` and infer `head_dim` when
+   the config omits it (Qwen3 has `head_dim=128` independent of
+   `hidden_size / num_heads`).
+3. `family_graph` — produces a `Graph` from the parsed config. Today
+   it always returns `Some` for any `LlamaConfig`; the `Option`
+   leaves room for future model-type gating once non-LlamaStyle
+   templates land.
 
-If any step fails, `import` prints a one-line skip notice and writes the
-`.model` without a `~~~graph` section. The runtime continues to work
-because the curated forward path doesn't need it.
+If any step fails, `import` prints a one-line skip notice and writes
+the `.model` without a `~~~graph` section. The runtime continues to
+work because the curated forward path doesn't need it.
 
 ## Section layout
 
@@ -56,7 +59,7 @@ section text-safe (the file is mostly text up to `~~~weights\n`); the
 binary form is canonical-bytes serialization defined in
 [run/specs/ir.md](../../run/specs/ir.md).
 
-## Faithfulness gap (LlamaStyle+)
+## Implementation status (LlamaStyle+ faithfulness gap)
 
 `TransformerConfig::from_llama` flattens the LlamaConfig down to the
 LlamaStyle base. LlamaStyle+ extras (final logit softcapping, sliding

@@ -29,8 +29,7 @@ Side effects:
 - Reads `~/llm/` to find target path; creates if missing.
 - Writes a single `.model` file. No staging, no atomic rename.
 - Embeds the binary IR graph as a `~~~graph` section when the
-  parsed config produces a `LlamaStyle` family that
-  `run::ir::family_graph` recognizes — see [graph.md](graph.md).
+  config parses as a LlamaStyle family — see [graph.md](graph.md).
 
 The `.model` invariants are enforced by [import.md](import.md).
 
