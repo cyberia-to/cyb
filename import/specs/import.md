@@ -185,12 +185,3 @@ As checks ship, their `Status` column flips to `enforced`.
 | Source format not in [Inputs](#inputs) | abort with a note pointing to this section |
 
 Partial output is never written.
-
-## Cross-references
-
-- [run/specs/format.md](../../run/specs/format.md) — `.model` file layout (the writer half lives in `import/cyb_format.rs`)
-- [run/specs/tensor.md](../../run/specs/tensor.md) — canonical tensor names + shapes
-- [run/specs/quant.md](../../run/specs/quant.md) — quantization bit layouts
-- [run/specs/test.md](../../run/specs/test.md) — tier-0 invariance test (round-trip a source through import and read it back; assert names, shapes, dequantized values within tolerance)
-- [graph.md](graph.md) — when a `~~~graph` section is emitted at import time
-- [cli.md](cli.md) — the `mi` binary surface
