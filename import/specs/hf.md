@@ -30,11 +30,9 @@ Wired into the CLI as [`mi download`](cli.md#mi-download-repo-contract).
 
 ## Cache
 
-`hf-hub` writes into `~/.cache/huggingface/hub/`. `import` never touches
-the cache directly — `hf-hub` owns the layout
-(`models--<org>--<repo>/`, `refs/`, `snapshots/`, `blobs/`).
-
-`mi list` enumerates that directory and prints `org/repo` entries.
+Downloads land in `~/.cache/huggingface/hub/`, owned by the `hf-hub`
+crate. `import` never touches that cache directly. `mi list`
+enumerates the directory and prints `org/repo` entries.
 
 ## Failure modes
 

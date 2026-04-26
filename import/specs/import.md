@@ -97,7 +97,7 @@ malformed).
 
 ### Dtypes
 
-Conversions applied at import time:
+Source dtypes upgrade to the canonical set on the way in:
 
 | Source dtype | Canonical |
 |---|---|
@@ -106,9 +106,9 @@ Conversions applied at import time:
 | Q4_1 | Q4_K |
 | IQ2 / IQ3 / IQ4 | corresponding K-quant |
 
-K-quants are preferred over legacy block quants. Quantization layouts
-are defined in [run/specs/quant.md](../../run/specs/quant.md); import
-implements the encoders, runtime implements the decoders.
+The canonical set and bit layouts are defined in
+[run/specs/quant.md](../../run/specs/quant.md). `import` implements
+the encoder side; the reader implements the decoder side.
 
 ### K=V shared projection (Gemma 3/4)
 
