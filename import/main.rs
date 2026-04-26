@@ -67,42 +67,88 @@ fn run_list() {
 fn run_download(model_id: &str) {
     println!("Downloading {model_id}...");
     match import::hf::download_model(model_id) {
-        Ok(path) => println!("Downloaded to: {}", path.display()),
+        Ok(downloaded) => {
+            println!(
+                "Artifact ({:?}): {}",
+                downloaded.kind,
+                downloaded.artifact.display()
+            );
+            for s in &downloaded.siblings {
+                println!("  sibling: {}", s.display());
+            }
+            if let Some(dir) = downloaded.snapshot_dir() {
+                println!("\nSnapshot dir: {}", dir.display());
+                println!("Run: mi import {}", dir.display());
+            }
+        }
         Err(e) => eprintln!("Error: {e}"),
     }
 }
 
-/// Import: GGUF + tokenizer.json + config.json → `.model`.
+/// Import: source dir with weights artifact + tokenizer.json + config.json → `.model`.
 fn run_import(dir_path: &str) {
     let dir = std::path::Path::new(dir_path);
     if !dir.is_dir() {
-        eprintln!("Expected directory with GGUF + tokenizer.json + config.json");
+        eprintln!("Expected directory with weights + tokenizer.json + config.json");
         std::process::exit(1);
     }
 
-    // Locate the GGUF file. Spec requires exactly one.
-    let gguf_paths: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
+    // Locate the weights artifact. Priority safetensors > GGUF > ONNX,
+    // matching the hf.md fetch contract. The loader auto-detects format.
+    let entries: Vec<std::path::PathBuf> = std::fs::read_dir(dir)
         .ok()
-        .map(|entries| {
-            entries
-                .flatten()
-                .filter(|e| e.path().extension().map(|x| x == "gguf").unwrap_or(false))
-                .map(|e| e.path())
-                .collect()
-        })
+        .map(|es| es.flatten().map(|e| e.path()).collect())
         .unwrap_or_default();
-    let gguf_path = match gguf_paths.len() {
-        1 => gguf_paths.into_iter().next().unwrap(),
-        0 => {
-            eprintln!("No .gguf file found in {}", dir.display());
-            std::process::exit(1);
-        }
-        n => {
-            eprintln!("Expected exactly one .gguf in {}, found {}", dir.display(), n);
-            std::process::exit(1);
-        }
+    let ext_eq = |p: &std::path::Path, want: &str| {
+        p.extension()
+            .and_then(|x| x.to_str())
+            .map(|x| x == want)
+            .unwrap_or(false)
     };
-    println!("GGUF: {}", gguf_path.display());
+    let safetensors_files: Vec<_> = entries
+        .iter()
+        .filter(|p| ext_eq(p, "safetensors"))
+        .cloned()
+        .collect();
+    let gguf_files: Vec<_> = entries
+        .iter()
+        .filter(|p| ext_eq(p, "gguf"))
+        .cloned()
+        .collect();
+    let onnx_files: Vec<_> = entries
+        .iter()
+        .filter(|p| ext_eq(p, "onnx"))
+        .cloned()
+        .collect();
+
+    let gguf_path = if !safetensors_files.is_empty() {
+        // Sharded safetensors: pick any shard; the loader follows the index.
+        // Single-file: just one entry.
+        let path = safetensors_files[0].clone();
+        println!("Source: safetensors — {}", path.display());
+        path
+    } else if gguf_files.len() == 1 {
+        let path = gguf_files.into_iter().next().unwrap();
+        println!("Source: GGUF — {}", path.display());
+        path
+    } else if gguf_files.len() > 1 {
+        eprintln!(
+            "Expected one .gguf in {}, found {}",
+            dir.display(),
+            gguf_files.len()
+        );
+        std::process::exit(1);
+    } else if !onnx_files.is_empty() {
+        let path = onnx_files.into_iter().next().unwrap();
+        println!("Source: ONNX — {}", path.display());
+        path
+    } else {
+        eprintln!(
+            "No model artifact found in {} (looked for safetensors / gguf / onnx)",
+            dir.display()
+        );
+        std::process::exit(1);
+    };
 
     let t_load = std::time::Instant::now();
     let weights = match import::loader::load_model(&gguf_path) {
@@ -536,7 +582,9 @@ print('\n'.join(lines))
         eprintln!("Cannot create {}: {e}", models_dir.display());
         std::process::exit(1);
     }
-    let output_path = models_dir.join(format!("{output_name}.model"));
+    // Write canonical to <NAME>.canonical.model — keep the original
+    // <NAME>.model intact until canonical alignment is verified end-to-end.
+    let output_path = models_dir.join(format!("{output_name}.canonical.model"));
     println!("Writing {}...", output_path.display());
 
     match import::cyb_format::write_model_file(
