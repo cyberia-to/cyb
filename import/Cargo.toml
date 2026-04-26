@@ -1,5 +1,5 @@
 [package]
-name = "mi"
+name = "import"
 version = "0.1.0"
 edition = "2024"
 description = "model importer — HF directory → cyb .model file"
@@ -9,7 +9,7 @@ name = "mi"
 path = "src/main.rs"
 
 [lib]
-name = "mi"
+name = "import"
 path = "src/lib.rs"
 
 [dependencies]

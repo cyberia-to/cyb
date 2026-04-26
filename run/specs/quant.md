@@ -41,7 +41,7 @@ Range ±65504. Gradual underflow via denormals.
 mantissa. Same dynamic range as F32, lower precision.
 
 **Import rule:** BF16 weights convert to F16 at import time
-([import.md](../../mi/specs/import.md)). Runtime does not carry BF16.
+([import.md](../../import/specs/import.md)). Runtime does not carry BF16.
 
 ## Q8_0 — 8-bit blocks of 32
 
@@ -271,7 +271,7 @@ backend (wgpu, honeycrisp) has one kernel per supported format. Missing
 format → error at dispatch ("backend does not implement Q3_K matmul").
 
 Conversion between formats (e.g. Q4_0 → Q4_K for storage normalization)
-happens only at import time ([import.md](../../mi/specs/import.md)), not at runtime.
+happens only at import time ([import.md](../../import/specs/import.md)), not at runtime.
 
 ## Storage across multiple blocks
 

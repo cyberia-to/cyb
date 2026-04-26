@@ -4,7 +4,7 @@ Each curated family is one graph template. Models within a family
 share the template; their `config` section parameterizes it.
 Adding a new model to an existing family requires zero code change
 — only a config update and sometimes a tensor-naming entry in
-[import.md](../../mi/specs/import.md).
+[import.md](../../import/specs/import.md).
 
 ## LlamaStyle
 
@@ -525,5 +525,5 @@ both BertStyle and LlamaStyle), dispatch priority is:
 2. Architecture-specific tensor presence (e.g. `q_norm.weight` → QK-norm variant)
 3. Fallback to graph executor
 
-Ambiguity at this layer is a config/import bug — [import.md](../../mi/specs/import.md)
+Ambiguity at this layer is a config/import bug — [import.md](../../import/specs/import.md)
 must disambiguate during import.

@@ -5565,6 +5565,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "import"
+version = "0.1.0"
+dependencies = [
+ "bytemuck",
+ "clap",
+ "env_logger 0.11.9",
+ "half",
+ "hf-hub",
+ "log",
+ "memmap2 0.9.10",
+ "prost",
+ "prost-build",
+ "run",
+ "serde",
+ "serde_json",
+ "tokenizers",
+ "toml 0.8.2",
+]
+
+[[package]]
 name = "indexmap"
 version = "1.9.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6526,26 +6546,6 @@ dependencies = [
  "log",
  "objc",
  "paste",
-]
-
-[[package]]
-name = "mi"
-version = "0.1.0"
-dependencies = [
- "bytemuck",
- "clap",
- "env_logger 0.11.9",
- "half",
- "hf-hub",
- "log",
- "memmap2 0.9.10",
- "prost",
- "prost-build",
- "run",
- "serde",
- "serde_json",
- "tokenizers",
- "toml 0.8.2",
 ]
 
 [[package]]

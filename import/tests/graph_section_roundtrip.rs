@@ -1,5 +1,5 @@
 //! Round-trip the optional `~~~graph` section through
-//! `mi::cyb_format::write_model_file` → `run::format::read_model_file`.
+//! `import::cyb_format::write_model_file` → `run::format::read_model_file`.
 
 use std::path::PathBuf;
 
@@ -13,7 +13,7 @@ fn tmp_path(name: &str) -> PathBuf {
 fn write_and_read_graph_section() {
     let path = tmp_path("present");
     let weights = b"\x01\x02\x03\x04";
-    mi::cyb_format::write_model_file(
+    import::cyb_format::write_model_file(
         &path,
         "test",
         "card",
@@ -37,7 +37,7 @@ fn write_and_read_graph_section() {
 #[test]
 fn write_without_graph_omits_section() {
     let path = tmp_path("absent");
-    mi::cyb_format::write_model_file(
+    import::cyb_format::write_model_file(
         &path,
         "test",
         "card",

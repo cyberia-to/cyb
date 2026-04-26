@@ -48,7 +48,7 @@ pub struct LlamaConfig {
     pub hidden_activation: HiddenActivation,
     /// Logit softcapping value applied after lm_head. None or 0.0 = skip.
     pub final_logit_softcapping: Option<f32>,
-    /// K and V projections share weights (mi materialises both names).
+    /// K and V projections share weights (the importer materialises both names).
     /// Informational; the runtime always sees both tensors.
     pub attention_k_eq_v: bool,
     /// Gemma-4: head_dim used by `Full` layers (per arch.md §LlamaStyle+).

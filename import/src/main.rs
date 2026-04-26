@@ -1,7 +1,7 @@
-//! mi — model importer CLI.
+//! mi — model importer CLI (binary entry point of the `import` crate).
 //!
 //! HuggingFace directory (safetensors + tokenizer.json + config.json)
-//! or GGUF → cyb `.model`. Runtime is in `mr/`.
+//! or GGUF → cyb `.model`. Runtime is in `run/`.
 
 use clap::{Parser, Subcommand};
 
@@ -66,7 +66,7 @@ fn run_list() {
 
 fn run_download(model_id: &str) {
     println!("Downloading {model_id}...");
-    match mi::hub::download_model(model_id) {
+    match import::hub::download_model(model_id) {
         Ok(path) => println!("Downloaded to: {}", path.display()),
         Err(e) => eprintln!("Error: {e}"),
     }
@@ -96,7 +96,7 @@ fn run_import(dir_path: &str) {
     println!("GGUF: {}", gguf_path.display());
 
     let t_load = std::time::Instant::now();
-    let weights = match mi::loader::load_model(&gguf_path) {
+    let weights = match import::loader::load_model(&gguf_path) {
         Ok(w) => w,
         Err(e) => {
             eprintln!("GGUF load failed: {e}");
@@ -398,9 +398,9 @@ print('\n'.join(lines))
     // where v_proj is absent and must be materialised from k_proj.
     let existing_hf: std::collections::HashSet<String> = tensor_names
         .iter()
-        .map(|n| mi::naming::gguf_to_hf(n))
+        .map(|n| import::naming::gguf_to_hf(n))
         .collect();
-    // Per spec (mi/specs/import.md §"K=V shared projection"): when
+    // Per spec (import/specs/import.md §"K=V shared projection"): when
     // the layer is K=V at the source (no v_proj tensor), the importer emits
     // a v_proj tensor with the same bytes as k_proj. Runtime stays one
     // codepath. Gemma-4 only sets K=V on full_attention layers.
@@ -424,40 +424,40 @@ print('\n'.join(lines))
         //   BF16        → F16
         //   everything else: passthrough.
         let (encoding, converted_data): (&str, Option<Vec<u8>>) = match w.dtype {
-            mi::DType::F32 => ("u32", None),
-            mi::DType::F16 => ("u16", None),
-            mi::DType::BF16 => {
+            import::DType::F32 => ("u32", None),
+            import::DType::F16 => ("u16", None),
+            import::DType::BF16 => {
                 bf16_to_f16 += 1;
-                let f32s = mi::dequantize_to_f32(&w.data, w.dtype);
+                let f32s = import::dequantize_to_f32(&w.data, w.dtype);
                 let f16_bytes: Vec<u8> = f32s
                     .iter()
                     .flat_map(|&v| half::f16::from_f32(v).to_le_bytes())
                     .collect();
                 ("u16", Some(f16_bytes))
             }
-            mi::DType::Q4_0 => {
+            import::DType::Q4_0 => {
                 q4_0_to_q4k += 1;
-                let f32s = mi::dequantize_to_f32(&w.data, w.dtype);
+                let f32s = import::dequantize_to_f32(&w.data, w.dtype);
                 let n = w.shape.first().copied().unwrap_or(1);
                 let k = if w.shape.len() >= 2 { w.shape[1] } else { f32s.len() / n.max(1) };
-                let q = mi::quant::f32_to_q4k(&f32s, n, k);
+                let q = import::quant::f32_to_q4k(&f32s, n, k);
                 ("q4k", Some(q))
             }
-            mi::DType::Q4_1 => {
+            import::DType::Q4_1 => {
                 q4_1_to_q4k += 1;
-                let f32s = mi::dequantize_to_f32(&w.data, w.dtype);
+                let f32s = import::dequantize_to_f32(&w.data, w.dtype);
                 let n = w.shape.first().copied().unwrap_or(1);
                 let k = if w.shape.len() >= 2 { w.shape[1] } else { f32s.len() / n.max(1) };
-                let q = mi::quant::f32_to_q4k(&f32s, n, k);
+                let q = import::quant::f32_to_q4k(&f32s, n, k);
                 ("q4k", Some(q))
             }
-            mi::DType::Q8_0 => ("q8", None),
-            mi::DType::Ternary | mi::DType::U8 => ("ternary", None),
-            mi::DType::Q4_K => ("q4k", None),
-            mi::DType::Q6_K => ("q6k", None),
-            mi::DType::Q2_K => ("q2k", None),
-            mi::DType::Q3_K => ("q3k", None),
-            mi::DType::Q5_K => ("q5k", None),
+            import::DType::Q8_0 => ("q8", None),
+            import::DType::Ternary | import::DType::U8 => ("ternary", None),
+            import::DType::Q4_K => ("q4k", None),
+            import::DType::Q6_K => ("q6k", None),
+            import::DType::Q2_K => ("q2k", None),
+            import::DType::Q3_K => ("q3k", None),
+            import::DType::Q5_K => ("q5k", None),
             _ => ("u32", None),
         };
         let data_ref = converted_data.as_deref().unwrap_or(&w.data);
@@ -468,7 +468,7 @@ print('\n'.join(lines))
             .map(|s| s.to_string())
             .collect::<Vec<_>>()
             .join(", ");
-        let hf_name = mi::naming::gguf_to_hf(tname);
+        let hf_name = import::naming::gguf_to_hf(tname);
 
         tensors_lines.push(format!(
             "[\"{}\"]\nshape    = [{}]\nencoding = \"{}\"\noffset   = {}\nsize     = {}\n",
@@ -542,10 +542,10 @@ print('\n'.join(lines))
     }
 
     let output_name = name.replace("-import", "");
-    let output_path = mi::manifest::models_dir().join(format!("{output_name}.model"));
+    let output_path = import::manifest::models_dir().join(format!("{output_name}.model"));
     println!("Writing {}...", output_path.display());
 
-    match mi::cyb_format::write_model_file(
+    match import::cyb_format::write_model_file(
         &output_path,
         &output_name,
         &card,
