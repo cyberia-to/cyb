@@ -8,24 +8,25 @@
 ///
 /// Per `cyb/cyb-model`:
 ///   `u32` (16.16 fixed-point) — norms, biases, full-precision scalars
-///   `q4`  (4-bit block)       — every matmul-shaped weight (attention,
-///                              MLP, embeddings, lm_head)
+///   `q8`  (8-bit block)       — every matmul-shaped weight by default
 ///
-/// Caller is responsible for tensor-shape constraints (q4 requires the
+/// `q4` is also part of the canonical set but produces garbage output on
+/// medium-sized models (verified: qwen2.5-coder-14b at hidden=5120 with
+/// matmul→q4 gave coherent loading but token-level gibberish). q8 holds
+/// up empirically at moderate cost (~2× storage of q4). q4 is reserved
+/// for explicit smaller-storage targets, not the default.
+///
+/// Caller is responsible for tensor-shape constraints (q8 requires the
 /// element count to be a multiple of 32).
 pub fn canonical_encoding_for(canonical_name: &str) -> &'static str {
-    // Norms — every name with `norm` in it (model.norm, input_layernorm,
-    // post_attention_layernorm, q_norm, k_norm).
     if canonical_name.contains("norm") {
         return "u32";
     }
-    // Biases — small per-layer vectors, precision matters.
     if canonical_name.ends_with(".bias") {
         return "u32";
     }
-    // Everything else (embeddings, lm_head, attention projections, MLP
-    // projections) is a matmul weight: 4-bit block-quantized.
-    "q4"
+    // Embeddings, lm_head, attention projections, MLP projections: q8.
+    "q8"
 }
 
 /// Map a GGUF tensor name to its HuggingFace canonical equivalent.
