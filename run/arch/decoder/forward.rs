@@ -330,6 +330,17 @@ impl LlamaModel {
             });
         }
 
+        if std::env::var("RUN_DEBUG_LOGITS").is_ok() {
+            let mut idx: Vec<usize> = (0..logits_vec.len()).collect();
+            idx.sort_unstable_by(|&a, &b| {
+                logits_vec[b].partial_cmp(&logits_vec[a]).unwrap_or(std::cmp::Ordering::Equal)
+            });
+            eprintln!("top-10 logits:");
+            for &i in idx.iter().take(10) {
+                eprintln!("  id={i:>6}  logit={:>8.3}", logits_vec[i]);
+            }
+        }
+
         Ok(logits_vec)
     }
 }
