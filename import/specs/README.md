@@ -17,7 +17,7 @@ deals with them. The normalization contract lives in
 - [import.md](import.md) — invariants, name/shape/dtype/config
   normalization, validation, multi-shard handling
 - [manifest.md](manifest.md) — what makes a model MVP-eligible
-- [hub.md](hub.md) — HuggingFace fetch policy: caching, ONNX probe, gaps
+- [hub.md](hub.md) — HuggingFace fetch contract: artifact priority, sibling metadata, failure modes, implementation status
 - [cli.md](cli.md) — `mi <subcommand>` surface
 - [graph.md](graph.md) — when a graph IR section is emitted at import time
 
