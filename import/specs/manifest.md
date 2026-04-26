@@ -15,18 +15,17 @@ that keeps the runtime moat from sliding into a model zoo.
 
 Source: [.claude/plans/cyb-mvp.md](../../.claude/plans/cyb-mvp.md) §"Manifest scope".
 
-## ModelSpec fields
+## ModelSpec
 
-```
-pub struct ModelSpec {
-    pub name: &'static str,        // ~/llm/{name}.model
-    pub hf_repo: &'static str,     // HF base model (for tokenizer)
-    pub ollama_tag: Option<&'static str>,  // ollama benchmark tag
-    pub role: Role,                // Router | Specialist | General
-    pub ram_mb: u32,               // Q4 inference target
-    pub notes: &'static str,       // one-line rationale
-}
-```
+The live struct is `ModelSpec` in [`import/manifest.rs`](../manifest.rs).
+Each entry binds:
+
+- a name on disk (`~/llm/{name}.model`),
+- an HF repo (the source of weights and tokenizer),
+- an optional ollama tag (the comparison baseline for benchmarks),
+- a `Role` (Router / Specialist / General — see below),
+- a Q4 RAM target in megabytes,
+- a one-line rationale.
 
 `Role` partitions the soma routing layer:
 
@@ -48,7 +47,19 @@ A model joins the manifest when **all** of the following hold:
    not covered by the existing four (e.g. attn_bias, K=V, softcapping).
 4. We have an ollama tag (or HF leaderboard slot) for honest
    benchmarking.
-5. RAM at Q4 fits the target hardware envelope (M1 Pro 16 GB or better).
+5. Q4 RAM fits the per-role target:
+
+   | Role | Q4 RAM target | Hardware envelope |
+   |---|---|---|
+   | Router | ≤ 1 GB | runs anywhere; M1 Air 8 GB OK |
+   | Specialist (small) | ≤ 4 GB | M1 Pro 16 GB |
+   | Specialist (large) | ≤ 12 GB | M1 Pro 16 GB (with headroom) |
+   | General | ≤ 24 GB | M1 Max 32 GB |
+
+   Exceeding the target = an architectural exception, documented in
+   `notes`. Today's general entry (`gemma-4-31b`, 18 GB) sets the
+   M1 Max envelope; tightening this requires either heavier quant
+   or KV-compression work in `run/`.
 
 Models added without an honest reason to be in scope dilute the
 discipline. Per [.claude/plans/cyb-mvp.md](../../.claude/plans/cyb-mvp.md):
