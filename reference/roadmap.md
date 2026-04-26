@@ -35,6 +35,8 @@
 - [x] Show Vol 24h on every pool card (always visible, even when zero)
 - [x] Add pool sorting (TVL / APR / Vol 24h)
 - [x] On-chain fallback for volume data when warp-dex API is down
+- [x] Fix crash when adding liquidity (react-number-format undefined event)
+- [x] Fix race condition in tx confirmation (conflicting status messages)
 - [ ] PnL calculator for LP positions (entry price vs current value)
 - [ ] Impermanent loss calculator
 - [ ] Historical fee chart per pool
