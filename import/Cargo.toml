@@ -6,11 +6,11 @@ description = "model importer — HF directory → cyb .model file"
 
 [[bin]]
 name = "mi"
-path = "src/main.rs"
+path = "main.rs"
 
 [lib]
 name = "import"
-path = "src/lib.rs"
+path = "lib.rs"
 
 [dependencies]
 # Model loading / writing
