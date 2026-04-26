@@ -1,20 +1,35 @@
 # import hub fetch
 
-How `import` retrieves source files from HuggingFace Hub. Implemented in
-`import/hub/mod.rs` as a thin layer over `hf-hub`'s sync API.
+How `import` retrieves source files from HuggingFace Hub. Implemented
+in `import/hub/mod.rs` as a thin layer over `hf-hub`'s sync API.
+
+## Contract
+
+Fetch any model from HuggingFace and the sibling files needed to
+import it. The artifact selection is by priority — first present
+wins:
+
+1. `*.safetensors` (single-file or sharded via `*.safetensors.index.json`)
+2. `*.gguf` (single-file or sharded `*.gguf.NNNNN-of-NNNNN`)
+3. `*.onnx` (plus any external-data sidecars `<name>_data`)
+
+Sibling files always fetched when present:
+
+- `config.json`
+- `tokenizer.json` *or* `tokenizer.model` + `tokenizer_config.json`
+- `special_tokens_map.json`
+- `generation_config.json`
 
 ## Surface
 
 ```
-hub::download_model(model_id) -> PathBuf  // ONNX-only probe
+hub::download_model(model_id) -> PathBuf  // fetches the artifact, returns its path
 hub::download_tokenizer(model_id) -> PathBuf
 hub::download_file(model_id, filename) -> PathBuf
 ```
 
 Only `download_model` is wired into the CLI today (via
-[`mi download`](cli.md#mi-download-repo--onnx-scope)). The others are
-the building blocks for the planned `mi fetch` subcommand that
-fetches source files for the import flow.
+[`mi download`](cli.md#mi-download-repo-contract)).
 
 ## Cache
 
@@ -24,9 +39,19 @@ the cache directly — `hf-hub` owns the layout
 
 `mi list` enumerates that directory and prints `org/repo` entries.
 
-## Probe order (download_model)
+## Failure modes
 
-ONNX-quantized variants, first match wins:
+| Failure | Behavior |
+|---|---|
+| HF API init failure (network, auth) | Returns `Err(String)` with the underlying error |
+| No artifact matching priority list | Returns `Err` listing the candidates tried |
+| Network drop mid-download | `hf-hub` retries internally per its policy; `import` adds none |
+| Disk full | `hf-hub` propagates `io::Error`; `import` forwards as `String` |
+
+## Implementation status
+
+`download_model` today only probes a fixed list of ONNX-quantized
+filenames:
 
 ```
 onnx/model_q4.onnx
@@ -43,23 +68,20 @@ onnx/decoder_model.onnx
 decoder_model.onnx
 ```
 
-After the model is fetched, `<model>_data` is attempted (ONNX large
+After the artifact, `<artifact>_data` is attempted (ONNX large
 external-data files). Missing `_data` is not an error — small models
 ship inline.
 
-## Failure modes
+The contract above (safetensors > GGUF > ONNX, plus sibling metadata)
+is the target. Closing the gap is two changes:
 
-| Failure | Behavior |
-|---|---|
-| HF API init failure (network, auth) | Returns `Err(String)` with the underlying error |
-| All probes 404 | Returns `Err` listing the candidates tried |
-| Network drop mid-download | `hf-hub` retries internally per its policy; `import` adds none |
-| Disk full | `hf-hub` propagates `io::Error`; `import` forwards as `String` |
+1. List repo files via `hf-hub`'s repo info API rather than probing
+   fixed names.
+2. Walk the priority list against the listing; pull the artifact +
+   its sibling metadata files.
 
 ## Out of scope today
 
-- Safetensors / GGUF auto-fetch from HF — currently the user must
-  download the source directory by hand, then run `mi import <dir>`.
 - Authenticated repos (gated models). `hf-hub` honors `HF_TOKEN` from
   the environment, but `import` neither documents nor verifies this.
 - Resumable downloads beyond `hf-hub` defaults.

@@ -13,7 +13,7 @@ mi <SUBCOMMAND>
 |---|---|---|
 | `mi import <DIR>` | Convert source directory → `~/llm/<name>.model` | `main.rs::run_import` |
 | `mi list` | List HF cache entries under `~/.cache/huggingface/hub` | `main.rs::run_list` |
-| `mi download <REPO>` | Download ONNX-quantized model from HuggingFace into HF cache | `main.rs::run_download` |
+| `mi download <REPO>` | Download a model from HuggingFace into the HF cache | `main.rs::run_download` |
 
 ## `mi import <DIR>` contract
 
@@ -34,39 +34,46 @@ Side effects:
 
 The `.model` invariants are enforced by [import.md](import.md).
 
-## `mi download <REPO>` — ONNX scope
+## `mi download <REPO>` contract
 
-`download` is **not** the fetcher for the `import` flow. It probes the
-repo for ONNX variants in this fixed order:
+Fetch a model and its metadata from HuggingFace into the local `hf-hub`
+cache. The selection picks the canonical model artifact in this
+priority order — first match wins:
 
-```
-onnx/model_q4.onnx
-onnx/model_q4f16.onnx
-onnx/model_bnb4.onnx
-onnx/model_quantized.onnx
-onnx/model_int8.onnx
-model_q4.onnx
-model_q4f16.onnx
-model_quantized.onnx
-onnx/model.onnx
-model.onnx
-onnx/decoder_model.onnx
-decoder_model.onnx
-```
+1. `*.safetensors` (single-file or sharded `*.safetensors.index.json`)
+2. `*.gguf` (single-file or sharded)
+3. `*.onnx` (with sibling `*_data` external-data files when present)
 
-First match wins. Downloaded into the `hf-hub` cache, not into `~/llm/`.
+Always alongside the artifact:
+- `config.json`
+- `tokenizer.json` (or `tokenizer.model` + `tokenizer_config.json` when
+  the repo is sentencepiece-only)
+- `special_tokens_map.json` when present
+- `generation_config.json` when present
 
-To bring an HF model into a `.model` file, the user fetches the source
-files manually (e.g. via `huggingface-cli download …`) and runs
-`mi import` against the resulting directory.
+Output: paths under `~/.cache/huggingface/hub/`. The downloaded files
+are sufficient input for `mi import <DIR>` against that cache directory.
+
+### Implementation status
+
+Today the implementation only probes a fixed list of ONNX-quantized
+filenames in `hub/mod.rs::download_model`. Safetensors / GGUF auto-fetch
+is unimplemented — see [hub.md](hub.md) §"Implementation status" for
+the gap detail.
+
+Until the gap closes, the user fetches non-ONNX source files by hand
+(e.g. via `huggingface-cli download …`) and runs `mi import` against
+the resulting directory.
 
 ## Out-of-scope today
 
-- Direct HF → `.model` (single command). The `Download` flow targets
-  ONNX only; safetensors / GGUF auto-fetch is unimplemented.
+- Single-command HF → `.model`. `mi download` puts files in the HF
+  cache; `mi import` then converts them. Composing both into one is
+  a planned `mi fetch` subcommand, not yet shipped.
 - Multi-shard GGUF input (`*.gguf.00001-of-N`). [import.md](import.md)
   declares the contract but the CLI only reads a single GGUF.
-- ONNX / safetensors source format. The loader module supports both,
-  but `run_import` only locates `*.gguf` files in the source directory.
+- Non-GGUF source formats at import time. The loader module supports
+  ONNX and safetensors, but `run_import` only locates `*.gguf` files
+  in the source directory.
 
 These gaps are tracked; the CLI surface above is what works today.
