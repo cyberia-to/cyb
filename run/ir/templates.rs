@@ -44,6 +44,7 @@ pub struct TransformerConfig {
     pub activation: Activation,
     /// Qwen3 per-head RmsNorm on Q and K after projection (before Rope).
     pub has_qk_norm: bool,
+    pub has_attn_bias: bool,
 }
 
 impl Default for TransformerConfig {
@@ -61,6 +62,7 @@ impl Default for TransformerConfig {
             max_seq_len: 4096,
             activation: Activation::Silu,
             has_qk_norm: false,
+            has_attn_bias: false,
         }
     }
 }
@@ -312,30 +314,67 @@ pub fn transformer_decoder_for_exec(config: &TransformerConfig) -> Graph {
             None,
         );
 
-        let q_flat = format!("{p}.q_flat");
+        let q_matmul = format!("{p}.q_matmul");
         g.add_node_with_attrs(
             Op::Matmul,
             vec![norm1.clone(), format!("{hf}.self_attn.q_proj.weight")],
-            vec![q_flat.clone()],
+            vec![q_matmul.clone()],
             make_attrs(&[("n", q_dim as i64), ("k", hidden as i64)]),
             None,
         );
-        let k_flat = format!("{p}.k_flat");
+        let k_matmul = format!("{p}.k_matmul");
         g.add_node_with_attrs(
             Op::Matmul,
             vec![norm1.clone(), format!("{hf}.self_attn.k_proj.weight")],
-            vec![k_flat.clone()],
+            vec![k_matmul.clone()],
             make_attrs(&[("n", kv_flat as i64), ("k", hidden as i64)]),
             None,
         );
-        let v_flat = format!("{p}.v_flat");
+        let v_matmul = format!("{p}.v_matmul");
         g.add_node_with_attrs(
             Op::Matmul,
             vec![norm1, format!("{hf}.self_attn.v_proj.weight")],
-            vec![v_flat.clone()],
+            vec![v_matmul.clone()],
             make_attrs(&[("n", kv_flat as i64), ("k", hidden as i64)]),
             None,
         );
+
+        // Attention biases (qwen2 family). When config.has_attn_bias is set
+        // the source has q_proj.bias / k_proj.bias / v_proj.bias of shape
+        // [out_dim]; broadcast-add to the matmul output.
+        let q_flat = if config.has_attn_bias {
+            let q_biased = format!("{p}.q_flat");
+            g.add_node(
+                Op::Add,
+                vec![q_matmul, format!("{hf}.self_attn.q_proj.bias")],
+                vec![q_biased.clone()],
+            );
+            q_biased
+        } else {
+            q_matmul
+        };
+        let k_flat = if config.has_attn_bias {
+            let k_biased = format!("{p}.k_flat");
+            g.add_node(
+                Op::Add,
+                vec![k_matmul, format!("{hf}.self_attn.k_proj.bias")],
+                vec![k_biased.clone()],
+            );
+            k_biased
+        } else {
+            k_matmul
+        };
+        let v_flat = if config.has_attn_bias {
+            let v_biased = format!("{p}.v_flat");
+            g.add_node(
+                Op::Add,
+                vec![v_matmul, format!("{hf}.self_attn.v_proj.bias")],
+                vec![v_biased.clone()],
+            );
+            v_biased
+        } else {
+            v_matmul
+        };
 
         // Reshape Q/K/V from [1, n*head_dim] to [n, head_dim] so rope_f32
         // sees last dim == head_dim (its hard requirement).
@@ -749,6 +788,7 @@ impl TransformerConfig {
             max_seq_len:       c.max_position_embeddings.min(8192),
             activation,
             has_qk_norm:       c.has_qk_norm,
+            has_attn_bias:     c.has_attn_bias,
         }
     }
 }

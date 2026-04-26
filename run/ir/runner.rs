@@ -71,6 +71,12 @@ impl ModelRunner for GraphRunner {
 /// This is the "correctness reference" approach: pre-dequant everything at
 /// load time. Performance-sensitive production use should pass quantized
 /// tensors to `backend.quant_matmul()` directly (future improvement).
+///
+/// For tied-embedding models (qwen3, qwen2.5 coder small variants, gemma)
+/// the source has only `model.embed_tokens.weight`; the curated forward
+/// path aliases lm_head to it, but the graph template references
+/// `lm_head.weight` literally. Mirror that aliasing here so the graph
+/// executor works for both tied and untied models.
 fn build_weight_map(lm: &LoadedModel) -> HashMap<String, Tensor> {
     use crate::backend::cpu::quant::try_dequantize_to_f32;
 
@@ -87,6 +93,14 @@ fn build_weight_map(lm: &LoadedModel) -> HashMap<String, Tensor> {
             Err(e) => {
                 log::warn!("dequant failed for {}: {e}", meta.name);
             }
+        }
+    }
+    // Tied-embedding alias: when `lm_head.weight` is missing but
+    // `model.embed_tokens.weight` is present, alias them. Cheap clone of
+    // the f32 buffer; could be made zero-copy via Arc later.
+    if !weights.contains_key("lm_head.weight") {
+        if let Some(embed) = weights.get("model.embed_tokens.weight").cloned() {
+            weights.insert("lm_head.weight".to_string(), embed);
         }
     }
     weights
