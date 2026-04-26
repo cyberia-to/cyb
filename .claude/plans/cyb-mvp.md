@@ -16,7 +16,7 @@ hardware.
   HF / GGUF / ONNX / safetensors        .graph snapshot          cybergraph live state
                 │                              │                          │
                 ▼                              ▼                          ▼
-            reverse (mi)                  compile (mc)             render (cyb browser)
+            reverse (import)                  compile (mc)             render (cyb browser)
                 │                              │                          │
                 └──────────► .cyb / .model ◄───┴──────────────────────────┘
                                    │
@@ -33,7 +33,7 @@ hardware.
 
 Five engines, one format:
 
-- mi — reverse: HF / GGUF / ONNX / safetensors → IR + weights → .cyb / .model
+- import — reverse: HF / GGUF / ONNX / safetensors → IR + weights → .cyb / .model
 - mc — compile: .graph cybergraph snapshot → .cyb / .model (CT-1 spec)
 - mr — runtime: .model → tokens, three backends (cpu / wgpu+rs / honeycrisp)
 - cyb-llm — CLI + serve + router around mr (download, hot-swap, OpenAI API)
@@ -85,7 +85,7 @@ Other ground state:
 
 - Apple-Silicon path renamed Metal → honeycrisp (Metal + ANE + AMX + NEON + unimem)
 - mc has the .graph reader and .model writer scaffolding; CT-1 passes 1–8 not yet implemented
-- mi loads HF safetensors + GGUF + ONNX into a `Weights` table; reverse-to-graph extraction is design-stage
+- import loads HF safetensors + GGUF + ONNX into a `Weights` table; reverse-to-graph extraction is design-stage
 
 Phase 0 cannot ship until all four manifest models produce verified-correct
 output on both honeycrisp and wgpu+rs and beat their Ollama baselines on tok/s.
@@ -143,7 +143,7 @@ Then `brew install cyb-llm && cyb-llm fetch tier0 && cyb-llm serve` works.
 - `cyb-llm run MODEL "prompt"` → honeycrisp on Apple Silicon, wgpu+rs elsewhere
 - `cyb-llm serve` → OpenAI-compatible API (`/v1/chat/completions`)
 - `cyb-llm status` → manifest dashboard (load OK, verified, tok/s, RAM per backend)
-- `cyb-llm fetch NAME` → mi download + quantize + pack .cyb
+- `cyb-llm fetch NAME` → import download + quantize + pack .cyb
 - `cyb-llm serve --router`: qwen3-0.6b classifies, hot-swaps to coder-1.5b / coder-14b / gemma per task
 - KV inheritance on escalation within tokenizer family
 
@@ -174,7 +174,7 @@ CT-1 spec, 8 passes (`mc/src/pass/`):
 Conformance: P-EMBED, P-ATTN, P-LAYER, P-DET, P-LOAD against
 `bostrom-23195000.graph`. Output must load in mr unchanged.
 
-### 1.2 mi reverse (transformer → graph)
+### 1.2 import reverse (transformer → graph)
 
 Extract a cybergraph projection from any HF / GGUF / ONNX model:
 
@@ -190,7 +190,7 @@ can re-compile (round-trip identity for held-out models).
 ### 1.3 Round-trip verification
 
 - forward: known graph → mc → .model → mr → tokens, compared to Python reference (`~/git/cyber/analizer/compile_model.py`)
-- reverse: HF model → mi → .graph → mc → .model → mr, output ε-equivalent to original at F32
+- reverse: HF model → import → .graph → mc → .model → mr, output ε-equivalent to original at F32
 
 Deliverable: `cyb-llm reverse Qwen/Qwen3-0.6B → qwen3.graph` and
 `cyb-llm compile bostrom-23195000.graph → bostrom.model` both produce
@@ -233,7 +233,7 @@ model.gemma-4-31b
 ```
 
 Listing = mutable. Each version = immutable CID. Both forward
-(mc compile output) and reverse (mi reverse output) listings publishable.
+(mc compile output) and reverse (import reverse output) listings publishable.
 
 ### 3.2 Discovery
 
@@ -285,8 +285,8 @@ attribution flowing back to the graph slices that compiled into each model.
 - [x] cpu reference backend (slow, always correct)
 - [x] `mr run` (single model inference, multi-backend dispatch)
 - [x] `mr status` / `mr bench` / `mr profile`
-- [x] mi: HF / GGUF / ONNX / safetensors loaders → `Weights` table
-- [x] mi: F16 / F32 → Q4_K quantization at pack time
+- [x] import: HF / GGUF / ONNX / safetensors loaders → `Weights` table
+- [x] import: F16 / F32 → Q4_K quantization at pack time
 - [x] mc: crate skeleton, .graph reader, .model writer scaffolding
 - [x] Fused WGSL kernels: fused_norm_q4, fused_skip_norm
 - [x] TurboQuant KV compression
@@ -332,10 +332,10 @@ Surface:
 - [ ] mc passes 4–5 (embedding via RSVD, per-semcon attention)
 - [ ] mc passes 6–8 (MLP, norms, packaging)
 - [ ] mc conformance suite (P-EMBED, P-ATTN, P-LAYER, P-DET, P-LOAD)
-- [ ] mi reverse: weight tensors → particles + axons → .graph file
-- [ ] mi reverse: tokenizer vocab → name particles
-- [ ] mi reverse: config → root-particle frontmatter
-- [ ] round-trip test: HF → mi reverse → mc compile → mr → ε-equiv to source
+- [ ] import reverse: weight tensors → particles + axons → .graph file
+- [ ] import reverse: tokenizer vocab → name particles
+- [ ] import reverse: config → root-particle frontmatter
+- [ ] round-trip test: HF → import reverse → mc compile → mr → ε-equiv to source
 
 ### Phase 2 build (2 sessions)
 
@@ -368,7 +368,7 @@ Surface:
 | Discovery | keyword | manual | staker voting | CyberRank (real usage) |
 | Runtime | none | llama.cpp | cloud | rust + honeycrisp / wgpu+rs / cpu |
 | Compile graph → model | none | none | none | mc (CT-1 spec) |
-| Reverse model → graph | none | none | none | mi (HF / GGUF / ONNX → cybergraph) |
+| Reverse model → graph | none | none | none | import (HF / GGUF / ONNX → cybergraph) |
 | Render | static page | none | none | cyb browser (graph IR, weights, traces) |
 | Attribution | none | none | staker weights | model + graph neurons earn CyberRank |
 | Lock-in | HF URL | Modelfile | subnet | none — CID is portable |
@@ -389,7 +389,7 @@ Later:   monetization                                 ← once graph carries rea
 Each phase locks in the next. 16 sessions total to the closed cycle in
 production. Earlier estimate (10 sessions) excluded the bridge and
 treated runtime correctness as a 3-session check; the manifest scope
-makes it 5 sessions of focused per-model work, and mc compile + mi
+makes it 5 sessions of focused per-model work, and mc compile + import
 reverse add 4 more for the bridge.
 
 The manifest is the discipline: refusing to grow it until the existing

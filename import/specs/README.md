@@ -1,15 +1,16 @@
-# mi importer specification
+# import crate specification
 
 How external model formats become canonical `.model` files.
 
 ## Scope
 
-mi reads source models (GGUF, safetensors, ONNX, HF PyTorch, MLX),
-normalizes naming/shapes/dtypes/config, and writes a `.model` file that
-the runtime ([run/](../../run/)) can mmap.
+`import` reads source models (GGUF, safetensors, ONNX, HF PyTorch, MLX),
+normalizes naming, shapes, dtypes, and config, and writes the canonical
+`.model` file consumed by [run/](../../run/).
 
-mi never reads source-format quirks at runtime; runtime never sees them
-at all. The boundary is the `.model` invariants in [import.md](import.md).
+Source-format quirks are normalized at import time. The runtime never
+deals with them. The normalization contract lives in
+[import.md](import.md).
 
 ## Files
 
@@ -23,7 +24,7 @@ at all. The boundary is the `.model` invariants in [import.md](import.md).
 ## Cross-references (shared with runtime)
 
 The following specs are owned by `run/specs/` because the runtime
-consumes them; mi follows them on the producer side:
+consumes them; `import` follows them on the producer side:
 
 - [format.md](../../run/specs/format.md) — `.model` file layout
 - [tensor.md](../../run/specs/tensor.md) — canonical tensor names + shapes

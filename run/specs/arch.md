@@ -230,7 +230,7 @@ after the LM head, before sampling. Skip when the field is absent or 0.
 
 When `config.attention_k_eq_v` is true, the K and V projections share
 the same weights. The runtime sees two tensors named `k_proj.weight` and
-`v_proj.weight` with identical bytes — the import (mi) is responsible
+`v_proj.weight` with identical bytes — the `import` crate is responsible
 for splitting any fused `kv_proj` source into the two canonical names so
 the runtime stays one codepath.
 

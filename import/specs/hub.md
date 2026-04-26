@@ -1,7 +1,7 @@
-# mi hub fetch
+# import hub fetch
 
-How `mi` retrieves source files from HuggingFace Hub. Implemented in
-`mi/src/hub/mod.rs` as a thin layer over `hf-hub`'s sync API.
+How `import` retrieves source files from HuggingFace Hub. Implemented in
+`import/hub/mod.rs` as a thin layer over `hf-hub`'s sync API.
 
 ## Surface
 
@@ -18,9 +18,9 @@ fetches source files for the import flow.
 
 ## Cache
 
-`hf-hub` writes into `~/.cache/huggingface/hub/`. mi never touches the
-cache directly — `hf-hub` owns the layout (`models--<org>--<repo>/`,
-`refs/`, `snapshots/`, `blobs/`).
+`hf-hub` writes into `~/.cache/huggingface/hub/`. `import` never touches
+the cache directly — `hf-hub` owns the layout
+(`models--<org>--<repo>/`, `refs/`, `snapshots/`, `blobs/`).
 
 `mi list` enumerates that directory and prints `org/repo` entries.
 
@@ -53,15 +53,15 @@ ship inline.
 |---|---|
 | HF API init failure (network, auth) | Returns `Err(String)` with the underlying error |
 | All probes 404 | Returns `Err` listing the candidates tried |
-| Network drop mid-download | `hf-hub` retries internally per its policy; mi does not add retry |
-| Disk full | `hf-hub` propagates `io::Error`; mi forwards as `String` |
+| Network drop mid-download | `hf-hub` retries internally per its policy; `import` adds none |
+| Disk full | `hf-hub` propagates `io::Error`; `import` forwards as `String` |
 
 ## Out of scope today
 
 - Safetensors / GGUF auto-fetch from HF — currently the user must
   download the source directory by hand, then run `mi import <dir>`.
 - Authenticated repos (gated models). `hf-hub` honors `HF_TOKEN` from
-  the environment, but mi neither documents nor verifies this.
+  the environment, but `import` neither documents nor verifies this.
 - Resumable downloads beyond `hf-hub` defaults.
 - Pinning to a specific commit/revision. `hf-hub` defaults to the
   repo's main branch HEAD at fetch time.

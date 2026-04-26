@@ -1,6 +1,6 @@
-# mi manifest
+# import manifest
 
-`mi/src/manifest.rs` is the single source of truth for which models are
+`import/manifest.rs` is the single source of truth for which models are
 **verified-correct + fast** in MVP scope. Membership is the discipline
 that keeps the runtime moat from sliding into a model zoo.
 
@@ -40,7 +40,7 @@ pub struct ModelSpec {
 
 A model joins the manifest when **all** of the following hold:
 
-1. Source format is one mi accepts ([import.md](import.md) §Inputs).
+1. Source format is one `import` accepts ([import.md](import.md) §Inputs).
 2. Architecture maps onto a known family
    ([run/specs/arch.md](../../run/specs/arch.md)).
 3. There is a planned role in the soma (router / specialist / general)

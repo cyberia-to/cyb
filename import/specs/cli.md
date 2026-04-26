@@ -1,6 +1,7 @@
-# mi command-line surface
+# import CLI surface
 
-What the `mi` binary exposes today.
+What the `mi` binary (the CLI entry point of the `import` crate)
+exposes today.
 
 ## Subcommands
 

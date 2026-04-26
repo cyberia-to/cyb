@@ -5,7 +5,7 @@ use std::path::PathBuf;
 
 fn tmp_path(name: &str) -> PathBuf {
     let mut p = std::env::temp_dir();
-    p.push(format!("mi-graph-roundtrip-{}-{name}.model", std::process::id()));
+    p.push(format!("import-graph-roundtrip-{}-{name}.model", std::process::id()));
     p
 }
 

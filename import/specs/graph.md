@@ -1,4 +1,4 @@
-# mi graph IR embedding
+# import graph IR embedding
 
 When and how the binary IR graph is embedded into a `.model` file at
 import time.
@@ -16,7 +16,7 @@ not the merged-QKV variant) and round-trips through
 
 ## When emitted
 
-After tensors and config are normalized, mi attempts:
+After tensors and config are normalized, `import` attempts:
 
 ```
 let metas = run::format::parse_tensors_toml(&tensors_toml)?;
@@ -36,7 +36,7 @@ The `~~~graph` section is emitted iff **all three** succeed:
    model-type gating); MoE / DiT / Whisper / BERT will return `None`
    when their templates land.
 
-If any step fails, mi prints a one-line skip notice and writes the
+If any step fails, `import` prints a one-line skip notice and writes the
 `.model` without a `~~~graph` section. The runtime continues to work
 because the curated forward path doesn't need it.
 
@@ -74,12 +74,12 @@ actual runtime forward path. Two paths to close this:
    `None` until (1) lands.
 
 Path (2) is the honest stopgap; path (1) is the real fix. Until one
-ships, mi continues to emit best-effort graphs only for plain
+ships, `import` continues to emit best-effort graphs only for plain
 LlamaStyle (qk_norm and attn_bias variants).
 
 ## Round-trip test
 
-`mi/tests/graph_section_roundtrip.rs` covers the writer ↔ reader
+`import/tests/graph_section_roundtrip.rs` covers the writer ↔ reader
 seam: a `.model` written with `Some(hex)` round-trips through
 `read_model_file` to identical bytes; a `.model` written with `None`
 has no graph section.

@@ -1,8 +1,8 @@
 //! import — model importer. HuggingFace / GGUF / safetensors → cyb `.model`.
 //!
-//! Runtime (inference) lives in the `run/` crate. `import/` owns the ingest
-//! side: load source → [`Weights`] table → re-pack into a `.model` file that
-//! `run/` can mmap. The CLI binary is named `mi`.
+//! `import/` is the ingest side: load source → [`Weights`] table → write a
+//! canonical `.model` file. The runtime in `run/` consumes the result; this
+//! crate never runs inference. The CLI binary is named `mi`.
 //!
 //! Spec: `import/specs/import.md`.
 //!

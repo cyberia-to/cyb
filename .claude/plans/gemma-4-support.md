@@ -21,7 +21,7 @@ Discovered from `~/llm/gemma-4-31b-import/config.json`:
 | Layer type list | `layer_types: [sliding, sliding, sliding, sliding, sliding, full, ...]` | `format.md` config.toml schema must enumerate this field |
 | Activation flag | `hidden_activation: "gelu_pytorch_tanh"` | `arch.md` activation table needs this canonical name |
 | Softcapping value | `final_logit_softcapping: 30.0` | `arch.md` already mentions the formula; spec the field name |
-| K=V detection | `attention_k_eq_v: true` flag, no separate kv_proj tensor name in our import | `import.md` must say: when this flag is set, mi splits the fused kv weight into two identical tensors named k_proj/v_proj at pack time, OR keeps fused as kv_proj.weight (decision needed) |
+| K=V detection | `attention_k_eq_v: true` flag, no separate kv_proj tensor name in our import | `import.md` must say: when this flag is set, import splits the fused kv weight into two identical tensors named k_proj/v_proj at pack time, OR keeps fused as kv_proj.weight (decision needed) |
 
 Each gap = one paragraph in the relevant reference file. Spec edit is one
 commit per file, separate from the implementation.
@@ -45,9 +45,9 @@ weight loading and forward orchestration. Per "kill the zoo": extend.
 - [ ] `arch.md` §LlamaStyle+ — add per-layer dim switching (`global_head_dim`, `num_global_key_value_heads`, `layer_types`)
 - [ ] `arch.md` activation table — note `gelu_pytorch_tanh`
 - [ ] `format.md` config.toml schema — add `layer_types`, `global_head_dim`, `num_global_key_value_heads`, `final_logit_softcapping`, `attention_k_eq_v`, `hidden_activation`, `sliding_window`
-- [ ] `import.md` — specify K=V tensor naming convention (decision: mi splits fused kv into k_proj+v_proj that share underlying bytes; runtime sees two tensors, no special path)
+- [ ] `import.md` — specify K=V tensor naming convention (decision: import splits fused kv into k_proj+v_proj that share underlying bytes; runtime sees two tensors, no special path)
 
-### 2. Import (mi) — decode Gemma-4 GGUF (one session)
+### 2. Import (import) — decode Gemma-4 GGUF (one session)
 
 - [ ] Detect `gemma4` model_type from config.json
 - [ ] Pack `layer_types`, `global_head_dim`, `num_global_key_value_heads`, `final_logit_softcapping`, `sliding_window`, `hidden_activation`, `attention_k_eq_v` into config.toml
