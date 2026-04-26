@@ -255,24 +255,45 @@ fn dequantize_q5k(data: &[u8]) -> Vec<f32> {
 }
 
 fn dequantize_q6k(data: &[u8]) -> Vec<f32> {
-    data.chunks_exact(210)
-        .flat_map(|block| {
-            let d = half::f16::from_le_bytes([block[208], block[209]]).to_f32();
-            let ql = &block[0..128];
-            let qh = &block[128..192];
-            let scales = &block[192..208];
-            let mut vals = [0f32; 256];
-            for j in 0..256 {
-                let ql_byte = ql[j / 2];
-                let ql_nib = if j % 2 == 0 { ql_byte & 0x0F } else { ql_byte >> 4 };
-                let qh_bit = (qh[j / 4] >> ((j % 4) * 2)) & 0x03;
-                let q = ((qh_bit as u8) << 4) | ql_nib;
-                let sc = scales[j / 16] as i8;
-                vals[j] = d * sc as f32 * (q as f32 - 32.0);
+    // Reference: llama.cpp dequantize_row_q6_K (ggml/k_quants.c). For each
+    // 256-value super-block, two halves of 128 values. Per half, l iterates
+    // 0..32 producing FOUR outputs (q1..q4) at offsets l+0, l+32, l+64, l+96.
+    // The four use different qh-nibble shifts (0/2/4/6) and ql positions.
+    // This matches run::backend::cpu::quant::q6_k::dequantize byte-for-byte.
+    let n_blocks = data.len() / 210;
+    let mut out = vec![0f32; n_blocks * 256];
+    for blk in 0..n_blocks {
+        let base = blk * 210;
+        let ql = &data[base..base + 128];
+        let qh = &data[base + 128..base + 192];
+        let scales = &data[base + 192..base + 208];
+        let d = half::f16::from_le_bytes([data[base + 208], data[base + 209]]).to_f32();
+        let y = &mut out[blk * 256..(blk + 1) * 256];
+
+        for half in 0..2 {
+            let ql_off = half * 64;
+            let qh_off = half * 32;
+            let sc_off = half * 8;
+            let y_off = half * 128;
+            for l in 0..32 {
+                let is = l / 16;
+                let qh_byte = qh[qh_off + l];
+                let q1 = ((ql[ql_off + l] & 0x0F) as i32
+                    | (((qh_byte & 0x03) as i32) << 4)) - 32;
+                let q2 = ((ql[ql_off + l + 32] & 0x0F) as i32
+                    | (((qh_byte & 0x0C) as i32) << 2)) - 32;
+                let q3 = ((ql[ql_off + l] >> 4) as i32
+                    | (((qh_byte & 0x30) as i32) << 0)) - 32;
+                let q4 = ((ql[ql_off + l + 32] >> 4) as i32
+                    | (((qh_byte & 0xC0) as i32) >> 2)) - 32;
+                y[y_off + l + 0] = d * scales[sc_off + is] as i8 as f32 * q1 as f32;
+                y[y_off + l + 32] = d * scales[sc_off + 2 + is] as i8 as f32 * q2 as f32;
+                y[y_off + l + 64] = d * scales[sc_off + 4 + is] as i8 as f32 * q3 as f32;
+                y[y_off + l + 96] = d * scales[sc_off + 6 + is] as i8 as f32 * q4 as f32;
             }
-            vals
-        })
-        .collect()
+        }
+    }
+    out
 }
 
 fn dequantize_q3k(data: &[u8]) -> Vec<f32> {

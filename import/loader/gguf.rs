@@ -276,8 +276,16 @@ fn build_weights_from_gguf(
     let mut weights = Weights::new();
 
     for info in tensor_infos {
-        // Dims in HF convention [N, K] (our converter normalized this).
-        let shape: Vec<usize> = info.dims.iter().map(|&d| d as usize).collect();
+        // GGUF stores dims in row-major-fast-first order: for a 2D matmul
+        // weight, dims = [K, N] (in_features, out_features). The actual
+        // bytes are row-major identical to HF's [N, K] layout — the shape
+        // metadata is the only thing that's reversed.
+        // Reverse dims to land in HF [N, K] convention so downstream
+        // shape checks (e.g. matmul N×K) match the canonical layout.
+        let mut shape: Vec<usize> = info.dims.iter().map(|&d| d as usize).collect();
+        if shape.len() >= 2 {
+            shape.reverse();
+        }
         let dtype = gguf_type_to_dtype(info.type_id);
 
         let num_elements: usize = shape.iter().product();
