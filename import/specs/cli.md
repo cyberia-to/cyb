@@ -36,34 +36,10 @@ The `.model` invariants are enforced by [import.md](import.md).
 
 ## `mi download <REPO>` contract
 
-Fetch a model and its metadata from HuggingFace into the local `hf-hub`
-cache. The selection picks the canonical model artifact in this
-priority order — first match wins:
-
-1. `*.safetensors` (single-file or sharded `*.safetensors.index.json`)
-2. `*.gguf` (single-file or sharded)
-3. `*.onnx` (with sibling `*_data` external-data files when present)
-
-Always alongside the artifact:
-- `config.json`
-- `tokenizer.json` (or `tokenizer.model` + `tokenizer_config.json` when
-  the repo is sentencepiece-only)
-- `special_tokens_map.json` when present
-- `generation_config.json` when present
-
-Output: paths under `~/.cache/huggingface/hub/`. The downloaded files
-are sufficient input for `mi import <DIR>` against that cache directory.
-
-### Implementation status
-
-Today the implementation only probes a fixed list of ONNX-quantized
-filenames in `hub/mod.rs::download_model`. Safetensors / GGUF auto-fetch
-is unimplemented — see [hub.md](hub.md) §"Implementation status" for
-the gap detail.
-
-Until the gap closes, the user fetches non-ONNX source files by hand
-(e.g. via `huggingface-cli download …`) and runs `mi import` against
-the resulting directory.
+Fetch a model from HuggingFace into the local `hf-hub` cache. The
+contract — artifact priority, sibling metadata, failure modes —
+lives in [hub.md](hub.md). Output: paths under
+`~/.cache/huggingface/hub/`, suitable as input for `mi import <DIR>`.
 
 ## Out-of-scope today
 
