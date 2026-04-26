@@ -16,7 +16,7 @@ deals with them. The normalization contract lives in
 
 - [import.md](import.md) — invariants, name/shape/dtype/config
   normalization, validation, multi-shard handling
-- [cyb_format.md](cyb_format.md) — `.model` writer discipline: layout, frontmatter, newline policy, optional graph section
+- [cyb_format.md](cyb_format.md) — divergence between today's `.model` writer and the canonical `cyb/cyb-model` graph spec
 - [manifest.md](manifest.md) — what makes a model MVP-eligible
 - [hf.md](hf.md) — HuggingFace fetch contract: artifact priority, sibling metadata, failure modes, implementation status
 - [cli.md](cli.md) — `mi <subcommand>` surface
