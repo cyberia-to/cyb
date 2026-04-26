@@ -58,24 +58,3 @@ pub fn download_model(model_id: &str) -> Result<PathBuf, String> {
 
     Ok(model_path)
 }
-
-/// Download tokenizer from HuggingFace
-pub fn download_tokenizer(model_id: &str) -> Result<PathBuf, String> {
-    let api = Api::new().map_err(|e| format!("HF API init failed: {e}"))?;
-    let repo = api.model(model_id.to_string());
-
-    let tokenizer_path = repo
-        .get("tokenizer.json")
-        .map_err(|e| format!("Could not find tokenizer in {model_id}: {e}"))?;
-
-    Ok(tokenizer_path)
-}
-
-/// Download a specific file from a HuggingFace repo
-pub fn download_file(model_id: &str, filename: &str) -> Result<PathBuf, String> {
-    let api = Api::new().map_err(|e| format!("HF API init failed: {e}"))?;
-    let repo = api.model(model_id.to_string());
-
-    repo.get(filename)
-        .map_err(|e| format!("Could not download {filename} from {model_id}: {e}"))
-}

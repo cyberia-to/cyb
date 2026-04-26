@@ -24,12 +24,9 @@ Sibling files always fetched when present:
 
 ```
 hub::download_model(model_id) -> PathBuf  // fetches the artifact, returns its path
-hub::download_tokenizer(model_id) -> PathBuf
-hub::download_file(model_id, filename) -> PathBuf
 ```
 
-Only `download_model` is wired into the CLI today (via
-[`mi download`](cli.md#mi-download-repo-contract)).
+Wired into the CLI as [`mi download`](cli.md#mi-download-repo-contract).
 
 ## Cache
 
