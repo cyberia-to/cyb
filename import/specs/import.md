@@ -1,252 +1,200 @@
 # Import contract
 
-Converting external model formats (GGUF, safetensors, HF PyTorch,
-MLX, ONNX) to canonical `.model` files.
+How external model formats become canonical `.model` files.
 
-Import is the boundary where external variance becomes internal
-normalization. After import, every `.model` follows [format.md](../../run/specs/format.md)
-and [tensor.md](../../run/specs/tensor.md) conventions exactly — the runtime never
-deals with source-format quirks.
+## Boundary
+
+`import` is the boundary where source-format variance ends and `.model`
+invariance begins. Every transformation that a source needs in order to
+satisfy the invariants below happens here, once, at import time. After
+that, the runtime in `run/` operates on a single canonical shape; it
+never sees BF16, GGUF block ordering, fused KV tensors, or nested VL
+configs.
+
+When import and runtime disagree on what a model "is", import is the
+side that changes. Workarounds in runtime are bugs.
 
 ## Inputs
 
-Accepted source formats:
-
-| Format | Source | Priority |
+| Format | Source | CLI status |
 |---|---|---|
-| GGUF | llama.cpp, ollama | High (well-defined) |
-| safetensors | HuggingFace | High (HF-native) |
-| HF PyTorch (.bin) | legacy HF | Medium (unsafe pickle; prefer safetensors) |
-| MLX | Apple MLX | Medium |
-| ONNX | generic | Low (metadata varies) |
+| GGUF (single-file or sharded `*.gguf.NNNNN-of-NNNNN`) | llama.cpp, ollama | wired |
+| safetensors (single-file or sharded `*.safetensors.index.json`) | HuggingFace | loader present, not wired into `mi import` |
+| ONNX | generic | loader present, not wired into `mi import` |
+| HF PyTorch (`.bin`) | legacy HF | not implemented; prefer safetensors |
+| MLX | Apple MLX | not implemented |
 
-An import reads source, validates, normalizes, and writes a `.model`.
+"Wired" means `mi import <DIR>` reads it today. The unwired loaders
+exist as Rust modules but the CLI's `run_import` only locates `*.gguf`
+files in the source directory. See [cli.md](cli.md) §Out-of-scope.
 
 ## Output invariants
 
 After import, the `.model` file MUST satisfy:
 
-1. **Canonical tensor names** — HF naming scheme
-   (see [tensor.md](tensor.md#tensor-identity)).
+1. **Canonical tensor names** — HF naming scheme defined in
+   [run/specs/tensor.md](../../run/specs/tensor.md#tensor-identity).
 2. **Canonical shapes** — row-major, `[out, in]` for weight matrices,
    `[vocab, hidden]` for embeddings.
-3. **Canonical dtypes** — no BF16 in weights (converted to F16).
-   Q4_0 normalized to Q4_K where possible.
-4. **Canonical config** — flat schema matching [format.md](../../run/specs/format.md).
+3. **Canonical dtypes** — no BF16 (converted to F16); no Q4_0 / Q4_1
+   (converted to Q4_K).
+4. **Canonical config** — flat schema matching
+   [run/specs/format.md](../../run/specs/format.md).
 5. **Special tokens registered** — every `<|...|>` pattern in vocab
-   appears as added token with correct ID.
-6. **All tensors required by declared `model_type` present** —
-   import fails with explicit error otherwise.
-7. **Non-weight metadata (sampling, chat template, license) inline**
-   — no external files referenced.
+   appears as an added token with a model-valid ID.
+6. **All tensors required by declared `model_type` present** — import
+   fails with explicit error otherwise.
+7. **Non-weight metadata inline** — sampling, chat template, license
+   live in the `.model`, not external files.
 
-Violation of any = import bug, fix import, do not work around in runtime.
+Violation of any of the above is an import bug. Fix import; do not
+work around in runtime.
 
-## Tensor name normalization
+## Transformations
 
-Source-to-canonical mapping. Apply by regex substitution.
+Each transformation is derived from the gap between source variance
+and the invariants above.
 
-### GGUF → canonical
+### Tensor names
 
-```
-token_embd.weight                 → model.embed_tokens.weight
-output_norm.weight                → model.norm.weight
-output.weight                     → lm_head.weight
+The canonical target is the HF decoder-only naming scheme
+([run/specs/tensor.md](../../run/specs/tensor.md#tensor-identity)).
+Every source tensor maps to exactly one canonical name; mappings live
+in code so the spec doesn't drift:
 
-blk.{i}.attn_norm.weight          → model.layers.{i}.input_layernorm.weight
-blk.{i}.attn_q.weight             → model.layers.{i}.self_attn.q_proj.weight
-blk.{i}.attn_k.weight             → model.layers.{i}.self_attn.k_proj.weight
-blk.{i}.attn_v.weight             → model.layers.{i}.self_attn.v_proj.weight
-blk.{i}.attn_output.weight        → model.layers.{i}.self_attn.o_proj.weight
-blk.{i}.attn_q.bias               → model.layers.{i}.self_attn.q_proj.bias
-blk.{i}.attn_k.bias               → model.layers.{i}.self_attn.k_proj.bias
-blk.{i}.attn_v.bias               → model.layers.{i}.self_attn.v_proj.bias
-blk.{i}.attn_q_norm.weight        → model.layers.{i}.self_attn.q_norm.weight
-blk.{i}.attn_k_norm.weight        → model.layers.{i}.self_attn.k_norm.weight
-blk.{i}.ffn_norm.weight           → model.layers.{i}.post_attention_layernorm.weight
-blk.{i}.ffn_gate.weight           → model.layers.{i}.mlp.gate_proj.weight
-blk.{i}.ffn_up.weight             → model.layers.{i}.mlp.up_proj.weight
-blk.{i}.ffn_down.weight           → model.layers.{i}.mlp.down_proj.weight
-```
+- GGUF → canonical: `naming::gguf_to_hf` in `import/naming.rs`.
+- HF safetensors → canonical: identity for HF-named decoders. Encoder
+  models (`embeddings.word_embeddings.weight`,
+  `encoder.layer.{i}.*`) need a position-swap mapping that is **not
+  yet implemented** — the safetensors loader is currently unreachable
+  from the import CLI.
+- HF PyTorch / MLX / ONNX: not implemented.
 
-### HF safetensors → canonical
-
-Many models already use HF naming directly. Apply identity for
-decoder-only. For encoder models:
+A source tensor that no mapping recognizes is a fatal import error
+with an actionable message:
 
 ```
-embeddings.word_embeddings.weight → model.embed_tokens.weight
-embeddings.LayerNorm.weight       → model.norm.weight     (preserve)
-encoder.layer.{i}.*               → model.layers.{i}.*     (position swap)
+Unknown tensor 'foo.bar.weight' in source;
+add mapping to import/naming.rs.
 ```
 
-When an imported model has non-standard names (e.g., some Phi
-variants use `lm_head.linear.weight`), the import layer must
-recognize and rename.
+### Shapes
 
-**Missing mapping = import failure with actionable error**:
-`"Unknown tensor 'foo.bar.weight' in source; add mapping to
-import.md GGUF→canonical section"`.
+The canonical layout is row-major `[out_features, in_features]` for
+weight matrices and `[vocab_size, hidden_size]` for embeddings. GGUF
+sources may store dimensions in either order; the loader transposes
+to canonical. Source-side detail lives in `import/loader/gguf.rs`.
+
+If a tensor's declared shape × declared dtype byte size does not
+equal the source byte count, import refuses (the source is
+malformed).
+
+### Dtypes
+
+Conversions applied at import time:
+
+| Source dtype | Canonical |
+|---|---|
+| BF16 | F16 |
+| Q4_0 | Q4_K |
+| Q4_1 | Q4_K |
+| IQ2 / IQ3 / IQ4 | corresponding K-quant |
+
+K-quants are preferred over legacy block quants. Quantization layouts
+are defined in [run/specs/quant.md](../../run/specs/quant.md); import
+implements the encoders, runtime implements the decoders.
 
 ### K=V shared projection (Gemma 3/4)
 
 When the source declares K and V projections share weights
-(`attention_k_eq_v: true` in HF config, or a single fused tensor in
-GGUF), import emits **two canonical tensors** with identical bytes:
+(`attention_k_eq_v: true` in HF config, or a fused `kv_proj` tensor in
+GGUF), import emits **two canonical tensors with identical bytes**:
 
 ```
 model.layers.{i}.self_attn.k_proj.weight
 model.layers.{i}.self_attn.v_proj.weight   # same bytes as k_proj
 ```
 
-The runtime sees the standard layout and stays one codepath. The
-duplication cost (~kv_dim × hidden × bytes_per_elem per layer) is
-amortised against the simpler runtime — the alternative (a fused
-`kv_proj` tensor and a runtime-side split) would fork every backend's
-weight loading.
+The runtime sees the standard split layout and stays one codepath.
+The duplication cost (`kv_dim × hidden × bytes_per_elem` per K=V
+layer) is the price of avoiding a runtime fork in every backend's
+weight loader.
 
-The import sets `attention_k_eq_v = true` in the config so deduplicating
-storage is a possible later optimisation (load once, alias both names).
+`attention_k_eq_v = true` is preserved in the config so storage
+deduplication (load once, alias both names) is a possible later
+optimization.
 
-## Shape normalization
+### Config
 
-GGUF stores weight matrices as `[in_features, out_features]` in
-metadata, but physical layout is row-major by first dim = `[out, in]`.
-Import records the CANONICAL shape `[out, in]` in `.model` tensors
-section, matching physical layout.
+The `.model` config is flat TOML keyed by the schema in
+[run/specs/format.md](../../run/specs/format.md). Source variance
+collapses into that schema:
 
-Embed table: canonical shape is `[vocab, hidden]`, row-major.
+- VL models with nested `text_config` / `vision_config` flatten into
+  `[architecture]` (text tower) and `[architecture.vision]` (vision
+  tower). **Implementation status**: today `mi import` only emits
+  `[architecture]`; the vision sub-table is unimplemented.
+- Numeric types narrow to f32 (RoPE θ, eps, etc.); f64 source values
+  round-trip through f32 on write.
+- Boolean flags use TOML `true`/`false`, not 0/1.
 
-Inconsistent sources must be detected: if an imported tensor's
-declared shape × dtype ≠ byte count in source, raise error.
+### Special tokens
 
-## Dtype normalization
+Extracted from the source's tokenizer metadata:
 
-```
-BF16 → F16                       # always; BF16 not kept at runtime
-Q4_0 → Q4_K (optional)           # higher precision; lossless upgrade
-Q4_1 → Q4_K                      # Q4_1 deprecated
-IQ2/IQ3/IQ4 → corresponding K-quant
-```
+- GGUF: `tokenizer.ggml.tokens` array + `tokenizer.ggml.eos_token_id`,
+  `bos_token_id`, etc.
+- HF: `tokenizer.json` (incl. `added_tokens` for chat-template
+  specials like `<|im_start|>`) + `special_tokens_map.json`.
 
-The normalization is computed at import time, not runtime. Runtime
-kernels operate on the canonical dtype set only.
+Every token matching `<|.+|>` plus a few common patterns (`[CLS]`,
+`[MASK]`) is registered as an added/special token in the vocab
+section with a model-valid ID.
 
-Rationale for Q4_0 → Q4_K: empirically 25% lower RMSE per weight
-for the same storage. K-quants are always preferred.
+## Validation
 
-## Config normalization
+Before writing the `.model`, import verifies the invariants hold.
+A failed check aborts the write — no partial `.model` ever lands on
+disk.
 
-### Flatten nested VL configs
+Today's validation:
 
-HuggingFace VL models have:
-```json
-{
-  "model_type": "qwen2_vl",
-  "text_config": {"hidden_size": 1536, ...},
-  "vision_config": {"hidden_size": 1280, ...}
-}
-```
+- **Tensor completeness**: missing required tensors for the declared
+  `model_type` raises an error before write.
 
-Import writes:
-```toml
-model_type = "qwen2_vl"
+Planned (declared in this spec, **not yet implemented**):
 
-[architecture]
-hidden_size = 1536                # from text_config
-... other text fields ...
+- Shape consistency against config (embed must be
+  `[vocab_size, hidden_size]`; Q proj must be
+  `[num_heads × head_dim, hidden_size]`).
+- Dtype uniformity within a tensor (mixed dtypes per tensor
+  unsupported; mixed across tensors is fine).
+- Weight count: sum of tensor element counts matches a per-arch
+  budget derived from the config.
+- Round-trip token test: encode → decode of `"hello world"`
+  reproduces the input within tokenizer lossiness.
+- EOS-id coherence: the tokenizer's EOS id matches the config.
 
-[architecture.vision]
-hidden_size = 1280
-... other vision fields ...
-```
+When the planned checks ship, this list flips to `today's validation`
+and the planned section shrinks.
 
-The root `[architecture]` is the text tower; vision tower has its
-own subsection. Curated VL codepath reads both.
+## Failure modes
 
-### RMS norm epsilon convention
+| Failure | Behavior |
+|---|---|
+| Source tensor with no name mapping | abort with the actionable message above |
+| Declared shape × dtype ≠ source byte count | abort |
+| Required tensor missing for `model_type` | abort |
+| Tokenizer file missing | abort |
+| Source format not in [Inputs](#inputs) | abort with a note pointing to this section |
 
-Source files may encode eps as:
-- `rms_norm_eps = 0.000001` (direct)
-- `rms_norm_eps = 1000000` (inverted, some older imports)
+Partial output is never written.
 
-Import canonicalizes to direct form:
-```
-if value >= 1.0:
-    canonical_eps = 1.0 / value
-else:
-    canonical_eps = value
-```
+## Cross-references
 
-`.model` config always stores direct form.
-
-### Rope theta
-
-Source may be f64; store as f32 in config. Typical values: 10000,
-500000, 1000000, 10000000.
-
-## Special tokens
-
-Extract from source's tokenizer metadata:
-- GGUF: `tokenizer.ggml.tokens` array + `tokenizer.ggml.eos_token_id` etc.
-- HF: `tokenizer.json` + `special_tokens_map.json`
-
-Every token matching `<|.+|>` (and a few common patterns like `[CLS]`,
-`[MASK]`) is registered as an added/special token in the vocab section.
-
-Import verifies that the tokenizer can re-tokenize canonical inputs
-to produce the EOS token id(s) specified in config.
-
-## Validation before writing
-
-Before writing the `.model`, import runs checks:
-
-1. **Tensor completeness** for declared `model_type`. E.g. LlamaStyle
-   requires `model.embed_tokens.weight`, `model.norm.weight`,
-   `lm_head.weight` (or `tie_word_embeddings=true`), and per-layer
-   set. Missing = fail.
-
-2. **Shape consistency** against config. Embed must be
-   `[vocab_size, hidden_size]`. Q proj must be
-   `[num_heads * head_dim, hidden_size]`. Any mismatch = fail.
-
-3. **Dtype uniformity within tensor**. Mixed dtypes per tensor not
-   supported (mixed per-tensor across the model is fine).
-
-4. **Weight count** declared in config matches sum of tensor element
-   counts.
-
-5. **Round-trip token test**: encode → decode a known string (e.g.
-   `"hello world"`) should reproduce input (within tokenizer's
-   lossiness).
-
-Failed validation: import exits with list of issues. No partial
-`.model` is written.
-
-## Multi-shard GGUF
-
-Large models (13B+) come as multiple GGUF shards (`.gguf.00001-of-N`).
-Import reads all shards, concatenates their tensor tables, writes
-single `.model`.
-
-## Import command
-
-```
-cyb-llm import SOURCE_DIR [--out OUTPUT.model] [--precision q4k|q6k|f16]
-cyb-llm fetch HF_REPO [--out OUTPUT.model]      # fetch HF + import
-```
-
-`fetch` pulls safetensors from HF; `import` converts a local dir or file.
-
-## Invariance test
-
-The ultimate validation: for any source model M, import M, then read
-back from `.model`, re-dequantize, compare with source:
-
-- Same set of tensor names after normalization
-- Same shapes (after canonical transposition)
-- Dequantized values within format tolerance (Q4_K: 1.5e-2 per weight)
-- Same tokenizer output for test strings
-
-Import that fails this is broken. [test.md](../../run/specs/test.md) defines the
-specific test.
+- [run/specs/format.md](../../run/specs/format.md) — `.model` file layout (the writer half lives in `import/cyb_format.rs`)
+- [run/specs/tensor.md](../../run/specs/tensor.md) — canonical tensor names + shapes
+- [run/specs/quant.md](../../run/specs/quant.md) — quantization bit layouts
+- [run/specs/test.md](../../run/specs/test.md) — tier-0 invariance test (round-trip a source through import and read it back; assert names, shapes, dequantized values within tolerance)
+- [graph.md](graph.md) — when a `~~~graph` section is emitted at import time
+- [cli.md](cli.md) — the `mi` binary surface
