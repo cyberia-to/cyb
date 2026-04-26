@@ -1,7 +1,7 @@
 import { Coin } from '@cosmjs/launchpad';
 
 import BigNumber from 'bignumber.js';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useSelector } from 'react-redux';
 import { CHAIN_ID, DEFAULT_GAS_LIMITS } from 'src/constants/config';
 import { useIbcDenom } from 'src/contexts/ibcDenom';
@@ -57,6 +57,7 @@ function ActionBar({ stateActionBar }: Props) {
   const { signingClient, signer } = useSigningClient();
   const { tracesDenom } = useIbcDenom();
   const [stage, setStage] = useState(STAGE_INIT);
+  const confirmedRef = useRef(false);
   const [txHash, setTxHash] = useState<Option<string>>(undefined);
   const [_txHashIbc, setTxHashIbc] = useState(null);
   const [_linkIbcTxs, setLinkIbcTxs] = useState<Option<string>>(undefined);
@@ -78,32 +79,36 @@ function ActionBar({ stateActionBar }: Props) {
   } = stateActionBar;
 
   useEffect(() => {
+    if (!queryClient || !txHash || confirmedRef.current) return;
+
     let cancelled = false;
 
     const confirmTx = async () => {
-      if (queryClient && txHash) {
-        setStage(STAGE_CONFIRMING);
-        const response = await queryClient.getTx(txHash);
-        console.log('response :>> ', response);
-        if (cancelled) return;
-        if (response !== null) {
-          if (response.code === 0) {
-            setStage(STAGE_CONFIRMED);
-            setTxHeight(response.height);
-            if (updateFunc) {
-              updateFunc();
-            }
-            return;
+      if (cancelled || confirmedRef.current) return;
+
+      setStage(STAGE_CONFIRMING);
+      const response = await queryClient.getTx(txHash);
+      console.log('response :>> ', response);
+      if (cancelled || confirmedRef.current) return;
+
+      if (response !== null) {
+        if (response.code === 0) {
+          confirmedRef.current = true;
+          setStage(STAGE_CONFIRMED);
+          setTxHeight(response.height);
+          if (updateFunc) {
+            updateFunc();
           }
-          if (response.code) {
-            setStage(STAGE_ERROR);
-            setTxHeight(response.height);
-            setErrorMessage(friendlyErrorMessage(response.rawLog));
-            return;
-          }
+          return;
         }
-        setTimeout(confirmTx, 1500);
+        if (response.code) {
+          setStage(STAGE_ERROR);
+          setTxHeight(response.height);
+          setErrorMessage(friendlyErrorMessage(response.rawLog));
+          return;
+        }
       }
+      setTimeout(confirmTx, 1500);
     };
     confirmTx();
 
@@ -259,6 +264,7 @@ function ActionBar({ stateActionBar }: Props) {
   };
 
   const clearState = () => {
+    confirmedRef.current = false;
     setStage(STAGE_INIT);
     setTxHash(undefined);
     setTxHeight(undefined);
