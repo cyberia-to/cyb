@@ -64,9 +64,18 @@ pub fn build_tokenizer(lm: &LoadedModel) -> Result<Tokenizer, FormatError> {
         (fmt, tpl)
     };
 
+    // BOS token discovery: find the conventional bos token by name. Gemma
+    // family uses `<bos>`, qwen/qwen2/qwen3 historically have no BOS but
+    // some checkpoints want `<|endoftext|>` as a soft-bos. Look up by name
+    // in vocab; if found, the runtime auto-prepends it on every encode.
+    let bos_token_id = ["<bos>"]
+        .iter()
+        .find_map(|name| bpe.id(name));
+
     Ok(Tokenizer {
         bpe,
         eos_token_ids,
+        bos_token_id,
         chat_format,
         chat_template,
     })

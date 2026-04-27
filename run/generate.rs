@@ -193,8 +193,16 @@ pub fn generate(
 ) -> Result<(String, usize), BackendError> {
     model.reset();
 
-    // Tokenize prompt
-    let prompt_ids = tok.encode(prompt);
+    // Tokenize prompt. Auto-prepend BOS if the model expects one (gemma
+    // family was trained with `<bos>` at start of every input; without it
+    // the model produces nonsense). Skip if the prompt already starts with
+    // the BOS token text (chat templates may include it explicitly).
+    let mut prompt_ids = tok.encode(prompt);
+    if let Some(bos) = tok.bos_token_id {
+        if prompt_ids.first() != Some(&bos) {
+            prompt_ids.insert(0, bos);
+        }
+    }
     log::debug!("prompt tokens: {}", prompt_ids.len());
     if std::env::var("RUN_DEBUG_TOKENS").is_ok() {
         let pieces: Vec<String> = prompt_ids

@@ -15,6 +15,10 @@ pub use loader::build_tokenizer;
 pub struct Tokenizer {
     pub bpe: Bpe,
     pub eos_token_ids: Vec<u32>,
+    /// BOS token id, when the model was trained to expect one prepended to
+    /// every input. Gemma family always; qwen3 with `<|endoftext|>`. None
+    /// for models trained without an explicit BOS marker.
+    pub bos_token_id: Option<u32>,
     pub chat_format: Option<String>,
     pub chat_template: Option<String>,
 }
