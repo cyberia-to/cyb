@@ -397,18 +397,42 @@ fn forward_layer(
     let mut acc_ffn = 0f64;
     let mut acc_residual = 0f64;
 
-    // 1. Input RmsNorm
+    // 1+2(+optionally qk_norm). For qwen3 (qk_norm + no bias), fuse the WHOLE
+    // chain (input_norm + qkv + qk_norm) into ONE command buffer.
     let t = Instant::now();
-    let normed = backend
-        .execute(&Op::RmsNorm { eps }, &[hidden, &layer.input_norm])?
-        .remove(0);
+    let no_bias = layer.q_proj_bias.is_none()
+        && layer.k_proj_bias.is_none()
+        && layer.v_proj_bias.is_none();
+    let (mut q, mut k, mut v, qk_norm_done) = if no_bias {
+        if let (Some(qn), Some(kn)) = (&layer.q_norm, &layer.k_norm) {
+            let (qq, kk, vv) = backend.fused_norm_qkv_qknorm(
+                hidden,
+                &layer.input_norm,
+                &layer.q_proj.tensor,
+                &layer.k_proj.tensor,
+                &layer.v_proj.tensor,
+                qn, kn,
+                eps,
+                num_heads, kv_heads, head_dim,
+            )?;
+            (qq, kk, vv, true)
+        } else {
+            let qkv_outs = backend.fused_norm_quant_matmul_multi(
+                hidden, &layer.input_norm, eps,
+                &[&layer.q_proj.tensor, &layer.k_proj.tensor, &layer.v_proj.tensor],
+            )?;
+            let mut it = qkv_outs.into_iter();
+            (it.next().unwrap(), it.next().unwrap(), it.next().unwrap(), false)
+        }
+    } else {
+        let qkv_outs = backend.fused_norm_quant_matmul_multi(
+            hidden, &layer.input_norm, eps,
+            &[&layer.q_proj.tensor, &layer.k_proj.tensor, &layer.v_proj.tensor],
+        )?;
+        let mut it = qkv_outs.into_iter();
+        (it.next().unwrap(), it.next().unwrap(), it.next().unwrap(), false)
+    };
     acc_input_norm += t.elapsed().as_secs_f64() * 1000.0;
-
-    // 2. QKV projections — fused dequant+matmul on CPU.
-    let t = Instant::now();
-    let mut q = qw_matmul(&normed, &layer.q_proj, backend)?;
-    let mut k = qw_matmul(&normed, &layer.k_proj, backend)?;
-    let mut v = qw_matmul(&normed, &layer.v_proj, backend)?;
 
     // Attention biases (Qwen2)
     if let Some(bias) = &layer.q_proj_bias {
@@ -422,20 +446,20 @@ fn forward_layer(
     }
     acc_qkv_proj += t.elapsed().as_secs_f64() * 1000.0;
 
-    // QK-norm (Qwen3) — per-head RmsNorm
+    // QK-norm (Qwen3) — per-head RmsNorm. Batched: ONE command buffer for both.
+    // Skipped if already done by fused_norm_qkv_qknorm above.
     let t = Instant::now();
-    if let (Some(qn), Some(kn)) = (&layer.q_norm, &layer.k_norm) {
-        // Reshape Q: [1, num_heads * head_dim] → [num_heads, head_dim]
-        let q_reshaped = Tensor::from_f32(vec![num_heads, head_dim], q.to_f32_vec());
-        let k_reshaped = Tensor::from_f32(vec![kv_heads, head_dim], k.to_f32_vec());
-        q = backend
-            .execute(&Op::RmsNorm { eps }, &[&q_reshaped, qn])?
-            .remove(0);
-        k = backend
-            .execute(&Op::RmsNorm { eps }, &[&k_reshaped, kn])?
-            .remove(0);
-        q = Tensor::from_f32(vec![1, num_heads * head_dim], q.to_f32_vec());
-        k = Tensor::from_f32(vec![1, kv_heads * head_dim], k.to_f32_vec());
+    if !qk_norm_done {
+        if let (Some(qn), Some(kn)) = (&layer.q_norm, &layer.k_norm) {
+            let q_reshaped = Tensor::from_f32(vec![num_heads, head_dim], q.to_f32_vec());
+            let k_reshaped = Tensor::from_f32(vec![kv_heads, head_dim], k.to_f32_vec());
+            let normed = backend.rms_norm_multi(&[(&q_reshaped, qn), (&k_reshaped, kn)], eps)?;
+            let mut it = normed.into_iter();
+            let q_n = it.next().unwrap();
+            let k_n = it.next().unwrap();
+            q = Tensor::from_f32(vec![1, num_heads * head_dim], q_n.to_f32_vec());
+            k = Tensor::from_f32(vec![1, kv_heads * head_dim], k_n.to_f32_vec());
+        }
     }
     acc_qk_norm += t.elapsed().as_secs_f64() * 1000.0;
 
@@ -607,32 +631,29 @@ fn forward_layer(
         .remove(0);
     acc_residual += t.elapsed().as_secs_f64() * 1000.0;
 
-    // 8. Post-attention RmsNorm + FFN (SwiGLU)
+    // 8+9. Post_norm + gate_up batched; silu*up on CPU; down_proj separate.
     let t = Instant::now();
-    let normed2 = backend
-        .execute(&Op::RmsNorm { eps }, &[&hidden1, &layer.post_norm])?
-        .remove(0);
+    let gate_up = backend.fused_norm_quant_matmul_multi(
+        &hidden1,
+        &layer.post_norm,
+        eps,
+        &[&layer.gate_proj.tensor, &layer.up_proj.tensor],
+    )?;
     acc_post_norm += t.elapsed().as_secs_f64() * 1000.0;
 
-    // FFN: 3 quant matmuls + elementwise activation(gate) * up.
-    // Activation per `config.hidden_activation` (LlamaStyle: SiLU; Gemma uses GELU).
     let t = Instant::now();
-    let gate = qw_matmul(&normed2, &layer.gate_proj, backend)?;
-    let up = qw_matmul(&normed2, &layer.up_proj, backend)?;
-    let mut mid = gate.to_f32_vec();
-    let up_vec = up.to_f32_vec();
+    let mut gate_up_iter = gate_up.into_iter();
+    let gate = gate_up_iter.next().unwrap();
+    let up = gate_up_iter.next().unwrap();
     use crate::arch::decoder::config::HiddenActivation;
     let act: fn(f32) -> f32 = match config.hidden_activation {
         HiddenActivation::Silu => |x| x / (1.0 + (-x).exp()),
         HiddenActivation::GeluTanh => |x| {
-            // 0.5 x (1 + tanh(sqrt(2/π) (x + 0.044715 x³)))
             let c = (2.0_f32 / std::f32::consts::PI).sqrt();
             0.5 * x * (1.0 + (c * (x + 0.044715 * x * x * x)).tanh())
         },
         HiddenActivation::GeluErf => |x| {
-            // 0.5 x (1 + erf(x / sqrt(2)))
             let inv_sqrt2 = 1.0_f32 / std::f32::consts::SQRT_2;
-            // libm erf via approximation matching cpu/activation.rs::erf_approx
             let z = x * inv_sqrt2;
             let sign = if z < 0.0 { -1.0 } else { 1.0 };
             let zabs = z.abs();
@@ -650,9 +671,9 @@ fn forward_layer(
             0.5 * x * (1.0 + sign * y)
         },
     };
-    for (m, u) in mid.iter_mut().zip(up_vec.iter()) {
-        *m = act(*m) * *u;
-    }
+    let mut mid = gate.to_f32_vec();
+    let up_vec = up.to_f32_vec();
+    for (m, u) in mid.iter_mut().zip(up_vec.iter()) { *m = act(*m) * *u; }
     let mid_t = Tensor::from_f32(gate.shape.clone(), mid);
     let mut ffn_out = qw_matmul(&mid_t, &layer.down_proj, backend)?;
     // Gemma 2/3/4: norm applied to FFN output before residual.

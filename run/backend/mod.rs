@@ -160,4 +160,126 @@ pub trait Backend: Send + Sync {
         let k = w.shape[1];
         crate::backend::cpu::matmul_quant_f32(x, bytes, w.dtype, n, k)
     }
+
+    /// Batched fused dequant+matmul: y_i = x @ w_i^T for each w in `ws`.
+    ///
+    /// All matmuls share the same `x`. GPU backends should encode every
+    /// dispatch into a single command buffer with one wait — saves the
+    /// fixed per-op submit overhead. Default: iterate `quant_matmul`.
+    fn quant_matmul_multi(
+        &self,
+        x: &Tensor,
+        ws: &[&Tensor],
+    ) -> Result<Vec<Tensor>, BackendError> {
+        ws.iter().map(|w| self.quant_matmul(x, w)).collect()
+    }
+
+    /// Batched RmsNorm: encode several independent norms into one command buffer.
+    /// Default: iterate.
+    fn rms_norm_multi(
+        &self,
+        pairs: &[(&Tensor, &Tensor)],
+        eps: f32,
+    ) -> Result<Vec<Tensor>, BackendError> {
+        pairs.iter()
+            .map(|(x, g)| self.execute(&crate::core::op::Op::RmsNorm { eps }, &[x, g]).map(|mut v| v.remove(0)))
+            .collect()
+    }
+
+    /// Fused RmsNorm followed by N quant matmuls against the normalized output.
+    /// GPU backends should encode all (norm + N matmuls) into one command buffer
+    /// with a single wait. Default: norm op + iterate quant_matmul.
+    fn fused_norm_quant_matmul_multi(
+        &self,
+        x: &Tensor,
+        gamma: &Tensor,
+        eps: f32,
+        ws: &[&Tensor],
+    ) -> Result<Vec<Tensor>, BackendError> {
+        let normed = self.execute(&crate::core::op::Op::RmsNorm { eps }, &[x, gamma])?
+            .remove(0);
+        self.quant_matmul_multi(&normed, ws)
+    }
+
+    /// Fused: RmsNorm(hidden) → q_proj/k_proj/v_proj → qk_norm(Q)/qk_norm(K).
+    /// Returns (q_norm, k_norm, v) in that order — all in ONE GPU command buffer.
+    /// Default: separate per-op call chain.
+    fn fused_norm_qkv_qknorm(
+        &self,
+        hidden: &Tensor,
+        input_norm_gamma: &Tensor,
+        q_proj_w: &Tensor,
+        k_proj_w: &Tensor,
+        v_proj_w: &Tensor,
+        q_norm_gamma: &Tensor,
+        k_norm_gamma: &Tensor,
+        eps: f32,
+        num_q_heads: usize,
+        num_k_heads: usize,
+        head_dim: usize,
+    ) -> Result<(Tensor, Tensor, Tensor), BackendError> {
+        let qkv = self.fused_norm_quant_matmul_multi(
+            hidden, input_norm_gamma, eps, &[q_proj_w, k_proj_w, v_proj_w],
+        )?;
+        let mut it = qkv.into_iter();
+        let q = it.next().unwrap();
+        let k = it.next().unwrap();
+        let v = it.next().unwrap();
+        // Reshape q/k for per-head norm. For host tensors this is metadata-only.
+        let q_reshaped = Tensor { shape: vec![num_q_heads, head_dim], dtype: q.dtype, data: q.data };
+        let k_reshaped = Tensor { shape: vec![num_k_heads, head_dim], dtype: k.dtype, data: k.data };
+        let normed = self.rms_norm_multi(
+            &[(&q_reshaped, q_norm_gamma), (&k_reshaped, k_norm_gamma)],
+            eps,
+        )?;
+        let mut nit = normed.into_iter();
+        let q_n = nit.next().unwrap();
+        let k_n = nit.next().unwrap();
+        // Reshape back
+        let q_flat = Tensor { shape: vec![1, num_q_heads * head_dim], dtype: q_n.dtype, data: q_n.data };
+        let k_flat = Tensor { shape: vec![1, num_k_heads * head_dim], dtype: k_n.dtype, data: k_n.data };
+        Ok((q_flat, k_flat, v))
+    }
+
+    /// Fused FFN: post_norm(hidden) → gate, up → silu(gate)*up → down_proj.
+    /// Single GPU command buffer, single wait. Default: per-op on CPU.
+    fn fused_norm_swiglu_down(
+        &self,
+        hidden: &Tensor,
+        post_norm_gamma: &Tensor,
+        gate_w: &Tensor,
+        up_w: &Tensor,
+        down_w: &Tensor,
+        eps: f32,
+    ) -> Result<Tensor, BackendError> {
+        let gate_up = self.fused_norm_quant_matmul_multi(
+            hidden, post_norm_gamma, eps, &[gate_w, up_w],
+        )?;
+        let mut it = gate_up.into_iter();
+        let gate = it.next().unwrap();
+        let up = it.next().unwrap();
+        let mid = self.silu_mul(&gate, &up)?;
+        self.quant_matmul(&mid, down_w)
+    }
+
+    /// Fused SiLU(gate) * up. Default: split into two ops on CPU.
+    /// GPU backends override with a single kernel — half the memory bandwidth
+    /// and a single dispatch instead of two.
+    fn silu_mul(&self, gate: &Tensor, up: &Tensor) -> Result<Tensor, BackendError> {
+        // Default falls back to host f32 path.
+        let g = if let Some(b) = gate.as_host_bytes() {
+            bytemuck::cast_slice::<u8, f32>(b).to_vec()
+        } else {
+            self.download_f32(gate)?
+        };
+        let u = if let Some(b) = up.as_host_bytes() {
+            bytemuck::cast_slice::<u8, f32>(b).to_vec()
+        } else {
+            self.download_f32(up)?
+        };
+        let out: Vec<f32> = g.iter().zip(u.iter())
+            .map(|(g, u)| (g / (1.0 + (-g).exp())) * u)
+            .collect();
+        Ok(Tensor::from_f32(gate.shape.clone(), out))
+    }
 }

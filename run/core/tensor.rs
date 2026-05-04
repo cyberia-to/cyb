@@ -43,6 +43,10 @@ pub struct Tensor {
 pub trait BackendData: Send + Sync + std::any::Any {
     fn backend_name(&self) -> &'static str;
     fn as_any(&self) -> &dyn std::any::Any;
+    /// Zero-copy host view of the bytes, if the backend's buffer is in
+    /// CPU-accessible memory (e.g. Metal storageModeShared).
+    /// Default `None` — host code must call backend.download_f32 explicitly.
+    fn try_as_host_bytes(&self) -> Option<&[u8]> { None }
 }
 
 #[derive(Clone)]
@@ -135,15 +139,15 @@ impl Tensor {
         self.shape.len()
     }
 
-    /// Access host bytes or error if backend-resident.
+    /// Access host bytes (host-resident OR shared-memory backend).
     pub fn as_host_bytes(&self) -> Option<&[u8]> {
         match &self.data {
             TensorData::Host(b) => Some(b.as_slice()),
-            TensorData::Backend(_) => None,
+            TensorData::Backend(b) => b.try_as_host_bytes(),
         }
     }
 
-    /// Interpret host bytes as f32 slice (panics if dtype != F32 or backend-resident).
+    /// Interpret host bytes as f32 slice (panics if dtype != F32 or unreachable).
     /// Use `try_as_f32` for fallible access.
     pub fn as_f32(&self) -> &[f32] {
         self.try_as_f32().expect("as_f32: invariant violated")
@@ -158,9 +162,12 @@ impl Tensor {
         }
         match &self.data {
             TensorData::Host(b) => Ok(bytemuck::cast_slice(b.as_slice())),
-            TensorData::Backend(b) => Err(TensorError::NotHostResident {
-                backend: b.backend_name(),
-            }),
+            TensorData::Backend(b) => match b.try_as_host_bytes() {
+                Some(bytes) => Ok(bytemuck::cast_slice(bytes)),
+                None => Err(TensorError::NotHostResident {
+                    backend: b.backend_name(),
+                }),
+            },
         }
     }
 
