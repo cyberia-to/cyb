@@ -107,13 +107,9 @@ pub fn dispatch(
 
     #[repr(C)]
     #[derive(Clone, Copy)]
-    struct Params {
-        n_rows: u32,
-        head_dim: u32,
-        rope_dim: u32,
-        pad: u32,
-    }
-    let params = Params { n_rows, head_dim, rope_dim, pad: 0 };
+    struct Dims { n_rows: u32, rope_half: u32, pad0: u32, pad1: u32 }
+    let dims = Dims { n_rows, rope_half: rope_dim / 2, pad0: 0, pad1: 0 };
+    let half = (head_dim / 2) as usize;
 
     unsafe {
         aruminium::autorelease_pool(|| {
@@ -124,12 +120,12 @@ pub fn dispatch(
                 enc.bind_buffer(sin_t, 0, 2);
                 enc.bind_buffer(&out, 0, 3);
                 let bytes = std::slice::from_raw_parts(
-                    &params as *const Params as *const u8,
-                    std::mem::size_of::<Params>(),
+                    &dims as *const Dims as *const u8,
+                    std::mem::size_of::<Dims>(),
                 );
                 enc.push(bytes, 4);
-                let half = (head_dim / 2) as usize;
-                enc.launch_groups((n_rows as usize, 1, 1), (half, 1, 1));
+                // 2D dispatch: (half threads, n_rows groups)
+                enc.launch_groups((1, n_rows as usize, 1), (half, 1, 1));
             });
         });
     }
