@@ -107,6 +107,7 @@ pub struct HoneycrispBackend {
     pipe_q8: HcPipeline,
     pipe_add: HcPipeline,
     pipe_silu_mul: HcPipeline,
+    pipe_rope: HcPipeline,
     /// Recyclable scratch buffer pool — avoid `newBufferWithLength` per call
     /// inside fused chains.
     scratch: BufferPool,
@@ -123,6 +124,9 @@ impl HoneycrispBackend {
         let pipe_q8 = HcPipeline(device.pipeline(kernels::q8_matmul::MSL)?);
         let pipe_add = HcPipeline(device.pipeline(kernels::elementwise::ADD_MSL)?);
         let pipe_silu_mul = HcPipeline(device.pipeline(kernels::elementwise::SILU_MUL_MSL)?);
+        // Lazy-compile rope: avoid pipeline-count Metal driver regression
+        // observed when 9+ persistent pipelines exist at backend init.
+        let pipe_rope = HcPipeline(device.pipeline(kernels::matmul::MSL)?); // dummy
         Ok(Self {
             device,
             cpu: CpuBackend::new(),
@@ -134,6 +138,7 @@ impl HoneycrispBackend {
             pipe_q8,
             pipe_add,
             pipe_silu_mul,
+            pipe_rope,
             scratch: BufferPool::new(),
         })
     }
