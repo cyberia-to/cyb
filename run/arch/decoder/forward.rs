@@ -504,9 +504,13 @@ fn forward_layer(
     let total_seq = past_seq_len + 1;
     let _ = (total_seq, max_seq);
 
+    // GPU attention path is correct but currently slower in wall clock due to
+    // 1 extra batch wait per layer. It's the foundation for cross-layer batching
+    // (next step). Off by default — enable with MR_GPU_ATTN=1.
     let use_gpu_attn = backend.supports_gpu_attention()
-        && !config.family.v_norm_per_head     // Gemma-4 V-norm not yet on GPU
-        && layer.post_attn_norm.is_none();    // Gemma post-attn norm path not yet fused
+        && !config.family.v_norm_per_head
+        && layer.post_attn_norm.is_none()
+        && std::env::var("MR_GPU_ATTN").is_ok();
     // Fused attention path returns hidden1 (post-residual) directly,
     // bypassing the separate o_proj/residual blocks below.
     let mut hidden1_gpu: Option<Tensor> = None;
