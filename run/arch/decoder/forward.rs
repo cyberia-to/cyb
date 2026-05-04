@@ -495,187 +495,207 @@ fn forward_layer(
         .remove(0);
     acc_rope += t.elapsed().as_secs_f64() * 1000.0;
 
-    // 4. Append to KV cache, build full K and V views for attention.
-    // Families that apply RMSNorm-no-scale to V per head before caching
-    // (Gemma 4, via FamilyProfile::v_norm_per_head). Applied on EVERY
-    // layer (sliding and full alike).
-    let t = Instant::now();
-    let v_flat = if config.family.v_norm_per_head {
-        let mut v_data = v.to_f32_vec();
-        // Per-head RMSNorm without learned scale: divide each head's vector
-        // by sqrt(mean(x²) + eps).
-        let inv_d = 1.0 / head_dim as f32;
-        for h in 0..kv_heads {
-            let off = h * head_dim;
-            let mut sumsq = 0f32;
-            for j in 0..head_dim {
-                let val = v_data[off + j];
-                sumsq += val * val;
-            }
-            let rms = (sumsq * inv_d + eps).sqrt();
-            let scale = 1.0 / rms;
-            for j in 0..head_dim {
-                v_data[off + j] *= scale;
-            }
-        }
-        v_data
-    } else {
-        v.to_f32_vec()
-    };
-    let k_flat = k_roped.to_f32_vec();
-
-    // Cache layout: [kv_heads, max_seq, head_dim] flat row-major.
+    // 4-5. Attention. Use GPU path when backend supports it (KV cache stays
+    // GPU-resident, all of (kv_append + score + softmax + output) lives in
+    // ONE Metal command buffer). Falls back to per-token CPU pipeline.
     let max_seq = config.max_position_embeddings.min(8192);
-    for h in 0..kv_heads {
-        let src_base = h * head_dim;
-        let dst_base = h * max_seq * head_dim + past_seq_len * head_dim;
-        for d in 0..head_dim {
-            kv.0[dst_base + d] = k_flat[src_base + d];
-            kv.1[dst_base + d] = v_flat[src_base + d];
-        }
-    }
-    let total_seq = past_seq_len + 1;
-    acc_kv_append += t.elapsed().as_secs_f64() * 1000.0;
-
-    // Build expanded K and V for GQA attention: [num_heads, total_seq, head_dim]
-    let t = Instant::now();
-    let repeat = num_heads / kv_heads;
-    let mut k_full = vec![0f32; num_heads * total_seq * head_dim];
-    let mut v_full = vec![0f32; num_heads * total_seq * head_dim];
-    for h in 0..num_heads {
-        let kv_h = h / repeat;
-        for s in 0..total_seq {
-            for d in 0..head_dim {
-                let src = kv_h * max_seq * head_dim + s * head_dim + d;
-                let dst = h * total_seq * head_dim + s * head_dim + d;
-                k_full[dst] = kv.0[src];
-                v_full[dst] = kv.1[src];
-            }
-        }
-    }
-
-    // 5. Scaled dot-product attention (decode: single query)
-    // Q: [num_heads, 1, head_dim]; K,V: [num_heads, total_seq, head_dim]
-    // Per-layer attention scale: Gemma uses query_pre_attn_scalar (default
-    // 256) instead of head_dim, which matters for layers whose head_dim
-    // differs from that scalar (Gemma-4 full layers: head_dim=512 but
-    // scalar=256 → scaling = 1/sqrt(256), not 1/sqrt(512)).
-    let q_heads = q_roped.to_f32_vec();
-    let mut attn_out = vec![0f32; num_heads * head_dim];
     let scale = config.layer_attn_scale(layer_idx);
-    // Sliding-window mask (LlamaStyle+, Gemma 3/4 sliding layers): position s
-    // is valid iff s > current_pos - window. current_pos = total_seq - 1.
-    // Spec: specs/arch.md §"Sliding window attention"
-    let window_start: Option<usize> = sliding_window.map(|w| total_seq.saturating_sub(w));
+    let window: u32 = sliding_window.map(|w| w as u32).unwrap_or(0);
+    let total_seq = past_seq_len + 1;
+    let _ = (total_seq, max_seq);
 
-    for h in 0..num_heads {
-        // scores[s] = sum_d Q[h,d] * K[h,s,d] * scale
-        let mut scores = vec![0f32; total_seq];
-        let q_off = h * head_dim;
-        let kv_off = h * total_seq * head_dim;
-        for s in 0..total_seq {
-            let mut acc = 0f32;
+    let use_gpu_attn = backend.supports_gpu_attention()
+        && !config.family.v_norm_per_head     // Gemma-4 V-norm not yet on GPU
+        && layer.post_attn_norm.is_none();    // Gemma post-attn norm path not yet fused
+    // Fused attention path returns hidden1 (post-residual) directly,
+    // bypassing the separate o_proj/residual blocks below.
+    let mut hidden1_gpu: Option<Tensor> = None;
+    let attn_tensor = if use_gpu_attn {
+        let t = Instant::now();
+        let q_for_attn = Tensor { shape: vec![num_heads, head_dim], dtype: q_roped.dtype, data: q_roped.data.clone() };
+        let k_for_attn = Tensor { shape: vec![kv_heads,  head_dim], dtype: k_roped.dtype, data: k_roped.data.clone() };
+        let v_for_attn = Tensor { shape: vec![kv_heads,  head_dim], dtype: v.dtype,       data: v.data.clone() };
+        let h1 = backend.fused_attn_oproj_residual(
+            &q_for_attn, &k_for_attn, &v_for_attn,
+            hidden, &layer.o_proj.tensor,
+            layer_idx, past_seq_len,
+            num_heads as u32, kv_heads as u32, head_dim as u32, max_seq as u32,
+            scale, window,
+        )?;
+        acc_kv_append += t.elapsed().as_secs_f64() * 1000.0;
+        acc_attention += 0.0;
+        hidden1_gpu = Some(h1);
+        // attn_tensor placeholder — unused on GPU path
+        Tensor::from_f32(vec![1, num_heads * head_dim], vec![0.0; num_heads * head_dim])
+    } else {
+        // CPU path (legacy)
+        let t = Instant::now();
+        let v_flat = if config.family.v_norm_per_head {
+            let mut v_data = v.to_f32_vec();
+            let inv_d = 1.0 / head_dim as f32;
+            for h in 0..kv_heads {
+                let off = h * head_dim;
+                let mut sumsq = 0f32;
+                for j in 0..head_dim {
+                    let val = v_data[off + j];
+                    sumsq += val * val;
+                }
+                let rms = (sumsq * inv_d + eps).sqrt();
+                let scale_v = 1.0 / rms;
+                for j in 0..head_dim {
+                    v_data[off + j] *= scale_v;
+                }
+            }
+            v_data
+        } else {
+            v.to_f32_vec()
+        };
+        let k_flat = k_roped.to_f32_vec();
+        for h in 0..kv_heads {
+            let src_base = h * head_dim;
+            let dst_base = h * max_seq * head_dim + past_seq_len * head_dim;
             for d in 0..head_dim {
-                acc += q_heads[q_off + d] * k_full[kv_off + s * head_dim + d];
-            }
-            scores[s] = acc * scale;
-        }
-        // Causal mask: scores[s] valid only for s <= past_seq_len
-        // During decode (total_seq = past_seq_len+1), all positions ≤ current, no mask needed.
-        // Sliding-window mask: zero out positions outside the window.
-        // Use -1e4 rather than NEG_INFINITY: exp(-1e4) ≈ 0 for F32 and avoids
-        // -inf arithmetic in F16 GPU paths (NEG_INFINITY - NEG_INFINITY = NaN).
-        if let Some(start) = window_start {
-            for s in 0..start {
-                scores[s] = -1e4;
+                kv.0[dst_base + d] = k_flat[src_base + d];
+                kv.1[dst_base + d] = v_flat[src_base + d];
             }
         }
-        // Softmax over scores
-        let max_s = scores.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
-        let mut sum = 0f32;
-        for s in scores.iter_mut() {
-            *s = (*s - max_s).exp();
-            sum += *s;
-        }
-        for s in scores.iter_mut() {
-            *s /= sum;
-        }
-        // attn_out[h,d] = sum_s scores[s] * V[h,s,d]
-        let out_off = h * head_dim;
-        for s in 0..total_seq {
-            let v_row = &v_full[kv_off + s * head_dim..kv_off + (s + 1) * head_dim];
-            for d in 0..head_dim {
-                attn_out[out_off + d] += scores[s] * v_row[d];
+        acc_kv_append += t.elapsed().as_secs_f64() * 1000.0;
+
+        let t = Instant::now();
+        let repeat = num_heads / kv_heads;
+        let mut k_full = vec![0f32; num_heads * total_seq * head_dim];
+        let mut v_full = vec![0f32; num_heads * total_seq * head_dim];
+        for h in 0..num_heads {
+            let kv_h = h / repeat;
+            for s in 0..total_seq {
+                for d in 0..head_dim {
+                    let src = kv_h * max_seq * head_dim + s * head_dim + d;
+                    let dst = h * total_seq * head_dim + s * head_dim + d;
+                    k_full[dst] = kv.0[src];
+                    v_full[dst] = kv.1[src];
+                }
             }
         }
-    }
-
-    acc_attention += t.elapsed().as_secs_f64() * 1000.0;
-
-    // 6. Output projection — quant matmul.
-    let t = Instant::now();
-    let attn_tensor = Tensor::from_f32(vec![1, num_heads * head_dim], attn_out);
-    let mut attn_proj = qw_matmul(&attn_tensor, &layer.o_proj, backend)?;
-    // Gemma 2/3/4: norm applied to attention output before residual.
-    if let Some(ref n) = layer.post_attn_norm {
-        attn_proj = backend
-            .execute(&Op::RmsNorm { eps }, &[&attn_proj, n])?
-            .remove(0);
-    }
-    acc_o_proj += t.elapsed().as_secs_f64() * 1000.0;
-
-    // 7. Residual
-    let t = Instant::now();
-    let hidden1 = backend
-        .execute(&Op::Add, &[hidden, &attn_proj])?
-        .remove(0);
-    acc_residual += t.elapsed().as_secs_f64() * 1000.0;
-
-    // 8+9. Post_norm + gate_up batched; silu*up on CPU; down_proj separate.
-    let t = Instant::now();
-    let gate_up = backend.fused_norm_quant_matmul_multi(
-        &hidden1,
-        &layer.post_norm,
-        eps,
-        &[&layer.gate_proj.tensor, &layer.up_proj.tensor],
-    )?;
-    acc_post_norm += t.elapsed().as_secs_f64() * 1000.0;
-
-    let t = Instant::now();
-    let mut gate_up_iter = gate_up.into_iter();
-    let gate = gate_up_iter.next().unwrap();
-    let up = gate_up_iter.next().unwrap();
-    use crate::arch::decoder::config::HiddenActivation;
-    let act: fn(f32) -> f32 = match config.hidden_activation {
-        HiddenActivation::Silu => |x| x / (1.0 + (-x).exp()),
-        HiddenActivation::GeluTanh => |x| {
-            let c = (2.0_f32 / std::f32::consts::PI).sqrt();
-            0.5 * x * (1.0 + (c * (x + 0.044715 * x * x * x)).tanh())
-        },
-        HiddenActivation::GeluErf => |x| {
-            let inv_sqrt2 = 1.0_f32 / std::f32::consts::SQRT_2;
-            let z = x * inv_sqrt2;
-            let sign = if z < 0.0 { -1.0 } else { 1.0 };
-            let zabs = z.abs();
-            let p = 0.327_591_1_f32;
-            let a1 = 0.254_829_592_f32;
-            let a2 = -0.284_496_736_f32;
-            let a3 = 1.421_413_741_f32;
-            let a4 = -1.453_152_027_f32;
-            let a5 = 1.061_405_429_f32;
-            let t_ = 1.0 / (1.0 + p * zabs);
-            let y = 1.0
-                - ((((a5 * t_ + a4) * t_ + a3) * t_ + a2) * t_ + a1)
-                    * t_
-                    * (-zabs * zabs).exp();
-            0.5 * x * (1.0 + sign * y)
-        },
+        let q_heads = q_roped.to_f32_vec();
+        let mut attn_out = vec![0f32; num_heads * head_dim];
+        let window_start: Option<usize> = sliding_window.map(|w| total_seq.saturating_sub(w));
+        for h in 0..num_heads {
+            let mut scores = vec![0f32; total_seq];
+            let q_off = h * head_dim;
+            let kv_off = h * total_seq * head_dim;
+            for s in 0..total_seq {
+                let mut acc = 0f32;
+                for d in 0..head_dim {
+                    acc += q_heads[q_off + d] * k_full[kv_off + s * head_dim + d];
+                }
+                scores[s] = acc * scale;
+            }
+            if let Some(start) = window_start {
+                for s in 0..start { scores[s] = -1e4; }
+            }
+            let max_s = scores.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
+            let mut sum = 0f32;
+            for s in scores.iter_mut() { *s = (*s - max_s).exp(); sum += *s; }
+            for s in scores.iter_mut() { *s /= sum; }
+            let out_off = h * head_dim;
+            for s in 0..total_seq {
+                let v_row = &v_full[kv_off + s * head_dim..kv_off + (s + 1) * head_dim];
+                for d in 0..head_dim {
+                    attn_out[out_off + d] += scores[s] * v_row[d];
+                }
+            }
+        }
+        acc_attention += t.elapsed().as_secs_f64() * 1000.0;
+        Tensor::from_f32(vec![1, num_heads * head_dim], attn_out)
     };
-    let mut mid = gate.to_f32_vec();
-    let up_vec = up.to_f32_vec();
-    for (m, u) in mid.iter_mut().zip(up_vec.iter()) { *m = act(*m) * *u; }
-    let mid_t = Tensor::from_f32(gate.shape.clone(), mid);
-    let mut ffn_out = qw_matmul(&mid_t, &layer.down_proj, backend)?;
+
+    // 6+7. Output projection + residual. Skipped if hidden1_gpu was produced
+    // by the fused attention path above.
+    let hidden1 = if let Some(h1) = hidden1_gpu {
+        h1
+    } else {
+        let t = Instant::now();
+        let mut attn_proj = qw_matmul(&attn_tensor, &layer.o_proj, backend)?;
+        if let Some(ref n) = layer.post_attn_norm {
+            attn_proj = backend
+                .execute(&Op::RmsNorm { eps }, &[&attn_proj, n])?
+                .remove(0);
+        }
+        acc_o_proj += t.elapsed().as_secs_f64() * 1000.0;
+
+        let t = Instant::now();
+        let h1 = backend.execute(&Op::Add, &[hidden, &attn_proj])?.remove(0);
+        acc_residual += t.elapsed().as_secs_f64() * 1000.0;
+        h1
+    };
+
+    // 8+9. FFN. Try fully fused FFN (norm + gate + up + silu*up + down + residual)
+    // for SiLU; falls back to per-op for other activations.
+    use crate::arch::decoder::config::HiddenActivation;
+    let mut out_gpu: Option<Tensor> = None;
+    let mut ffn_out = match config.hidden_activation {
+        HiddenActivation::Silu if layer.post_ffw_norm.is_none() && layer.layer_output_scale.is_none() => {
+            let t = Instant::now();
+            let out = backend.fused_ffn_residual(
+                &hidden1,
+                &layer.post_norm,
+                &layer.gate_proj.tensor,
+                &layer.up_proj.tensor,
+                &layer.down_proj.tensor,
+                eps,
+            )?;
+            acc_post_norm += t.elapsed().as_secs_f64() * 1000.0;
+            out_gpu = Some(out);
+            // Placeholder ffn_out — unused on GPU path
+            Tensor::from_f32(hidden1.shape.clone(), vec![0.0; hidden_size])
+        }
+        _ => {
+            let t = Instant::now();
+            let gate_up = backend.fused_norm_quant_matmul_multi(
+                &hidden1,
+                &layer.post_norm,
+                eps,
+                &[&layer.gate_proj.tensor, &layer.up_proj.tensor],
+            )?;
+            acc_post_norm += t.elapsed().as_secs_f64() * 1000.0;
+
+            let t = Instant::now();
+            let mut gate_up_iter = gate_up.into_iter();
+            let gate = gate_up_iter.next().unwrap();
+            let up = gate_up_iter.next().unwrap();
+            let act: fn(f32) -> f32 = match config.hidden_activation {
+                HiddenActivation::Silu => |x| x / (1.0 + (-x).exp()),
+                HiddenActivation::GeluTanh => |x| {
+                    let c = (2.0_f32 / std::f32::consts::PI).sqrt();
+                    0.5 * x * (1.0 + (c * (x + 0.044715 * x * x * x)).tanh())
+                },
+                HiddenActivation::GeluErf => |x| {
+                    let inv_sqrt2 = 1.0_f32 / std::f32::consts::SQRT_2;
+                    let z = x * inv_sqrt2;
+                    let sign = if z < 0.0 { -1.0 } else { 1.0 };
+                    let zabs = z.abs();
+                    let p = 0.327_591_1_f32;
+                    let a1 = 0.254_829_592_f32;
+                    let a2 = -0.284_496_736_f32;
+                    let a3 = 1.421_413_741_f32;
+                    let a4 = -1.453_152_027_f32;
+                    let a5 = 1.061_405_429_f32;
+                    let t_ = 1.0 / (1.0 + p * zabs);
+                    let y = 1.0
+                        - ((((a5 * t_ + a4) * t_ + a3) * t_ + a2) * t_ + a1)
+                            * t_
+                            * (-zabs * zabs).exp();
+                    0.5 * x * (1.0 + sign * y)
+                },
+            };
+            let mut mid = gate.to_f32_vec();
+            let up_vec = up.to_f32_vec();
+            for (m, u) in mid.iter_mut().zip(up_vec.iter()) { *m = act(*m) * *u; }
+            let mid_t = Tensor::from_f32(gate.shape.clone(), mid);
+            let _ = t;
+            qw_matmul(&mid_t, &layer.down_proj, backend)?
+        }
+    };
     // Gemma 2/3/4: norm applied to FFN output before residual.
     if let Some(ref n) = layer.post_ffw_norm {
         ffn_out = backend
@@ -689,9 +709,12 @@ fn forward_layer(
     // is shape [1] in our .model.
     let _ = hidden_size;
     let t = Instant::now();
-    let mut out = backend
-        .execute(&Op::Add, &[&hidden1, &ffn_out])?
-        .remove(0);
+    let mut out = if let Some(o) = out_gpu {
+        // Fused FFN already added the residual on GPU.
+        o
+    } else {
+        backend.execute(&Op::Add, &[&hidden1, &ffn_out])?.remove(0)
+    };
     // Gemma-4 layer_scalar (HF: hidden_states *= self.layer_scalar). The
     // register_buffer is initialised to 1.0 but checkpoint values can differ
     // (per-layer trained scalar). Without this scale, activations explode

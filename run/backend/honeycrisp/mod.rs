@@ -33,6 +33,24 @@ struct HcBuffer {
 struct PooledBuf(aruminium::Buffer);
 unsafe impl Send for PooledBuf {}
 
+/// GPU KV cache + attention pipelines, lazily constructed for a specific
+/// (num_heads, kv_heads, head_dim, max_seq) tuple — needed because the
+/// attention kernel bakes those as MSL constants (avoids the rope-style
+/// Metal scheduler regression).
+struct AttnState {
+    num_heads: u32,
+    kv_heads: u32,
+    head_dim: u32,
+    max_seq: u32,
+    pipe_attn: HcPipeline,
+    pipe_kv_append: HcPipeline,
+    /// Per-layer K and V buffers, [kv_heads, max_seq, head_dim] f32.
+    k_caches: Vec<aruminium::Buffer>,
+    v_caches: Vec<aruminium::Buffer>,
+}
+unsafe impl Send for AttnState {}
+unsafe impl Sync for AttnState {}
+
 /// Tiny LIFO pool of Metal buffers keyed by a power-of-two size class.
 /// Avoids `newBufferWithLength` syscalls in the hot path.
 struct BufferPool {
@@ -112,6 +130,9 @@ pub struct HoneycrispBackend {
     /// Recyclable scratch buffer pool — avoid `newBufferWithLength` per call
     /// inside fused chains.
     scratch: BufferPool,
+    /// Lazily-built attention state (kv cache + attention/kv-append pipelines)
+    /// keyed by (num_heads, kv_heads, head_dim, max_seq). One model at a time.
+    attn: std::sync::Mutex<Option<AttnState>>,
 }
 
 impl HoneycrispBackend {
@@ -141,7 +162,65 @@ impl HoneycrispBackend {
             pipe_silu_mul,
             pipe_rope,
             scratch: BufferPool::new(),
+            attn: std::sync::Mutex::new(None),
         })
+    }
+
+    /// Lazily build attention state. Geometry change → full reset (drops cache).
+    /// Same geometry but more layers needed → APPEND new cache buffers without
+    /// touching existing ones (so per-layer state survives forward()).
+    fn attn_state(
+        &self,
+        num_heads: u32,
+        kv_heads: u32,
+        head_dim: u32,
+        max_seq: u32,
+        n_layers: usize,
+    ) -> Result<std::sync::MutexGuard<Option<AttnState>>, BackendError> {
+        let mut guard = self.attn.lock().unwrap();
+        let cache_bytes =
+            (kv_heads as usize) * (max_seq as usize) * (head_dim as usize) * 4;
+
+        let geometry_match = guard.as_ref().map(|s|
+            s.num_heads == num_heads
+                && s.kv_heads == kv_heads
+                && s.head_dim == head_dim
+                && s.max_seq == max_seq
+        ).unwrap_or(false);
+
+        if geometry_match {
+            // Same geometry — grow caches in place if needed.
+            let st = guard.as_mut().unwrap();
+            while st.k_caches.len() < n_layers {
+                st.k_caches.push(self.device.alloc(cache_bytes)?);
+                st.v_caches.push(self.device.alloc(cache_bytes)?);
+            }
+            return Ok(guard);
+        }
+
+        // Geometry changed (or first call) — rebuild everything.
+        let attn_msl = kernels::attention::msl_for(
+            num_heads as usize, kv_heads as usize, head_dim as usize, max_seq as usize,
+        );
+        let kv_msl = kernels::attention::kv_append_msl_for(
+            kv_heads as usize, head_dim as usize, max_seq as usize,
+        );
+        let pipe_attn = HcPipeline(self.device.pipeline(&attn_msl)?);
+        let pipe_kv_append = HcPipeline(self.device.pipeline(&kv_msl)?);
+
+        let mut k_caches = Vec::with_capacity(n_layers);
+        let mut v_caches = Vec::with_capacity(n_layers);
+        for _ in 0..n_layers {
+            k_caches.push(self.device.alloc(cache_bytes)?);
+            v_caches.push(self.device.alloc(cache_bytes)?);
+        }
+
+        *guard = Some(AttnState {
+            num_heads, kv_heads, head_dim, max_seq,
+            pipe_attn, pipe_kv_append,
+            k_caches, v_caches,
+        });
+        Ok(guard)
     }
 
     /// Get a scratch buffer of at least `size` bytes — pulled from the pool
@@ -262,6 +341,312 @@ impl Backend for HoneycrispBackend {
     }
 
     fn uploads_quant_weights(&self) -> bool { true }
+
+    fn supports_gpu_attention(&self) -> bool { true }
+
+    fn reset_gpu_kv_cache(&self) {
+        // Drop the entire AttnState — next gpu_attention call rebuilds with
+        // zeroed caches. Cheap because allocations are pooled in the Metal
+        // driver's free-list.
+        *self.attn.lock().unwrap() = None;
+    }
+
+    fn fused_attn_oproj_residual(
+        &self,
+        q: &Tensor,
+        k: &Tensor,
+        v: &Tensor,
+        hidden_in: &Tensor,
+        o_proj_w: &Tensor,
+        layer_idx: usize,
+        position: usize,
+        num_heads: u32,
+        kv_heads: u32,
+        head_dim: u32,
+        max_seq: u32,
+        scale: f32,
+        window: u32,
+    ) -> Result<Tensor, BackendError> {
+        // o_proj must be Q8 or Q4, GPU-resident. Otherwise fall back.
+        let q8 = matches!(o_proj_w.dtype, DType::Q8);
+        let q4 = matches!(o_proj_w.dtype, DType::Q4);
+        let on_gpu = matches!(o_proj_w.data, TensorData::Backend(_));
+        if !(q8 || q4) || !on_gpu || hidden_in.dtype != DType::F32 {
+            return Backend::fused_attn_oproj_residual(
+                self, q, k, v, hidden_in, o_proj_w,
+                layer_idx, position,
+                num_heads, kv_heads, head_dim, max_seq, scale, window,
+            );
+        }
+        // Ensure attention state is built up to layer_idx.
+        let n_layers_needed = layer_idx + 1;
+        {
+            let guard = self.attn.lock().unwrap();
+            let needs_init = match guard.as_ref() {
+                Some(s) => s.k_caches.len() < n_layers_needed
+                    || s.num_heads != num_heads
+                    || s.kv_heads != kv_heads
+                    || s.head_dim != head_dim
+                    || s.max_seq != max_seq,
+                None => true,
+            };
+            if needs_init {
+                drop(guard);
+                let g = self.attn_state(num_heads, kv_heads, head_dim, max_seq, n_layers_needed)?;
+                drop(g);
+            }
+        }
+        let guard = self.attn.lock().unwrap();
+        let st = guard.as_ref().expect("attn_state ensured above");
+
+        let q_buf = self.buf_ref(q)?;
+        let k_buf = self.buf_ref(k)?;
+        let v_buf = self.buf_ref(v)?;
+        let hidden_buf = self.buf_ref(hidden_in)?;
+        let o_w_h = match &o_proj_w.data {
+            TensorData::Backend(b) => b.as_any().downcast_ref::<HcBuffer>().unwrap(),
+            _ => unreachable!(),
+        };
+
+        let nh_hd = (num_heads * head_dim) as usize;
+        let attn_buf = self.take_scratch(nh_hd * 4)?;
+        let oproj_buf = self.take_scratch(nh_hd * 4)?;
+        let out_buf = self.device.alloc(nh_hd * 4)?;
+
+        let total_seq = (position + 1) as u32;
+
+        // Q8/Q4 dispatch params
+        let block_size = if q8 {
+            kernels::q8_matmul::BLOCK_SIZE
+        } else {
+            kernels::q4_matmul::BLOCK_SIZE
+        };
+        let n_blocks_oproj = (o_proj_w.shape[1] / block_size) as u32;
+        let oproj_n = o_proj_w.shape[0] as u32;
+        let oproj_pipe = if q8 { &self.pipe_q8.0 } else { &self.pipe_q4.0 };
+        let oproj_simds = if q8 {
+            kernels::q8_matmul::SIMDS_PER_GROUP
+        } else {
+            kernels::q4_matmul::SIMDS_PER_GROUP
+        };
+
+        unsafe {
+            aruminium::autorelease_pool(|| {
+                self.device.dispatch.batch_raw(|enc| {
+                    // 1) kv_append k
+                    {
+                        #[repr(C)]
+                        #[derive(Clone, Copy)]
+                        struct P { position: u32, p0: u32, p1: u32, p2: u32 }
+                        let p = P { position: position as u32, p0: 0, p1: 0, p2: 0 };
+                        enc.bind(&st.pipe_kv_append.0);
+                        enc.bind_buffer(k_buf.as_buffer(), 0, 0);
+                        enc.bind_buffer(&st.k_caches[layer_idx], 0, 1);
+                        let bytes = std::slice::from_raw_parts(
+                            &p as *const P as *const u8, std::mem::size_of::<P>(),
+                        );
+                        enc.push(bytes, 2);
+                        enc.launch_groups(
+                            (head_dim as usize, kv_heads as usize, 1), (1, 1, 1),
+                        );
+                    }
+                    // 2) kv_append v
+                    {
+                        #[repr(C)]
+                        #[derive(Clone, Copy)]
+                        struct P { position: u32, p0: u32, p1: u32, p2: u32 }
+                        let p = P { position: position as u32, p0: 0, p1: 0, p2: 0 };
+                        enc.bind(&st.pipe_kv_append.0);
+                        enc.bind_buffer(v_buf.as_buffer(), 0, 0);
+                        enc.bind_buffer(&st.v_caches[layer_idx], 0, 1);
+                        let bytes = std::slice::from_raw_parts(
+                            &p as *const P as *const u8, std::mem::size_of::<P>(),
+                        );
+                        enc.push(bytes, 2);
+                        enc.launch_groups(
+                            (head_dim as usize, kv_heads as usize, 1), (1, 1, 1),
+                        );
+                    }
+                    // 3) attention → attn_buf
+                    {
+                        #[repr(C)]
+                        #[derive(Clone, Copy)]
+                        struct P { total_seq: u32, window: u32, scale: f32, pad: u32 }
+                        let p = P { total_seq, window, scale, pad: 0 };
+                        enc.bind(&st.pipe_attn.0);
+                        enc.bind_buffer(q_buf.as_buffer(), 0, 0);
+                        enc.bind_buffer(&st.k_caches[layer_idx], 0, 1);
+                        enc.bind_buffer(&st.v_caches[layer_idx], 0, 2);
+                        enc.bind_buffer(&attn_buf, 0, 3);
+                        let bytes = std::slice::from_raw_parts(
+                            &p as *const P as *const u8, std::mem::size_of::<P>(),
+                        );
+                        enc.push(bytes, 4);
+                        enc.launch_groups((num_heads as usize, 1, 1), (32, 1, 1));
+                    }
+                    // 4) o_proj quant matmul (attn_buf → oproj_buf)
+                    {
+                        let total_rows = oproj_n;
+                        let groups_x = (total_rows + oproj_simds - 1) / oproj_simds;
+                        let threads_per_group = oproj_simds * 32;
+                        #[repr(C)]
+                        #[derive(Clone, Copy)]
+                        struct Dims { batch: u32, n_rows: u32, n_blocks: u32, pad: u32 }
+                        let dims = Dims { batch: 1, n_rows: oproj_n, n_blocks: n_blocks_oproj, pad: 0 };
+                        enc.bind(oproj_pipe);
+                        enc.bind_buffer(&attn_buf, 0, 0);
+                        enc.bind_buffer(&o_w_h.buffer, 0, 1);
+                        enc.bind_buffer(&oproj_buf, 0, 2);
+                        let bytes = std::slice::from_raw_parts(
+                            &dims as *const Dims as *const u8, std::mem::size_of::<Dims>(),
+                        );
+                        enc.push(bytes, 3);
+                        enc.launch_groups(
+                            (groups_x as usize, 1, 1),
+                            (threads_per_group as usize, 1, 1),
+                        );
+                    }
+                    // 5) residual add: out = hidden_in + oproj_buf
+                    {
+                        let n = nh_hd as u32;
+                        #[repr(C)]
+                        #[derive(Clone, Copy)]
+                        struct P { n: u32, a_len: u32, b_len: u32, pad: u32 }
+                        let p = P { n, a_len: n, b_len: n, pad: 0 };
+                        enc.bind(&self.pipe_add.0);
+                        enc.bind_buffer(hidden_buf.as_buffer(), 0, 0);
+                        enc.bind_buffer(&oproj_buf, 0, 1);
+                        enc.bind_buffer(&out_buf, 0, 2);
+                        let bytes = std::slice::from_raw_parts(
+                            &p as *const P as *const u8, std::mem::size_of::<P>(),
+                        );
+                        enc.push(bytes, 3);
+                        enc.launch_groups((((n as usize) + 63) / 64, 1, 1), (64, 1, 1));
+                    }
+                });
+            });
+        }
+
+        self.release_scratch(attn_buf);
+        self.release_scratch(oproj_buf);
+        Ok(self.wrap_output(out_buf, hidden_in.shape.clone(), DType::F32))
+    }
+
+    fn gpu_attention(
+        &self,
+        q: &Tensor,
+        k: &Tensor,
+        v: &Tensor,
+        layer_idx: usize,
+        position: usize,
+        num_heads: u32,
+        kv_heads: u32,
+        head_dim: u32,
+        max_seq: u32,
+        scale: f32,
+        window: u32,
+    ) -> Result<Tensor, BackendError> {
+        // n_layers is unknown here — caller (forward) will pre-init via a
+        // dummy call OR we infer from layer_idx + 1. We grow on demand.
+        let n_layers_needed = layer_idx + 1;
+        // First, ensure state exists with at least n_layers_needed cache slots.
+        {
+            let mut guard = self.attn.lock().unwrap();
+            let needs_init = match guard.as_ref() {
+                Some(s) => s.k_caches.len() < n_layers_needed
+                    || s.num_heads != num_heads
+                    || s.kv_heads != kv_heads
+                    || s.head_dim != head_dim
+                    || s.max_seq != max_seq,
+                None => true,
+            };
+            if needs_init {
+                drop(guard);
+                let g = self.attn_state(num_heads, kv_heads, head_dim, max_seq, n_layers_needed)?;
+                drop(g);
+            }
+        }
+
+        let guard = self.attn.lock().unwrap();
+        let st = guard.as_ref().expect("attn_state ensured above");
+
+        let q_buf = self.buf_ref(q)?;
+        let k_buf = self.buf_ref(k)?;
+        let v_buf = self.buf_ref(v)?;
+        let out_buf = self.device.alloc((num_heads as usize * head_dim as usize * 4).max(4))?;
+
+        let total_seq = (position + 1) as u32;
+
+        unsafe {
+            aruminium::autorelease_pool(|| {
+                // All 3 dispatches in ONE Metal command buffer + ONE wait.
+                // Metal handles the read-after-write hazard on the cache buffer
+                // automatically because dispatches share an encoder.
+                self.device.dispatch.batch_raw(|enc| {
+                    // 1) Append k → k_cache[layer_idx] at position
+                    {
+                        #[repr(C)]
+                        #[derive(Clone, Copy)]
+                        struct P { position: u32, p0: u32, p1: u32, p2: u32 }
+                        let p = P { position: position as u32, p0: 0, p1: 0, p2: 0 };
+                        enc.bind(&st.pipe_kv_append.0);
+                        enc.bind_buffer(k_buf.as_buffer(), 0, 0);
+                        enc.bind_buffer(&st.k_caches[layer_idx], 0, 1);
+                        let bytes = std::slice::from_raw_parts(
+                            &p as *const P as *const u8,
+                            std::mem::size_of::<P>(),
+                        );
+                        enc.push(bytes, 2);
+                        enc.launch_groups(
+                            (head_dim as usize, kv_heads as usize, 1),
+                            (1, 1, 1),
+                        );
+                    }
+                    // 2) Append v → v_cache[layer_idx] at position
+                    {
+                        #[repr(C)]
+                        #[derive(Clone, Copy)]
+                        struct P { position: u32, p0: u32, p1: u32, p2: u32 }
+                        let p = P { position: position as u32, p0: 0, p1: 0, p2: 0 };
+                        enc.bind(&st.pipe_kv_append.0);
+                        enc.bind_buffer(v_buf.as_buffer(), 0, 0);
+                        enc.bind_buffer(&st.v_caches[layer_idx], 0, 1);
+                        let bytes = std::slice::from_raw_parts(
+                            &p as *const P as *const u8,
+                            std::mem::size_of::<P>(),
+                        );
+                        enc.push(bytes, 2);
+                        enc.launch_groups(
+                            (head_dim as usize, kv_heads as usize, 1),
+                            (1, 1, 1),
+                        );
+                    }
+                    // 3) Attention: scores = q @ k_cache^T → softmax → @ v_cache
+                    {
+                        #[repr(C)]
+                        #[derive(Clone, Copy)]
+                        struct P { total_seq: u32, window: u32, scale: f32, pad: u32 }
+                        let p = P { total_seq, window, scale, pad: 0 };
+                        enc.bind(&st.pipe_attn.0);
+                        enc.bind_buffer(q_buf.as_buffer(), 0, 0);
+                        enc.bind_buffer(&st.k_caches[layer_idx], 0, 1);
+                        enc.bind_buffer(&st.v_caches[layer_idx], 0, 2);
+                        enc.bind_buffer(&out_buf, 0, 3);
+                        let bytes = std::slice::from_raw_parts(
+                            &p as *const P as *const u8,
+                            std::mem::size_of::<P>(),
+                        );
+                        enc.push(bytes, 4);
+                        enc.launch_groups((num_heads as usize, 1, 1), (32, 1, 1));
+                    }
+                });
+            });
+        }
+
+        let result = self.wrap_output(out_buf, vec![1, (num_heads * head_dim) as usize], DType::F32);
+
+        Ok(result)
+    }
 
     fn supports(&self, op: &Op, inputs: &[&Tensor]) -> bool {
         match op {
@@ -880,6 +1265,176 @@ impl Backend for HoneycrispBackend {
         self.release_scratch(mid_buf);
 
         let mut out_shape = hidden.shape.clone();
+        *out_shape.last_mut().unwrap() = down_n as usize;
+        Ok(self.wrap_output(out_buf, out_shape, DType::F32))
+    }
+
+    fn fused_ffn_residual(
+        &self,
+        hidden_in: &Tensor,
+        post_norm_gamma: &Tensor,
+        gate_w: &Tensor,
+        up_w: &Tensor,
+        down_w: &Tensor,
+        eps: f32,
+    ) -> Result<Tensor, BackendError> {
+        let q_ok = (matches!(gate_w.dtype, DType::Q8 | DType::Q4)
+            && gate_w.dtype == up_w.dtype && gate_w.dtype == down_w.dtype);
+        let on_gpu = matches!(gate_w.data, TensorData::Backend(_))
+            && matches!(up_w.data, TensorData::Backend(_))
+            && matches!(down_w.data, TensorData::Backend(_));
+        if !q_ok || !on_gpu || hidden_in.dtype != DType::F32
+            || post_norm_gamma.dtype != DType::F32
+        {
+            return Backend::fused_ffn_residual(
+                self, hidden_in, post_norm_gamma, gate_w, up_w, down_w, eps,
+            );
+        }
+        let kind = gate_w.dtype;
+        let block_size = match kind {
+            DType::Q8 => kernels::q8_matmul::BLOCK_SIZE,
+            DType::Q4 => kernels::q4_matmul::BLOCK_SIZE,
+            _ => unreachable!(),
+        };
+        let pipe = match kind {
+            DType::Q8 => &self.pipe_q8.0,
+            DType::Q4 => &self.pipe_q4.0,
+            _ => unreachable!(),
+        };
+        let simds = match kind {
+            DType::Q8 => kernels::q8_matmul::SIMDS_PER_GROUP,
+            DType::Q4 => kernels::q4_matmul::SIMDS_PER_GROUP,
+            _ => unreachable!(),
+        };
+        let d = post_norm_gamma.shape[0] as u32;
+        let inter = gate_w.shape[0] as u32;
+        let down_n = down_w.shape[0] as u32;
+        if (gate_w.shape[1] as u32) != d || (up_w.shape[1] as u32) != d
+            || (down_w.shape[1] as u32) != inter
+        {
+            return Backend::fused_ffn_residual(self, hidden_in, post_norm_gamma, gate_w, up_w, down_w, eps);
+        }
+
+        let h_buf = self.buf_ref(hidden_in)?;
+        let g_buf = self.buf_ref(post_norm_gamma)?;
+        let gate_h = match &gate_w.data {
+            TensorData::Backend(b) => b.as_any().downcast_ref::<HcBuffer>().unwrap(),
+            _ => unreachable!(),
+        };
+        let up_h = match &up_w.data {
+            TensorData::Backend(b) => b.as_any().downcast_ref::<HcBuffer>().unwrap(),
+            _ => unreachable!(),
+        };
+        let down_h = match &down_w.data {
+            TensorData::Backend(b) => b.as_any().downcast_ref::<HcBuffer>().unwrap(),
+            _ => unreachable!(),
+        };
+
+        let normed_buf = self.take_scratch((d * 4) as usize)?;
+        let gate_buf = self.take_scratch((inter * 4) as usize)?;
+        let up_buf = self.take_scratch((inter * 4) as usize)?;
+        let mid_buf = self.take_scratch((inter * 4) as usize)?;
+        let ffn_buf = self.take_scratch((down_n * 4) as usize)?;
+        let out_buf = self.device.alloc((down_n * 4) as usize)?;
+
+        let n_blocks_d = (d as usize / block_size) as u32;
+        let n_blocks_inter = (inter as usize / block_size) as u32;
+
+        unsafe {
+            aruminium::autorelease_pool(|| {
+                self.device.dispatch.batch_raw(|enc| {
+                    // 1) post_norm
+                    {
+                        #[repr(C)]
+                        #[derive(Clone, Copy)]
+                        struct P { batch: u32, d: u32, eps: f32, pad: u32 }
+                        let p = P { batch: 1, d, eps, pad: 0 };
+                        enc.bind(&self.pipe_rmsnorm.0);
+                        enc.bind_buffer(h_buf.as_buffer(), 0, 0);
+                        enc.bind_buffer(g_buf.as_buffer(), 0, 1);
+                        enc.bind_buffer(&normed_buf, 0, 2);
+                        let bytes = std::slice::from_raw_parts(
+                            &p as *const P as *const u8, std::mem::size_of::<P>(),
+                        );
+                        enc.push(bytes, 3);
+                        enc.launch_groups((1, 1, 1), (256, 1, 1));
+                    }
+                    let dispatch_q = |enc: &aruminium::Batch,
+                                      x_buf: &aruminium::Buffer,
+                                      w_buf: &aruminium::Buffer,
+                                      out: &aruminium::Buffer,
+                                      n_rows: u32,
+                                      n_blocks: u32| {
+                        let total_rows = n_rows;
+                        let groups_x = (total_rows + simds - 1) / simds;
+                        let threads_per_group = simds * 32;
+                        #[repr(C)]
+                        #[derive(Clone, Copy)]
+                        struct Dims { batch: u32, n_rows: u32, n_blocks: u32, pad: u32 }
+                        let dims = Dims { batch: 1, n_rows, n_blocks, pad: 0 };
+                        enc.bind(pipe);
+                        enc.bind_buffer(x_buf, 0, 0);
+                        enc.bind_buffer(w_buf, 0, 1);
+                        enc.bind_buffer(out, 0, 2);
+                        let bytes = std::slice::from_raw_parts(
+                            &dims as *const Dims as *const u8, std::mem::size_of::<Dims>(),
+                        );
+                        enc.push(bytes, 3);
+                        enc.launch_groups(
+                            (groups_x as usize, 1, 1),
+                            (threads_per_group as usize, 1, 1),
+                        );
+                    };
+                    // 2) gate, 3) up
+                    dispatch_q(enc, &normed_buf, &gate_h.buffer, &gate_buf, inter, n_blocks_d);
+                    dispatch_q(enc, &normed_buf, &up_h.buffer, &up_buf, inter, n_blocks_d);
+                    // 4) silu(gate) * up → mid
+                    {
+                        let n = inter;
+                        #[repr(C)]
+                        #[derive(Clone, Copy)]
+                        struct P { n: u32, p0: u32, p1: u32, p2: u32 }
+                        let p = P { n, p0: 0, p1: 0, p2: 0 };
+                        enc.bind(&self.pipe_silu_mul.0);
+                        enc.bind_buffer(&gate_buf, 0, 0);
+                        enc.bind_buffer(&up_buf, 0, 1);
+                        enc.bind_buffer(&mid_buf, 0, 2);
+                        let bytes = std::slice::from_raw_parts(
+                            &p as *const P as *const u8, std::mem::size_of::<P>(),
+                        );
+                        enc.push(bytes, 3);
+                        enc.launch_groups((((n as usize) + 63) / 64, 1, 1), (64, 1, 1));
+                    }
+                    // 5) down_proj
+                    dispatch_q(enc, &mid_buf, &down_h.buffer, &ffn_buf, down_n, n_blocks_inter);
+                    // 6) residual: out = hidden_in + ffn_buf
+                    {
+                        let n = down_n;
+                        #[repr(C)]
+                        #[derive(Clone, Copy)]
+                        struct P { n: u32, a_len: u32, b_len: u32, pad: u32 }
+                        let p = P { n, a_len: n, b_len: n, pad: 0 };
+                        enc.bind(&self.pipe_add.0);
+                        enc.bind_buffer(h_buf.as_buffer(), 0, 0);
+                        enc.bind_buffer(&ffn_buf, 0, 1);
+                        enc.bind_buffer(&out_buf, 0, 2);
+                        let bytes = std::slice::from_raw_parts(
+                            &p as *const P as *const u8, std::mem::size_of::<P>(),
+                        );
+                        enc.push(bytes, 3);
+                        enc.launch_groups((((n as usize) + 63) / 64, 1, 1), (64, 1, 1));
+                    }
+                });
+            });
+        }
+
+        self.release_scratch(normed_buf);
+        self.release_scratch(gate_buf);
+        self.release_scratch(up_buf);
+        self.release_scratch(mid_buf);
+        self.release_scratch(ffn_buf);
+
+        let mut out_shape = hidden_in.shape.clone();
         *out_shape.last_mut().unwrap() = down_n as usize;
         Ok(self.wrap_output(out_buf, out_shape, DType::F32))
     }

@@ -241,6 +241,82 @@ pub trait Backend: Send + Sync {
         Ok((q_flat, k_flat, v))
     }
 
+    /// True if backend can compute scaled-dot-product attention with its own
+    /// GPU-resident KV cache. When true, callers should use `gpu_attention`
+    /// instead of running attention manually on the CPU.
+    fn supports_gpu_attention(&self) -> bool { false }
+
+    /// Reset the backend's GPU KV cache (e.g. on `reset_kv_cache`).
+    fn reset_gpu_kv_cache(&self) {}
+
+    /// GPU-side decode-mode SDPA. Backend owns the KV cache (per layer_idx),
+    /// appends `k`,`v` at `position`, runs attention against the full cached
+    /// sequence, and returns the output. Default returns "unsupported".
+    fn gpu_attention(
+        &self,
+        q: &Tensor,           // [num_heads, head_dim] f32 (post-RoPE)
+        k: &Tensor,           // [kv_heads, head_dim]   f32 (post-RoPE)
+        v: &Tensor,           // [kv_heads, head_dim]   f32 (post-V-norm if any)
+        layer_idx: usize,
+        position: usize,      // = past_seq_len, write-offset in cache
+        num_heads: u32,
+        kv_heads: u32,
+        head_dim: u32,
+        max_seq: u32,
+        scale: f32,
+        window: u32,          // 0 = no sliding window
+    ) -> Result<Tensor, BackendError> {
+        let _ = (q, k, v, layer_idx, position, num_heads, kv_heads, head_dim, max_seq, scale, window);
+        Err(BackendError::Internal("gpu_attention not supported on this backend".into()))
+    }
+
+    /// Fused attention block: kv_append + attention + o_proj + residual_add.
+    /// Returns hidden_in + o_proj(attention(q, k_cache, v_cache)).
+    /// Default: compose individual ops.
+    fn fused_attn_oproj_residual(
+        &self,
+        q: &Tensor,
+        k: &Tensor,
+        v: &Tensor,
+        hidden_in: &Tensor,
+        o_proj_w: &Tensor,
+        layer_idx: usize,
+        position: usize,
+        num_heads: u32,
+        kv_heads: u32,
+        head_dim: u32,
+        max_seq: u32,
+        scale: f32,
+        window: u32,
+    ) -> Result<Tensor, BackendError> {
+        let attn = self.gpu_attention(
+            q, k, v, layer_idx, position,
+            num_heads, kv_heads, head_dim, max_seq, scale, window,
+        )?;
+        let attn_proj = self.quant_matmul(&attn, o_proj_w)?;
+        self.execute(&crate::core::op::Op::Add, &[hidden_in, &attn_proj])
+            .map(|mut v| v.remove(0))
+    }
+
+    /// Fused FFN block: post_norm + gate + up + silu*up + down + residual_add.
+    /// Returns hidden_in + down_proj(silu(gate(norm(hidden_in))) * up(...)).
+    /// Default = composition of per-op calls.
+    fn fused_ffn_residual(
+        &self,
+        hidden_in: &Tensor,
+        post_norm_gamma: &Tensor,
+        gate_w: &Tensor,
+        up_w: &Tensor,
+        down_w: &Tensor,
+        eps: f32,
+    ) -> Result<Tensor, BackendError> {
+        let ffn_out = self.fused_norm_swiglu_down(
+            hidden_in, post_norm_gamma, gate_w, up_w, down_w, eps,
+        )?;
+        self.execute(&crate::core::op::Op::Add, &[hidden_in, &ffn_out])
+            .map(|mut v| v.remove(0))
+    }
+
     /// Fused FFN: post_norm(hidden) → gate, up → silu(gate)*up → down_proj.
     /// Single GPU command buffer, single wait. Default: per-op on CPU.
     fn fused_norm_swiglu_down(

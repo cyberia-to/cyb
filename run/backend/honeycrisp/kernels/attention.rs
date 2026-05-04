@@ -24,23 +24,24 @@ use crate::backend::honeycrisp::device::HoneycrispDevice;
 
 pub const MAX_SEQ_SHARED: u32 = 2048;
 
-pub const MSL: &str = r#"
+const MSL_TEMPLATE: &str = r#"
 #include <metal_stdlib>
 using namespace metal;
 
+constant constexpr uint NUM_HEADS = __NUM_HEADS__u;
+constant constexpr uint KV_HEADS  = __KV_HEADS__u;
+constant constexpr uint HEAD_DIM  = __HEAD_DIM__u;
+constant constexpr uint MAX_SEQ   = __MAX_SEQ__u;
+constant constexpr uint REPEAT    = NUM_HEADS / KV_HEADS;
+constant constexpr uint MAX_SEQ_SHARED_C = 2048u;
+constant constexpr uint LANES = 32u;
+
 struct Params {
-    uint  num_heads;
-    uint  kv_heads;
-    uint  head_dim;
-    uint  total_seq;     // valid sequence length in cache
-    uint  max_seq;       // cache stride
-    uint  window;        // 0 = no sliding window
+    uint  total_seq;
+    uint  window;
     float scale;
     uint  pad;
 };
-
-constant constexpr uint MAX_SEQ_SHARED_C = 2048u;
-constant constexpr uint LANES = 32u;
 
 kernel void kmain(
     device const float  *q       [[buffer(0)]],
@@ -51,15 +52,17 @@ kernel void kmain(
     uint                 h       [[threadgroup_position_in_grid]],
     uint                 lane    [[thread_index_in_simdgroup]]
 ) {
-    if (h >= p.num_heads) return;
-    uint repeat = p.num_heads / p.kv_heads;
-    uint kv_h = h / repeat;
-    uint q_off = h * p.head_dim;
-    uint kv_base = kv_h * p.max_seq * p.head_dim;
+    if (h >= NUM_HEADS) return;
+    // GQA: h maps to kv_h. NeoX-style assignment groups consecutive q-heads
+    // to the same kv-head.
+    uint kv_h = h / REPEAT;
+    uint q_off = h * HEAD_DIM;
+    uint kv_base = kv_h * MAX_SEQ * HEAD_DIM;
 
     threadgroup float scores[MAX_SEQ_SHARED_C];
 
-    uint window_start = (p.window > 0u && p.total_seq > p.window) ? (p.total_seq - p.window) : 0u;
+    uint window_start = (p.window > 0u && p.total_seq > p.window)
+        ? (p.total_seq - p.window) : 0u;
 
     // 1) Compute scaled dot-product scores Q@K^T
     for (uint s = lane; s < p.total_seq; s += LANES) {
@@ -68,8 +71,8 @@ kernel void kmain(
             continue;
         }
         float acc = 0.0f;
-        uint k_off = kv_base + s * p.head_dim;
-        for (uint d = 0; d < p.head_dim; d++) {
+        uint k_off = kv_base + s * HEAD_DIM;
+        for (uint d = 0; d < HEAD_DIM; d++) {
             acc = fma(q[q_off + d], k_cache[k_off + d], acc);
         }
         scores[s] = acc * p.scale;
@@ -98,65 +101,80 @@ kernel void kmain(
     threadgroup_barrier(mem_flags::mem_threadgroup);
 
     // 3) Output: out[h, d] = sum_s scores[s] * V[kv_h, s, d]
-    uint out_off = h * p.head_dim;
-    for (uint d = lane; d < p.head_dim; d += LANES) {
+    // DIAGNOSTIC: also compare against bypass paths via env var.
+    uint out_off = h * HEAD_DIM;
+    for (uint d = lane; d < HEAD_DIM; d += LANES) {
         float acc = 0.0f;
         for (uint s = 0; s < p.total_seq; s++) {
-            acc = fma(scores[s], v_cache[kv_base + s * p.head_dim + d], acc);
+            acc = fma(scores[s], v_cache[kv_base + s * HEAD_DIM + d], acc);
         }
         out[out_off + d] = acc;
     }
 }
+
+// Diagnostic: bypass attention, just write v to out (verifies plumbing).
+kernel void kbypass(
+    device const float  *q       [[buffer(0)]],
+    device const float  *k_cache [[buffer(1)]],
+    device const float  *v_cache [[buffer(2)]],
+    device       float  *out     [[buffer(3)]],
+    constant     Params &p       [[buffer(4)]],
+    uint                 h       [[threadgroup_position_in_grid]],
+    uint                 lane    [[thread_index_in_simdgroup]]
+) {
+    if (h >= NUM_HEADS) return;
+    uint kv_h = h / REPEAT;
+    uint q_off = h * HEAD_DIM;
+    uint kv_base = kv_h * MAX_SEQ * HEAD_DIM;
+    // Output = v_cache[kv_h, position=0, d] — corresponds to total_seq=1 attention.
+    uint out_off = h * HEAD_DIM;
+    for (uint d = lane; d < HEAD_DIM; d += LANES) {
+        out[out_off + d] = v_cache[kv_base + d];
+    }
+}
 "#;
 
-pub fn dispatch(
-    dev: &HoneycrispDevice,
-    pipeline: &aruminium::Pipeline,
-    q: &aruminium::Buffer,
-    k_cache: &aruminium::Buffer,
-    v_cache: &aruminium::Buffer,
-    num_heads: u32,
-    kv_heads: u32,
-    head_dim: u32,
-    total_seq: u32,
-    max_seq: u32,
-    window: u32,
-    scale: f32,
-) -> Result<aruminium::Buffer, BackendError> {
-    let out = dev.alloc((num_heads as usize * head_dim as usize * 4).max(4))?;
+// KV-append kernel — writes new k or v at given position into the cache.
+// Constants baked: KV_HEADS, HEAD_DIM, MAX_SEQ.
+const KV_APPEND_TEMPLATE: &str = r#"
+#include <metal_stdlib>
+using namespace metal;
 
-    #[repr(C)]
-    #[derive(Clone, Copy)]
-    struct Params {
-        num_heads: u32,
-        kv_heads: u32,
-        head_dim: u32,
-        total_seq: u32,
-        max_seq: u32,
-        window: u32,
-        scale: f32,
-        pad: u32,
-    }
-    let params = Params {
-        num_heads, kv_heads, head_dim, total_seq, max_seq, window, scale, pad: 0,
-    };
+constant constexpr uint KV_HEADS  = __KV_HEADS__u;
+constant constexpr uint HEAD_DIM  = __HEAD_DIM__u;
+constant constexpr uint MAX_SEQ   = __MAX_SEQ__u;
 
-    unsafe {
-        aruminium::autorelease_pool(|| {
-            dev.dispatch.batch_raw(|enc| {
-                enc.bind(pipeline);
-                enc.bind_buffer(q, 0, 0);
-                enc.bind_buffer(k_cache, 0, 1);
-                enc.bind_buffer(v_cache, 0, 2);
-                enc.bind_buffer(&out, 0, 3);
-                let bytes = std::slice::from_raw_parts(
-                    &params as *const Params as *const u8,
-                    std::mem::size_of::<Params>(),
-                );
-                enc.push(bytes, 4);
-                enc.launch_groups((num_heads as usize, 1, 1), (32, 1, 1));
-            });
-        });
-    }
-    Ok(out)
+struct Params { uint position; uint pad0; uint pad1; uint pad2; };
+
+kernel void kmain(
+    device const float  *src   [[buffer(0)]],   // [KV_HEADS, HEAD_DIM]
+    device       float  *cache [[buffer(1)]],   // [KV_HEADS, MAX_SEQ, HEAD_DIM]
+    constant     Params &p     [[buffer(2)]],
+    uint2                gid   [[thread_position_in_grid]]
+) {
+    uint h = gid.y;
+    uint d = gid.x;
+    if (h >= KV_HEADS || d >= HEAD_DIM) return;
+    uint src_off = h * HEAD_DIM + d;
+    uint dst_off = h * MAX_SEQ * HEAD_DIM + p.position * HEAD_DIM + d;
+    cache[dst_off] = src[src_off];
 }
+"#;
+
+pub fn msl_for(num_heads: usize, kv_heads: usize, head_dim: usize, max_seq: usize) -> String {
+    MSL_TEMPLATE
+        .replace("__NUM_HEADS__", &num_heads.to_string())
+        .replace("__KV_HEADS__", &kv_heads.to_string())
+        .replace("__HEAD_DIM__", &head_dim.to_string())
+        .replace("__MAX_SEQ__", &max_seq.to_string())
+}
+
+pub fn kv_append_msl_for(kv_heads: usize, head_dim: usize, max_seq: usize) -> String {
+    KV_APPEND_TEMPLATE
+        .replace("__KV_HEADS__", &kv_heads.to_string())
+        .replace("__HEAD_DIM__", &head_dim.to_string())
+        .replace("__MAX_SEQ__", &max_seq.to_string())
+}
+
+#[allow(dead_code)]
+pub const MSL: &str = ""; // built dynamically via msl_for
