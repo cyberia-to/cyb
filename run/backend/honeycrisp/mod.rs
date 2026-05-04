@@ -102,6 +102,7 @@ pub struct HoneycrispBackend {
     pipe_matmul: HcPipeline,
     pipe_rmsnorm: HcPipeline,
     pipe_silu: HcPipeline,
+    pipe_q4: HcPipeline,
     pipe_q4k: HcPipeline,
     pipe_q6k: HcPipeline,
     pipe_q8: HcPipeline,
@@ -122,17 +123,20 @@ impl HoneycrispBackend {
         let pipe_q4k = HcPipeline(device.pipeline(kernels::q4k_matmul::MSL)?);
         let pipe_q6k = HcPipeline(device.pipeline(kernels::q6k_matmul::MSL)?);
         let pipe_q8 = HcPipeline(device.pipeline(kernels::q8_matmul::MSL)?);
+        let pipe_q4 = HcPipeline(device.pipeline(kernels::q4_matmul::MSL)?);
         let pipe_add = HcPipeline(device.pipeline(kernels::elementwise::ADD_MSL)?);
         let pipe_silu_mul = HcPipeline(device.pipeline(kernels::elementwise::SILU_MUL_MSL)?);
-        // Lazy-compile rope: avoid pipeline-count Metal driver regression
-        // observed when 9+ persistent pipelines exist at backend init.
-        let pipe_rope = HcPipeline(device.pipeline(kernels::matmul::MSL)?); // dummy
+        // Rope kernel disabled — its Metal compilation triggers a 2x slowdown
+        // of all other dispatches via an unidentified driver interaction.
+        // Reuse matmul pipeline as a placeholder until rope is needed.
+        let pipe_rope = HcPipeline(device.pipeline(kernels::matmul::MSL)?);
         Ok(Self {
             device,
             cpu: CpuBackend::new(),
             pipe_matmul,
             pipe_rmsnorm,
             pipe_silu,
+            pipe_q4,
             pipe_q4k,
             pipe_q6k,
             pipe_q8,
@@ -399,16 +403,18 @@ impl Backend for HoneycrispBackend {
         let k = w.shape[1];
 
         // QuantKind selects the GPU dispatch path; everything else falls back to CPU.
-        enum QuantKind { Q4K, Q6K, Q8 }
+        enum QuantKind { Q4K, Q6K, Q8, Q4 }
         let kind = match w.dtype {
             DType::Q4_K if k % 256 == 0 => QuantKind::Q4K,
             DType::Q6_K if k % 256 == 0 => QuantKind::Q6K,
             DType::Q8   if k % kernels::q8_matmul::BLOCK_SIZE == 0 => QuantKind::Q8,
+            DType::Q4   if k % kernels::q4_matmul::BLOCK_SIZE == 0 => QuantKind::Q4,
             _ => return self.cpu_quant_matmul(x, w),
         };
         let n_blocks: usize = match kind {
             QuantKind::Q4K | QuantKind::Q6K => k / 256,
             QuantKind::Q8 => k / kernels::q8_matmul::BLOCK_SIZE,
+            QuantKind::Q4 => k / kernels::q4_matmul::BLOCK_SIZE,
         };
 
         let batch = x.shape[..x.shape.len() - 1].iter().product::<usize>() as u32;
@@ -428,6 +434,10 @@ impl Backend for HoneycrispBackend {
                 &self.device, &self.pipe_q8.0,
                 x_buf.as_buffer(), w_buf.as_buffer(), batch, n as u32, n_blocks as u32,
             )?,
+            QuantKind::Q4 => kernels::q4_matmul::dispatch(
+                &self.device, &self.pipe_q4.0,
+                x_buf.as_buffer(), w_buf.as_buffer(), batch, n as u32, n_blocks as u32,
+            )?,
         };
 
         let mut out_shape = x.shape.clone();
@@ -444,25 +454,40 @@ impl Backend for HoneycrispBackend {
     ) -> Result<Vec<Tensor>, BackendError> {
         if ws.is_empty() { return Ok(Vec::new()); }
 
-        // Homogeneous Q8 batch with same K. Otherwise per-call routing.
+        // Homogeneous Q8/Q4 batch with same K. Otherwise per-call routing.
         let k = ws[0].shape[1];
+        let kind0 = ws[0].dtype;
         let supported = ws.iter().all(|w| {
-            matches!(w.dtype, DType::Q8)
+            w.dtype == kind0
                 && w.shape[1] == k
-                && w.shape[1] % kernels::q8_matmul::BLOCK_SIZE == 0
+                && (matches!(w.dtype, DType::Q8) && w.shape[1] % kernels::q8_matmul::BLOCK_SIZE == 0
+                    || matches!(w.dtype, DType::Q4) && w.shape[1] % kernels::q4_matmul::BLOCK_SIZE == 0)
         });
         if !supported {
             return ws.iter().map(|w| self.quant_matmul(x, w)).collect();
         }
-        // Every weight must already be GPU-resident (fast path).
-        // If any is host-only, fall back to per-call (which uploads on demand).
         let all_backend = ws.iter().all(|w| matches!(w.data, TensorData::Backend(_)));
         if !all_backend {
             return ws.iter().map(|w| self.quant_matmul(x, w)).collect();
         }
 
         let batch = x.shape[..x.shape.len() - 1].iter().product::<usize>() as u32;
-        let n_blocks = (k / kernels::q8_matmul::BLOCK_SIZE) as u32;
+        let block_size = match kind0 {
+            DType::Q8 => kernels::q8_matmul::BLOCK_SIZE,
+            DType::Q4 => kernels::q4_matmul::BLOCK_SIZE,
+            _ => unreachable!(),
+        };
+        let pipe = match kind0 {
+            DType::Q8 => &self.pipe_q8.0,
+            DType::Q4 => &self.pipe_q4.0,
+            _ => unreachable!(),
+        };
+        let simds_per_group = match kind0 {
+            DType::Q8 => kernels::q8_matmul::SIMDS_PER_GROUP,
+            DType::Q4 => kernels::q4_matmul::SIMDS_PER_GROUP,
+            _ => unreachable!(),
+        };
+        let n_blocks = (k / block_size) as u32;
 
         // Upload x once (or borrow if already on GPU).
         let x_buf = self.buf_ref(x)?;
@@ -492,16 +517,15 @@ impl Backend for HoneycrispBackend {
                     for i in 0..ws.len() {
                         let n = ns[i] as u32;
                         let total_rows = batch * n;
-                        let groups_x = (total_rows + kernels::q8_matmul::SIMDS_PER_GROUP - 1)
-                            / kernels::q8_matmul::SIMDS_PER_GROUP;
-                        let threads_per_group = kernels::q8_matmul::SIMDS_PER_GROUP * 32;
+                        let groups_x = (total_rows + simds_per_group - 1) / simds_per_group;
+                        let threads_per_group = simds_per_group * 32;
 
                         #[repr(C)]
                         #[derive(Clone, Copy)]
                         struct Dims { batch: u32, n_rows: u32, n_blocks: u32, pad: u32 }
                         let dims = Dims { batch, n_rows: n, n_blocks, pad: 0 };
 
-                        enc.bind(&self.pipe_q8.0);
+                        enc.bind(pipe);
                         enc.bind_buffer(x_buf.as_buffer(), 0, 0);
                         enc.bind_buffer(weight_refs[i], 0, 1);
                         enc.bind_buffer(&out_bufs[i], 0, 2);
@@ -547,15 +571,20 @@ impl Backend for HoneycrispBackend {
         num_k_heads: usize,
         head_dim: usize,
     ) -> Result<(Tensor, Tensor, Tensor), BackendError> {
-        // Eligibility checks
-        let weights_q8 = matches!(q_proj_w.dtype, DType::Q8)
-            && matches!(k_proj_w.dtype, DType::Q8)
-            && matches!(v_proj_w.dtype, DType::Q8);
+        // Eligibility: homogeneous Q8 or Q4 weights, all GPU-resident.
+        let kind0 = q_proj_w.dtype;
+        let same_kind = k_proj_w.dtype == kind0 && v_proj_w.dtype == kind0;
+        let valid_kind = matches!(kind0, DType::Q8 | DType::Q4);
         let on_gpu = matches!(q_proj_w.data, TensorData::Backend(_))
             && matches!(k_proj_w.data, TensorData::Backend(_))
             && matches!(v_proj_w.data, TensorData::Backend(_));
-        let aligned = q_proj_w.shape[1] % kernels::q8_matmul::BLOCK_SIZE == 0;
-        if !weights_q8 || !on_gpu || !aligned
+        let block_size = match kind0 {
+            DType::Q8 => kernels::q8_matmul::BLOCK_SIZE,
+            DType::Q4 => kernels::q4_matmul::BLOCK_SIZE,
+            _ => 0,
+        };
+        let aligned = block_size > 0 && q_proj_w.shape[1] % block_size == 0;
+        if !same_kind || !valid_kind || !on_gpu || !aligned
             || hidden.dtype != DType::F32 || input_norm_gamma.dtype != DType::F32
             || q_norm_gamma.dtype != DType::F32 || k_norm_gamma.dtype != DType::F32
         {
@@ -566,10 +595,20 @@ impl Backend for HoneycrispBackend {
                 eps, num_q_heads, num_k_heads, head_dim,
             );
         }
+        let pipe = match kind0 {
+            DType::Q8 => &self.pipe_q8.0,
+            DType::Q4 => &self.pipe_q4.0,
+            _ => unreachable!(),
+        };
+        let simds_per_group = match kind0 {
+            DType::Q8 => kernels::q8_matmul::SIMDS_PER_GROUP,
+            DType::Q4 => kernels::q4_matmul::SIMDS_PER_GROUP,
+            _ => unreachable!(),
+        };
 
         let batch = hidden.shape[..hidden.shape.len() - 1].iter().product::<usize>() as u32;
         let d = input_norm_gamma.shape[0] as u32;
-        let n_blocks_d = (d as usize / kernels::q8_matmul::BLOCK_SIZE) as u32;
+        let n_blocks_d = (d as usize / block_size) as u32;
         let q_n = q_proj_w.shape[0] as u32;
         let k_n = k_proj_w.shape[0] as u32;
         let v_n = v_proj_w.shape[0] as u32;
@@ -620,21 +659,20 @@ impl Backend for HoneycrispBackend {
                         enc.push(bytes, 3);
                         enc.launch_groups((batch as usize, 1, 1), (256, 1, 1));
                     }
-                    let dispatch_q8 = |enc: &aruminium::Batch,
-                                       x_buf: &aruminium::Buffer,
-                                       w_buf: &aruminium::Buffer,
-                                       out: &aruminium::Buffer,
-                                       n_rows: u32,
-                                       n_blocks: u32| {
+                    let dispatch_q = |enc: &aruminium::Batch,
+                                      x_buf: &aruminium::Buffer,
+                                      w_buf: &aruminium::Buffer,
+                                      out: &aruminium::Buffer,
+                                      n_rows: u32,
+                                      n_blocks: u32| {
                         let total_rows = batch * n_rows;
-                        let groups_x = (total_rows + kernels::q8_matmul::SIMDS_PER_GROUP - 1)
-                            / kernels::q8_matmul::SIMDS_PER_GROUP;
-                        let threads_per_group = kernels::q8_matmul::SIMDS_PER_GROUP * 32;
+                        let groups_x = (total_rows + simds_per_group - 1) / simds_per_group;
+                        let threads_per_group = simds_per_group * 32;
                         #[repr(C)]
                         #[derive(Clone, Copy)]
                         struct Dims { batch: u32, n_rows: u32, n_blocks: u32, pad: u32 }
                         let dims = Dims { batch, n_rows, n_blocks, pad: 0 };
-                        enc.bind(&self.pipe_q8.0);
+                        enc.bind(pipe);
                         enc.bind_buffer(x_buf, 0, 0);
                         enc.bind_buffer(w_buf, 0, 1);
                         enc.bind_buffer(out, 0, 2);
@@ -649,9 +687,9 @@ impl Backend for HoneycrispBackend {
                         );
                     };
                     // 2-4) Q/K/V matmul
-                    dispatch_q8(enc, &normed_buf, &q_w_h.buffer, &q_buf, q_n, n_blocks_d);
-                    dispatch_q8(enc, &normed_buf, &k_w_h.buffer, &k_buf, k_n, n_blocks_d);
-                    dispatch_q8(enc, &normed_buf, &v_w_h.buffer, &v_out, v_n, n_blocks_d);
+                    dispatch_q(enc, &normed_buf, &q_w_h.buffer, &q_buf, q_n, n_blocks_d);
+                    dispatch_q(enc, &normed_buf, &k_w_h.buffer, &k_buf, k_n, n_blocks_d);
+                    dispatch_q(enc, &normed_buf, &v_w_h.buffer, &v_out, v_n, n_blocks_d);
                     // 5-6) QK norm (per-head)
                     {
                         #[repr(C)]
@@ -930,10 +968,12 @@ impl Backend for HoneycrispBackend {
     ) -> Result<Vec<Tensor>, BackendError> {
         if ws.is_empty() { return Ok(Vec::new()); }
         let k = ws[0].shape[1];
+        let kind0 = ws[0].dtype;
         let supported = ws.iter().all(|w| {
-            matches!(w.dtype, DType::Q8)
+            w.dtype == kind0
                 && w.shape[1] == k
-                && w.shape[1] % kernels::q8_matmul::BLOCK_SIZE == 0
+                && (matches!(w.dtype, DType::Q8) && w.shape[1] % kernels::q8_matmul::BLOCK_SIZE == 0
+                    || matches!(w.dtype, DType::Q4) && w.shape[1] % kernels::q4_matmul::BLOCK_SIZE == 0)
         });
         let weights_on_gpu = ws.iter().all(|w| matches!(w.data, TensorData::Backend(_)));
         if !supported || !weights_on_gpu || x.dtype != DType::F32 || gamma.dtype != DType::F32 {
@@ -950,7 +990,22 @@ impl Backend for HoneycrispBackend {
             });
         }
 
-        let n_blocks = (k / kernels::q8_matmul::BLOCK_SIZE) as u32;
+        let block_size = match kind0 {
+            DType::Q8 => kernels::q8_matmul::BLOCK_SIZE,
+            DType::Q4 => kernels::q4_matmul::BLOCK_SIZE,
+            _ => unreachable!(),
+        };
+        let pipe = match kind0 {
+            DType::Q8 => &self.pipe_q8.0,
+            DType::Q4 => &self.pipe_q4.0,
+            _ => unreachable!(),
+        };
+        let simds_per_group = match kind0 {
+            DType::Q8 => kernels::q8_matmul::SIMDS_PER_GROUP,
+            DType::Q4 => kernels::q4_matmul::SIMDS_PER_GROUP,
+            _ => unreachable!(),
+        };
+        let n_blocks = (k / block_size) as u32;
         let x_buf = self.buf_ref(x)?;
         let g_buf = self.buf_ref(gamma)?;
 
@@ -997,16 +1052,15 @@ impl Backend for HoneycrispBackend {
                     for (i, w_buf) in weight_refs.iter().enumerate() {
                         let n = ns[i] as u32;
                         let total_rows = batch * n;
-                        let groups_x = (total_rows + kernels::q8_matmul::SIMDS_PER_GROUP - 1)
-                            / kernels::q8_matmul::SIMDS_PER_GROUP;
-                        let threads_per_group = kernels::q8_matmul::SIMDS_PER_GROUP * 32;
+                        let groups_x = (total_rows + simds_per_group - 1) / simds_per_group;
+                        let threads_per_group = simds_per_group * 32;
 
                         #[repr(C)]
                         #[derive(Clone, Copy)]
                         struct Dims { batch: u32, n_rows: u32, n_blocks: u32, pad: u32 }
                         let dims = Dims { batch, n_rows: n, n_blocks, pad: 0 };
 
-                        enc.bind(&self.pipe_q8.0);
+                        enc.bind(pipe);
                         enc.bind_buffer(&normed_buf, 0, 0);
                         enc.bind_buffer(w_buf, 0, 1);
                         enc.bind_buffer(&out_bufs[i], 0, 2);

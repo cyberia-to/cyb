@@ -7,46 +7,38 @@
 use crate::backend::BackendError;
 use crate::backend::honeycrisp::device::HoneycrispDevice;
 
-// Caller-provided cos/sin table (length = rope_dim/2 each). Computed on CPU
-// per (position, layer base) to keep this kernel free of pow/sin/cos
-// transcendentals — empirically those flags slow co-existing pipelines.
+// Bisect: full trig with 2D position + dynamic index from struct.
 pub const MSL: &str = r#"
 #include <metal_stdlib>
 using namespace metal;
 
 struct Params {
-    uint  n_rows;        // total rows (batch * num_heads)
+    uint  n_rows;
     uint  head_dim;
-    uint  rope_dim;      // ≤ head_dim, even
-    uint  pad;
+    uint  rope_dim;
+    float base;
 };
 
 kernel void kmain(
     device const float  *x      [[buffer(0)]],
-    device const float  *cos_t  [[buffer(1)]],   // [rope_dim/2]
-    device const float  *sin_t  [[buffer(2)]],   // [rope_dim/2]
-    device       float  *y      [[buffer(3)]],
-    constant     Params &p      [[buffer(4)]],
+    device const float  *pos    [[buffer(1)]],
+    device       float  *y      [[buffer(2)]],
+    constant     Params &p      [[buffer(3)]],
     uint                 row    [[threadgroup_position_in_grid]],
     uint                 j      [[thread_position_in_threadgroup]]
 ) {
     uint half = p.head_dim / 2u;
-    uint rope_half = p.rope_dim / 2u;
     if (row >= p.n_rows || j >= half) return;
-
+    float pv = pos[0];
     uint base_off = row * p.head_dim;
     float x1 = x[base_off + j];
     float x2 = x[base_off + j + half];
-
-    if (j < rope_half) {
-        float c = cos_t[j];
-        float s = sin_t[j];
-        y[base_off + j]        = x1 * c - x2 * s;
-        y[base_off + j + half] = x1 * s + x2 * c;
-    } else {
-        y[base_off + j]        = x1;
-        y[base_off + j + half] = x2;
-    }
+    float exponent = 2.0f * float(j) / float(p.head_dim);
+    float theta = pv / pow(p.base, exponent);
+    float s = sin(theta);
+    float c = cos(theta);
+    y[base_off + j]        = x1 * c - x2 * s;
+    y[base_off + j + half] = x1 * s + x2 * c;
 }
 "#;
 

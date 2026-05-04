@@ -25,8 +25,9 @@ pub fn canonical_encoding_for(canonical_name: &str) -> &'static str {
     if canonical_name.ends_with(".bias") {
         return "u32";
     }
-    // Embeddings, lm_head, attention projections, MLP projections: q8.
-    "q8"
+    // Embeddings, lm_head, attention projections, MLP projections.
+    // EXPERIMENT: q4 for half storage + bandwidth (faster GPU compute).
+    "q4"
 }
 
 /// Map a GGUF tensor name to its HuggingFace canonical equivalent.
