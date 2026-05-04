@@ -7,38 +7,89 @@
 use crate::backend::BackendError;
 use crate::backend::honeycrisp::device::HoneycrispDevice;
 
-// Bisect: full trig with 2D position + dynamic index from struct.
+// MSL template — caller substitutes `__HEAD_DIM__` and `__HALF__` with literal
+// constants at pipeline-build time. Apple Metal scheduler regresses when more
+// than one non-constant integer is used as an address-offset; baking these in
+// keeps the kernel single-non-constant.
+const MSL_TEMPLATE: &str = r#"
+#include <metal_stdlib>
+using namespace metal;
+
+constant constexpr uint HEAD_DIM = __HEAD_DIM__u;
+constant constexpr uint HALF     = __HALF__u;
+
+struct Dims { uint n_rows; uint rope_half; uint pad0; uint pad1; };
+
+kernel void kmain(
+    device const float  *x      [[buffer(0)]],
+    device const float  *cos_t  [[buffer(1)]],
+    device const float  *sin_t  [[buffer(2)]],
+    device       float  *y      [[buffer(3)]],
+    constant     Dims   &dims   [[buffer(4)]],
+    uint2                gid    [[thread_position_in_grid]]
+) {
+    uint row = gid.y;
+    uint j   = gid.x;
+    if (row >= dims.n_rows || j >= HALF) return;
+    uint base = row * HEAD_DIM;
+
+    float x1 = x[base + j];
+    float x2 = x[base + j + HALF];
+
+    if (j < dims.rope_half) {
+        float c = cos_t[j];
+        float s = sin_t[j];
+        y[base + j]         = x1 * c - x2 * s;
+        y[base + j + HALF]  = x1 * s + x2 * c;
+    } else {
+        y[base + j]         = x1;
+        y[base + j + HALF]  = x2;
+    }
+}
+"#;
+
+pub fn msl_for(head_dim: usize) -> String {
+    MSL_TEMPLATE
+        .replace("__HEAD_DIM__", &head_dim.to_string())
+        .replace("__HALF__", &(head_dim / 2).to_string())
+}
+
+// Default MSL for the qwen3-0.6b head_dim=128 path. The runtime can rebuild
+// pipelines for other models via `msl_for(head_dim)`.
 pub const MSL: &str = r#"
 #include <metal_stdlib>
 using namespace metal;
 
-struct Params {
-    uint  n_rows;
-    uint  head_dim;
-    uint  rope_dim;
-    float base;
-};
+constant constexpr uint HEAD_DIM = 128u;
+constant constexpr uint HALF     = 64u;
+
+struct Dims { uint n_rows; uint rope_half; uint pad0; uint pad1; };
 
 kernel void kmain(
     device const float  *x      [[buffer(0)]],
-    device const float  *pos    [[buffer(1)]],
-    device       float  *y      [[buffer(2)]],
-    constant     Params &p      [[buffer(3)]],
-    uint                 row    [[threadgroup_position_in_grid]],
-    uint                 j      [[thread_position_in_threadgroup]]
+    device const float  *cos_t  [[buffer(1)]],
+    device const float  *sin_t  [[buffer(2)]],
+    device       float  *y      [[buffer(3)]],
+    constant     Dims   &dims   [[buffer(4)]],
+    uint2                gid    [[thread_position_in_grid]]
 ) {
-    uint half = p.head_dim / 2u;
-    if (row >= p.n_rows || j >= half) return;
-    float pv = pos[0];
-    uint base_off = row * p.head_dim;
-    float x1 = x[base_off + j];
-    float x2 = x[base_off + j + half];
-    float exponent = 2.0f * float(j) / float(p.head_dim);
-    float theta = pv / pow(p.base, exponent);
-    float s = sin(theta);
-    float c = cos(theta);
-    y[base_off + j]        = x1 * c - x2 * s;
-    y[base_off + j + half] = x1 * s + x2 * c;
+    uint row = gid.y;
+    uint j   = gid.x;
+    if (row >= dims.n_rows || j >= HALF) return;
+    uint base = row * HEAD_DIM;
+
+    float x1 = x[base + j];
+    float x2 = x[base + j + HALF];
+
+    if (j < dims.rope_half) {
+        float c = cos_t[j];
+        float s = sin_t[j];
+        y[base + j]         = x1 * c - x2 * s;
+        y[base + j + HALF]  = x1 * s + x2 * c;
+    } else {
+        y[base + j]         = x1;
+        y[base + j + HALF]  = x2;
+    }
 }
 "#;
 

@@ -126,10 +126,7 @@ impl HoneycrispBackend {
         let pipe_q4 = HcPipeline(device.pipeline(kernels::q4_matmul::MSL)?);
         let pipe_add = HcPipeline(device.pipeline(kernels::elementwise::ADD_MSL)?);
         let pipe_silu_mul = HcPipeline(device.pipeline(kernels::elementwise::SILU_MUL_MSL)?);
-        // Rope kernel disabled — its Metal compilation triggers a 2x slowdown
-        // of all other dispatches via an unidentified driver interaction.
-        // Reuse matmul pipeline as a placeholder until rope is needed.
-        let pipe_rope = HcPipeline(device.pipeline(kernels::matmul::MSL)?);
+        let pipe_rope = HcPipeline(device.pipeline(kernels::rope::MSL)?);
         Ok(Self {
             device,
             cpu: CpuBackend::new(),
