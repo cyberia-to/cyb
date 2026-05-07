@@ -161,6 +161,35 @@ kernel void kmain(
 }
 "#;
 
+// KV-append-both: writes new K AND V in one dispatch, saving one kernel launch.
+const KV_APPEND_BOTH_TEMPLATE: &str = r#"
+#include <metal_stdlib>
+using namespace metal;
+
+constant constexpr uint KV_HEADS  = __KV_HEADS__u;
+constant constexpr uint HEAD_DIM  = __HEAD_DIM__u;
+constant constexpr uint MAX_SEQ   = __MAX_SEQ__u;
+
+struct Params { uint position; uint pad0; uint pad1; uint pad2; };
+
+kernel void kmain(
+    device const float  *k_src   [[buffer(0)]],
+    device       float  *k_cache [[buffer(1)]],
+    device const float  *v_src   [[buffer(2)]],
+    device       float  *v_cache [[buffer(3)]],
+    constant     Params &p       [[buffer(4)]],
+    uint2                gid     [[thread_position_in_grid]]
+) {
+    uint h = gid.y;
+    uint d = gid.x;
+    if (h >= KV_HEADS || d >= HEAD_DIM) return;
+    uint src_off = h * HEAD_DIM + d;
+    uint dst_off = h * MAX_SEQ * HEAD_DIM + p.position * HEAD_DIM + d;
+    k_cache[dst_off] = k_src[src_off];
+    v_cache[dst_off] = v_src[src_off];
+}
+"#;
+
 pub fn msl_for(num_heads: usize, kv_heads: usize, head_dim: usize, max_seq: usize) -> String {
     MSL_TEMPLATE
         .replace("__NUM_HEADS__", &num_heads.to_string())
@@ -171,6 +200,13 @@ pub fn msl_for(num_heads: usize, kv_heads: usize, head_dim: usize, max_seq: usiz
 
 pub fn kv_append_msl_for(kv_heads: usize, head_dim: usize, max_seq: usize) -> String {
     KV_APPEND_TEMPLATE
+        .replace("__KV_HEADS__", &kv_heads.to_string())
+        .replace("__HEAD_DIM__", &head_dim.to_string())
+        .replace("__MAX_SEQ__", &max_seq.to_string())
+}
+
+pub fn kv_append_both_msl_for(kv_heads: usize, head_dim: usize, max_seq: usize) -> String {
+    KV_APPEND_BOTH_TEMPLATE
         .replace("__KV_HEADS__", &kv_heads.to_string())
         .replace("__HEAD_DIM__", &head_dim.to_string())
         .replace("__MAX_SEQ__", &max_seq.to_string())

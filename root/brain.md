@@ -3,13 +3,6 @@ icon: 🧠
 tags: page, prysm, cyb
 crystal-type: entity
 crystal-domain: superhuman
-stake: 6356985210986853
-diffusion: 0.0019099418454860224
-springs: 0.0004079638170429452
-heat: 0.0009241595042343931
-focus: 0.0012621919687028106
-gravity: 19
-density: 14.54
 ---
 graph file manager
 

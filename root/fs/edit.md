@@ -3,13 +3,6 @@ tags: cyb, cyber
 alias: edit particle, edit
 crystal-type: process
 crystal-domain: cyb
-stake: 10825995446474682
-diffusion: 0.00023743545103582951
-springs: 0.0018667756238279056
-heat: 0.001343726853555582
-focus: 0.0009474957833774307
-gravity: 3
-density: 8.31
 ---
 create a new [[particle]] with modified content and link it to the previous version
 

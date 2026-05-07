@@ -2,13 +2,6 @@
 tags: cyb
 crystal-type: entity
 crystal-domain: cyber
-stake: 13948672208441460
-diffusion: 0.00018475962095345727
-springs: 0.00013816939947916933
-heat: 0.00017693362521841406
-focus: 0.00016921735536416723
-gravity: 2
-density: 12.96
 ---
 what is working?
 

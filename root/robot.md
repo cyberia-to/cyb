@@ -3,13 +3,6 @@ alias: my
 tags: aip
 crystal-type: entity
 crystal-domain: cyber
-stake: 29058615009789740
-diffusion: 0.0007980866827938559
-springs: 0.0005908466311699859
-heat: 0.0006854903373685719
-focus: 0.000713395398221659
-gravity: 13
-density: 12.53
 ---
 offline value:: opens [[great web]] access
 

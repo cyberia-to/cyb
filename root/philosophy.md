@@ -2,13 +2,6 @@
 tags: article
 crystal-type: entity
 crystal-domain: cyber
-stake: 22715258302870980
-diffusion: 0.0005026876746526851
-springs: 0.0014676727183878546
-heat: 0.0011649532510869455
-focus: 0.0009246363030601151
-gravity: 1
-density: 1.71
 ---
 ## vision
 - soft that make dreams come true

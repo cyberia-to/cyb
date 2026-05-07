@@ -266,27 +266,67 @@ impl LlamaModel {
             let s = (h.iter().map(|v| v * v).sum::<f32>() / h.len() as f32).sqrt();
             eprintln!("post-embed     abs_max={m:.4} rms={s:.4}");
         }
-        for i in 0..c.num_hidden_layers {
-            hidden = forward_layer(
-                &hidden,
-                i,
-                &self.weights.layers[i],
-                c,
-                &pos_tensor,
-                backend,
-                &mut self.kv_cache[i],
-                self.past_seq_len,
-                if prof_enabled { Some(&mut self.prof) } else { None },
-            )?;
-            if debug_layers {
-                let h = hidden.try_as_f32()?;
-                let m = h.iter().map(|v| v.abs()).fold(0f32, f32::max);
-                let s = (h.iter().map(|v| v * v).sum::<f32>() / h.len() as f32).sqrt();
-                let kind = match c.layer_types.get(i).copied() {
-                    Some(crate::arch::decoder::config::LayerKind::Full) => "full",
-                    _ => "slid",
-                };
-                eprintln!("layer {i:>3} {kind} abs_max={m:>9.4} rms={s:>8.4}");
+
+        // Attempt single-batch cross-layer GPU forward (saves ~28 × 3 waits).
+        // Falls back to per-layer loop when backend returns None.
+        use crate::backend::LayerFusedInput;
+        let fused_inputs: Vec<LayerFusedInput<'_>> = self.weights.layers.iter().enumerate()
+            .map(|(i, l)| LayerFusedInput {
+                input_norm:  &l.input_norm,
+                q_proj:      &l.q_proj.tensor,
+                k_proj:      &l.k_proj.tensor,
+                v_proj:      &l.v_proj.tensor,
+                q_norm:      l.q_norm.as_ref(),
+                k_norm:      l.k_norm.as_ref(),
+                o_proj:      &l.o_proj.tensor,
+                post_norm:   &l.post_norm,
+                gate_proj:   &l.gate_proj.tensor,
+                up_proj:     &l.up_proj.tensor,
+                down_proj:   &l.down_proj.tensor,
+                num_heads:   c.num_attention_heads as u32,
+                kv_heads:    c.layer_kv_heads(i) as u32,
+                head_dim:    c.layer_head_dim(i) as u32,
+                rope_dim:    c.layer_rope_dim(i) as u32,
+                rope_theta:  c.layer_rope_theta(i),
+                attn_scale:  c.layer_attn_scale(i),
+                window:      c.layer_window(i).map(|w| w as u32).unwrap_or(0),
+                layer_idx:   i,
+            })
+            .collect();
+
+        let fused_result = if !debug_layers && !prof_enabled {
+            backend.forward_decode_fused_layers(
+                &hidden, &fused_inputs, self.past_seq_len, max_seq as u32, c.rms_norm_eps,
+            )?
+        } else {
+            None
+        };
+
+        if let Some(fused_hidden) = fused_result {
+            hidden = fused_hidden;
+        } else {
+            for i in 0..c.num_hidden_layers {
+                hidden = forward_layer(
+                    &hidden,
+                    i,
+                    &self.weights.layers[i],
+                    c,
+                    &pos_tensor,
+                    backend,
+                    &mut self.kv_cache[i],
+                    self.past_seq_len,
+                    if prof_enabled { Some(&mut self.prof) } else { None },
+                )?;
+                if debug_layers {
+                    let h = hidden.try_as_f32()?;
+                    let m = h.iter().map(|v| v.abs()).fold(0f32, f32::max);
+                    let s = (h.iter().map(|v| v * v).sum::<f32>() / h.len() as f32).sqrt();
+                    let kind = match c.layer_types.get(i).copied() {
+                        Some(crate::arch::decoder::config::LayerKind::Full) => "full",
+                        _ => "slid",
+                    };
+                    eprintln!("layer {i:>3} {kind} abs_max={m:>9.4} rms={s:>8.4}");
+                }
             }
         }
 

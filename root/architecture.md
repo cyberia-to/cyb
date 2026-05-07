@@ -5,13 +5,6 @@ icon: "\U0001F310"
 crystal-type: entity
 crystal-domain: cyber
 crystal-size: deep
-stake: 14015797676239542
-diffusion: 0.0002319079700529593
-springs: 0.0003611400379019617
-heat: 0.00034575448329668114
-focus: 0.000293446893056413
-gravity: 7
-density: 1.66
 ---
 # Architecture
 

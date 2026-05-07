@@ -6,12 +6,6 @@ date: 2026-03-21
 scope: fix verification, raw error strings, IBC amino compatibility, transport CLA, portal Ledger paths, relay module
 audit-number: 30
 auditor: Claude Opus 4.6
-diffusion: 0.00011233815923477823
-springs: 0.00008246788381555257
-heat: 0.000037649645370807764
-focus: 0.00008843937383621902
-gravity: 0
-density: 0
 ---
 # Security Audit 30: Fix Verification and Remaining Error Exposure
 

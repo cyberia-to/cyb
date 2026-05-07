@@ -3,12 +3,6 @@ tags: cyb, core
 crystal-type: entity
 crystal-domain: cyber
 alias: cyb core, core apps
-diffusion: 0.0001313288205827943
-springs: 0.0011107259957069458
-heat: 0.0008140574711196046
-focus: 0.0005616937032274183
-gravity: 4
-density: 8.73
 ---
 # Core
 

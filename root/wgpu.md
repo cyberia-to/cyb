@@ -2,12 +2,6 @@
 tags: cyb, core
 crystal-type: entity
 crystal-domain: cyber
-diffusion: 0.00014274588386253872
-springs: 0.0010764554648910948
-heat: 0.0007949381557019456
-focus: 0.0005532972125390032
-gravity: 2
-density: 5.14
 ---
 # wgpu
 

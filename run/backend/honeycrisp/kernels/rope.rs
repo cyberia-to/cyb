@@ -48,6 +48,53 @@ kernel void kmain(
 }
 "#;
 
+/// Fused Q+K RoPE: single dispatch over (num_q_heads + kv_heads) rows.
+/// Rows 0..num_q_heads → Q buffers; rows num_q_heads..total → K buffers.
+/// Buffers: 0=xq, 1=xk, 2=cos, 3=sin, 4=yq, 5=yk, 6=dims.
+/// Launch: groups=(1, num_q_heads+kv_heads, 1), threads=(HALF, 1, 1).
+pub const MSL_QK: &str = r#"
+#include <metal_stdlib>
+using namespace metal;
+
+constant constexpr uint HEAD_DIM = 128u;
+constant constexpr uint HALF     = 64u;
+
+struct Dims { uint q_rows; uint kv_rows; uint rope_half; uint pad; };
+
+kernel void kmain(
+    device const float  *xq     [[buffer(0)]],
+    device const float  *xk     [[buffer(1)]],
+    device const float  *cos_t  [[buffer(2)]],
+    device const float  *sin_t  [[buffer(3)]],
+    device       float  *yq     [[buffer(4)]],
+    device       float  *yk     [[buffer(5)]],
+    constant     Dims   &dims   [[buffer(6)]],
+    uint2                gid    [[thread_position_in_grid]]
+) {
+    uint j   = gid.x;
+    uint row = gid.y;
+    if (j >= HALF) return;
+
+    bool is_q   = row < dims.q_rows;
+    uint lrow   = is_q ? row : row - dims.q_rows;
+    uint base   = lrow * HEAD_DIM;
+    device const float *xin = is_q ? xq + base : xk + base;
+    device       float *yout= is_q ? yq + base : yk + base;
+
+    float x1 = xin[j];
+    float x2 = xin[j + HALF];
+
+    if (j < dims.rope_half) {
+        float c = cos_t[j], s = sin_t[j];
+        yout[j]        = x1 * c - x2 * s;
+        yout[j + HALF] = x1 * s + x2 * c;
+    } else {
+        yout[j]        = x1;
+        yout[j + HALF] = x2;
+    }
+}
+"#;
+
 pub fn msl_for(head_dim: usize) -> String {
     MSL_TEMPLATE
         .replace("__HEAD_DIM__", &head_dim.to_string())

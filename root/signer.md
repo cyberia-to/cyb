@@ -3,13 +3,6 @@ tags: cyb
 crystal-type: entity
 crystal-domain: cyber
 status: DONE
-stake: 26850187119232840
-diffusion: 0.0001654959549018017
-springs: 0.002037576085941267
-heat: 0.0014351449647093785
-focus: 0.0009810497961751854
-gravity: 3
-density: 0.26
 ---
 2 basic computations on [[particles]]
 

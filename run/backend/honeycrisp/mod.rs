@@ -44,6 +44,7 @@ struct AttnState {
     max_seq: u32,
     pipe_attn: HcPipeline,
     pipe_kv_append: HcPipeline,
+    pipe_kv_append_both: HcPipeline,
     /// Per-layer K and V buffers, [kv_heads, max_seq, head_dim] f32.
     k_caches: Vec<aruminium::Buffer>,
     v_caches: Vec<aruminium::Buffer>,
@@ -127,6 +128,14 @@ pub struct HoneycrispBackend {
     pipe_add: HcPipeline,
     pipe_silu_mul: HcPipeline,
     pipe_rope: HcPipeline,
+    pipe_q4_dual: HcPipeline,
+    pipe_q8_dual: HcPipeline,
+    pipe_q4_gus: HcPipeline,
+    pipe_q8_gus: HcPipeline,
+    pipe_qk_rope: HcPipeline,
+    pipe_qk_norm: HcPipeline,
+    pipe_q4_qkv: HcPipeline,
+    pipe_q8_qkv: HcPipeline,
     /// Recyclable scratch buffer pool — avoid `newBufferWithLength` per call
     /// inside fused chains.
     scratch: BufferPool,
@@ -148,6 +157,14 @@ impl HoneycrispBackend {
         let pipe_add = HcPipeline(device.pipeline(kernels::elementwise::ADD_MSL)?);
         let pipe_silu_mul = HcPipeline(device.pipeline(kernels::elementwise::SILU_MUL_MSL)?);
         let pipe_rope = HcPipeline(device.pipeline(kernels::rope::MSL)?);
+        let pipe_q4_dual = HcPipeline(device.pipeline(kernels::q4_matmul::MSL_DUAL)?);
+        let pipe_q8_dual = HcPipeline(device.pipeline(kernels::q8_matmul::MSL_DUAL)?);
+        let pipe_q4_gus  = HcPipeline(device.pipeline(kernels::q4_matmul::MSL_GATE_UP_SILU)?);
+        let pipe_q8_gus  = HcPipeline(device.pipeline(kernels::q8_matmul::MSL_GATE_UP_SILU)?);
+        let pipe_qk_rope = HcPipeline(device.pipeline(kernels::rope::MSL_QK)?);
+        let pipe_qk_norm = HcPipeline(device.pipeline(kernels::rmsnorm::MSL_QK)?);
+        let pipe_q4_qkv  = HcPipeline(device.pipeline(kernels::q4_matmul::MSL_QKV)?);
+        let pipe_q8_qkv  = HcPipeline(device.pipeline(kernels::q8_matmul::MSL_QKV)?);
         Ok(Self {
             device,
             cpu: CpuBackend::new(),
@@ -161,6 +178,14 @@ impl HoneycrispBackend {
             pipe_add,
             pipe_silu_mul,
             pipe_rope,
+            pipe_q4_dual,
+            pipe_q8_dual,
+            pipe_q4_gus,
+            pipe_q8_gus,
+            pipe_qk_rope,
+            pipe_qk_norm,
+            pipe_q4_qkv,
+            pipe_q8_qkv,
             scratch: BufferPool::new(),
             attn: std::sync::Mutex::new(None),
         })
@@ -205,8 +230,12 @@ impl HoneycrispBackend {
         let kv_msl = kernels::attention::kv_append_msl_for(
             kv_heads as usize, head_dim as usize, max_seq as usize,
         );
+        let kv_both_msl = kernels::attention::kv_append_both_msl_for(
+            kv_heads as usize, head_dim as usize, max_seq as usize,
+        );
         let pipe_attn = HcPipeline(self.device.pipeline(&attn_msl)?);
         let pipe_kv_append = HcPipeline(self.device.pipeline(&kv_msl)?);
+        let pipe_kv_append_both = HcPipeline(self.device.pipeline(&kv_both_msl)?);
 
         let mut k_caches = Vec::with_capacity(n_layers);
         let mut v_caches = Vec::with_capacity(n_layers);
@@ -217,7 +246,7 @@ impl HoneycrispBackend {
 
         *guard = Some(AttnState {
             num_heads, kv_heads, head_dim, max_seq,
-            pipe_attn, pipe_kv_append,
+            pipe_attn, pipe_kv_append, pipe_kv_append_both,
             k_caches, v_caches,
         });
         Ok(guard)
@@ -429,6 +458,11 @@ impl Backend for HoneycrispBackend {
         } else {
             kernels::q4_matmul::SIMDS_PER_GROUP
         };
+        let oproj_n_dst = if q8 {
+            kernels::q8_matmul::N_DST
+        } else {
+            kernels::q4_matmul::N_DST
+        };
 
         unsafe {
             aruminium::autorelease_pool(|| {
@@ -486,8 +520,8 @@ impl Backend for HoneycrispBackend {
                     }
                     // 4) o_proj quant matmul (attn_buf → oproj_buf)
                     {
-                        let total_rows = oproj_n;
-                        let groups_x = (total_rows + oproj_simds - 1) / oproj_simds;
+                        let rows_per_tg = oproj_simds * oproj_n_dst;
+                        let groups_x = (oproj_n + rows_per_tg - 1) / rows_per_tg;
                         let threads_per_group = oproj_simds * 32;
                         #[repr(C)]
                         #[derive(Clone, Copy)]
@@ -869,6 +903,11 @@ impl Backend for HoneycrispBackend {
             DType::Q4 => kernels::q4_matmul::SIMDS_PER_GROUP,
             _ => unreachable!(),
         };
+        let n_dst_q0 = match kind0 {
+            DType::Q8 => kernels::q8_matmul::N_DST,
+            DType::Q4 => kernels::q4_matmul::N_DST,
+            _ => unreachable!(),
+        };
         let n_blocks = (k / block_size) as u32;
 
         // Upload x once (or borrow if already on GPU).
@@ -899,7 +938,8 @@ impl Backend for HoneycrispBackend {
                     for i in 0..ws.len() {
                         let n = ns[i] as u32;
                         let total_rows = batch * n;
-                        let groups_x = (total_rows + simds_per_group - 1) / simds_per_group;
+                        let rows_per_tg = simds_per_group * n_dst_q0;
+                        let groups_x = (total_rows + rows_per_tg - 1) / rows_per_tg;
                         let threads_per_group = simds_per_group * 32;
 
                         #[repr(C)]
@@ -987,6 +1027,11 @@ impl Backend for HoneycrispBackend {
             DType::Q4 => kernels::q4_matmul::SIMDS_PER_GROUP,
             _ => unreachable!(),
         };
+        let n_dst_q0 = match kind0 {
+            DType::Q8 => kernels::q8_matmul::N_DST,
+            DType::Q4 => kernels::q4_matmul::N_DST,
+            _ => unreachable!(),
+        };
 
         let batch = hidden.shape[..hidden.shape.len() - 1].iter().product::<usize>() as u32;
         let d = input_norm_gamma.shape[0] as u32;
@@ -1048,7 +1093,8 @@ impl Backend for HoneycrispBackend {
                                       n_rows: u32,
                                       n_blocks: u32| {
                         let total_rows = batch * n_rows;
-                        let groups_x = (total_rows + simds_per_group - 1) / simds_per_group;
+                        let rows_per_tg = simds_per_group * n_dst_q0;
+                        let groups_x = (total_rows + rows_per_tg - 1) / rows_per_tg;
                         let threads_per_group = simds_per_group * 32;
                         #[repr(C)]
                         #[derive(Clone, Copy)]
@@ -1208,8 +1254,8 @@ impl Backend for HoneycrispBackend {
                                        n_rows: u32,
                                        n_blocks: u32| {
                         let total_rows = batch * n_rows;
-                        let groups_x = (total_rows + kernels::q8_matmul::SIMDS_PER_GROUP - 1)
-                            / kernels::q8_matmul::SIMDS_PER_GROUP;
+                        let rows_per_tg = kernels::q8_matmul::SIMDS_PER_GROUP * kernels::q8_matmul::N_DST;
+                        let groups_x = (total_rows + rows_per_tg - 1) / rows_per_tg;
                         let threads_per_group = kernels::q8_matmul::SIMDS_PER_GROUP * 32;
 
                         #[repr(C)]
@@ -1306,6 +1352,11 @@ impl Backend for HoneycrispBackend {
             DType::Q4 => kernels::q4_matmul::SIMDS_PER_GROUP,
             _ => unreachable!(),
         };
+        let n_dst_q = match kind {
+            DType::Q8 => kernels::q8_matmul::N_DST,
+            DType::Q4 => kernels::q4_matmul::N_DST,
+            _ => unreachable!(),
+        };
         let d = post_norm_gamma.shape[0] as u32;
         let inter = gate_w.shape[0] as u32;
         let down_n = down_w.shape[0] as u32;
@@ -1365,8 +1416,8 @@ impl Backend for HoneycrispBackend {
                                       out: &aruminium::Buffer,
                                       n_rows: u32,
                                       n_blocks: u32| {
-                        let total_rows = n_rows;
-                        let groups_x = (total_rows + simds - 1) / simds;
+                        let rows_per_tg = simds * n_dst_q;
+                        let groups_x = (n_rows + rows_per_tg - 1) / rows_per_tg;
                         let threads_per_group = simds * 32;
                         #[repr(C)]
                         #[derive(Clone, Copy)]
@@ -1437,6 +1488,443 @@ impl Backend for HoneycrispBackend {
         let mut out_shape = hidden_in.shape.clone();
         *out_shape.last_mut().unwrap() = down_n as usize;
         Ok(self.wrap_output(out_buf, out_shape, DType::F32))
+    }
+
+    fn forward_decode_fused_layers(
+        &self,
+        hidden: &Tensor,
+        layers: &[crate::backend::LayerFusedInput<'_>],
+        past_seq_len: usize,
+        max_seq: u32,
+        eps: f32,
+    ) -> Result<Option<Tensor>, crate::backend::BackendError> {
+        use crate::backend::BackendError;
+        if layers.is_empty() { return Ok(None); }
+
+        let l0 = &layers[0];
+        let kind = l0.q_proj.dtype;
+        // Only Q4/Q8, and only head_dim=128 (pipe_rope is compiled for this size)
+        if !matches!(kind, DType::Q4 | DType::Q8) { return Ok(None); }
+        if l0.head_dim != 128 { return Ok(None); }
+
+        let block_size = match kind {
+            DType::Q4 => kernels::q4_matmul::BLOCK_SIZE,
+            DType::Q8 => kernels::q8_matmul::BLOCK_SIZE,
+            _ => unreachable!(),
+        };
+        let simds = match kind {
+            DType::Q4 => kernels::q4_matmul::SIMDS_PER_GROUP,
+            DType::Q8 => kernels::q8_matmul::SIMDS_PER_GROUP,
+            _ => unreachable!(),
+        };
+        let n_dst = match kind {
+            DType::Q4 => kernels::q4_matmul::N_DST,
+            DType::Q8 => kernels::q8_matmul::N_DST,
+            _ => unreachable!(),
+        };
+        let pipe_q = match kind {
+            DType::Q4 => &self.pipe_q4.0,
+            DType::Q8 => &self.pipe_q8.0,
+            _ => unreachable!(),
+        };
+
+        let k_dim      = l0.q_proj.shape[1];   // hidden_size = input feature dim
+        let inter_size = l0.gate_proj.shape[0]; // FFN intermediate
+        let num_heads  = l0.num_heads;
+        let kv_heads   = l0.kv_heads;
+        let head_dim   = l0.head_dim;
+        let rope_half  = (l0.rope_dim / 2) as usize;
+        let rope_theta = l0.rope_theta;
+        let n          = layers.len();
+
+        // Verify all layers are uniform and fully GPU-resident
+        let on_gpu = |t: &Tensor| matches!(t.data, TensorData::Backend(_));
+        for l in layers {
+            if l.head_dim != head_dim || l.num_heads != num_heads || l.kv_heads != kv_heads
+                || l.q_proj.shape[1] != k_dim || l.gate_proj.shape[0] != inter_size
+            { return Ok(None); }
+            if l.q_proj.dtype != kind || l.k_proj.dtype != kind || l.v_proj.dtype != kind
+                || l.o_proj.dtype != kind || l.gate_proj.dtype != kind
+                || l.up_proj.dtype != kind || l.down_proj.dtype != kind
+            { return Ok(None); }
+            if !on_gpu(l.q_proj) || !on_gpu(l.k_proj) || !on_gpu(l.v_proj)
+                || !on_gpu(l.o_proj) || !on_gpu(l.gate_proj)
+                || !on_gpu(l.up_proj) || !on_gpu(l.down_proj)
+            { return Ok(None); }
+            if l.q_norm.is_none() || l.k_norm.is_none() { return Ok(None); }
+            if l.window != 0 { return Ok(None); }
+        }
+        if k_dim % block_size != 0 || inter_size % block_size != 0 { return Ok(None); }
+
+        let q_dim       = (num_heads * head_dim) as usize;
+        let kv_dim      = (kv_heads  * head_dim) as usize;
+        let n_blk_kd    = (k_dim      / block_size) as u32;  // for q/k/v/gate/up
+        let n_blk_qd    = (q_dim      / block_size) as u32;  // for o_proj
+        let n_blk_inter = (inter_size / block_size) as u32;  // for down_proj
+
+        // Ensure attn state is built for all layers
+        let max_layer_idx = layers.iter().map(|l| l.layer_idx).max().unwrap_or(0);
+        {
+            let needs = match self.attn.lock().unwrap().as_ref() {
+                Some(s) => s.k_caches.len() <= max_layer_idx
+                    || s.num_heads != num_heads || s.kv_heads != kv_heads
+                    || s.head_dim != head_dim   || s.max_seq  != max_seq,
+                None => true,
+            };
+            if needs {
+                let g = self.attn_state(num_heads, kv_heads, head_dim, max_seq, max_layer_idx + 1)?;
+                drop(g);
+            }
+        }
+        let attn_guard = self.attn.lock().unwrap();
+        let st = attn_guard.as_ref().unwrap();
+
+        // Precompute RoPE cos/sin for current position
+        let pos = past_seq_len as f32;
+        let mut cos_v = vec![0f32; rope_half];
+        let mut sin_v = vec![0f32; rope_half];
+        for j in 0..rope_half {
+            let theta = pos / rope_theta.powf(2.0 * j as f32 / head_dim as f32);
+            cos_v[j] = theta.cos();
+            sin_v[j] = theta.sin();
+        }
+        let cos_buf = self.device.gpu
+            .buffer_with_data(bytemuck::cast_slice(&cos_v))
+            .map_err(|e| BackendError::Internal(format!("cos_buf: {e}")))?;
+        let sin_buf = self.device.gpu
+            .buffer_with_data(bytemuck::cast_slice(&sin_v))
+            .map_err(|e| BackendError::Internal(format!("sin_buf: {e}")))?;
+
+        let init_h = self.buf_ref(hidden)?;
+
+        // Allocate reusable scratch buffers (reused across all layers;
+        // safe because dispatches within one command buffer are ordered)
+        let hd4 = k_dim * 4;
+        let q4  = q_dim * 4;
+        let kv4 = kv_dim * 4;
+        let i4  = inter_size * 4;
+        let hid_a = self.device.alloc(hd4)?;
+        let hid_b = self.device.alloc(hd4)?;
+        let hid2  = self.device.alloc(hd4)?;
+        let normd = self.device.alloc(hd4)?;
+        let q_raw = self.device.alloc(q4)?;
+        let k_raw = self.device.alloc(kv4)?;
+        let v_raw = self.device.alloc(kv4)?;
+        let qn    = self.device.alloc(q4)?;
+        let kn    = self.device.alloc(kv4)?;
+        let qr    = self.device.alloc(q4)?;
+        let kr    = self.device.alloc(kv4)?;
+        let attn  = self.device.alloc(q4)?;
+        let opj   = self.device.alloc(hd4)?;
+        let pnorm = self.device.alloc(hd4)?;
+        let mid   = self.device.alloc(i4)?;
+        let ffnb  = self.device.alloc(hd4)?;
+
+        // Pre-resolve HcBuffer pointers — raw for closure capture (safe: tensors
+        // live for the duration of this function which outlives batch_raw).
+        let get_ptr = |t: &Tensor| -> *const aruminium::Buffer {
+            match &t.data {
+                TensorData::Backend(b) => {
+                    let h = b.as_any().downcast_ref::<HcBuffer>().unwrap();
+                    &h.buffer as *const _
+                }
+                _ => std::ptr::null(),
+            }
+        };
+
+        struct LPtrs {
+            in_norm: *const aruminium::Buffer,
+            q_w:     *const aruminium::Buffer,
+            k_w:     *const aruminium::Buffer,
+            v_w:     *const aruminium::Buffer,
+            q_n:     *const aruminium::Buffer,
+            k_n:     *const aruminium::Buffer,
+            o_w:     *const aruminium::Buffer,
+            post_n:  *const aruminium::Buffer,
+            gate_w:  *const aruminium::Buffer,
+            up_w:    *const aruminium::Buffer,
+            down_w:  *const aruminium::Buffer,
+            kv_idx:  usize,
+            q_n_rows: u32,
+            kv_n_rows: u32,
+            o_n_rows:  u32,
+            g_n_rows:  u32,
+            dn_n_rows: u32,
+            total_seq: u32,
+            scale:     f32,
+        }
+        unsafe impl Send for LPtrs {}
+
+        let mut lptrs: Vec<LPtrs> = Vec::with_capacity(n);
+        for l in layers {
+            lptrs.push(LPtrs {
+                in_norm:  get_ptr(l.input_norm),
+                q_w:      get_ptr(l.q_proj),
+                k_w:      get_ptr(l.k_proj),
+                v_w:      get_ptr(l.v_proj),
+                q_n:      get_ptr(l.q_norm.unwrap()),
+                k_n:      get_ptr(l.k_norm.unwrap()),
+                o_w:      get_ptr(l.o_proj),
+                post_n:   get_ptr(l.post_norm),
+                gate_w:   get_ptr(l.gate_proj),
+                up_w:     get_ptr(l.up_proj),
+                down_w:   get_ptr(l.down_proj),
+                kv_idx:   l.layer_idx,
+                q_n_rows:  l.num_heads * l.head_dim,
+                kv_n_rows: l.kv_heads  * l.head_dim,
+                o_n_rows:  l.o_proj.shape[0] as u32,
+                g_n_rows:  l.gate_proj.shape[0] as u32,
+                dn_n_rows: l.down_proj.shape[0] as u32,
+                total_seq: (past_seq_len + 1) as u32,
+                scale:     l.attn_scale,
+            });
+        }
+
+        // Pipeline references (disjoint borrows from self — OK with batch_raw)
+        let pipe_rmsnorm   = &self.pipe_rmsnorm.0;
+        let pipe_rope_ref  = &self.pipe_rope.0;
+        let pipe_add_ref   = &self.pipe_add.0;
+        let pipe_silu_ref  = &self.pipe_silu_mul.0;
+        let pipe_q_dual    = match kind {
+            DType::Q4 => &self.pipe_q4_dual.0,
+            DType::Q8 => &self.pipe_q8_dual.0,
+            _ => unreachable!(),
+        };
+        let pipe_q_gus     = match kind {
+            DType::Q4 => &self.pipe_q4_gus.0,
+            DType::Q8 => &self.pipe_q8_gus.0,
+            _ => unreachable!(),
+        };
+        let pipe_kv_both   = &st.pipe_kv_append_both.0;
+        let pipe_qk_rope   = &self.pipe_qk_rope.0;
+        let pipe_qk_norm   = &self.pipe_qk_norm.0;
+        let pipe_qkv       = match kind {
+            DType::Q4 => &self.pipe_q4_qkv.0,
+            DType::Q8 => &self.pipe_q8_qkv.0,
+            _ => unreachable!(),
+        };
+
+        unsafe {
+            aruminium::autorelease_pool(|| {
+                self.device.dispatch.batch_raw(|enc| {
+                    for (li, lp) in lptrs.iter().enumerate() {
+                        let hidden_in: &aruminium::Buffer = if li == 0 {
+                            init_h.as_buffer()
+                        } else if li % 2 == 1 {
+                            &hid_b
+                        } else {
+                            &hid_a
+                        };
+                        let hidden_out: &aruminium::Buffer =
+                            if li % 2 == 0 { &hid_b } else { &hid_a };
+
+                        macro_rules! push_bytes {
+                            ($enc:expr, $val:expr, $idx:expr) => {{
+                                let bytes = std::slice::from_raw_parts(
+                                    &$val as *const _ as *const u8,
+                                    std::mem::size_of_val(&$val),
+                                );
+                                $enc.push(bytes, $idx);
+                            }};
+                        }
+
+                        // 1. input_norm
+                        {
+                            #[repr(C)] #[derive(Clone,Copy)]
+                            struct P { batch: u32, d: u32, eps: f32, pad: u32 }
+                            let p = P { batch: 1, d: k_dim as u32, eps, pad: 0 };
+                            enc.bind(pipe_rmsnorm);
+                            enc.bind_buffer(hidden_in, 0, 0);
+                            enc.bind_buffer(&*lp.in_norm, 0, 1);
+                            enc.bind_buffer(&normd, 0, 2);
+                            push_bytes!(enc, p, 3);
+                            enc.launch_groups((1, 1, 1), (256, 1, 1));
+                        }
+
+                        // 2-4. Q/K/V quant matmuls from normd
+                        let dispatch_qmm = |enc: &aruminium::Batch,
+                                            x: &aruminium::Buffer,
+                                            w: *const aruminium::Buffer,
+                                            out: &aruminium::Buffer,
+                                            n_rows: u32,
+                                            n_blk: u32| {
+                            let rows_per_tg = simds * n_dst;
+                            let groups = (n_rows + rows_per_tg - 1) / rows_per_tg;
+                            let tpg    = simds * 32;
+                            #[repr(C)] #[derive(Clone,Copy)]
+                            struct D { batch: u32, n_rows: u32, n_blocks: u32, pad: u32 }
+                            let d = D { batch: 1, n_rows, n_blocks: n_blk, pad: 0 };
+                            enc.bind(pipe_q);
+                            enc.bind_buffer(x, 0, 0);
+                            enc.bind_buffer(&*w, 0, 1);
+                            enc.bind_buffer(out, 0, 2);
+                            let bytes = std::slice::from_raw_parts(
+                                &d as *const D as *const u8, std::mem::size_of::<D>(),
+                            );
+                            enc.push(bytes, 3);
+                            enc.launch_groups((groups as usize, 1, 1), (tpg as usize, 1, 1));
+                        };
+                        // 2. Q/K/V triple fused matmul
+                        {
+                            let total_rows = lp.q_n_rows + 2 * lp.kv_n_rows;
+                            let rows_per_tg = simds * n_dst;
+                            let groups = (total_rows + rows_per_tg - 1) / rows_per_tg;
+                            let tpg    = simds * 32;
+                            #[repr(C)] #[derive(Clone,Copy)]
+                            struct D { q_rows: u32, kv_rows: u32, n_blocks: u32, pad: u32 }
+                            let d = D { q_rows: lp.q_n_rows, kv_rows: lp.kv_n_rows, n_blocks: n_blk_kd, pad: 0 };
+                            enc.bind(pipe_qkv);
+                            enc.bind_buffer(&normd, 0, 0);
+                            enc.bind_buffer(&*lp.q_w, 0, 1);
+                            enc.bind_buffer(&*lp.k_w, 0, 2);
+                            enc.bind_buffer(&*lp.v_w, 0, 3);
+                            enc.bind_buffer(&q_raw, 0, 4);
+                            enc.bind_buffer(&k_raw, 0, 5);
+                            enc.bind_buffer(&v_raw, 0, 6);
+                            let bytes = std::slice::from_raw_parts(
+                                &d as *const D as *const u8, std::mem::size_of::<D>(),
+                            );
+                            enc.push(bytes, 7);
+                            enc.launch_groups((groups as usize, 1, 1), (tpg as usize, 1, 1));
+                        }
+
+                        // 5. Q+K qk_norm fused (one dispatch)
+                        {
+                            #[repr(C)] #[derive(Clone,Copy)]
+                            struct P { q_heads: u32, kv_heads: u32, d: u32, eps: f32 }
+                            let p = P { q_heads: num_heads, kv_heads, d: head_dim, eps };
+                            enc.bind(pipe_qk_norm);
+                            enc.bind_buffer(&q_raw, 0, 0);
+                            enc.bind_buffer(&*lp.q_n, 0, 1);
+                            enc.bind_buffer(&qn, 0, 2);
+                            enc.bind_buffer(&k_raw, 0, 3);
+                            enc.bind_buffer(&*lp.k_n, 0, 4);
+                            enc.bind_buffer(&kn, 0, 5);
+                            push_bytes!(enc, p, 6);
+                            enc.launch_groups(((num_heads + kv_heads) as usize, 1, 1), (256, 1, 1));
+                        }
+
+                        // 6. Q+K RoPE fused (one dispatch)
+                        {
+                            let half = (head_dim / 2) as usize;
+                            #[repr(C)] #[derive(Clone,Copy)]
+                            struct D { q_rows: u32, kv_rows: u32, rope_half: u32, pad: u32 }
+                            let d = D { q_rows: num_heads, kv_rows: kv_heads, rope_half: rope_half as u32, pad: 0 };
+                            enc.bind(pipe_qk_rope);
+                            enc.bind_buffer(&qn, 0, 0);
+                            enc.bind_buffer(&kn, 0, 1);
+                            enc.bind_buffer(&cos_buf, 0, 2);
+                            enc.bind_buffer(&sin_buf, 0, 3);
+                            enc.bind_buffer(&qr, 0, 4);
+                            enc.bind_buffer(&kr, 0, 5);
+                            push_bytes!(enc, d, 6);
+                            enc.launch_groups((1, (num_heads + kv_heads) as usize, 1), (half, 1, 1));
+                        }
+
+                        // 9. KV-append K+V in one dispatch
+                        {
+                            #[repr(C)] #[derive(Clone,Copy)]
+                            struct P { position: u32, p0: u32, p1: u32, p2: u32 }
+                            let p = P { position: past_seq_len as u32, p0: 0, p1: 0, p2: 0 };
+                            enc.bind(pipe_kv_both);
+                            enc.bind_buffer(&kr, 0, 0);
+                            enc.bind_buffer(&st.k_caches[lp.kv_idx], 0, 1);
+                            enc.bind_buffer(&v_raw, 0, 2);
+                            enc.bind_buffer(&st.v_caches[lp.kv_idx], 0, 3);
+                            push_bytes!(enc, p, 4);
+                            enc.launch_groups((head_dim as usize, kv_heads as usize, 1), (1, 1, 1));
+                        }
+
+                        // 11. SDPA
+                        {
+                            #[repr(C)] #[derive(Clone,Copy)]
+                            struct P { total_seq: u32, window: u32, scale: f32, pad: u32 }
+                            let p = P { total_seq: lp.total_seq, window: 0, scale: lp.scale, pad: 0 };
+                            enc.bind(&st.pipe_attn.0);
+                            enc.bind_buffer(&qr, 0, 0);
+                            enc.bind_buffer(&st.k_caches[lp.kv_idx], 0, 1);
+                            enc.bind_buffer(&st.v_caches[lp.kv_idx], 0, 2);
+                            enc.bind_buffer(&attn, 0, 3);
+                            push_bytes!(enc, p, 4);
+                            enc.launch_groups((num_heads as usize, 1, 1), (32, 1, 1));
+                        }
+
+                        // 12. o_proj (attn → opj)
+                        dispatch_qmm(enc, &attn, lp.o_w, &opj, lp.o_n_rows, n_blk_qd);
+
+                        // 13. attn residual: hid2 = hidden_in + opj
+                        {
+                            let nn = k_dim as u32;
+                            #[repr(C)] #[derive(Clone,Copy)]
+                            struct P { n: u32, a_len: u32, b_len: u32, pad: u32 }
+                            let p = P { n: nn, a_len: nn, b_len: nn, pad: 0 };
+                            enc.bind(pipe_add_ref);
+                            enc.bind_buffer(hidden_in, 0, 0);
+                            enc.bind_buffer(&opj, 0, 1);
+                            enc.bind_buffer(&hid2, 0, 2);
+                            push_bytes!(enc, p, 3);
+                            enc.launch_groups(((nn as usize + 63) / 64, 1, 1), (64, 1, 1));
+                        }
+
+                        // 14. post_norm
+                        {
+                            #[repr(C)] #[derive(Clone,Copy)]
+                            struct P { batch: u32, d: u32, eps: f32, pad: u32 }
+                            let p = P { batch: 1, d: k_dim as u32, eps, pad: 0 };
+                            enc.bind(pipe_rmsnorm);
+                            enc.bind_buffer(&hid2, 0, 0);
+                            enc.bind_buffer(&*lp.post_n, 0, 1);
+                            enc.bind_buffer(&pnorm, 0, 2);
+                            push_bytes!(enc, p, 3);
+                            enc.launch_groups((1, 1, 1), (256, 1, 1));
+                        }
+
+                        // 15. gate+up+silu fused → mid (one dispatch, no silu step)
+                        {
+                            let n_rows = lp.g_n_rows;
+                            let rows_per_tg = simds * n_dst;
+                            let groups = (n_rows + rows_per_tg - 1) / rows_per_tg;
+                            let tpg    = simds * 32;
+                            #[repr(C)] #[derive(Clone,Copy)]
+                            struct D { batch: u32, n_rows: u32, n_blocks: u32, pad: u32 }
+                            let d = D { batch: 1, n_rows, n_blocks: n_blk_kd, pad: 0 };
+                            enc.bind(pipe_q_gus);
+                            enc.bind_buffer(&pnorm, 0, 0);
+                            enc.bind_buffer(&*lp.gate_w, 0, 1);
+                            enc.bind_buffer(&*lp.up_w,   0, 2);
+                            enc.bind_buffer(&mid, 0, 3);
+                            let bytes = std::slice::from_raw_parts(
+                                &d as *const D as *const u8, std::mem::size_of::<D>(),
+                            );
+                            enc.push(bytes, 4);
+                            enc.launch_groups((groups as usize, 1, 1), (tpg as usize, 1, 1));
+                        }
+
+                        // 18. down_proj
+                        dispatch_qmm(enc, &mid, lp.down_w, &ffnb, lp.dn_n_rows, n_blk_inter);
+
+                        // 19. FFN residual: hidden_out = hid2 + ffnb
+                        {
+                            let nn = k_dim as u32;
+                            #[repr(C)] #[derive(Clone,Copy)]
+                            struct P { n: u32, a_len: u32, b_len: u32, pad: u32 }
+                            let p = P { n: nn, a_len: nn, b_len: nn, pad: 0 };
+                            enc.bind(pipe_add_ref);
+                            enc.bind_buffer(&hid2, 0, 0);
+                            enc.bind_buffer(&ffnb, 0, 1);
+                            enc.bind_buffer(hidden_out, 0, 2);
+                            push_bytes!(enc, p, 3);
+                            enc.launch_groups(((nn as usize + 63) / 64, 1, 1), (64, 1, 1));
+                        }
+                    } // end layer loop
+                }); // end batch_raw
+            });
+        }
+
+        // The last layer (index n-1) wrote to:
+        //   hid_b if (n-1)%2 == 0, hid_a if (n-1)%2 == 1
+        let final_buf = if (n - 1) % 2 == 0 { hid_b } else { hid_a };
+        Ok(Some(self.wrap_output(final_buf, hidden.shape.clone(), DType::F32)))
     }
 
     /// Batched RmsNorm — multiple independent (x, gamma) pairs in one command
@@ -1557,6 +2045,11 @@ impl Backend for HoneycrispBackend {
             DType::Q4 => kernels::q4_matmul::SIMDS_PER_GROUP,
             _ => unreachable!(),
         };
+        let n_dst_q0 = match kind0 {
+            DType::Q8 => kernels::q8_matmul::N_DST,
+            DType::Q4 => kernels::q4_matmul::N_DST,
+            _ => unreachable!(),
+        };
         let n_blocks = (k / block_size) as u32;
         let x_buf = self.buf_ref(x)?;
         let g_buf = self.buf_ref(gamma)?;
@@ -1604,7 +2097,8 @@ impl Backend for HoneycrispBackend {
                     for (i, w_buf) in weight_refs.iter().enumerate() {
                         let n = ns[i] as u32;
                         let total_rows = batch * n;
-                        let groups_x = (total_rows + simds_per_group - 1) / simds_per_group;
+                        let rows_per_tg = simds_per_group * n_dst_q0;
+                        let groups_x = (total_rows + rows_per_tg - 1) / rows_per_tg;
                         let threads_per_group = simds_per_group * 32;
 
                         #[repr(C)]

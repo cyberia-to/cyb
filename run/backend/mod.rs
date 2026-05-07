@@ -16,6 +16,30 @@ use crate::core::op::Op;
 use crate::core::tensor::Tensor;
 use thiserror::Error;
 
+/// Per-layer inputs for `forward_decode_fused_layers`.
+/// All quant weight tensors must be GPU-resident (after `to_backend`).
+pub struct LayerFusedInput<'a> {
+    pub input_norm:  &'a Tensor,
+    pub q_proj:      &'a Tensor,
+    pub k_proj:      &'a Tensor,
+    pub v_proj:      &'a Tensor,
+    pub q_norm:      Option<&'a Tensor>,
+    pub k_norm:      Option<&'a Tensor>,
+    pub o_proj:      &'a Tensor,
+    pub post_norm:   &'a Tensor,
+    pub gate_proj:   &'a Tensor,
+    pub up_proj:     &'a Tensor,
+    pub down_proj:   &'a Tensor,
+    pub num_heads:   u32,
+    pub kv_heads:    u32,
+    pub head_dim:    u32,
+    pub rope_dim:    u32,
+    pub rope_theta:  f32,
+    pub attn_scale:  f32,
+    pub window:      u32,
+    pub layer_idx:   usize,
+}
+
 /// Three backends + cpu reference library.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BackendKind {
@@ -336,6 +360,22 @@ pub trait Backend: Send + Sync {
         let up = it.next().unwrap();
         let mid = self.silu_mul(&gate, &up)?;
         self.quant_matmul(&mid, down_w)
+    }
+
+    /// Run all transformer layers in a single GPU command buffer (decode mode).
+    /// Returns `Ok(Some(hidden))` on success, `Ok(None)` if not supported by
+    /// this backend or for this model configuration — caller falls back to
+    /// the per-layer loop.
+    fn forward_decode_fused_layers(
+        &self,
+        hidden: &Tensor,
+        layers: &[LayerFusedInput<'_>],
+        past_seq_len: usize,
+        max_seq: u32,
+        eps: f32,
+    ) -> Result<Option<Tensor>, BackendError> {
+        let _ = (hidden, layers, past_seq_len, max_seq, eps);
+        Ok(None)
     }
 
     /// Fused SiLU(gate) * up. Default: split into two ops on CPU.
