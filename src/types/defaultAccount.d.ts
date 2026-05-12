@@ -1,7 +1,7 @@
 type AccountKey = 'cyber' | 'cosmos';
 
 export type AccountValue = {
-  keys: 'read-only' | 'keplr';
+  keys: 'read-only' | 'ledger' | 'wallet' | 'private-key';
   bech32: string;
   name?: string;
   path?: number[];
