@@ -26,8 +26,7 @@ pub fn canonical_encoding_for(canonical_name: &str) -> &'static str {
         return "u32";
     }
     // Embeddings, lm_head, attention projections, MLP projections.
-    // EXPERIMENT: q4 for half storage + bandwidth (faster GPU compute).
-    "q4"
+    "q8"
 }
 
 /// Map a GGUF tensor name to its HuggingFace canonical equivalent.
