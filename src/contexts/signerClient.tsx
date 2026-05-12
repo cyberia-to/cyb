@@ -16,7 +16,7 @@ import {
   checkTransportHealth,
 } from 'src/utils/ledgerSigner';
 import networkListIbc from 'src/utils/networkListIbc';
-import { getOfflineSigner as getOfflineSignerFromMnemonic } from 'src/utils/offlineSigner';
+import { getOfflineSigner as getOfflineSignerFromMnemonic, getOfflineSignerFromPrivateKey } from 'src/utils/offlineSigner';
 import { getEncryptedMnemonic, setEncryptedMnemonic } from 'src/utils/utils';
 
 const MNEMONIC_AUTO_CLEAR_MS = 15 * 60 * 1000; // 15 minutes
@@ -235,31 +235,35 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
     (async () => {
       const keys = defaultAccount.account?.cyber?.keys;
       const bech32 = defaultAccount.account?.cyber?.bech32;
-      if (keys !== 'wallet' || !bech32) return;
+      if ((keys !== 'wallet' && keys !== 'private-key') || !bech32) return;
+
+      const isPrivateKey = keys === 'private-key';
 
       // On web, auto-switch only works if wallet is already unlocked (mnemonicRef)
       // On Tauri, decrypt with device key
-      let mnemonic: string | null = mnemonicRef.current;
+      let secret: string | null = mnemonicRef.current;
 
-      if (!mnemonic && process.env.IS_TAURI) {
+      if (!secret && process.env.IS_TAURI) {
         const encrypted = getEncryptedMnemonic(bech32);
         if (encrypted) {
           try {
-            mnemonic = await decryptMnemonic(encrypted, getTauriDeviceKey());
+            secret = await decryptMnemonic(encrypted, getTauriDeviceKey());
           } catch {
-            console.warn('[Signer] Failed to decrypt mnemonic for account switch');
+            console.warn('[Signer] Failed to decrypt key for account switch');
             return;
           }
         }
       }
 
-      if (!mnemonic) return;
+      if (!secret) return;
 
       try {
-        const localSigner = await getOfflineSignerFromMnemonic(mnemonic);
+        const localSigner = isPrivateKey
+          ? await getOfflineSignerFromPrivateKey(secret)
+          : await getOfflineSignerFromMnemonic(secret);
         const [account] = await localSigner.getAccounts();
         if (account.address !== bech32) {
-          console.warn('[Signer] Mnemonic derives different address, skipping');
+          console.warn('[Signer] Key derives different address, skipping');
           return;
         }
         const clientJs = await createClient(localSigner);
@@ -345,19 +349,23 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
       const address = defaultAccount.account?.cyber.bech32;
       if (!address) throw new Error('Select an account in Keys before signing');
 
+      const isPrivateKeyAccount = defaultAccount.account?.cyber.keys === 'private-key';
+
       const encrypted = getEncryptedMnemonic(address);
-      if (!encrypted) throw new Error('Wallet data not found. Re-import your seed phrase');
+      if (!encrypted) throw new Error('Wallet data not found. Re-import your key');
 
-      const mnemonic = await decryptMnemonic(encrypted, password);
-      const offlineSigner = await getOfflineSignerFromMnemonic(mnemonic);
+      const secret = await decryptMnemonic(encrypted, password);
+      const offlineSigner = isPrivateKeyAccount
+        ? await getOfflineSignerFromPrivateKey(secret)
+        : await getOfflineSignerFromMnemonic(secret);
 
-      // Verify decrypted mnemonic derives to the expected address
+      // Verify decrypted secret derives to the expected address
       const [account] = await offlineSigner.getAccounts();
       if (account.address !== address) {
-        throw new Error('Seed phrase does not match this account. Check your backup');
+        throw new Error('Key does not match this account. Check your backup');
       }
 
-      setMnemonicWithAutoClear(mnemonic);
+      setMnemonicWithAutoClear(secret);
       setSigner(offlineSigner);
     },
     [defaultAccount, setMnemonicWithAutoClear]

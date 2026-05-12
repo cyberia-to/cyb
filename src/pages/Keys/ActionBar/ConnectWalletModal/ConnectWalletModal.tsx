@@ -1,4 +1,4 @@
-import { ClipboardEventHandler, useCallback, useEffect, useState } from 'react';
+import { ClipboardEventHandler, useCallback, useEffect, useRef, useState } from 'react';
 import { Button, Input } from 'src/components';
 import Dropdown from 'src/components/Dropdown/Dropdown';
 import Modal from 'src/components/modal/Modal';
@@ -17,8 +17,10 @@ const dropdownOptions = [
   { label: '24', value: '24' },
 ];
 
+type ImportMode = 'mnemonic' | 'private-key';
+
 interface ConnectWalletModalProps {
-  onAdd(name: string, mnemonic: string): void | Promise<void>;
+  onAdd(name: string, secret: string, mode: ImportMode): void | Promise<void>;
   onCancel(): void;
 }
 
@@ -36,6 +38,10 @@ export default function ConnectWalletModal({
   const [isTouched, setIsTouched] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hidden, setHidden] = useState(false);
+  const [showWords, setShowWords] = useState(false);
+  const [importMode, setImportMode] = useState<ImportMode>('mnemonic');
+  const privateKeyRef = useRef('');
+  const [privateKeyDisplay, setPrivateKeyDisplay] = useState(''); // masked length only, never raw key
 
   // Best-effort cleanup on unmount — setState during unmount is a no-op in React 18,
   // string values remain in fiber tree until GC. Same inherent JS limitation as MetaMask/Keplr.
@@ -43,6 +49,7 @@ export default function ConnectWalletModal({
     return () => {
       setValues({});
       setName('');
+      privateKeyRef.current = '';
     };
   }, []);
 
@@ -52,6 +59,8 @@ export default function ConnectWalletModal({
       if (document.hidden) {
         setHidden(true);
         setValues({});
+        privateKeyRef.current = '';
+        setPrivateKeyDisplay('');
       } else {
         setHidden(false);
       }
@@ -113,23 +122,40 @@ export default function ConnectWalletModal({
     setIsTouched(true);
     setError(null);
 
-    const filledCount = Object.values(values).filter(Boolean).length;
-    const targetCount = Number(mnemonicsLength);
-
     if (!name) {
       return;
     }
+
+    if (importMode === 'private-key') {
+      const hex = privateKeyRef.current.trim().replace(/^0x/, '');
+      if (!/^[0-9a-fA-F]{64}$/.test(hex)) {
+        setError('Invalid private key. Expected 64 hex characters.');
+        return;
+      }
+      try {
+        await onAdd(name, hex, 'private-key');
+      } catch {
+        setError('Invalid private key. Please check and try again.');
+      } finally {
+        privateKeyRef.current = '';
+        setPrivateKeyDisplay('');
+      }
+      return;
+    }
+
+    const filledCount = Object.values(values).filter(Boolean).length;
+    const targetCount = Number(mnemonicsLength);
 
     if (filledCount < targetCount) {
       return;
     }
 
     try {
-      await onAdd(name, Object.values(values).join(' '));
+      await onAdd(name, Object.values(values).join(' '), 'mnemonic');
     } catch {
       setError('Invalid seed phrase. Please check your words and try again.');
     }
-  }, [onAdd, name, values, mnemonicsLength]);
+  }, [onAdd, name, values, mnemonicsLength, importMode]);
 
   return (
     <Modal isOpen onPaste={onMnemonicsPaste} onClose={onCancel}>
@@ -142,29 +168,105 @@ export default function ConnectWalletModal({
           error={isTouched && !name ? 'Name is missing' : undefined}
         />
       </div>
-      <div style={styles.wrapper}>
-        <h3 style={styles.heading}>Enter or paste your seed phrase</h3>
-        <div style={styles.dropdown}>
-          <Dropdown
-            value={mnemonicsLength}
-            options={dropdownOptions}
-            onChange={(v: string) => setMnemonicsLength(v as keyof typeof columns)}
+      <div style={{ display: 'flex', gap: '10px', marginBottom: '10px' }}>
+        <button
+          type="button"
+          onClick={() => setImportMode('mnemonic')}
+          style={{
+            background: importMode === 'mnemonic' ? '#36d6ae22' : 'transparent',
+            border: `1px solid ${importMode === 'mnemonic' ? '#36d6ae' : '#ffffff33'}`,
+            color: importMode === 'mnemonic' ? '#36d6ae' : '#ffffffb3',
+            padding: '6px 16px',
+            borderRadius: '20px',
+            cursor: 'pointer',
+            fontSize: '14px',
+          }}
+        >
+          Seed phrase
+        </button>
+        <button
+          type="button"
+          onClick={() => setImportMode('private-key')}
+          style={{
+            background: importMode === 'private-key' ? '#36d6ae22' : 'transparent',
+            border: `1px solid ${importMode === 'private-key' ? '#36d6ae' : '#ffffff33'}`,
+            color: importMode === 'private-key' ? '#36d6ae' : '#ffffffb3',
+            padding: '6px 16px',
+            borderRadius: '20px',
+            cursor: 'pointer',
+            fontSize: '14px',
+          }}
+        >
+          Private key
+        </button>
+      </div>
+
+      {importMode === 'mnemonic' ? (
+        <>
+          <div style={styles.wrapper}>
+            <h3 style={styles.heading}>Enter or paste your seed phrase</h3>
+            <button
+              type="button"
+              onClick={() => setShowWords((v) => !v)}
+              style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#36d6ae', fontSize: '18px', padding: '15px 5px' }}
+              title={showWords ? 'Hide seed words' : 'Show seed words'}
+            >
+              {showWords ? '🙈' : '👁'}
+            </button>
+            <div style={styles.dropdown}>
+              <Dropdown
+                value={mnemonicsLength}
+                options={dropdownOptions}
+                onChange={(v: string) => setMnemonicsLength(v as keyof typeof columns)}
+              />
+            </div>
+          </div>
+          <div style={styles.mnemonics}>
+            {columnsIndexes.map((index) => (
+              <MnemonicInput
+                key={`mnemonic-input-${index}`}
+                index={index}
+                values={values}
+                isTouched={isTouched}
+                showWords={showWords}
+                onBlurFunc={onInputBlurFunc}
+                onWordsDetected={distributeWords}
+                onSingleChange={onSingleChange}
+              />
+            ))}
+          </div>
+        </>
+      ) : (
+        <div>
+          <h3 style={styles.heading}>Enter your private key (hex)</h3>
+          <Input
+            value={privateKeyDisplay}
+            onChange={(e) => {
+              const val = e.target.value;
+              privateKeyRef.current = val;
+              setPrivateKeyDisplay(val);
+            }}
+            onPaste={(e) => {
+              e.preventDefault();
+              const paste = e.clipboardData?.getData('text') || '';
+              privateKeyRef.current = paste.trim();
+              setPrivateKeyDisplay(paste.trim());
+              navigator.clipboard.writeText('').catch(() => {});
+            }}
+            onBlurFnc={onInputBlurFunc}
+            placeholder="64-character hex string"
+            type={showWords ? 'text' : 'password'}
+            error={isTouched && privateKeyRef.current && !/^(0x)?[0-9a-fA-F]{64}$/.test(privateKeyRef.current.trim()) ? 'Invalid hex format' : undefined}
           />
+          <button
+            type="button"
+            onClick={() => setShowWords((v) => !v)}
+            style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#36d6ae', fontSize: '14px', marginTop: '8px' }}
+          >
+            {showWords ? 'Hide' : 'Show'}
+          </button>
         </div>
-      </div>
-      <div style={styles.mnemonics}>
-        {columnsIndexes.map((index) => (
-          <MnemonicInput
-            key={`mnemonic-input-${index}`}
-            index={index}
-            values={values}
-            isTouched={isTouched}
-            onBlurFunc={onInputBlurFunc}
-            onWordsDetected={distributeWords}
-            onSingleChange={onSingleChange}
-          />
-        ))}
-      </div>
+      )}
       {error && (
         <div style={{ color: '#ff4d4d', fontSize: '14px', marginTop: '8px', textAlign: 'center' }}>
           {error}
