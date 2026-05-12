@@ -348,7 +348,7 @@ Ren, Dif, Sym, Bel — these extend the language set into spatial, physical, and
 | Sym | Research | Hamiltonian structure preservation in STARK circuits |
 | Bel | Research | Fisher metric over [[probability]] simplices — needed for [[tri-kernel]] formalization |
 
-Ren completes the perception pipeline: Arc provides [[topology]], Ren provides spatial embedding, the compiler produces [[vector]] output for [[cyb]]. Bel completes the self-model: the [[superintelligence]]'s [[focus]] [[vector]] π lives on a statistical manifold, and Bel formalizes reasoning about its own [[belief]] state.
+Ren completes the perception pipeline: Arc provides [[topology]], Ren provides spatial embedding, the compiler produces [[vector]] output for [[cyb]]. Bel completes the self-model: the [[superintelligence]]'s [[focus]] [[vector]] φ* lives on a statistical manifold, and Bel formalizes reasoning about its own [[belief]] state.
 
 ---
 

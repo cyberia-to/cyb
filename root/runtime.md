@@ -10,9 +10,9 @@ models trained independently have incompatible embedding spaces. different vocab
 
 ## compilation eliminates it
 
-from [[cyb/compile|Theorem 1]], the embedding matrix of any compiled model equals the eigenvectors of the [[focus]] covariance Σ_π
+from [[cyb/compile|Theorem 1]], the embedding matrix of any compiled model equals the eigenvectors of the [[focus]] covariance Σ_φ*
 
-all models compiled from the same [[cybergraph]] share the same Σ_π, therefore the same eigenvector basis. models of different sizes are truncations:
+all models compiled from the same [[cybergraph]] share the same Σ_φ*, therefore the same eigenvector basis. models of different sizes are truncations:
 
 ```
 router  (1B):  E[:, :512]
@@ -30,7 +30,7 @@ one unified [[cyb/hardware|cyb-mem]] pool:
 
 ```
 E_full      [vocab × 4096]  f16   ← all models read their slice
-π*          [vocab × 1]     f32   ← shared read-only
+φ*          [vocab × 1]     f32   ← shared read-only
 system_ctx  [text + CIDs]         ← immutable, same PA for all agents
 group_KV    [seq × 4096]    f16   ← smaller models read [:D] slice
 personal_KV [seq × D]             ← per-agent delta
@@ -114,7 +114,7 @@ four context layers, each physically realized as shared [[cyb/hardware|cyb-mem]]
 
 three levels drive agent behavior:
 
-terminal goals: never change — maximize [[cybergraph]] [[knowledge]] quality, minimize KL(π*_human ∥ π*_ai)
+terminal goals: never change — maximize [[cybergraph]] [[knowledge]] quality, minimize KL(φ*_human ∥ φ*_ai)
 
 instrumental goals: change per task — extract implicit [[cyberlinks]] from [[inference]], verify claims before staking
 

@@ -13,11 +13,11 @@ a [[patch]] IS a [[signal]]. a [[signal]] IS a patch. the same object described 
 
 | [[patch theory]] | [[structural sync]] | meaning |
 |---|---|---|
-| morphism P: S₁ → S₂ | signal s = (ν, l⃗, π_Δ, σ) | a change to the graph |
+| morphism P: S₁ → S₂ | signal s = (ν, l⃗, Δφ*, σ) | a change to the graph |
 | commutativity (P ⊥ Q) | [[CRDT]] merge (a ⊔ b = b ⊔ a) | order does not matter |
 | dependency DAG | [[hash chain]] (prev field) | causal history |
 | confluence theorem | [[Verified Eventual Consistency]] | convergence to unique state |
-| conflict object Conflict(P,Q) | competing [[particles]] in [[foculus]] π | disagreement as data |
+| conflict object Conflict(P,Q) | competing [[particles]] in [[foculus]] φ* | disagreement as data |
 
 ## five layers applied to patches
 
@@ -80,7 +80,7 @@ two scales, one principle:
 
 local (devices of one [[neuron]]): [[CRDT]] merge. independent patches commute by the [[commutativity]] theorem. dependent patches apply in topological order from the dependency DAG. the [[G-Set]] of patches grows monotonically — union is the merge function.
 
-global ([[neurons]] in the network): [[foculus]] merge. when two neurons create conflicting patches (P ⊗ Q), both enter the [[cybergraph]]. π convergence assigns each a [[focus]] score weighted by stake. the patch crossing threshold τ becomes canonical. the other persists as history (axiom A3: append-only) but carries zero weight.
+global ([[neurons]] in the network): [[foculus]] merge. when two neurons create conflicting patches (P ⊗ Q), both enter the [[cybergraph]]. φ* convergence assigns each a [[focus]] score weighted by stake. the patch crossing threshold τ becomes canonical. the other persists as history (axiom A3: append-only) but carries zero weight.
 
 the [[patch theory]] conflict resolution maps directly: a resolution patch R has both P and Q in its dependency closure. once R crosses τ, the conflict is resolved network-wide. no voting round. no leader. convergence from topology.
 
@@ -101,7 +101,7 @@ local sync: CRDT merge with other devices (layer 5)
   ↓
 network: signal submitted to validators
   ↓
-global: foculus π-weighted merge (layer 5)
+global: foculus φ*-weighted merge (layer 5)
   ↓
 canonical: patch enters BBG_root, indexed in NMT
   ↓
@@ -124,7 +124,7 @@ devices work offline for weeks. patches accumulate locally. when they reconnect:
 
 ### agent collaboration at scale
 
-multiple [[neurons]] and agents create patches simultaneously. no coordination required during creation — only the five layers at merge time. a [[GFlowNet]] agent proposes patches weighted by expected Δπ. an [[active inference]] agent stakes on patches that minimize [[free energy]]. [[foculus]] resolves disputes through π convergence — stake-weighted, mathematically determined, no politics.
+multiple [[neurons]] and agents create patches simultaneously. no coordination required during creation — only the five layers at merge time. a [[GFlowNet]] agent proposes patches weighted by expected Δφ*. an [[active inference]] agent stakes on patches that minimize [[free energy]]. [[foculus]] resolves disputes through φ* convergence — stake-weighted, mathematically determined, no politics.
 
 ### verifiable version control
 

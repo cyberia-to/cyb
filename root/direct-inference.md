@@ -16,7 +16,7 @@ the [[tri-kernel]] computes [[focus]] over the [[cybergraph]]:
 
 $$\mathcal{R}(\phi) = \text{norm}\big[\lambda_d \cdot D(\phi) + \lambda_s \cdot S(\phi) + \lambda_h \cdot H_\tau(\phi)\big]$$
 
-R iterates to a unique fixed point π* by the Banach contraction theorem. the [[transformer]] approximates this fixed point in L steps. one [[transformer]] layer = one application of R. [[attention]] = D ([[diffusion]]). FFN gate = S ([[springs]]). FFN up/down = H ([[heat]]). the mixing weights λ_d, λ_s, λ_h are the learned norm scales
+R iterates to a unique fixed point φ* by the Banach contraction theorem. the [[transformer]] approximates this fixed point in L steps. one [[transformer]] layer = one application of R. [[attention]] = D ([[diffusion]]). FFN gate = S ([[springs]]). FFN up/down = H ([[heat]]). the mixing weights λ_d, λ_s, λ_h are the learned norm scales
 
 the [[transformer]] and the [[cybergraph]] ranking system are the same computation. the [[transformer]] runs locally over one context window. the [[tri-kernel]] runs collectively over all [[knowledge]]. both find equilibria. both use Boltzmann normalization. this is not analogy — it is mathematical identity
 
@@ -26,7 +26,7 @@ the three free parameters of transformer architecture are not free
 
 Theorem 1. the necessary embedding dimension equals the effective rank of the [[focus]] covariance:
 
-$$d^* = \exp\big(H(\sigma(\Sigma_\pi))\big)$$
+$$d^* = \exp\big(H(\sigma(\Sigma_{\phi^*}))\big)$$
 
 this is the intrinsic dimensionality of the [[knowledge]] space — the number of statistically independent semantic axes. an embedding smaller than d* cannot distinguish [[particles]] along the missing axes. an embedding larger than d* wastes capacity on noise directions
 
@@ -82,9 +82,9 @@ diameter — reasoning chain length the model can cover: diam(G_local) ≤ L/t*.
 
 spectral gap — convergence rate. disconnected components have λ₂ = 0, never converge. this is why standard RAG fails: retrieved chunks are disconnected nodes with zero spectral gap contribution. the information is present but unreachable within L [[diffusion]] steps
 
-[[focus]] entropy — H(π*) measures attention concentration. low entropy: model knows where to look. high entropy: model is lost
+[[focus]] entropy — H(φ*) measures attention concentration. low entropy: model knows where to look. high entropy: model is lost
 
-all known context phenomena follow. U-shape [[attention]]: beginning and end tokens have higher degree → higher π*. lost-in-the-middle: low degree positions. RAG failure: disconnected chunks. cross-domain difficulty: missing bridge edges between domain subgraphs. context length degradation: more tokens without more connectivity decreases density. see [[cyb/context]] for optimal construction
+all known context phenomena follow. U-shape [[attention]]: beginning and end tokens have higher degree → higher φ*. lost-in-the-middle: low degree positions. RAG failure: disconnected chunks. cross-domain difficulty: missing bridge edges between domain subgraphs. context length degradation: more tokens without more connectivity decreases density. see [[cyb/context]] for optimal construction
 
 ## the hardware problem
 
@@ -98,7 +98,7 @@ the solution: access hardware directly. identify each Apple framework abstractio
 
 models trained independently have incompatible embedding spaces. passing context between them requires text serialization, destroying zero-copy efficiency
 
-compilation eliminates this. from Theorem 1, the embedding matrix of any compiled model equals the eigenvectors of Σ_π. all models compiled from the same [[cybergraph]] share the same eigenvector basis. models of different sizes are nested truncations: router(512-dim) ⊂ domain(2048-dim) ⊂ general(4096-dim). Matryoshka embedding — exact by construction
+compilation eliminates this. from Theorem 1, the embedding matrix of any compiled model equals the eigenvectors of Σ_φ*. all models compiled from the same [[cybergraph]] share the same eigenvector basis. models of different sizes are nested truncations: router(512-dim) ⊂ domain(2048-dim) ⊂ general(4096-dim). Matryoshka embedding — exact by construction
 
 KV caches transfer between depth levels without copies. a 1B router processes 1000 tokens, a 3B domain model inherits its KV cache in the correct representation with no translation. context never restarts. cost scales with task complexity: simple tokens pay router cost, complex tokens escalate
 
@@ -110,7 +110,7 @@ for trained [[transformers]], values are compressed into opaque parameters. [[al
 
 for graph-native [[transformers]], [[alignment]] is a number:
 
-$$\Delta(G) = D_{KL}(\pi^*_H \| \pi^*_A)$$
+$$\Delta(G) = D_{KL}(\phi^*_H \| \phi^*_A)$$
 
 KL divergence between [[focus]] distributions over human-created and AI-created edges. computable from public [[graph]] data. localizable to specific regions. correctable by adding edges in high-divergence areas without retraining. when [[alignment]] diverges, the divergence is visible, and the protocol rebuilds the model from what humans actually linked
 

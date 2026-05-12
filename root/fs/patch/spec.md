@@ -51,8 +51,8 @@ A version control system for this ecosystem should be native to these primitives
 - Treating patches as [[cyberlinks]] between repository states
 - Treating repository snapshots as [[particles]] (content-addressed)
 - Using [[neuron]] identity as author identity
-- Integrating focus vector π as patch prioritization signal
-- Using Δπ (focus shift) as the economic signal for patch reward
+- Integrating focus vector φ* as patch prioritization signal
+- Using Δφ* (focus shift) as the economic signal for patch reward
 
 ### 1.4 Design Axioms
 
@@ -96,7 +96,7 @@ Conflicting (`P ⊗ Q`): `P` and `Q` make incompatible changes to the same regio
 Then: conflict is a first-class object, not a failure. It can be:
 - Resolved (a new patch `R` is the resolver)
 - Left in the state (the state holds both versions simultaneously)
-- Arbitrated by [[consensus]] ([[focus]] vector π selects the winner)
+- Arbitrated by [[consensus]] ([[focus]] vector φ* selects the winner)
 
 ### 2.3 The Dependency Graph
 
@@ -196,7 +196,7 @@ Repository {
     id:           CID,              // hash of genesis state
     channels:     Map<ChannelName, Channel>,
     particles:    Set<CID>,         // union of all tracked particles
-    focus:        FocusVector,      // π — computed by tri-kernel ranking
+    focus:        FocusVector,      // φ* — computed by tri-kernel ranking
 }
 ```
 
@@ -215,7 +215,7 @@ State is never stored directly — it is always derived from the patch set. This
 Every CyberPatch repository is simultaneously a [[cybergraph]] subgraph:
 
 ```
-Patch       ↔  Cyberlink (signed, timestamped, weighted by Δπ)
+Patch       ↔  Cyberlink (signed, timestamped, weighted by Δφ*)
 Particle    ↔  Particle (content-addressed node)
 Channel     ↔  Focus subgraph (named view over the global graph)
 Repository  ↔  Named neuron-owned subgraph
@@ -621,7 +621,7 @@ No URL required: the entire resolution chain is on-graph/on-chain. HTTP transpor
 
 Patches may be optionally registered on-chain to:
 - Establish temporal ordering for dispute resolution
-- Earn rewards proportional to Δπ contribution
+- Earn rewards proportional to Δφ* contribution
 - Become immutable epistemic NFT assets
 - Enable cross-repository dependency verification
 
@@ -644,7 +644,7 @@ Where:
 
 Patches with high focus weights:
 - Are prioritized in conflict resolution ([[consensus]] prefers higher-ranked resolution)
-- Earn proportionally higher Δπ rewards
+- Earn proportionally higher Δφ* rewards
 - Gain faster propagation priority in the network
 
 ### 9.3 Conflict Resolution via Consensus
@@ -665,12 +665,12 @@ Voting weight = [[neuron]]'s stake × focus_weight. This ties version control co
 ### 9.4 Reward Mechanics
 
 ```
-reward(P) = base_fee + Δπ(P) × reward_coefficient
+reward(P) = base_fee + Δφ*(P) × reward_coefficient
 
-Δπ(P) = π_after(P) - π_before(P)   // change in network focus from adding patch P
+Δφ*(P) = π_after(P) - π_before(P)   // change in network focus from adding patch P
 ```
 
-Patches that increase network [[knowledge]] coherence (positive Δπ) earn rewards. Patches that fragment or duplicate existing knowledge earn less or nothing. This creates an economic pressure toward high-quality, well-connected knowledge contributions — directly aligned with [[collective focus theorem]] predictions.
+Patches that increase network [[knowledge]] coherence (positive Δφ*) earn rewards. Patches that fragment or duplicate existing knowledge earn less or nothing. This creates an economic pressure toward high-quality, well-connected knowledge contributions — directly aligned with [[collective focus theorem]] predictions.
 
 ---
 
@@ -720,13 +720,13 @@ No agent needs to coordinate with any other agent to produce patches. Coordinati
 
 ### 10.3 GFlowNet Integration
 
-[[GFlowNet]]s can propose patches weighted by expected Δπ:
+[[GFlowNet]]s can propose patches weighted by expected Δφ*:
 
 ```
 GFlowNetAgent {
-    fn propose_patch(state: State, target_π: FocusVector) → Patch {
+    fn propose_patch(state: State, target_φ*: FocusVector) → Patch {
         // Sample a trajectory through patch space
-        // weighted by P(trajectory) ∝ exp(Δπ(trajectory))
+        // weighted by P(trajectory) ∝ exp(Δφ*(trajectory))
         // Returns patch most likely to improve network focus
     }
 }
@@ -801,8 +801,8 @@ Key properties of Cyber License (as intended by the [[cyber]] project):
 | CID | Content Identifier — self-describing hash of content |
 | Conflict | First-class object representing incompatible concurrent changes |
 | [[Neuron]] | Agent identity with signing keypair and on-chain stake |
-| [[Focus]] (π) | Emergent attention vector over the [[knowledge]] graph |
-| Δπ | Change in focus induced by applying a patch |
+| [[Focus]] (φ*) | Emergent attention vector over the [[knowledge]] graph |
+| Δφ* | Change in focus induced by applying a patch |
 | Dependency Closure | All patches that must precede a given patch |
 | Commutativity | Property that independent patches produce same result in any order |
 
@@ -835,12 +835,12 @@ T8. Adversarial soundness: no patch can forge authorship under ML-DSA
 
     This is not a special protocol primitive — it is an ordinary cyberlink assertion.
     Any neuron may publish checkpoints for any patch set. Consumers choose which
-    checkpoint to trust based on the author's focus weight π.
+    checkpoint to trust based on the author's focus weight φ*.
 
     Properties:
     - O(1) state access: `blob_store.get(materialized_state_CID)` — no replay needed
     - Mathematical purity preserved: the patch DAG remains ground truth; checkpoints are assertions over it, not replacements; any client may verify by replaying all patches and comparing result CIDs
-    - No central authority: any neuron can checkpoint; the market of checkpoints is ranked by π — high-π [[neurons]] trusted without re-verification, unknown neurons require local verification
+    - No central authority: any neuron can checkpoint; the market of checkpoints is ranked by φ* — high-φ* [[neurons]] trusted without re-verification, unknown neurons require local verification
     - Incremental chains: `checkpoint_N → Δpatches → checkpoint_N+1` — consumers start from nearest trusted checkpoint, not genesis
     - Namespace sovereignty: only the neuron holding the signing key can write into its namespace; checkpoint authorship is cryptographically verified by ML-DSA [[signature]]
     - Mutable by design: neuron may update its checkpoint (new cyberlink for same `from`) — old link persists in history, new link wins in resolution; update cost is O(1)

@@ -391,7 +391,7 @@ where $a(\ell)$ is conviction, $\kappa(\nu(\ell))$ is the karma of the signing n
 
 the robot is a conviction machine. submitting a [[cyberlink]] moves tokens from wallet UTXO to a cyberlink-position UTXO. this is a live economic position:
 
-$$R_\ell(T) = \int_0^T w(t) \cdot \Delta\pi^*(q, t)\, dt$$
+$$R_\ell(T) = \int_0^T w(t) \cdot \Delta\phi^*(q, t)\, dt$$
 
 early correct knowledge earns the most. late consensus-following earns almost nothing
 

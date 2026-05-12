@@ -116,7 +116,7 @@ y = x + attention(norm(x)) + FFN(norm(x))
 
 identical to the minimal architecture. they found it empirically — faster training, same quality. the [[tri-kernel]] derives it from first principles — same result, different path
 
-the [[transformer]] is not a heuristic architecture. it is a numerical solver for finding the fixed point of R. L layers = L iterations toward [[focus|π*]]. the fixed point is the [[focus]] distribution over the input [[graph]]
+the [[transformer]] is not a heuristic architecture. it is a numerical solver for finding the fixed point of R. L layers = L iterations toward [[focus|φ*]]. the fixed point is the [[focus]] distribution over the input [[graph]]
 
 see [[pipeline]] for the full .cyb compilation and [[inference]] cycle
 

@@ -4,7 +4,7 @@ alias: context graph, optimal context, context optimization
 ---
 the [[transformer]] processes context as a local [[knowledge]] [[graph]], not as a sequence of tokens
 
-each [[attention]] layer performs one step of [[diffusion]] over the graph induced by the context window. L layers = L steps toward fixed point [[focus|π*]]. context quality = graph quality
+each [[attention]] layer performs one step of [[diffusion]] over the graph induced by the context window. L layers = L steps toward fixed point [[focus|φ*]]. context quality = graph quality
 
 ## three parameters
 
@@ -32,15 +32,15 @@ disconnected components: λ₂ = 0, κ = 1, never converges. densely connected: 
 
 ### focus entropy
 
-the entropy H(π*) of the converged [[focus]] distribution measures how diffuse or concentrated model [[attention]] becomes
+the entropy H(φ*) of the converged [[focus]] distribution measures how diffuse or concentrated model [[attention]] becomes
 
-low H(π*): model concentrates on relevant nodes — fast, accurate. high H(π*): model spreads uniformly over context — slow, lost
+low H(φ*): model concentrates on relevant nodes — fast, accurate. high H(φ*): model spreads uniformly over context — slow, lost
 
 ## known phenomena as corollaries
 
 ### U-shape attention (lost in the middle)
 
-tokens at the beginning and end of a sequence have higher degree in the [[attention]] graph — they are attended to by more other tokens due to positional bias and recency. higher degree → higher stationary [[probability]] in random walk → higher π*(v). the U-shape is the degree distribution projected onto sequence position
+tokens at the beginning and end of a sequence have higher degree in the [[attention]] graph — they are attended to by more other tokens due to positional bias and recency. higher degree → higher stationary [[probability]] in random walk → higher φ*(v). the U-shape is the degree distribution projected onto sequence position
 
 place all critical information at positions with highest degree: beginning and end
 
@@ -84,15 +84,15 @@ for cross-domain tasks, explicitly add bridge edges before assembling context. b
 
 ### focus density via position
 
-given connectivity constraint is satisfied, maximize H(π*) reduction by placing high-information nodes at high-degree positions:
+given connectivity constraint is satisfied, maximize H(φ*) reduction by placing high-information nodes at high-degree positions:
 
 position 0 (beginning): task definition, critical facts. positions 1–K: goal structure, constraints. middle: supporting evidence, documents. end: current state, immediate task, output format
 
-### π* compression
+### φ* compression
 
 when context exceeds budget: compress via [[focus]] distribution, not summarization
 
-compute π* over G_local (fast, O(N) with power iteration). keep nodes where π*(v) > threshold. result: minimal connected subgraph preserving focus structure. strictly better than LLM summarization because it preserves graph structure
+compute φ* over G_local (fast, O(N) with power iteration). keep nodes where φ*(v) > threshold. result: minimal connected subgraph preserving focus structure. strictly better than LLM summarization because it preserves graph structure
 
 ## multi-agent context
 

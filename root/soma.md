@@ -18,7 +18,7 @@ every computer hangs because consumed resources exceed available resources. root
 | cause | what happens | soma's answer |
 |-------|-------------|---------------|
 | unbounded consumption | program eats resources without limit | budget — every Order finite |
-| no accounting | resources consumed without price | π-derived pricing per operation |
+| no accounting | resources consumed without price | φ*-derived pricing per operation |
 | shared mutable state | two processes fight over same memory | append-only BBG, no locks |
 | state corruption | bit flipped, nobody noticed | provable memory — polynomial commitment catches it |
 | priority inversion | cheap process blocks expensive one | focus-weighted scheduling |

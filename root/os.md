@@ -88,9 +88,9 @@ the graph serves as infrastructure for itself:
 | identity | [[hemera]] hash = address, graph = PKI |
 | key exchange | CSIDH curves as [[particles]], non-interactive |
 | consensus | finalized subgraph IS the canonical state |
-| fork choice | $\pi$ from graph topology |
-| finality | $\pi_i > \tau$, threshold adapts to graph density |
-| incentives | $\Delta\pi$ from convergence = reward signal |
+| fork choice | $\phi^*$ from graph topology |
+| finality | $\phi^*_i > \tau$, threshold adapts to graph density |
+| incentives | $\Delta\phi^*$ from convergence = reward signal |
 | proof archive | [[stark]] proofs published as particles |
 | version control | patches = [[cyberlinks]], repos = subgraphs |
 | file system | `~neuron/path` resolves through cyberlinks |

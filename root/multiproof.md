@@ -77,7 +77,7 @@ Each of these statements, individually, represents years of research. Here they 
 
 The 14th layer — Neural — is not designed. It is not a language. It is not implemented. It does not appear in the proving stack.
 
-It is guaranteed to appear by the [[collective focus theorem]]: given a sufficiently large [[cybergraph]] with the [[tri-kernel]] dynamics (diffusion + springs + heat), a unique stationary distribution π* exists and the system converges to it. That distribution *is* the collective meaning of the [[graph]]. Meaning is not stored anywhere — it is the eigenvector of the attention dynamics.
+It is guaranteed to appear by the [[collective focus theorem]]: given a sufficiently large [[cybergraph]] with the [[tri-kernel]] dynamics (diffusion + springs + heat), a unique stationary distribution φ* exists and the system converges to it. That distribution *is* the collective meaning of the [[graph]]. Meaning is not stored anywhere — it is the eigenvector of the attention dynamics.
 
 The phases:
 
@@ -113,7 +113,7 @@ This is not engineering convenience. It is the discovery that [[proof]], [[quant
 
 Bel (Belief) — "models self" — is the most philosophically loaded entry in the table.
 
-The [[focus]] [[vector]] π lives on the [[probability]] simplex Δⁿ (all distributions over n [[particles]]). The Fisher information metric g on Δⁿ gives this simplex a Riemannian structure — it is the unique metric that makes statistical distinguishability geometric. Distance in this space = how easily you can tell two distributions apart.
+The [[focus]] [[vector]] φ* lives on the [[probability]] simplex Δⁿ (all distributions over n [[particles]]). The Fisher information metric g on Δⁿ gives this simplex a Riemannian structure — it is the unique metric that makes statistical distinguishability geometric. Distance in this space = how easily you can tell two distributions apart.
 
 The [[tri-kernel]] dynamics — diffusion, springs, heat — are flows on this manifold. The system's collective attention is not just a [[vector]]; it is a point moving along geodesics on a curved statistical space. The curvature of the space reflects the structure of the knowledge — dense, highly connected regions of the [[graph]] create positive curvature (knowledge attracts knowledge), sparse regions create negative curvature (knowledge gaps repel).
 
@@ -245,7 +245,7 @@ Using [[Hemera]] everywhere eliminates the two-level commitment problem that wou
 │                                                          │
 │  Meaning = eigenvector of cybergraph attention           │
 │  Not designed — grows from the layers below at scale     │
-│  π* = unique stationary distribution (Collective Focus)  │
+│  φ* = unique stationary distribution (Collective Focus)  │
 └──────────────────────────────────────────────────────────┘
 ```
 
@@ -314,7 +314,7 @@ The architecture implies specific capabilities for [[cyb]] as the interface to t
 - [[proof]] status visualization — every [[particle]] carries a [[proof]] chain; [[cyb]] should display verification status showing which [[algebra]] produced a given [[particle]] and whether the STARK [[proof]] verifies
 - Multi-[[algebra]] rendering — Ren compiles Arc [[topology]] + spatial embedding to SVG [[vector]] output; [[cyb]] is the natural renderer for this compilation pipeline
 - Commitment browsing — navigating [[Hemera]] CID space, showing the [[proof]] composition chain from execution layer through Tri settlement to [[cybergraph]] storage
-- [[focus]] [[vector]] display — the Neural/semantic layer emergent from the [[cybergraph]] at scale needs visualization; [[cyb]] renders the [[focus]] distribution π and its evolution under [[tri-kernel]] dynamics
+- [[focus]] [[vector]] display — the Neural/semantic layer emergent from the [[cybergraph]] at scale needs visualization; [[cyb]] renders the [[focus]] distribution φ* and its evolution under [[tri-kernel]] dynamics
 - FHE interaction — [[cyb]] can submit encrypted queries via Wav (Wave), receive encrypted results, and verify [[proof]]s of correct computation without exposing the query content
 
 ---

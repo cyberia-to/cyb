@@ -13,7 +13,7 @@ content-addressed, identity-sovereign [[patch theory]] system for the [[cybergra
 
 every patch is a signed set of operations over [[particles]] and [[cyberlinks]], authored by a [[neuron]], weighted by [[focus]] contribution. the three primitives map directly to [[cyber]] protocol:
 
-- patch = [[cyberlink]] (signed, timestamped, weighted by Δπ)
+- patch = [[cyberlink]] (signed, timestamped, weighted by Δφ*)
 - tracked content = [[particle]] (content-addressed node)
 - channel = named view over the global patch DAG
 - repository = [[neuron]]-owned subgraph
@@ -54,14 +54,14 @@ when local resolution is unavailable, the network arbitrates through [[focus]]-w
 patches earn rewards proportional to their impact on the [[knowledge]] graph:
 
 ```
-reward(P) = base_fee + Δπ(P) × reward_coefficient
+reward(P) = base_fee + Δφ*(P) × reward_coefficient
 ```
 
-Δπ measures the change in network [[focus]] from applying a patch. patches that increase [[knowledge]] coherence earn rewards; patches that fragment or duplicate earn less. this creates economic pressure toward high-quality, well-connected contributions — aligned with [[collective focus theorem]] predictions
+Δφ* measures the change in network [[focus]] from applying a patch. patches that increase [[knowledge]] coherence earn rewards; patches that fragment or duplicate earn less. this creates economic pressure toward high-quality, well-connected contributions — aligned with [[collective focus theorem]] predictions
 
 ## agent workflows
 
-designed for parallel [[neuron]] and agent workflows at planetary scale. multiple agents operate simultaneously — no coordination required to produce patches, only at resolution time. [[GFlowNet]] agents propose patches weighted by expected Δπ. [[active inference]] agents minimize [[free energy]] by adaptively staking on patches
+designed for parallel [[neuron]] and agent workflows at planetary scale. multiple agents operate simultaneously — no coordination required to produce patches, only at resolution time. [[GFlowNet]] agents propose patches weighted by expected Δφ*. [[active inference]] agents minimize [[free energy]] by adaptively staking on patches
 
 post-quantum [[cryptography]] from [[genesis]]. [[hash]] via [[Poseidon2]]-Goldilocks, [[signatures]] via the protocol's post-quantum scheme, proofs via [[starks]] over [[Goldilocks field]]
 

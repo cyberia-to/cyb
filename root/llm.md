@@ -905,7 +905,7 @@ Order cost = Σ(
 )
 ```
 
-π prices derived from [[Tok]] conservation rules. the [[neuron]] pays for its own inference. profitable Orders earn more sigma than they cost. unprofitable Orders drain sigma. this is natural selection for useful computation.
+φ* prices derived from [[Tok]] conservation rules. the [[neuron]] pays for its own inference. profitable Orders earn more sigma than they cost. unprofitable Orders drain sigma. this is natural selection for useful computation.
 
 ### context = [[bbg]] state
 
