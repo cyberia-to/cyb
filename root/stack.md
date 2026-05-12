@@ -6,7 +6,7 @@ alias: cyb stack, software stack, proof pipeline
 ---
 # stack
 
-eleven repos form the core. [[cybergraph]] is the vertebra — everything attaches to it. [[strata]] is the floor — every proof reduces to operations in its five algebras. the boundary is sharp: below it, Rust bootstrap required. above it, everything is pure [[trident]].
+fourteen repos form the core. [[cybergraph]] is the vertebra — everything attaches to it. [[strata]] is the floor — every proof reduces to operations in its five algebras. the boundary is sharp: below it, Rust bootstrap required. above it, everything is pure [[trident]].
 
 ```
     strata: nebu · kuro · trop · genies · jali
@@ -38,7 +38,7 @@ eleven repos form the core. [[cybergraph]] is the vertebra — everything attach
 
 ## the core
 
-eleven repos. eleven verbs. remove any one → nothing above works.
+fourteen repos. fourteen verbs. remove any one → nothing above works.
 
 | # | repo | verb | one sentence |
 |---|------|------|-------------|
@@ -53,6 +53,9 @@ eleven repos. eleven verbs. remove any one → nothing above works.
 | 8 | [[tru]] | compile model | .graph → .model + graph field: φ*, eigenvectors, cyberank |
 | 9 | [[glia]] | run model | universal .model runtime. graph-agnostic |
 | 10 | [[mir]] | render | tru positions + glia features → [[R-1.0]] world. makes it physical |
+| 11 | [[foculus]] | consensus | [[collective focus theorem]] → finality from topology |
+| 12 | [[mudra]] | encrypt | post-quantum: KEM, dCTIDH, AEAD, TFHE, threshold |
+| 13 | [[radio]] | transmit | P2P transport: QUIC, BAO streaming, gossip |
 
 ## compiler / runtime duality
 
@@ -202,8 +205,9 @@ the core is the MINIMAL set of components that cannot implement themselves. once
 | glia | yes (ANE, AMX) | model runtime |
 | mir | yes (Metal, honeycrisp) | render engine |
 | plumb, identity, social, geo | no | core semcons |
-| foculus | no | computed over semcons |
-| mudra | no (jets for speed only) | infrastructure |
+| foculus | no | consensus engine |
+| mudra | yes (constant-time crypto) | encryption |
+| radio | yes (QUIC, networking) | transport |
 | rune, cyb, cybernode | no | interface |
 
 the spine has dual existence: Rust (bootstrap + jet implementation) and trident (proven canonical). everything above the boundary has single existence: trident only.
@@ -235,18 +239,17 @@ the first inhabitants of the spine. consensus-critical [[trident]] programs that
 
 these are not simple typed edges. they are "heavy" semcons that reach deep into the spine — conservation laws in zheng, private state in bbg, metering in nox. [[plumb]] alone requires support from every spine element.
 
-## computed layer
+## foculus — consensus
 
-| program | repo | what it computes |
-|---------|------|-----------------|
-| [[foculus]] | ~/git/foculus | [[consensus]]: [[collective focus theorem]] → finality from topology |
+[[collective focus theorem]]: focus topology determines finality. when the φ* distribution converges to a stable attractor, the network has reached consensus. no leader election, no voting rounds — consensus emerges from the same field equations that drive [[tru]]. see [[foculus]]
 
-## infrastructure
+## mudra — encrypt
 
-| service | repo | what it provides |
-|---------|------|-----------------|
-| [[mudra]] | ~/git/mudra | post-quantum crypto: KEM, dCTIDH, AEAD, TFHE, threshold |
-| [[radio]] | ~/git/radio | P2P transport: QUIC, BAO streaming, gossip |
+post-quantum cryptographic primitives. KEM (key encapsulation), dCTIDH (CSIDH-based key exchange, constant-time isogeny), AEAD (authenticated encryption), TFHE (fully homomorphic encryption over booleans), threshold protocols. consumed by [[plumb]] (private state), [[identity]] (key proofs), [[glia]] (encrypted model weights). see [[mudra]]
+
+## radio — transmit
+
+P2P transport layer. QUIC for reliable encrypted streams, BAO for content-addressed streaming with incremental verification, gossip for signal propagation across the [[cybergraph]]. the nervous system that carries signals between [[neurons]]. see [[radio]]
 
 ## languages (15, compile to nox)
 
