@@ -50,8 +50,8 @@ eleven repos. eleven verbs. remove any one → nothing above works.
 | 5 | [[nox]] | run | 16 patterns + [[hint]] + jets. trace = constraint system |
 | 6 | [[zheng]] | prove | [[SuperSpartan]] + [[WHIR]] + [[sumcheck]]. [[zheng]] proof |
 | 7 | [[bbg]] | store | one polynomial, 10 dimensions. ~200 byte proofs, 10-50 μs |
-| 8 | [[tru]] | compute | .graph → .model compiler + graph field: φ*, eigenvectors, cyberank |
-| 9 | [[glia]] | infer | universal .model runtime. graph-agnostic |
+| 8 | [[tru]] | compile | .graph → .model + graph field: φ*, eigenvectors, cyberank |
+| 9 | [[glia]] | run | universal .model runtime. graph-agnostic |
 | 10 | [[mir]] | render | tru positions + glia features → [[R-1.0]] world. makes it physical |
 
 ## compiler / runtime duality
