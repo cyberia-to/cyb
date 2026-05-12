@@ -47,6 +47,20 @@ pub fn build_tokenizer(lm: &LoadedModel) -> Result<Tokenizer, FormatError> {
         }
     }
 
+    // The config's eos_token string is the authoritative EOS name. Look it up
+    // in vocab and ensure it's in eos_token_ids. This covers models like
+    // qwen2.5-coder where eos_token = "<|endoftext|>" but eos_token_ids is empty.
+    let eos_token_name = cfg.get("tokenizer")
+        .and_then(|t| t.get("eos_token"))
+        .and_then(|v| v.as_str());
+    if let Some(name) = eos_token_name {
+        if let Some(id) = bpe.id(name) {
+            if !eos_token_ids.contains(&id) {
+                eos_token_ids.push(id);
+            }
+        }
+    }
+
     // chat section (optional)
     let (chat_format, chat_template) = if lm.file.chat_toml.is_empty() {
         // Try auto-detecting from eos token strings or model_type
@@ -238,6 +252,18 @@ fn inject_missing_specials(
                 add(tokens, eos - 2, "<|endoftext|>".into());
             }
         }
+    }
+
+    // Qwen2/Qwen2.5/Qwen3 fallback: older .model imports omit eos_token_ids so
+    // the above path never fires. All qwen2-family models share fixed special
+    // token IDs regardless of vocab_size: endoftext=151643, im_start=151644,
+    // im_end=151645. Without these, chatml prompts decompose into single-char
+    // BPE pieces and the model outputs garbage.
+    let model_type = cfg.get("model_type").and_then(|v| v.as_str()).unwrap_or("");
+    if matches!(model_type, "qwen2" | "qwen3") {
+        add(tokens, 151643, "<|endoftext|>".into());
+        add(tokens, 151644, "<|im_start|>".into());
+        add(tokens, 151645, "<|im_end|>".into());
     }
 }
 
