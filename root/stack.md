@@ -34,6 +34,9 @@ fourteen repos form the core. [[cybergraph]] is the vertebra — everything atta
                             │
                            mir
                           render
+                             ↑
+                    mudra · radio · foculus
+                   encrypt · transmit · consensus
 ```
 
 ## the core
@@ -46,16 +49,16 @@ fourteen repos. fourteen verbs. remove any one → nothing above works.
 | 1 | [[hemera]] | hash | [[Poseidon2]] sponge. gives [[particles]] identity |
 | 2 | [[lens]] | commit | five polynomial commitment backends — one per algebra |
 | 3 | [[trident]] | compile code | .tri → .nox. the only way to write programs |
-| 4 | [[cybergraph]] | link | connects everything to everything. jets, memos, types, knowledge |
-| 5 | [[nox]] | run code | 16 patterns + [[hint]] + jets. trace = constraint system |
-| 6 | [[zheng]] | prove & verify | [[SuperSpartan]] + [[WHIR]] + [[sumcheck]]. [[zheng]] proof |
+| 4 | [[nox]] | run code | 16 patterns + [[hint]] + jets. trace = constraint system |
+| 5 | [[zheng]] | prove & verify | [[SuperSpartan]] + [[WHIR]] + [[sumcheck]]. [[zheng]] proof |
+| 6 | [[cybergraph]] | link | connects everything to everything. jets, memos, types, knowledge |
 | 7 | [[bbg]] | store | one polynomial, 10 dimensions. ~200 byte proofs, 10-50 μs |
 | 8 | [[tru]] | compile model | .graph → .model + graph field: φ*, eigenvectors, cyberank |
 | 9 | [[glia]] | run model | universal .model runtime. graph-agnostic |
 | 10 | [[mir]] | render | tru positions + glia features → [[R-1.0]] world. makes it physical |
-| 11 | [[foculus]] | consensus | [[collective focus theorem]] → finality from topology |
-| 12 | [[mudra]] | encrypt | post-quantum: KEM, dCTIDH, AEAD, TFHE, threshold |
-| 13 | [[radio]] | transmit | P2P transport: QUIC, BAO streaming, gossip |
+| 11 | [[mudra]] | encrypt | post-quantum: KEM, dCTIDH, AEAD, TFHE, threshold |
+| 12 | [[radio]] | transmit | P2P transport: QUIC, BAO streaming, gossip |
+| 13 | [[foculus]] | consensus | [[collective focus theorem]] → finality from topology |
 
 ## compiler / runtime duality
 
@@ -67,6 +70,31 @@ the stack has two compiler/runtime pairs — the same pattern at two levels:
 | models | tru (.graph → .model) | glia (runs any .model) |
 
 trident knows .tri. nox knows nothing about .tri — it just runs .nox. tru knows .graph. glia knows nothing about graphs — it just runs .model. mir reads both.
+
+---
+
+## strata — algebra
+
+the floor. every proof, every hash, every commitment reduces to operations in one of five algebras. four trait tiers — each consumed by a different set of core components:
+
+| tier | crate | traits | consumed by |
+|------|-------|--------|------------|
+| 1: universal | strata-core | Codec, Semiring, Ring, Field | hemera, lens, nox, zheng, bbg, mudra |
+| 2: proofs | strata-proof | Reduce (bytes→F), Dot (Σaᵢbᵢ) | lens, zheng |
+| 3: compute | strata-compute | Spectral (NTT roots), Bits | nox, jali |
+| 4: structure | strata-ext | Extension (tower), Batch (Montgomery inv), Blind (ct-ops) | lens, mudra, genies |
+
+five algebras — each maps to one lens construction:
+
+| algebra | structure | lens | construction | regime |
+|---------|-----------|------|-------------|--------|
+| [[nebu]] | F_p (Goldilocks) | scalar | Brakedown | truth — field polynomials, execution traces |
+| [[kuro]] | F₂ tower → F₂¹²⁸ | binary | Binius | efficiency — binary witnesses, quantized AI |
+| [[jali]] | R_q = F_p[x]/(xⁿ+1) | ring | Ikat | encrypted computation — TFHE, FHE bootstrapping |
+| [[trop]] | (min, +) semiring | tropical | Assayer | optimality — optimization witnesses, dual certificates |
+| [[genies]] | F_q (CSIDH-512) | isogeny | Porphyry | privacy — curve polynomials, stealth addresses |
+
+zheng is decomposed by strata: SuperSpartan constraint evaluation = Dot products over Field; Fiat-Shamir challenges = Reduce over hemera output bytes; WHIR folding = Spectral NTT over nebu extensions. see [[strata]]
 
 ## hemera — hash
 
@@ -82,9 +110,27 @@ see [[lens]]
 
 ## trident — compile code
 
-the provable language. .tri source compiles to [[nox]] nouns. every trident construct maps to exactly one nox pattern. 57K LOC, 24 VM targets, self-hosts in Stage 2 of the [[bootstrap plan]].
+the provable language. .tri source compiles to .nox. every trident construct maps to exactly one nox pattern. 57K LOC, 24 VM targets, self-hosts in Stage 2 of the [[bootstrap plan]].
+
+trident's compiler backend includes a neural optimizer: a GNN+Transformer (~13M params, GATv2 encoder + 6-layer decoder) that optimizes TIR→TASM at compile time. classical lowering always runs; neural output accepted only when stack-verified equivalent and strictly cheaper. speculative, not required.
 
 without trident, nox is a bare CPU with no assembler. without nox, trident has nowhere to target. see [[trident]]
+
+## nox — run code
+
+sixteen deterministic reduction patterns over hemera-authenticated trees. five structural (axis, quote, compose, cons, branch), six field (add, sub, mul, inv, eq, lt), four bitwise (xor, and, not, shl), one hash. plus non-deterministic [[hint]] injection.
+
+nox core is frozen (16 patterns, [[checkpoint]] 0). jets are external — looked up in the [[cybergraph]] by formula hash during reduction. adding a jet does not change nox. removing all jets does not break nox (just slower).
+
+computation IS linking: `ask(ν, subject, formula, τ, a, v, t)` — seven arguments = seven fields of a [[cyberlink]]. the [[cybergraph]] is a universal memo cache. see [[nox]]
+
+## zheng — prove & verify
+
+[[SuperSpartan]] IOP + [[WHIR]] PCS + [[sumcheck]]. a fundamentally new proof type covering all five execution regimes through one verification backbone. zero trusted setup, post-quantum, sub-millisecond verification.
+
+every nox computation produces a [[zheng]] proof. recursive composition via field tower F_{p³}. see [[zheng]]
+
+---
 
 ## cybergraph — link
 
@@ -118,48 +164,13 @@ every [[signal]] (cyberlink with `ask(ν, p, q, τ, a, v, t)`) fans out to direc
 
 see [[cybergraph]]
 
-## nox — run code
-
-sixteen deterministic reduction patterns over hemera-authenticated trees. five structural (axis, quote, compose, cons, branch), six field (add, sub, mul, inv, eq, lt), four bitwise (xor, and, not, shl), one hash. plus non-deterministic [[hint]] injection.
-
-nox core is frozen (16 patterns, [[checkpoint]] 0). jets are external — looked up in the [[cybergraph]] by formula hash during reduction. adding a jet does not change nox. removing all jets does not break nox (just slower).
-
-computation IS linking: `ask(ν, subject, formula, τ, a, v, t)` — seven arguments = seven fields of a [[cyberlink]]. the [[cybergraph]] is a universal memo cache. see [[nox]]
-
-## zheng — prove & verify
-
-[[SuperSpartan]] IOP + [[WHIR]] PCS + [[sumcheck]]. a fundamentally new proof type covering all five execution regimes through one verification backbone. zero trusted setup, post-quantum, sub-millisecond verification.
-
-every nox computation produces a [[zheng]] proof. recursive composition via field tower F_{p³}. see [[zheng]]
-
 ## bbg — store
 
 the Big Badass Graph. one polynomial, all state. BBG_poly(index, key, t) = value. 10 dimensions (particles, axons_out, axons_in, neurons, locations, coins, cards, files, time, signals). cross-index consistency is structural — same polynomial, different dimensions. no NMT, no [[LogUp]]. ~200 bytes per proof, 10-50 μs verification.
 
 bbg is to [[cybergraph]] what a database engine is to a schema. cybergraph defines WHAT. bbg implements HOW. see [[bbg]]
 
-## strata — algebra
-
-the floor. every proof, every hash, every commitment reduces to operations in one of five algebras. four trait tiers — each consumed by a different set of core components:
-
-| tier | crate | traits | consumed by |
-|------|-------|--------|------------|
-| 1: universal | strata-core | Codec, Semiring, Ring, Field | hemera, lens, nox, zheng, bbg, mudra |
-| 2: proofs | strata-proof | Reduce (bytes→F), Dot (Σaᵢbᵢ) | lens, zheng |
-| 3: compute | strata-compute | Spectral (NTT roots), Bits | nox, jali |
-| 4: structure | strata-ext | Extension (tower), Batch (Montgomery inv), Blind (ct-ops) | lens, mudra, genies |
-
-five algebras — each maps to one lens construction:
-
-| algebra | structure | lens | construction | regime |
-|---------|-----------|------|-------------|--------|
-| [[nebu]] | F_p (Goldilocks) | scalar | Brakedown | truth — field polynomials, execution traces |
-| [[kuro]] | F₂ tower → F₂¹²⁸ | binary | Binius | efficiency — binary witnesses, quantized AI |
-| [[jali]] | R_q = F_p[x]/(xⁿ+1) | ring | Ikat | encrypted computation — TFHE, FHE bootstrapping |
-| [[trop]] | (min, +) semiring | tropical | Assayer | optimality — optimization witnesses, dual certificates |
-| [[genies]] | F_q (CSIDH-512) | isogeny | Porphyry | privacy — curve polynomials, stealth addresses |
-
-zheng is decomposed by strata: SuperSpartan constraint evaluation = Dot products over Field; Fiat-Shamir challenges = Reduce over hemera output bytes; WHIR folding = Spectral NTT over nebu extensions. see [[strata]]
+---
 
 ## tru — compile model
 
@@ -193,9 +204,7 @@ mir knows nothing about graphs or models. it receives coordinates and features a
 
 hardware: [[aruminium]] (Metal GPU) for all draw calls; [[unimem]] IOSurface for zero-copy frame handoff. see [[mir]]
 
-## foculus — consensus
-
-[[collective focus theorem]]: focus topology determines finality. when the φ* distribution converges to a stable attractor, the network has reached consensus. no leader election, no voting rounds — consensus emerges from the same field equations that drive [[tru]]. see [[foculus]]
+---
 
 ## mudra — encrypt
 
@@ -204,6 +213,12 @@ post-quantum cryptographic primitives. KEM (key encapsulation), dCTIDH (CSIDH-ba
 ## radio — transmit
 
 P2P transport layer. QUIC for reliable encrypted streams, BAO for content-addressed streaming with incremental verification, gossip for signal propagation across the [[cybergraph]]. the nervous system that carries signals between [[neurons]]. see [[radio]]
+
+## foculus — consensus
+
+[[collective focus theorem]]: focus topology determines finality. when the φ* distribution converges to a stable attractor, the network has reached consensus. no leader election, no voting rounds — consensus emerges from the same field equations that drive [[tru]]. see [[foculus]]
+
+---
 
 ## the boundary
 
@@ -216,11 +231,11 @@ the core is the MINIMAL set of components that cannot implement themselves. once
 | tru | yes (eigensolver, AMX) | graph field + model compiler |
 | glia | yes (ANE, AMX) | model runtime |
 | mir | yes (Metal, honeycrisp) | render engine |
-| plumb, identity, social, geo | no | core semcons |
-| foculus | no | consensus engine |
 | mudra | yes (constant-time crypto) | encryption |
 | radio | yes (QUIC, networking) | transport |
-| rune, cyb, cybernode | no | interface |
+| foculus | no | consensus engine |
+| plumb, identity, social, geo | no | core semcons |
+| rune, prysm, cybernode | no | interface |
 
 the spine has dual existence: Rust (bootstrap + jet implementation) and trident (proven canonical). everything above the boundary has single existence: trident only.
 
