@@ -6,7 +6,7 @@ alias: cyb stack, software stack, proof pipeline
 ---
 # stack
 
-ten repos form the core. [[cybergraph]] is the vertebra — everything attaches to it. [[strata]] is the floor — every proof reduces to operations in its five algebras. the boundary is sharp: below it, Rust bootstrap required. above it, everything is pure [[trident]].
+eleven repos form the core. [[cybergraph]] is the vertebra — everything attaches to it. [[strata]] is the floor — every proof reduces to operations in its five algebras. the boundary is sharp: below it, Rust bootstrap required. above it, everything is pure [[trident]].
 
 ```
     strata: nebu · kuro · trop · genies · jali
@@ -26,18 +26,19 @@ ten repos form the core. [[cybergraph]] is the vertebra — everything attaches 
                ╚══╤══════════╤══════════╤══╝
                   │          │          │
                   ▼          ▼          ▼
-             nox→zheng      tru        glia
-             run+prove    compute     render
-                  │          │          │
-                  └──────────┴──────────┘
-                                │
-                               bbg
-                              store
+             nox→zheng      tru        bbg
+             run+prove  compile+field  store
+                            │
+                           glia
+                           infer
+                            │
+                           mir
+                          render
 ```
 
 ## the core
 
-ten repos. ten verbs. remove any one → nothing above works.
+eleven repos. eleven verbs. remove any one → nothing above works.
 
 | # | repo | verb | one sentence |
 |---|------|------|-------------|
@@ -49,8 +50,20 @@ ten repos. ten verbs. remove any one → nothing above works.
 | 5 | [[nox]] | run | 16 patterns + [[hint]] + jets. trace = constraint system |
 | 6 | [[zheng]] | prove | [[SuperSpartan]] + [[WHIR]] + [[sumcheck]]. [[zheng]] proof |
 | 7 | [[bbg]] | store | one polynomial, 10 dimensions. ~200 byte proofs, 10-50 μs |
-| 8 | [[tru]] | compute | signal.a × signal.v → tri-kernel → φ*. focus, cyberank, karma, syntropy |
-| 9 | [[glia]] | render | .graph → CT-1.1 model → [[R-1.0]] world. compile + run + render |
+| 8 | [[tru]] | compute | .graph → .model compiler + graph field: φ*, eigenvectors, cyberank |
+| 9 | [[glia]] | infer | universal .model runtime. graph-agnostic |
+| 10 | [[mir]] | render | tru positions + glia features → [[R-1.0]] world. makes it physical |
+
+## compiler / runtime duality
+
+the stack has two compiler/runtime pairs — the same pattern at two levels:
+
+| | compiler | runtime |
+|--|---------|---------|
+| programs | trident (.tri → nox noun) | nox (runs any noun) |
+| models | tru (.graph → .model) | glia (runs any .model) |
+
+trident knows .tri. nox knows nothing about .tri — it just runs nouns. tru knows .graph. glia knows nothing about graphs — it just runs models. mir reads both.
 
 ## hemera — hash
 
@@ -94,18 +107,17 @@ the [[cybergraph]] is not storage (that is [[bbg]]). the cybergraph is STRUCTURE
 
 jets and memos are the SAME pattern: formula → answer. a jet maps formula to fast implementation. a memo maps (formula, subject) to cached result. structurally identical. both are cyberlinks.
 
-### one signal, four readers
+### one signal, three readers
 
-every [[signal]] (cyberlink with `ask(ν, p, q, τ, a, v, t)`) is consumed simultaneously by four systems. no dispatcher — each reads what it needs:
+every [[signal]] (cyberlink with `ask(ν, p, q, τ, a, v, t)`) is consumed simultaneously by three systems. no dispatcher — each reads what it needs:
 
 | reader | reads from signal | produces |
 |--------|------------------|---------|
 | [[nox]] | p as formula, q as subject | result particle + [[zheng]] proof |
-| [[tru]] | a × token_weight × v per link | φ* redistribution → [[cyberank]] shift |
-| [[glia]] | (p, q, a) as weighted graph edge | Laplacian update → position drift in [[R-1.0]] world |
+| [[tru]] | p, q as graph edges; a × v per link | .model artifacts + field state (φ*, eigenvectors) |
 | [[bbg]] | all fields | persistent storage across all 10 dimensions |
 
-`signal.a` is raw stake amount — NOT focus. [[tru]] runs the [[tri-kernel]] to convert stake-weighted cyberlinks into φ* (focus distribution). focus is always computed, never stored in the signal.
+`signal.a` is raw stake amount — NOT focus. [[tru]] runs the [[tri-kernel]] to convert stake-weighted cyberlinks into φ*. focus is always computed, never stored. [[glia]] and [[mir]] are downstream of tru — they do not read signals directly.
 
 see [[cybergraph]]
 
@@ -128,6 +140,38 @@ every nox computation produces a [[zheng]] proof. recursive composition via fiel
 the Big Badass Graph. one polynomial, all state. BBG_poly(index, key, t) = value. 10 dimensions (particles, axons_out, axons_in, neurons, locations, coins, cards, files, time, signals). cross-index consistency is structural — same polynomial, different dimensions. no NMT, no [[LogUp]]. ~200 bytes per proof, 10-50 μs verification.
 
 bbg is to [[cybergraph]] what a database engine is to a schema. cybergraph defines WHAT. bbg implements HOW. see [[bbg]]
+
+## tru — compute
+
+two jobs, one engine: compile and field.
+
+**compile**: reads the [[cybergraph]] as a weighted graph and compiles it to a `.model` artifact — the CT-1.1 model that [[glia]] will run. `.graph` is one compiler target; tru is the compiler that understands graphs.
+
+**field**: runs graph field computation over every signal. reads signal.a (raw stake) and signal.v (valence) → [[tri-kernel]] → φ* (focus distribution). runs the eigensolver (LOBPCG on the screened Laplacian) → particle positions in spectral space. computes [[cyberank]], [[karma]], [[syntropy]].
+
+two outputs:
+- **runtime state** — φ*, eigenvectors, focus → consumed by [[mir]] every epoch
+- **compiled model** — .model artifacts → handed to [[glia]] for inference
+
+tru closes the feedback loop: [[neurons]] create [[cyberlinks]] → bbg stores → tru reads signal.a × signal.v → tri-kernel → φ* → feeds back into memoization, ranking, markets. see [[tru]]
+
+## glia — infer
+
+universal `.model` runtime. graph-agnostic: no knowledge of [[cybergraph]], [[particles]], or [[cyberlinks]]. runs any `.model` → outputs (tensors, features, neural activations).
+
+`.graph` is one compiler target — tru compiles it. glia does not know this. glia receives a `.model` and runs it. the same runtime that executes a graph-compiled model executes any other model.
+
+hardware: [[rane]] (ANE) for NRF head inference; [[acpu]] (AMX) for heavy matrix ops. outputs neural features → consumed by [[mir]]. see [[glia]]
+
+## mir — render
+
+Russian мир: world, peace, community. the thing that makes it physical.
+
+reads two inputs: tru's field state (particle positions, φ*, focus) and glia's inference outputs (neural features). produces the [[R-1.0]] deterministic 3D world — every neuron running mir on the same inputs sees the same world.
+
+mir knows nothing about graphs or models. it receives coordinates and features and makes them visible. rendering tiers T0–T3 (content entry, labels, analytic impostors, Gaussian splats) + T∞ (neural radiance field, Phase 2+). heat-kernel BVH for LOD. epoch/frame split: heavy geometry frozen per epoch, luminosity and flow animate per frame.
+
+hardware: [[aruminium]] (Metal GPU) for all draw calls; [[unimem]] IOSurface for zero-copy frame handoff. see [[mir]]
 
 ## strata — algebra
 
@@ -152,18 +196,6 @@ five algebras, each irreducible by its own criterion:
 
 zheng is decomposed by strata: SuperSpartan constraint evaluation = Dot products over Field; Fiat-Shamir challenges = Reduce over hemera output bytes; WHIR folding = Spectral NTT over nebu extensions. see [[strata]]
 
-## tru — compute
-
-reads every signal. converts raw stake (signal.a) and valence (signal.v) into φ* (focus distribution) via the [[tri-kernel]]. no storage — pure computation over the graph.
-
-tru closes the feedback loop: [[neurons]] create [[cyberlinks]] → bbg stores → tru reads signal.a × signal.v → tri-kernel converts to φ* → focus feeds back into memoization, ranking, markets. see [[tru]]
-
-## glia — render
-
-the graph world. reads cyberlinks as a weighted graph, maintains the screened Laplacian, runs the eigensolver, and renders the [[R-1.0]] deterministic 3D world. every neuron running glia on the same graph state sees the same world.
-
-glia = compile (.graph → CT-1.1 model) + run (eigensolver, diffusion) + render (R-1.0: spectral layout, heat-kernel BVH, T0–T3 tiers). see [[glia]]
-
 ## the boundary
 
 the core is the MINIMAL set of components that cannot implement themselves. once the core exists, EVERYTHING above it is pure .tri — written, compiled, run, proven, and stored using only core tools.
@@ -172,8 +204,9 @@ the core is the MINIMAL set of components that cannot implement themselves. once
 |-----------|-------------|--------|
 | strata (nebu, kuro, trop, genies, jali) | yes (bootstrap) | algebra floor |
 | hemera, lens, trident, nox, zheng, bbg | yes (bootstrap) | spine |
-| glia | yes (honeycrisp, Metal) | compute + render |
-| tru | no | computed over semcons |
+| tru | yes (eigensolver, AMX) | graph field + model compiler |
+| glia | yes (ANE, AMX) | model inference runtime |
+| mir | yes (Metal, honeycrisp) | render engine |
 | plumb, identity, social, geo | no | core semcons |
 | foculus | no | computed over semcons |
 | mudra | no (jets for speed only) | infrastructure |
@@ -240,8 +273,8 @@ Stage 2 (self-host):  trident.tri → arithmetic.tri → nox.tri
 Stage 3 (proven):     zheng → proven re-self-host → jets → bbg
 Genesis:              genesis.tri (crystal, unlimited focus, one-time)
 Protocol:             plumb.tri ∥ identity.tri ∥ social.tri ∥ geo.tri
-Computed:             tru.tri ∥ foculus.tri
-Infrastructure:       glia (Rust, honeycrisp) ∥ mudra ∥ radio
+Computed:             tru ∥ foculus.tri
+Infrastructure:       glia ∥ mir ∥ mudra ∥ radio
 ```
 
 discover all [[concepts]]
