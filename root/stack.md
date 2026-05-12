@@ -257,7 +257,7 @@ these are not simple typed edges. they are "heavy" semcons that reach deep into 
 
 ## interface
 
-[[cyb]] (browser), [[cybernode]] (node), [[optica]] (publisher)
+[[prysm]] (browser), [[cybernode]] (node), [[optica]] (publisher)
 
 ## bootstrap order
 
