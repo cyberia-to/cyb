@@ -80,6 +80,12 @@ const slice = createSlice({
         Object.keys(state.accounts).forEach((accountKey) => {
           Object.keys(state.accounts[accountKey]).forEach((networkKey) => {
             if (state.accounts[accountKey][networkKey].bech32 === payload) {
+              // Clean up mnemonic from localStorage if this was a wallet account
+              if (state.accounts[accountKey][networkKey].keys === 'wallet' || state.accounts[accountKey][networkKey].keys === 'private-key') {
+                removeEncryptedMnemonic(payload);
+                // Fire lock event so signerClient drops the active signer
+                window.dispatchEvent(new CustomEvent('__cyb_wallet_locked'));
+              }
               delete state.accounts[accountKey][networkKey];
 
               if (Object.keys(state.accounts[accountKey]).length === 0) {

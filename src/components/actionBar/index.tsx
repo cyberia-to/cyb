@@ -107,6 +107,26 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
     !location.pathname.includes(routes.gift.path) &&
     !location.pathname.includes('/brain') // both full and robot
   ) {
+    if (process.env.IS_TAURI) {
+      return (
+        <ActionBarContainer>
+          <Button link={routes.keys.path}>Connect wallet</Button>
+        </ActionBarContainer>
+      );
+    }
+
+    const keys = defaultAccount.account?.cyber.keys;
+    const isWallet = keys === 'wallet' || keys === 'private-key';
+    const isLedger = keys === 'ledger';
+
+    if (isWallet) {
+      return <UnlockWalletBar />;
+    }
+
+    if (isLedger) {
+      return <ConnectLedgerBar />;
+    }
+
     const activeAddress =
       defaultAccount.account?.cyber.name || trimString(defaultAccount.account?.cyber.bech32, 10, 4);
 
