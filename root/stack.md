@@ -111,13 +111,15 @@ jets and memos are the SAME pattern: formula → answer. a jet maps formula to f
 
 every [[signal]] (cyberlink with `ask(ν, p, q, τ, a, v, t)`) is consumed simultaneously by three systems. no dispatcher — each reads what it needs:
 
-| reader | reads from signal | produces |
-|--------|------------------|---------|
-| [[nox]] | p as formula, q as subject | result particle + [[zheng]] proof |
-| [[tru]] | p, q as graph edges; a × v per link | .model artifacts + field state (φ*, eigenvectors) |
-| [[bbg]] | all fields | persistent storage across all 10 dimensions |
+| reader | reads from | produces |
+|--------|-----------|---------|
+| [[nox]] | signal: p as formula, q as subject | result particle + [[zheng]] proof |
+| [[tru]] | signal: p, q as graph edges; a × v per link | .model artifacts + field state (φ*, eigenvectors) |
+| [[bbg]] | signal: all fields | persistent storage across all 10 dimensions |
+| [[glia]] | tru: .model artifacts | inference outputs (neural features) |
+| [[mir]] | tru: positions + φ* · glia: neural features | [[R-1.0]] world |
 
-`signal.a` is raw stake amount — NOT focus. [[tru]] runs the [[tri-kernel]] to convert stake-weighted cyberlinks into φ*. focus is always computed, never stored. [[glia]] and [[mir]] are downstream of tru — they do not read signals directly.
+`signal.a` is raw stake amount — NOT focus. [[tru]] runs the [[tri-kernel]] to convert stake-weighted cyberlinks into φ*. focus is always computed, never stored.
 
 see [[cybergraph]]
 
