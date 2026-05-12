@@ -10,8 +10,19 @@ import { addAddressPocket, setDefaultAccount } from 'src/redux/features/pocket';
 import { useAppDispatch, useAppSelector } from 'src/redux/hooks';
 import { Option } from 'src/types';
 import { Networks } from 'src/types/networks';
-import configKeplr, { getKeplr } from 'src/utils/keplrUtils';
-import { accountsKeplr } from 'src/utils/utils';
+import { decryptMnemonic, encryptMnemonic, getTauriDeviceKey } from 'src/utils/mnemonicCrypto';
+import {
+  connectLedger as connectLedgerDevice,
+  ReconnectingLedgerSigner,
+  createLedgerSigner,
+  closeTransport,
+  checkTransportHealth,
+} from 'src/utils/ledgerSigner';
+import networkListIbc from 'src/utils/networkListIbc';
+import { getOfflineSigner as getOfflineSignerFromMnemonic, getOfflineSignerFromPrivateKey } from 'src/utils/offlineSigner';
+import { getEncryptedMnemonic, setEncryptedMnemonic } from 'src/utils/utils';
+
+const MNEMONIC_AUTO_CLEAR_MS = 15 * 60 * 1000; // 15 minutes
 
 type SignerClientContextType = {
   readonly signingClient: Option<SigningCyberClient>;
@@ -138,15 +149,49 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
   }, [initSigner]);
 
   useEffect(() => {
-    const handleKeystoreChange = () => {
-      initSigner();
-    };
+    (async () => {
+      const keys = defaultAccount.account?.cyber?.keys;
+      const bech32 = defaultAccount.account?.cyber?.bech32;
+      if ((keys !== 'wallet' && keys !== 'private-key') || !bech32) return;
 
-    window.addEventListener('keplr_keystorechange', handleKeystoreChange);
-    return () => {
-      window.removeEventListener('keplr_keystorechange', handleKeystoreChange);
-    };
-  }, [initSigner]);
+      const isPrivateKey = keys === 'private-key';
+
+      // On web, auto-switch only works if wallet is already unlocked (mnemonicRef)
+      // On Tauri, decrypt with device key
+      let secret: string | null = mnemonicRef.current;
+
+      if (!secret && process.env.IS_TAURI) {
+        const encrypted = getEncryptedMnemonic(bech32);
+        if (encrypted) {
+          try {
+            secret = await decryptMnemonic(encrypted, getTauriDeviceKey());
+          } catch {
+            console.warn('[Signer] Failed to decrypt key for account switch');
+            return;
+          }
+        }
+      }
+
+      if (!secret) return;
+
+      try {
+        const localSigner = isPrivateKey
+          ? await getOfflineSignerFromPrivateKey(secret)
+          : await getOfflineSignerFromMnemonic(secret);
+        const [account] = await localSigner.getAccounts();
+        if (account.address !== bech32) {
+          console.warn('[Signer] Key derives different address, skipping');
+          return;
+        }
+        const clientJs = await createClient(localSigner);
+        setSigner(localSigner);
+        setSigningClient(clientJs);
+        console.log('[Signer] Switched to local account:', bech32);
+      } catch (e) {
+        console.error('[Signer] Failed to switch to local account:', e);
+      }
+    })();
+  }, [defaultAccount]);
 
   const getSignClientByChainId = useCallback(
     async (chainId: Networks.BOSTROM | Networks.SPACE_PUSSY) => {
@@ -161,7 +206,136 @@ function SigningClientProvider({ children }: { children: React.ReactNode }) {
 
       return SigningCyberClient.connectWithSigner(rpcUrl, offlineSigner);
     },
-    [getOfflineSigner]
+    [isWalletAccount, isLedgerAccount]
+  );
+
+  const setMnemonicWithAutoClear = useCallback((mnemonic: string | null) => {
+    if (mnemonicTimerRef.current) {
+      clearTimeout(mnemonicTimerRef.current);
+    }
+    mnemonicRef.current = mnemonic;
+  }, []);
+
+  // Clear mnemonic on unmount
+  useEffect(() => {
+    return () => {
+      mnemonicRef.current = null;
+      if (mnemonicTimerRef.current) clearTimeout(mnemonicTimerRef.current);
+    };
+  }, []);
+
+  // Auto-lock disabled — wallet stays unlocked until device locks
+
+  const activateWalletSigner = useCallback(
+    (offlineSigner: OfflineSigner, mnemonic: string) => {
+      setMnemonicWithAutoClear(mnemonic);
+      setSigner(offlineSigner);
+    },
+    [setMnemonicWithAutoClear]
+  );
+
+  const unlockWallet = useCallback(
+    async (password: string) => {
+      const address = defaultAccount.account?.cyber.bech32;
+      if (!address) throw new Error('Select an account in Keys before signing');
+
+      const isPrivateKeyAccount = defaultAccount.account?.cyber.keys === 'private-key';
+
+      const encrypted = getEncryptedMnemonic(address);
+      if (!encrypted) throw new Error('Wallet data not found. Re-import your key');
+
+      const secret = await decryptMnemonic(encrypted, password);
+      const offlineSigner = isPrivateKeyAccount
+        ? await getOfflineSignerFromPrivateKey(secret)
+        : await getOfflineSignerFromMnemonic(secret);
+
+      // Verify decrypted secret derives to the expected address
+      const [account] = await offlineSigner.getAccounts();
+      if (account.address !== address) {
+        throw new Error('Key does not match this account. Check your backup');
+      }
+
+      setMnemonicWithAutoClear(secret);
+      setSigner(offlineSigner);
+    },
+    [defaultAccount, setMnemonicWithAutoClear]
+  );
+
+  // Connect Ledger — requires user gesture (WebUSB)
+  const connectLedgerFn = useCallback(async () => {
+    const { signer: ledgerSigner, address, pubkey } = await connectLedgerDevice();
+    setSigner(ledgerSigner);
+    return { address, pubkey };
+  }, []);
+
+  // Reconnect Ledger — for when signer was lost (page refresh / device sleep)
+  const reconnectLedger = useCallback(async () => {
+    if (!isLedgerAccount) return;
+
+    // Validate device first with a raw signer
+    const rawSigner = await createLedgerSigner();
+    const expectedAddress = defaultAccount.account?.cyber?.bech32;
+    if (expectedAddress) {
+      const [account] = await rawSigner.getAccounts();
+      if (account.address !== expectedAddress) {
+        throw new Error(
+          'This Ledger has a different address. Is it the correct device?'
+        );
+      }
+    }
+
+    // Use ReconnectingLedgerSigner for long-lived use — survives sleep
+    const [account] = await rawSigner.getAccounts();
+    const reconnectingSigner = new ReconnectingLedgerSigner('bostrom', [account]);
+    setSigner(reconnectingSigner);
+  }, [isLedgerAccount, defaultAccount]);
+
+  // Ledger health monitoring — detect sleep / disconnect
+  useEffect(() => {
+    if (!isLedgerAccount || !signer) return;
+
+    const HEALTH_INTERVAL_MS = 30_000; // 30 seconds
+
+    const check = async () => {
+      const healthy = await checkTransportHealth();
+      if (!healthy) {
+        setSigner(undefined);
+        window.dispatchEvent(new CustomEvent('__cyb_ledger_disconnected'));
+      }
+    };
+
+    const interval = setInterval(check, HEALTH_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [isLedgerAccount, signer]);
+
+  // Close transport on unmount and on page unload
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      closeTransport();
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => {
+      window.removeEventListener('beforeunload', handleBeforeUnload);
+      closeTransport();
+    };
+  }, []);
+
+  const getSignerForChain = useCallback(
+    async (chainId: string): Promise<Option<OfflineSigner>> => {
+      if (isLedgerAccount) {
+        const network = networkListIbc[chainId];
+        const prefix = network?.prefix;
+        if (prefix) {
+          return createLedgerSigner(prefix);
+        }
+        return undefined;
+      }
+      if (mnemonicRef.current) {
+        return getOfflineSignerFromMnemonic(mnemonicRef.current, chainId);
+      }
+      return undefined;
+    },
+    [isLedgerAccount]
   );
 
   const value = useMemo(
