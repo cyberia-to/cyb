@@ -14,6 +14,7 @@ pub enum WorldState {
     Portal,    // Cmd+2 (Leptos WASM)
     Legacy,    // Cmd+3 (cyb-ts React)
     Interface, // Cmd+4 (Bevy 3D/2D)
+    Graph,     // Cmd+5 (mir graph world — R-1.0)
 }
 
 pub struct WorldsPlugin;
