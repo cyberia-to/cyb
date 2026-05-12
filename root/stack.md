@@ -45,13 +45,13 @@ eleven repos. eleven verbs. remove any one → nothing above works.
 | 0 | [[strata]] | algebra | four trait tiers × five algebras. the arithmetic every proof reduces to |
 | 1 | [[hemera]] | hash | [[Poseidon2]] sponge. gives [[particles]] identity |
 | 2 | [[lens]] | commit | five polynomial commitment backends — one per algebra |
-| 3 | [[trident]] | compile | .tri source → [[nox]] noun. the only way to write programs |
+| 3 | [[trident]] | compile code | .tri source → [[nox]] noun. the only way to write programs |
 | 4 | [[cybergraph]] | link | connects everything to everything. jets, memos, types, knowledge |
-| 5 | [[nox]] | run | 16 patterns + [[hint]] + jets. trace = constraint system |
+| 5 | [[nox]] | run code | 16 patterns + [[hint]] + jets. trace = constraint system |
 | 6 | [[zheng]] | prove | [[SuperSpartan]] + [[WHIR]] + [[sumcheck]]. [[zheng]] proof |
 | 7 | [[bbg]] | store | one polynomial, 10 dimensions. ~200 byte proofs, 10-50 μs |
-| 8 | [[tru]] | compile | .graph → .model + graph field: φ*, eigenvectors, cyberank |
-| 9 | [[glia]] | run | universal .model runtime. graph-agnostic |
+| 8 | [[tru]] | compile model | .graph → .model + graph field: φ*, eigenvectors, cyberank |
+| 9 | [[glia]] | run model | universal .model runtime. graph-agnostic |
 | 10 | [[mir]] | render | tru positions + glia features → [[R-1.0]] world. makes it physical |
 
 ## compiler / runtime duality
