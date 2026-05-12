@@ -81,8 +81,8 @@ const slice = createSlice({
         Object.keys(state.accounts).forEach((accountKey) => {
           Object.keys(state.accounts[accountKey]).forEach((networkKey) => {
             if (state.accounts[accountKey][networkKey].bech32 === payload) {
-              // Clean up encrypted mnemonic from localStorage if this was a wallet account
-              if (state.accounts[accountKey][networkKey].keys === 'wallet') {
+              // Clean up mnemonic from localStorage if this was a wallet account
+              if (state.accounts[accountKey][networkKey].keys === 'wallet' || state.accounts[accountKey][networkKey].keys === 'private-key') {
                 removeEncryptedMnemonic(payload);
               }
               delete state.accounts[accountKey][networkKey];

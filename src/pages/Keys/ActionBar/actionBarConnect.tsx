@@ -11,8 +11,7 @@ import { AccountValue } from 'src/types/defaultAccount';
 import { LEDGER } from 'src/utils/config';
 import { toHex } from 'src/utils/encoding';
 import { encryptMnemonic } from 'src/utils/mnemonicCrypto';
-import { getOfflineSigner } from 'src/utils/offlineSigner';
-import { isWebUSBSupported } from 'src/utils/ledgerSigner';
+import { getOfflineSigner, getOfflineSignerFromPrivateKey } from 'src/utils/offlineSigner';
 import { setEncryptedMnemonic } from 'src/utils/utils';
 import { useAdviser } from 'src/features/adviser/context';
 import { AdviserColors } from 'src/features/adviser/Adviser/Adviser';
@@ -44,9 +43,10 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
   const selectNetwork = 'cyber';
   const [validAddressAddedUser, setValidAddressAddedUser] = useState(true);
 
-  // Mnemonic flow state — useRef to avoid React DevTools exposure
+  // Secret flow state — useRef to avoid React DevTools exposure
   const pendingNameRef = useRef('');
   const pendingMnemonicRef = useRef('');
+  const pendingImportModeRef = useRef<'mnemonic' | 'private-key'>('mnemonic');
   const [password, setPassword] = useState('');
   const [passwordConfirm, setPasswordConfirm] = useState('');
   const [passwordError, setPasswordError] = useState('');
@@ -61,6 +61,7 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
     setValidAddressAddedUser(true);
     pendingNameRef.current = '';
     pendingMnemonicRef.current = '';
+    pendingImportModeRef.current = 'mnemonic';
     setPassword('');
     setPasswordConfirm('');
     setPasswordError('');
@@ -183,10 +184,11 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
     }
   };
 
-  // Step 1: mnemonic entered → ask for password
-  const onMnemonicSubmit = (name: string, mnemonic: string) => {
+  // Step 1: secret entered → ask for password
+  const onSecretSubmit = (name: string, secret: string, mode: 'mnemonic' | 'private-key') => {
     pendingNameRef.current = name;
-    pendingMnemonicRef.current = mnemonic;
+    pendingMnemonicRef.current = secret;
+    pendingImportModeRef.current = mode;
     setStage(STAGE_SET_PASSWORD);
   };
 
@@ -219,23 +221,27 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
 
     setSaving(true);
     try {
-      const mnemonic = pendingMnemonicRef.current;
-      const offlineSigner = await getOfflineSigner(mnemonic);
+      const secret = pendingMnemonicRef.current;
+      const isPrivateKey = pendingImportModeRef.current === 'private-key';
+
+      const offlineSigner = isPrivateKey
+        ? await getOfflineSignerFromPrivateKey(secret)
+        : await getOfflineSigner(secret);
 
       if (offlineSigner) {
         const [{ address, pubkey: pubKey }] = await offlineSigner.getAccounts();
         const pk = toHex(pubKey);
 
-        // Persist encrypted mnemonic before setting signer —
+        // Persist encrypted secret before setting signer —
         // if localStorage write fails, don't activate a non-persisted wallet
-        const encrypted = await encryptMnemonic(mnemonic, password);
+        const encrypted = await encryptMnemonic(secret, password);
         setEncryptedMnemonic(encrypted, address);
-        activateWalletSigner(offlineSigner, mnemonic);
+        activateWalletSigner(offlineSigner, secret);
 
         const accounts: AccountValue = {
           pk,
-          keys: 'wallet',
-          path: HDPATH,
+          keys: isPrivateKey ? 'private-key' : 'wallet',
+          path: isPrivateKey ? undefined : HDPATH,
           name: pendingNameRef.current,
           bech32: address,
         };
@@ -257,7 +263,13 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
       pendingMnemonicRef.current = '';
       setPassword('');
       setPasswordConfirm('');
-      setPasswordError('Failed to import wallet. Check your seed phrase and try again');
+
+      const isStorageError = err?.message?.includes('storage');
+      setPasswordError(
+        isStorageError
+          ? 'Could not save wallet. Check browser storage settings'
+          : 'Failed to import wallet. Check your secret and try again'
+      );
     } finally {
       setSaving(false);
     }
@@ -274,7 +286,7 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
   if (stage === STAGE_OPEN_MODAL) {
     return (
       <ConnectWalletModal
-        onAdd={onMnemonicSubmit}
+        onAdd={onSecretSubmit}
         onCancel={() => clearState()}
       />
     );

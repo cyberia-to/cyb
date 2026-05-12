@@ -2,12 +2,17 @@ import {
   DirectSecp256k1HdWallet,
   DirectSecp256k1HdWalletOptions,
 } from '@cosmjs/proto-signing/build/directsecp256k1hdwallet';
+import { DirectSecp256k1Wallet } from '@cosmjs/proto-signing';
 import { Bip39, EnglishMnemonic } from '@cosmjs/crypto';
-import { toBase64, toUtf8 } from '@cosmjs/encoding';
+import { fromHex, toBase64, toUtf8 } from '@cosmjs/encoding';
 import {
   Secp256k1HdWallet,
+  Secp256k1Wallet,
   makeSignDoc,
 } from '@cosmjs/amino';
+import { AccountData, OfflineDirectSigner } from '@cosmjs/proto-signing';
+import { SignDoc } from 'cosmjs-types/cosmos/tx/v1beta1/tx';
+import { DirectSignResponse } from '@cosmjs/proto-signing';
 import defaultNetworks from 'src/constants/defaultNetworks';
 import networkList from './networkListIbc';
 
@@ -95,4 +100,79 @@ export const getOfflineSigner = (mnemonic: string, network?: string) => {
       : defaultNetworks.bostrom.BECH32_PREFIX;
 
   return CybOfflineSigner.fromMnemonic(mnemonic, { prefix });
+};
+
+export class CybPrivateKeySigner implements OfflineDirectSigner {
+  private directWallet: DirectSecp256k1Wallet;
+  private aminoWallet: Secp256k1Wallet;
+
+  private constructor(
+    directWallet: DirectSecp256k1Wallet,
+    aminoWallet: Secp256k1Wallet
+  ) {
+    this.directWallet = directWallet;
+    this.aminoWallet = aminoWallet;
+  }
+
+  static async fromKey(
+    privkeyHex: string,
+    prefix?: string
+  ): Promise<CybPrivateKeySigner> {
+    const privkey = fromHex(privkeyHex);
+    const bech32Prefix = prefix || defaultNetworks.bostrom.BECH32_PREFIX;
+    const [directWallet, aminoWallet] = await Promise.all([
+      DirectSecp256k1Wallet.fromKey(privkey, bech32Prefix),
+      Secp256k1Wallet.fromKey(privkey, bech32Prefix),
+    ]);
+    return new CybPrivateKeySigner(directWallet, aminoWallet);
+  }
+
+  async getAccounts(): Promise<readonly AccountData[]> {
+    return this.directWallet.getAccounts();
+  }
+
+  async signDirect(
+    address: string,
+    signDoc: SignDoc
+  ): Promise<DirectSignResponse> {
+    return this.directWallet.signDirect(address, signDoc);
+  }
+
+  async signArbitrary(
+    _chainId: string,
+    signerAddress: string,
+    data: string
+  ): Promise<ArbSignResult> {
+    const signDoc = makeSignDoc(
+      [
+        {
+          type: 'sign/MsgSignData',
+          value: {
+            signer: signerAddress,
+            data: toBase64(toUtf8(data)),
+          },
+        },
+      ],
+      { amount: [], gas: '0' },
+      '',
+      '',
+      0,
+      0
+    );
+
+    const res = await this.aminoWallet.signAmino(signerAddress, signDoc);
+    return res.signature;
+  }
+}
+
+export const getOfflineSignerFromPrivateKey = (
+  privateKeyHex: string,
+  network?: string
+) => {
+  const prefix =
+    network && networkList[network]?.prefix
+      ? networkList[network].prefix
+      : defaultNetworks.bostrom.BECH32_PREFIX;
+
+  return CybPrivateKeySigner.fromKey(privateKeyHex, prefix);
 };
