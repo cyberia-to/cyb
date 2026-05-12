@@ -45,7 +45,7 @@ fourteen repos. fourteen verbs. remove any one → nothing above works.
 | 0 | [[strata]] | algebra | four trait tiers × five algebras. the arithmetic every proof reduces to |
 | 1 | [[hemera]] | hash | [[Poseidon2]] sponge. gives [[particles]] identity |
 | 2 | [[lens]] | commit | five polynomial commitment backends — one per algebra |
-| 3 | [[trident]] | compile code | .tri source → [[nox]] noun. the only way to write programs |
+| 3 | [[trident]] | compile code | .tri → .nox. the only way to write programs |
 | 4 | [[cybergraph]] | link | connects everything to everything. jets, memos, types, knowledge |
 | 5 | [[nox]] | run code | 16 patterns + [[hint]] + jets. trace = constraint system |
 | 6 | [[zheng]] | prove & verify | [[SuperSpartan]] + [[WHIR]] + [[sumcheck]]. [[zheng]] proof |
@@ -63,10 +63,10 @@ the stack has two compiler/runtime pairs — the same pattern at two levels:
 
 | | compiler | runtime |
 |--|---------|---------|
-| programs | trident (.tri → nox noun) | nox (runs any noun) |
+| programs | trident (.tri → .nox) | nox (runs any .nox) |
 | models | tru (.graph → .model) | glia (runs any .model) |
 
-trident knows .tri. nox knows nothing about .tri — it just runs nouns. tru knows .graph. glia knows nothing about graphs — it just runs models. mir reads both.
+trident knows .tri. nox knows nothing about .tri — it just runs .nox. tru knows .graph. glia knows nothing about graphs — it just runs .model. mir reads both.
 
 ## hemera — hash
 
