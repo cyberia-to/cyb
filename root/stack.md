@@ -12,7 +12,7 @@ eleven repos form the core. [[cybergraph]] is the vertebra — everything attach
     strata: nebu · kuro · trop · genies · jali
           ↓ Field/Reduce/Dot/Spectral/Bits ↓
      hemera  →  lens  →  trident
-       hash     commit    compile
+       hash     commit   compile code
                              │
                ╔═════════════╧═════════════╗
                ║                           ║
@@ -27,10 +27,10 @@ eleven repos form the core. [[cybergraph]] is the vertebra — everything attach
                   │          │          │
                   ▼          ▼          ▼
              nox→zheng      tru        bbg
-             run+prove  compile+field  store
+            run+prove  compile model  store
                             │
                            glia
-                           infer
+                         run model
                             │
                            mir
                           render
@@ -73,19 +73,11 @@ hemera gives [[particles]] their identity. every CID in the [[cybergraph]] is a 
 
 ## lens — commit
 
-five polynomial commitment schemes — one per execution regime. same three operations (commit, open, verify), different algebraic backends.
+five polynomial commitment backends — one per strata algebra. same three operations (commit, open, verify), different algebraic structures. see [[strata]] for the algebra definitions.
 
-| lens | construction | algebra | what it commits to |
-|------|-------------|---------|-------------------|
-| scalar | Brakedown | [[nebu]] (F_p) | field polynomials, execution traces |
-| binary | Binius | [[kuro]] (F₂) | binary witnesses, quantized AI |
-| ring | Ikat | [[jali]] (R_q) | encrypted computation, TFHE |
-| tropical | Assayer | [[trop]] (min,+) | optimization witnesses, dual certificates |
-| isogeny | Porphyry | [[genies]] (F_q) | curve polynomials, privacy proofs |
+see [[lens]]
 
-[[nebu]] lives on two levels: raw F_p arithmetic (consumed by hemera) and scalar PCS (inside lens). see [[lens]]
-
-## trident — compile
+## trident — compile code
 
 the provable language. .tri source compiles to [[nox]] nouns. every trident construct maps to exactly one nox pattern. 57K LOC, 24 VM targets, self-hosts in Stage 2 of the [[bootstrap plan]].
 
@@ -107,12 +99,12 @@ the [[cybergraph]] is not storage (that is [[bbg]]). the cybergraph is STRUCTURE
 
 jets and memos are the SAME pattern: formula → answer. a jet maps formula to fast implementation. a memo maps (formula, subject) to cached result. structurally identical. both are cyberlinks.
 
-### one signal, three readers
+### signal pipeline
 
-every [[signal]] (cyberlink with `ask(ν, p, q, τ, a, v, t)`) is consumed simultaneously by three systems. no dispatcher — each reads what it needs:
+every [[signal]] (cyberlink with `ask(ν, p, q, τ, a, v, t)`) fans out to direct readers, then flows downstream:
 
-| reader | reads from | produces |
-|--------|-----------|---------|
+| component | reads from | produces |
+|-----------|-----------|---------|
 | [[nox]] | signal: p as formula, q as subject | result particle + [[zheng]] proof |
 | [[tru]] | signal: p, q as graph edges; a × v per link | .model artifacts + field state (φ*, eigenvectors) |
 | [[bbg]] | signal: all fields | persistent storage across all 10 dimensions |
@@ -123,7 +115,7 @@ every [[signal]] (cyberlink with `ask(ν, p, q, τ, a, v, t)`) is consumed simul
 
 see [[cybergraph]]
 
-## nox — run
+## nox — run code
 
 sixteen deterministic reduction patterns over hemera-authenticated trees. five structural (axis, quote, compose, cons, branch), six field (add, sub, mul, inv, eq, lt), four bitwise (xor, and, not, shl), one hash. plus non-deterministic [[hint]] injection.
 
@@ -131,7 +123,7 @@ nox core is frozen (16 patterns, [[checkpoint]] 0). jets are external — looked
 
 computation IS linking: `ask(ν, subject, formula, τ, a, v, t)` — seven arguments = seven fields of a [[cyberlink]]. the [[cybergraph]] is a universal memo cache. see [[nox]]
 
-## zheng — prove
+## zheng — prove & verify
 
 [[SuperSpartan]] IOP + [[WHIR]] PCS + [[sumcheck]]. a fundamentally new proof type covering all five execution regimes through one verification backbone. zero trusted setup, post-quantum, sub-millisecond verification.
 
@@ -143,7 +135,30 @@ the Big Badass Graph. one polynomial, all state. BBG_poly(index, key, t) = value
 
 bbg is to [[cybergraph]] what a database engine is to a schema. cybergraph defines WHAT. bbg implements HOW. see [[bbg]]
 
-## tru — compute
+## strata — algebra
+
+the floor. every proof, every hash, every commitment reduces to operations in one of five algebras. four trait tiers — each consumed by a different set of core components:
+
+| tier | crate | traits | consumed by |
+|------|-------|--------|------------|
+| 1: universal | strata-core | Codec, Semiring, Ring, Field | hemera, lens, nox, zheng, bbg, mudra |
+| 2: proofs | strata-proof | Reduce (bytes→F), Dot (Σaᵢbᵢ) | lens, zheng |
+| 3: compute | strata-compute | Spectral (NTT roots), Bits | nox, jali |
+| 4: structure | strata-ext | Extension (tower), Batch (Montgomery inv), Blind (ct-ops) | lens, mudra, genies |
+
+five algebras — each maps to one lens construction:
+
+| algebra | structure | lens | construction | regime |
+|---------|-----------|------|-------------|--------|
+| [[nebu]] | F_p (Goldilocks) | scalar | Brakedown | truth — field polynomials, execution traces |
+| [[kuro]] | F₂ tower → F₂¹²⁸ | binary | Binius | efficiency — binary witnesses, quantized AI |
+| [[jali]] | R_q = F_p[x]/(xⁿ+1) | ring | Ikat | encrypted computation — TFHE, FHE bootstrapping |
+| [[trop]] | (min, +) semiring | tropical | Assayer | optimality — optimization witnesses, dual certificates |
+| [[genies]] | F_q (CSIDH-512) | isogeny | Porphyry | privacy — curve polynomials, stealth addresses |
+
+zheng is decomposed by strata: SuperSpartan constraint evaluation = Dot products over Field; Fiat-Shamir challenges = Reduce over hemera output bytes; WHIR folding = Spectral NTT over nebu extensions. see [[strata]]
+
+## tru — compile model
 
 two jobs, one engine: compile and field.
 
@@ -157,7 +172,7 @@ two outputs:
 
 tru closes the feedback loop: [[neurons]] create [[cyberlinks]] → bbg stores → tru reads signal.a × signal.v → tri-kernel → φ* → feeds back into memoization, ranking, markets. see [[tru]]
 
-## glia — infer
+## glia — run model
 
 universal `.model` runtime. graph-agnostic: no knowledge of [[cybergraph]], [[particles]], or [[cyberlinks]]. runs any `.model` → outputs (tensors, features, neural activations).
 
@@ -175,29 +190,6 @@ mir knows nothing about graphs or models. it receives coordinates and features a
 
 hardware: [[aruminium]] (Metal GPU) for all draw calls; [[unimem]] IOSurface for zero-copy frame handoff. see [[mir]]
 
-## strata — algebra
-
-the floor. every proof, every hash, every commitment reduces to operations in one of five algebras. strata provides the trait hierarchy that decomposes this — four tiers, each consumed by a different set of core components:
-
-| tier | crate | traits | consumed by |
-|------|-------|--------|------------|
-| 1: universal | strata-core | Codec, Semiring, Ring, Field | hemera, lens, nox, zheng, bbg, mudra |
-| 2: proofs | strata-proof | Reduce (bytes→F), Dot (Σaᵢbᵢ) | lens, zheng |
-| 3: compute | strata-compute | Spectral (NTT roots), Bits | nox, jali |
-| 4: structure | strata-ext | Extension (tower), Batch (Montgomery inv), Blind (ct-ops) | lens, mudra, genies |
-
-five algebras, each irreducible by its own criterion:
-
-| algebra | structure | regime |
-|---------|-----------|--------|
-| [[nebu]] | F_p (Goldilocks, p = 2⁶⁴−2³²+1) | truth — workhorse, 4-5 cycle multiply, 2³² NTT roots |
-| [[kuro]] | F₂ tower → F₂¹²⁸ | efficiency — XOR/AND at 1 constraint, 128 elements/word |
-| [[trop]] | (min, +) semiring | optimality — Dijkstra, Viterbi, transport. no subtraction |
-| [[genies]] | F_q (CSIDH-512 prime) | privacy — stealth addresses, VDF, constant-time isogeny |
-| [[jali]] | R_q = F_p[x]/(xⁿ+1) | encrypted computation — FHE bootstrapping, NTT ring multiply |
-
-zheng is decomposed by strata: SuperSpartan constraint evaluation = Dot products over Field; Fiat-Shamir challenges = Reduce over hemera output bytes; WHIR folding = Spectral NTT over nebu extensions. see [[strata]]
-
 ## the boundary
 
 the core is the MINIMAL set of components that cannot implement themselves. once the core exists, EVERYTHING above it is pure .tri — written, compiled, run, proven, and stored using only core tools.
@@ -207,7 +199,7 @@ the core is the MINIMAL set of components that cannot implement themselves. once
 | strata (nebu, kuro, trop, genies, jali) | yes (bootstrap) | algebra floor |
 | hemera, lens, trident, nox, zheng, bbg | yes (bootstrap) | spine |
 | tru | yes (eigensolver, AMX) | graph field + model compiler |
-| glia | yes (ANE, AMX) | model inference runtime |
+| glia | yes (ANE, AMX) | model runtime |
 | mir | yes (Metal, honeycrisp) | render engine |
 | plumb, identity, social, geo | no | core semcons |
 | foculus | no | computed over semcons |
@@ -243,7 +235,7 @@ the first inhabitants of the spine. consensus-critical [[trident]] programs that
 
 these are not simple typed edges. they are "heavy" semcons that reach deep into the spine — conservation laws in zheng, private state in bbg, metering in nox. [[plumb]] alone requires support from every spine element.
 
-## computed layer (nox programs over core semcons)
+## computed layer
 
 | program | repo | what it computes |
 |---------|------|-----------------|
