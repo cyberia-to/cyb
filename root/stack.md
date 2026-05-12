@@ -114,7 +114,7 @@ the provable language. .tri source compiles to .nox. every trident construct map
 
 trident's compiler backend includes a neural optimizer: a GNN+Transformer (~13M params, GATv2 encoder + 6-layer decoder) that optimizes TIR→TASM at compile time. classical lowering always runs; neural output accepted only when stack-verified equivalent and strictly cheaper. speculative, not required.
 
-without trident, nox is a bare CPU with no assembler. without nox, trident has nowhere to target. see [[trident]]
+without trident, nox is a bare CPU with no assembler. trident already targets 28 VMs — including inefficient legacy ones. nox is the only efficient destination. see [[trident]]
 
 ## nox — run code
 
