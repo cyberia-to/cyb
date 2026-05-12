@@ -65,15 +65,33 @@ pub fn run(args: Vec<String>) {
     );
 
     // Rewrite the .model file: insert / replace the ~~~graph section.
+    // The file has a binary weights section after ~~~weights\n that must not
+    // be processed as UTF-8 text — invalid bytes would be silently replaced
+    // with U+FFFD, corrupting the weight data. Split at the marker, operate
+    // only on the text header, then concatenate with the unchanged binary.
     let file_bytes = std::fs::read(&path).unwrap_or_else(|e| {
         eprintln!("read failed: {e}");
         std::process::exit(1);
     });
-    let file_str = String::from_utf8_lossy(&file_bytes);
+    let weights_marker = b"~~~weights\n";
+    let weights_data_start = file_bytes
+        .windows(weights_marker.len())
+        .position(|w| w == weights_marker)
+        .map(|p| p + weights_marker.len())
+        .unwrap_or(file_bytes.len());
+    let text_header_bytes = &file_bytes[..weights_data_start];
+    let binary_weights = &file_bytes[weights_data_start..];
+    let text_header = std::str::from_utf8(text_header_bytes).unwrap_or_else(|e| {
+        eprintln!("model text header is not valid UTF-8: {e}");
+        std::process::exit(1);
+    });
 
-    let new_content = inject_graph_section(&file_str, &hex);
+    let new_text = inject_graph_section(text_header, &hex);
 
-    std::fs::write(&path, new_content.as_bytes()).unwrap_or_else(|e| {
+    let mut new_content = new_text.into_bytes();
+    new_content.extend_from_slice(binary_weights);
+
+    std::fs::write(&path, &new_content).unwrap_or_else(|e| {
         eprintln!("write failed: {e}");
         std::process::exit(1);
     });
