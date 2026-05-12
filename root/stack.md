@@ -48,7 +48,7 @@ eleven repos. eleven verbs. remove any one → nothing above works.
 | 3 | [[trident]] | compile code | .tri source → [[nox]] noun. the only way to write programs |
 | 4 | [[cybergraph]] | link | connects everything to everything. jets, memos, types, knowledge |
 | 5 | [[nox]] | run code | 16 patterns + [[hint]] + jets. trace = constraint system |
-| 6 | [[zheng]] | prove | [[SuperSpartan]] + [[WHIR]] + [[sumcheck]]. [[zheng]] proof |
+| 6 | [[zheng]] | prove & verify | [[SuperSpartan]] + [[WHIR]] + [[sumcheck]]. [[zheng]] proof |
 | 7 | [[bbg]] | store | one polynomial, 10 dimensions. ~200 byte proofs, 10-50 μs |
 | 8 | [[tru]] | compile model | .graph → .model + graph field: φ*, eigenvectors, cyberank |
 | 9 | [[glia]] | run model | universal .model runtime. graph-agnostic |
