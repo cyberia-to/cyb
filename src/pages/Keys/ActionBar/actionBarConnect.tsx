@@ -11,6 +11,11 @@ import { addAddressPocket } from 'src/redux/features/pocket';
 import { AccountValue } from 'src/types/defaultAccount';
 import { LEDGER } from 'src/utils/config';
 import { toHex } from 'src/utils/encoding';
+import { encryptMnemonic } from 'src/utils/mnemonicCrypto';
+import { getOfflineSigner, getOfflineSignerFromPrivateKey } from 'src/utils/offlineSigner';
+import { setEncryptedMnemonic } from 'src/utils/utils';
+import { useAdviser } from 'src/features/adviser/context';
+import { AdviserColors } from 'src/features/adviser/Adviser/Adviser';
 import { KEY_TYPE } from '../types';
 import ActionBarSecrets from './actionBarSecrets';
 
@@ -36,6 +41,15 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
   const [_addCyberAddress, setAddCyberAddress] = useState(false);
   const [validAddressAddedUser, setValidAddressAddedUser] = useState(true);
 
+  // Secret flow state — useRef to avoid React DevTools exposure
+  const pendingNameRef = useRef('');
+  const pendingMnemonicRef = useRef('');
+  const pendingImportModeRef = useRef<'mnemonic' | 'private-key'>('mnemonic');
+  const [password, setPassword] = useState('');
+  const [passwordConfirm, setPasswordConfirm] = useState('');
+  const [passwordError, setPasswordError] = useState('');
+  const [saving, setSaving] = useState(false);
+
   const dispatch = useDispatch();
 
   const clearState = () => {
@@ -44,6 +58,13 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
     setSelectMethod('');
     setAddCyberAddress(false);
     setValidAddressAddedUser(true);
+    pendingNameRef.current = '';
+    pendingMnemonicRef.current = '';
+    pendingImportModeRef.current = 'mnemonic';
+    setPassword('');
+    setPasswordConfirm('');
+    setPasswordError('');
+    setSaving(false);
   };
 
   useEffect(() => {
@@ -104,10 +125,13 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
     }
   };
 
-  const connectKeplr = async () => {
-    if (signer) {
-      const { bech32Address, pubKey, name } = await signer.keplr.getKey(CHAIN_ID);
-      const pk = toHex(new Uint8Array(pubKey));
+  // Step 1: secret entered → ask for password
+  const onSecretSubmit = (name: string, secret: string, mode: 'mnemonic' | 'private-key') => {
+    pendingNameRef.current = name;
+    pendingMnemonicRef.current = secret;
+    pendingImportModeRef.current = mode;
+    setStage(STAGE_SET_PASSWORD);
+  };
 
       const accounts: AccountValue = {
         bech32: bech32Address,
@@ -126,9 +150,66 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
       if (updateAddress) {
         updateAddress();
       }
-      if (updateFuncActionBar) {
-        updateFuncActionBar();
+    }
+
+    if (password !== passwordConfirm) {
+      setPasswordError('Passwords do not match');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const secret = pendingMnemonicRef.current;
+      const isPrivateKey = pendingImportModeRef.current === 'private-key';
+
+      const offlineSigner = isPrivateKey
+        ? await getOfflineSignerFromPrivateKey(secret)
+        : await getOfflineSigner(secret);
+
+      if (offlineSigner) {
+        const [{ address, pubkey: pubKey }] = await offlineSigner.getAccounts();
+        const pk = toHex(pubKey);
+
+        // Persist encrypted secret before setting signer —
+        // if localStorage write fails, don't activate a non-persisted wallet
+        const encrypted = await encryptMnemonic(secret, password);
+        setEncryptedMnemonic(encrypted, address);
+        activateWalletSigner(offlineSigner, secret);
+
+        const accounts: AccountValue = {
+          pk,
+          keys: isPrivateKey ? 'private-key' : 'wallet',
+          path: isPrivateKey ? undefined : HDPATH,
+          name: pendingNameRef.current,
+          bech32: address,
+        };
+
+        setStage(STAGE_ADD_ADDRESS_OK);
+        setTimeout(() => {
+          dispatch(addAddressPocket(accounts));
+        }, 100);
+
+        clearState();
+        if (updateAddress) {
+          updateAddress();
+        }
+        if (updateFuncActionBar) {
+          updateFuncActionBar();
+        }
       }
+    } catch (err: any) {
+      pendingMnemonicRef.current = '';
+      setPassword('');
+      setPasswordConfirm('');
+
+      const isStorageError = err?.message?.includes('storage');
+      setPasswordError(
+        isStorageError
+          ? 'Could not save wallet. Check browser storage settings'
+          : 'Failed to import wallet. Check your secret and try again'
+      );
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -139,6 +220,57 @@ function ActionBarConnect({ addAddress, updateAddress, updateFuncActionBar, onCl
       setSelectMethod('');
     }
   };
+
+  if (stage === STAGE_OPEN_MODAL) {
+    return (
+      <ConnectWalletModal
+        onAdd={onSecretSubmit}
+        onCancel={() => clearState()}
+      />
+    );
+  }
+
+  if (stage === STAGE_SET_PASSWORD) {
+    return (
+      <ActionBar
+        button={{
+          disabled: !password || !passwordConfirm || saving,
+          onClick: onPasswordSubmit,
+          text: 'Encrypt & Save',
+        }}
+        onClickBack={() => setStage(STAGE_OPEN_MODAL)}
+      >
+        <Pane display="flex" alignItems="center" justifyContent="center" flex={1} gap="10px">
+          <Input
+            width="200px"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="password"
+            type="password"
+            autoComplete="new-password"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+            autoFocus
+          />
+          <Input
+            width="200px"
+            value={passwordConfirm}
+            onChange={(e) => setPasswordConfirm(e.target.value)}
+            placeholder="confirm password"
+            type="password"
+            autoComplete="new-password"
+            autoCorrect="off"
+            autoCapitalize="off"
+            spellCheck={false}
+          />
+          {passwordError && (
+            <span style={{ color: '#ff4d4d', fontSize: '14px' }}>{passwordError}</span>
+          )}
+        </Pane>
+      </ActionBar>
+    );
+  }
 
   if (stage === STAGE_INIT) {
     return (
