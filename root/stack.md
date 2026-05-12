@@ -6,17 +6,12 @@ alias: cyb stack, software stack, proof pipeline
 ---
 # stack
 
-seven repos form the spine. [[cybergraph]] is the vertebra — everything attaches to it. five algebras form the arithmetic foundation. the boundary is sharp: below it, Rust bootstrap required. above it, everything is pure [[Trident]].
+ten repos form the core. [[cybergraph]] is the vertebra — everything attaches to it. [[strata]] is the floor — every proof reduces to operations in its five algebras. the boundary is sharp: below it, Rust bootstrap required. above it, everything is pure [[trident]].
 
 ```
-                          nebu ──┐
-                          kuro ──┤
-                          trop ──┤── lens
-                        genies ──┤
-                          jali ──┘
-                            │
-                            ▼
-     hemera  →  lens  →  Trident
+    strata: nebu · kuro · trop · genies · jali
+          ↓ Field/Reduce/Dot/Spectral/Bits ↓
+     hemera  →  lens  →  trident
        hash     commit    compile
                              │
                ╔═════════════╧═════════════╗
@@ -28,25 +23,34 @@ seven repos form the spine. [[cybergraph]] is the vertebra — everything attach
                ║  deps · knowledge         ║
                ║  semcons · programs       ║
                ║                           ║
-               ╚═════════════╤═════════════╝
-                             │
-                   nox  →  zheng  →  bbg
-                   run     prove     store
+               ╚══╤══════════╤══════════╤══╝
+                  │          │          │
+                  ▼          ▼          ▼
+             nox→zheng      tru        glia
+             run+prove    compute     render
+                  │          │          │
+                  └──────────┴──────────┘
+                                │
+                               bbg
+                              store
 ```
 
-## the spine
+## the core
 
-seven repos. seven verbs. remove any one → nothing above works.
+ten repos. ten verbs. remove any one → nothing above works.
 
 | # | repo | verb | one sentence |
 |---|------|------|-------------|
+| 0 | [[strata]] | algebra | four trait tiers × five algebras. the arithmetic every proof reduces to |
 | 1 | [[hemera]] | hash | [[Poseidon2]] sponge. gives [[particles]] identity |
 | 2 | [[lens]] | commit | five polynomial commitment backends — one per algebra |
-| 3 | [[Trident]] | compile | .tri source → [[nox]] noun. the only way to write programs |
+| 3 | [[trident]] | compile | .tri source → [[nox]] noun. the only way to write programs |
 | 4 | [[cybergraph]] | link | connects everything to everything. jets, memos, types, knowledge |
 | 5 | [[nox]] | run | 16 patterns + [[hint]] + jets. trace = constraint system |
 | 6 | [[zheng]] | prove | [[SuperSpartan]] + [[WHIR]] + [[sumcheck]]. [[zheng]] proof |
 | 7 | [[bbg]] | store | one polynomial, 10 dimensions. ~200 byte proofs, 10-50 μs |
+| 8 | [[tru]] | compute | signal.a × signal.v → tri-kernel → φ*. focus, cyberank, karma, syntropy |
+| 9 | [[glia]] | render | .graph → CT-1.1 model → [[R-1.0]] world. compile + run + render |
 
 ## hemera — hash
 
@@ -70,9 +74,9 @@ five polynomial commitment schemes — one per execution regime. same three oper
 
 ## trident — compile
 
-the provable language. .tri source compiles to [[nox]] nouns. every Trident construct maps to exactly one nox pattern. 57K LOC, 24 VM targets, self-hosts in Stage 2 of the [[bootstrap plan]].
+the provable language. .tri source compiles to [[nox]] nouns. every trident construct maps to exactly one nox pattern. 57K LOC, 24 VM targets, self-hosts in Stage 2 of the [[bootstrap plan]].
 
-without trident, nox is a bare CPU with no assembler. without nox, trident has nowhere to target. see [[Trident]]
+without trident, nox is a bare CPU with no assembler. without nox, trident has nowhere to target. see [[trident]]
 
 ## cybergraph — link
 
@@ -89,6 +93,19 @@ the [[cybergraph]] is not storage (that is [[bbg]]). the cybergraph is STRUCTURE
 | knowledge | particle(concept) → cyberlink → particle(concept) |
 
 jets and memos are the SAME pattern: formula → answer. a jet maps formula to fast implementation. a memo maps (formula, subject) to cached result. structurally identical. both are cyberlinks.
+
+### one signal, four readers
+
+every [[signal]] (cyberlink with `ask(ν, p, q, τ, a, v, t)`) is consumed simultaneously by four systems. no dispatcher — each reads what it needs:
+
+| reader | reads from signal | produces |
+|--------|------------------|---------|
+| [[nox]] | p as formula, q as subject | result particle + [[zheng]] proof |
+| [[tru]] | a × token_weight × v per link | φ* redistribution → [[cyberank]] shift |
+| [[glia]] | (p, q, a) as weighted graph edge | Laplacian update → position drift in [[R-1.0]] world |
+| [[bbg]] | all fields | persistent storage across all 10 dimensions |
+
+`signal.a` is raw stake amount — NOT focus. [[tru]] runs the [[tri-kernel]] to convert stake-weighted cyberlinks into φ* (focus distribution). focus is always computed, never stored in the signal.
 
 see [[cybergraph]]
 
@@ -112,31 +129,57 @@ the Big Badass Graph. one polynomial, all state. BBG_poly(index, key, t) = value
 
 bbg is to [[cybergraph]] what a database engine is to a schema. cybergraph defines WHAT. bbg implements HOW. see [[bbg]]
 
-## five algebras (inside lens)
+## strata — algebra
 
-five execution regimes, each irreducible by its own criterion. see [[four algebras]].
+the floor. every proof, every hash, every commitment reduces to operations in one of five algebras. strata provides the trait hierarchy that decomposes this — four tiers, each consumed by a different set of core components:
 
-| algebra | repo | structure | regime |
-|---------|------|-----------|--------|
-| [[nebu]] | ~/git/nebu | F_p (Goldilocks) | truth |
-| [[kuro]] | ~/git/kuro | F₂ tower → F₂¹²⁸ | efficiency |
-| [[trop]] | ~/git/trop | (min, +) semiring | optimality |
-| [[genies]] | ~/git/genies | F_q (CSIDH prime) | privacy |
-| [[jali]] | ~/git/jali | R_q = F_p[x]/(x⁶⁴+1) | encrypted computation |
+| tier | crate | traits | consumed by |
+|------|-------|--------|------------|
+| 1: universal | strata-core | Codec, Semiring, Ring, Field | hemera, lens, nox, zheng, bbg, mudra |
+| 2: proofs | strata-proof | Reduce (bytes→F), Dot (Σaᵢbᵢ) | lens, zheng |
+| 3: compute | strata-compute | Spectral (NTT roots), Bits | nox, jali |
+| 4: structure | strata-ext | Extension (tower), Batch (Montgomery inv), Blind (ct-ops) | lens, mudra, genies |
+
+five algebras, each irreducible by its own criterion:
+
+| algebra | structure | regime |
+|---------|-----------|--------|
+| [[nebu]] | F_p (Goldilocks, p = 2⁶⁴−2³²+1) | truth — workhorse, 4-5 cycle multiply, 2³² NTT roots |
+| [[kuro]] | F₂ tower → F₂¹²⁸ | efficiency — XOR/AND at 1 constraint, 128 elements/word |
+| [[trop]] | (min, +) semiring | optimality — Dijkstra, Viterbi, transport. no subtraction |
+| [[genies]] | F_q (CSIDH-512 prime) | privacy — stealth addresses, VDF, constant-time isogeny |
+| [[jali]] | R_q = F_p[x]/(xⁿ+1) | encrypted computation — FHE bootstrapping, NTT ring multiply |
+
+zheng is decomposed by strata: SuperSpartan constraint evaluation = Dot products over Field; Fiat-Shamir challenges = Reduce over hemera output bytes; WHIR folding = Spectral NTT over nebu extensions. see [[strata]]
+
+## tru — compute
+
+reads every signal. converts raw stake (signal.a) and valence (signal.v) into φ* (focus distribution) via the [[tri-kernel]]. no storage — pure computation over the graph.
+
+tru closes the feedback loop: [[neurons]] create [[cyberlinks]] → bbg stores → tru reads signal.a × signal.v → tri-kernel converts to φ* → focus feeds back into memoization, ranking, markets. see [[tru]]
+
+## glia — render
+
+the graph world. reads cyberlinks as a weighted graph, maintains the screened Laplacian, runs the eigensolver, and renders the [[R-1.0]] deterministic 3D world. every neuron running glia on the same graph state sees the same world.
+
+glia = compile (.graph → CT-1.1 model) + run (eigensolver, diffusion) + render (R-1.0: spectral layout, heat-kernel BVH, T0–T3 tiers). see [[glia]]
 
 ## the boundary
 
-the stack is the MINIMAL set of components that cannot implement themselves. once the spine exists, EVERYTHING above it is pure .tri — written, compiled, run, proven, and stored using only spine tools.
+the core is the MINIMAL set of components that cannot implement themselves. once the core exists, EVERYTHING above it is pure .tri — written, compiled, run, proven, and stored using only core tools.
 
 | component | needs Rust? | nature |
 |-----------|-------------|--------|
+| strata (nebu, kuro, trop, genies, jali) | yes (bootstrap) | algebra floor |
 | hemera, lens, trident, nox, zheng, bbg | yes (bootstrap) | spine |
+| glia | yes (honeycrisp, Metal) | compute + render |
+| tru | no | computed over semcons |
 | plumb, identity, social, geo | no | core semcons |
-| tru, foculus | no | computed over semcons |
+| foculus | no | computed over semcons |
 | mudra | no (jets for speed only) | infrastructure |
 | rune, cyb, cybernode | no | interface |
 
-the spine has dual existence: Rust (bootstrap + jet implementation) and Trident (proven canonical). everything above the boundary has single existence: Trident only.
+the spine has dual existence: Rust (bootstrap + jet implementation) and trident (proven canonical). everything above the boundary has single existence: trident only.
 
 ## genesis crystal
 
@@ -154,7 +197,7 @@ the crystal is the seed structure that determines the growth pattern. without it
 
 ## core semcons (protocol layer)
 
-the first inhabitants of the spine. consensus-critical [[Trident]] programs that define what [[cyber]] IS. not kernel, not apps — protocol.
+the first inhabitants of the spine. consensus-critical [[trident]] programs that define what [[cyber]] IS. not kernel, not apps — protocol.
 
 | semcon | what it defines | stack depth |
 |--------|----------------|-------------|
@@ -169,10 +212,7 @@ these are not simple typed edges. they are "heavy" semcons that reach deep into 
 
 | program | repo | what it computes |
 |---------|------|-----------------|
-| [[tru]] | ~/git/tru | [[relevance]]: [[tri-kernel]] → [[focus]], [[cyberank]], [[karma]], [[syntropy]] |
 | [[foculus]] | ~/git/foculus | [[consensus]]: [[collective focus theorem]] → finality from topology |
-
-tru closes the feedback loop: [[neurons]] create [[cyberlinks]] → bbg stores → tru computes [[focus]] → focus feeds back into memoization, ranking, markets.
 
 ## infrastructure
 
@@ -183,7 +223,7 @@ tru closes the feedback loop: [[neurons]] create [[cyberlinks]] → bbg stores �
 
 ## languages (15, compile to nox)
 
-[[Rs]], [[rune]], [[Arc]], [[Ten]], [[Bt]], [[Tok]], [[Seq]], [[Wav]], [[Bel]], [[Dif]], [[Sym]], [[Ren]], [[Qu]], [[Trident]], [[markup]]. see [[cyb/languages]]
+[[Rs]], [[rune]], [[Arc]], [[Ten]], [[Bt]], [[Tok]], [[Seq]], [[Wav]], [[Bel]], [[Dif]], [[Sym]], [[Ren]], [[Qu]], [[trident]], [[markup]]. see [[cyb/languages]]
 
 ## interface
 
@@ -194,12 +234,14 @@ tru closes the feedback loop: [[neurons]] create [[cyberlinks]] → bbg stores �
 see [[bootstrap plan]] for full detail.
 
 ```
+Stage 0 (Rust):       strata (nebu, kuro, trop, genies, jali)
 Stage 1 (Rust):       hemera → lens → trident → nox (Rs)
 Stage 2 (self-host):  trident.tri → arithmetic.tri → nox.tri
 Stage 3 (proven):     zheng → proven re-self-host → jets → bbg
 Genesis:              genesis.tri (crystal, unlimited focus, one-time)
 Protocol:             plumb.tri ∥ identity.tri ∥ social.tri ∥ geo.tri
 Computed:             tru.tri ∥ foculus.tri
+Infrastructure:       glia (Rust, honeycrisp) ∥ mudra ∥ radio
 ```
 
 discover all [[concepts]]
