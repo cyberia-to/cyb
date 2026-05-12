@@ -70,15 +70,15 @@ pub fn run() {
 
         let cpu_str = bench_col("cpu", 9, &|| {
             let b = run::backend::cpu::CpuBackend::new();
-            quick_bench(&path, &b)
+            quick_bench(&path, &b, e.eval)
         });
         let wgpu_str = bench_col("wgpu+rs", 9, &|| match run::backend::wgpu::WgpuRsBackend::new() {
-            Ok(b) => quick_bench(&path, &b),
+            Ok(b) => quick_bench(&path, &b, e.eval),
             Err(_) => ("—".into(), "—".into()),
         });
         #[cfg(target_os = "macos")]
         let honey_str = bench_col("honeycrisp", 10, &|| match run::backend::honeycrisp::HoneycrispBackend::new() {
-            Ok(b) => quick_bench(&path, &b),
+            Ok(b) => quick_bench(&path, &b, e.eval),
             Err(_) => ("—".into(), "—".into()),
         });
         #[cfg(not(target_os = "macos"))]

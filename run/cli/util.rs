@@ -202,8 +202,25 @@ pub fn validate_math_answer(text: &str) -> &'static str {
     else { "\x1b[31m✗\x1b[0m" }
 }
 
-pub fn quick_bench(path: &std::path::Path, backend: &dyn Backend) -> (String, String) {
+pub fn validate_code_answer(text: &str) -> &'static str {
+    let t = text.trim();
+    if t.is_empty() { return "\x1b[31m✗\x1b[0m"; }
+    let frag_patterns = ["|im_", "|im ", "|endof", "|user", "|assistant"];
+    let frag_count: usize = frag_patterns.iter().map(|p| t.matches(p).count()).sum();
+    if frag_count >= 2 { return "\x1b[31m✗\x1b[0m"; }
+    let repetitive = t.len() > 20 && {
+        let first_20: String = t.chars().take(20).collect();
+        t.matches(&first_20[..]).count() > 2
+    };
+    if repetitive { return "\x1b[31m✗\x1b[0m"; }
+    let has_code = t.contains("    ") || t.contains('\t') || t.contains("return")
+        || t.contains("if ") || t.contains("def ") || t.contains("fn ") || t.contains("=> ");
+    if has_code { "\x1b[32m✓\x1b[0m" } else { "\x1b[33m?\x1b[0m" }
+}
+
+pub fn quick_bench(path: &std::path::Path, backend: &dyn Backend, eval: run::manifest::EvalKind) -> (String, String) {
     use run::tokenizer::ChatMessage;
+    use run::manifest::EvalKind;
     let lm = match LoadedModel::load(path) {
         Ok(m) => m,
         Err(_) => return ("\x1b[31merr\x1b[0m".into(), "—".into()),
@@ -219,8 +236,14 @@ pub fn quick_bench(path: &std::path::Path, backend: &dyn Backend) -> (String, St
     if model.to_backend(backend).is_err() {
         return ("\x1b[31merr\x1b[0m".into(), "—".into());
     }
-    let msgs = vec![ChatMessage { role: "user".into(), content: "What is 2+2? /no_think".into() }];
-    let prompt = tok.apply_chat_template(&msgs, true);
+    let prompt = match eval {
+        EvalKind::Math => {
+            let msgs = vec![ChatMessage { role: "user".into(), content: "What is 2+2? /no_think".into() }];
+            tok.apply_chat_template(&msgs, true)
+        }
+        EvalKind::Code => "def fibonacci(n):\n".into(),
+    };
+    let max_gen = match eval { EvalKind::Math => 32, EvalKind::Code => 48 };
     let cfg = SampleConfig { method: SampleKind::Greedy, temperature: 1.0, top_p: 0.95, top_k: 40 };
     model.reset_kv_cache();
     let prompt_ids = tok.encode(&prompt);
@@ -232,8 +255,8 @@ pub fn quick_bench(path: &std::path::Path, backend: &dyn Backend) -> (String, St
         }
     }
     let t_decode = Instant::now();
-    let mut generated: Vec<u32> = Vec::with_capacity(32);
-    for _ in 0..32 {
+    let mut generated: Vec<u32> = Vec::with_capacity(max_gen);
+    for _ in 0..max_gen {
         let next = sample(&logits, cfg);
         if tok.is_eos(next) { break; }
         generated.push(next);
@@ -249,5 +272,9 @@ pub fn quick_bench(path: &std::path::Path, backend: &dyn Backend) -> (String, St
         "0".into()
     };
     let text = tok.decode(&generated, true);
-    (tok_s, validate_math_answer(&text).into())
+    let quality = match eval {
+        EvalKind::Math => validate_math_answer(&text),
+        EvalKind::Code => validate_code_answer(&text),
+    };
+    (tok_s, quality.into())
 }

@@ -9,6 +9,16 @@ pub struct Entry {
     pub notes: &'static str,
     /// Ollama tag for the LLAMA reference column (None = not in ollama)
     pub ollama_tag: Option<&'static str>,
+    /// Which quality check to run in `mr status`
+    pub eval: EvalKind,
+}
+
+#[derive(Copy, Clone)]
+pub enum EvalKind {
+    /// Chat: "What is 2+2?" — answer must contain "4"
+    Math,
+    /// Code completion (no-chat): "def fibonacci(n):\n" — answer must look like code
+    Code,
 }
 
 pub const MANIFEST: &[Entry] = &[
@@ -18,6 +28,7 @@ pub const MANIFEST: &[Entry] = &[
         role: "router",
         notes: "always-on classifier, qwen3 with qk_norm",
         ollama_tag: Some("qwen3:0.6b"),
+        eval: EvalKind::Math,
     },
     Entry {
         name: "qwen2.5-coder-1.5b-abl",
@@ -25,6 +36,7 @@ pub const MANIFEST: &[Entry] = &[
         role: "code",
         notes: "small code model, qwen2 with attn_bias",
         ollama_tag: Some("qwen2.5-coder:1.5b"),
+        eval: EvalKind::Code,
     },
     Entry {
         name: "qwen2.5-coder-14b-abl",
@@ -32,6 +44,7 @@ pub const MANIFEST: &[Entry] = &[
         role: "code",
         notes: "large code model, needs fused Q4_K matmul to load",
         ollama_tag: Some("qwen2.5-coder:14b"),
+        eval: EvalKind::Code,
     },
     Entry {
         name: "gemma-4-31b",
@@ -39,6 +52,7 @@ pub const MANIFEST: &[Entry] = &[
         role: "general",
         notes: "Gemma 3/4 extensions required (softcapping, sliding window, K=V)",
         ollama_tag: None,
+        eval: EvalKind::Math,
     },
 ];
 
