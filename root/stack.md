@@ -8,36 +8,6 @@ alias: cyb stack, software stack, proof pipeline
 
 fourteen repos form the core. [[cybergraph]] is the vertebra — everything attaches to it. [[strata]] is the floor — every proof reduces to operations in its five algebras. the boundary is sharp: below it, Rust bootstrap required. above it, everything is pure [[trident]].
 
-```
-    strata: nebu · kuro · trop · genies · jali
-          ↓ Field/Reduce/Dot/Spectral/Bits ↓
-     hemera  →  lens  →  trident
-       hash     commit   compile code
-                             │
-               ╔═════════════╧═════════════╗
-               ║                           ║
-               ║        cybergraph         ║
-               ║       the vertebra        ║
-               ║                           ║
-               ║  jets · memos · types     ║
-               ║  deps · knowledge         ║
-               ║  semcons · programs       ║
-               ║                           ║
-               ╚══╤══════════╤══════════╤══╝
-                  │          │          │
-                  ▼          ▼          ▼
-             nox→zheng      tru        bbg
-            run+prove  compile model  store
-                            │
-                           glia
-                         run model
-                            │
-                           mir
-                          render
-                             ↑
-                    mudra · radio · foculus
-                   encrypt · transmit · consensus
-```
 
 ## the core
 
