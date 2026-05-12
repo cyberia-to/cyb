@@ -193,6 +193,18 @@ mir knows nothing about graphs or models. it receives coordinates and features a
 
 hardware: [[aruminium]] (Metal GPU) for all draw calls; [[unimem]] IOSurface for zero-copy frame handoff. see [[mir]]
 
+## foculus — consensus
+
+[[collective focus theorem]]: focus topology determines finality. when the φ* distribution converges to a stable attractor, the network has reached consensus. no leader election, no voting rounds — consensus emerges from the same field equations that drive [[tru]]. see [[foculus]]
+
+## mudra — encrypt
+
+post-quantum cryptographic primitives. KEM (key encapsulation), dCTIDH (CSIDH-based key exchange, constant-time isogeny), AEAD (authenticated encryption), TFHE (fully homomorphic encryption over booleans), threshold protocols. consumed by [[plumb]] (private state), [[identity]] (key proofs), [[glia]] (encrypted model weights). see [[mudra]]
+
+## radio — transmit
+
+P2P transport layer. QUIC for reliable encrypted streams, BAO for content-addressed streaming with incremental verification, gossip for signal propagation across the [[cybergraph]]. the nervous system that carries signals between [[neurons]]. see [[radio]]
+
 ## the boundary
 
 the core is the MINIMAL set of components that cannot implement themselves. once the core exists, EVERYTHING above it is pure .tri — written, compiled, run, proven, and stored using only core tools.
@@ -238,18 +250,6 @@ the first inhabitants of the spine. consensus-critical [[trident]] programs that
 | geo | location proofs, physical attestation | zheng (geo proofs) |
 
 these are not simple typed edges. they are "heavy" semcons that reach deep into the spine — conservation laws in zheng, private state in bbg, metering in nox. [[plumb]] alone requires support from every spine element.
-
-## foculus — consensus
-
-[[collective focus theorem]]: focus topology determines finality. when the φ* distribution converges to a stable attractor, the network has reached consensus. no leader election, no voting rounds — consensus emerges from the same field equations that drive [[tru]]. see [[foculus]]
-
-## mudra — encrypt
-
-post-quantum cryptographic primitives. KEM (key encapsulation), dCTIDH (CSIDH-based key exchange, constant-time isogeny), AEAD (authenticated encryption), TFHE (fully homomorphic encryption over booleans), threshold protocols. consumed by [[plumb]] (private state), [[identity]] (key proofs), [[glia]] (encrypted model weights). see [[mudra]]
-
-## radio — transmit
-
-P2P transport layer. QUIC for reliable encrypted streams, BAO for content-addressed streaming with incremental verification, gossip for signal propagation across the [[cybergraph]]. the nervous system that carries signals between [[neurons]]. see [[radio]]
 
 ## languages (15, compile to nox)
 
