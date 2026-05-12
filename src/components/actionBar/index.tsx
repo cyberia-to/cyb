@@ -101,8 +101,9 @@ function ActionBar({ children, text, onClickBack, button }: Props) {
       );
     }
 
-    const isWallet = defaultAccount.account?.cyber.keys === 'wallet';
-    const isLedger = defaultAccount.account?.cyber.keys === 'ledger';
+    const keys = defaultAccount.account?.cyber.keys;
+    const isWallet = keys === 'wallet' || keys === 'private-key';
+    const isLedger = keys === 'ledger';
 
     if (isWallet) {
       return <UnlockWalletBar />;
