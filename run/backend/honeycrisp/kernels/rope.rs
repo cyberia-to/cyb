@@ -95,6 +95,134 @@ kernel void kmain(
 }
 "#;
 
+/// Fused Q+K qk_norm + RoPE in a single dispatch: eliminates qn/kn intermediate buffers.
+/// Each group (one head) computes RMSNorm then applies RoPE.
+/// Groups: (q_heads + kv_heads, 1, 1), Threads: (head_dim, 1, 1).
+/// HEAD_DIM is a template variable — compile via msl_qk_norm_rope_for(head_dim).
+/// Buffers: 0=xq, 1=xk, 2=gq, 3=gk, 4=cos, 5=sin, 6=yq, 7=yk, 8=params.
+const MSL_QK_NORM_ROPE_TEMPLATE: &str = r#"
+#include <metal_stdlib>
+using namespace metal;
+
+constant constexpr uint HEAD_DIM = __HEAD_DIM__u;
+constant constexpr uint HALF     = __HALF__u;
+constant constexpr uint N_SIMDS  = __N_SIMDS__u;  // HEAD_DIM / 32
+
+struct ParamsNR { uint q_heads; uint kv_heads; uint rope_half; float eps; };
+
+kernel void kmain(
+    device const float   *xq    [[buffer(0)]],
+    device const float   *xk    [[buffer(1)]],
+    device const float   *gq    [[buffer(2)]],
+    device const float   *gk    [[buffer(3)]],
+    device const float   *cos_t [[buffer(4)]],
+    device const float   *sin_t [[buffer(5)]],
+    device       float   *yq    [[buffer(6)]],
+    device       float   *yk    [[buffer(7)]],
+    constant ParamsNR    &p     [[buffer(8)]],
+    uint tid   [[thread_position_in_threadgroup]],
+    uint lane  [[thread_index_in_simdgroup]],
+    uint sgitg [[simdgroup_index_in_threadgroup]],
+    uint bid   [[threadgroup_position_in_grid]]
+) {
+    threadgroup float shared_sq[N_SIMDS];
+
+    bool is_q = bid < p.q_heads;
+    uint lbid = is_q ? bid : bid - p.q_heads;
+    device const float *x = is_q ? xq + lbid * HEAD_DIM : xk + lbid * HEAD_DIM;
+    device const float *g = is_q ? gq : gk;
+    device       float *y = is_q ? yq + lbid * HEAD_DIM : yk + lbid * HEAD_DIM;
+
+    // Phase 1: RMS via simd_sum (2 barriers vs 7 for manual tree)
+    float sq = (tid < HEAD_DIM) ? (x[tid] * x[tid]) : 0.0f;
+    float simd_sq = simd_sum(sq);
+    if (lane == 0) shared_sq[sgitg] = simd_sq;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    float total_sq = (lane < N_SIMDS) ? shared_sq[lane] : 0.0f;
+    float inv_rms = rsqrt(simd_sum(total_sq) / HEAD_DIM + p.eps);
+
+    // Phase 2: norm + rope (first HALF threads handle paired elements)
+    if (tid < HALF) {
+        uint j = tid;
+        float nj  = x[j]        * inv_rms * g[j];
+        float njh = x[j + HALF] * inv_rms * g[j + HALF];
+        if (j < p.rope_half) {
+            float c = cos_t[j], s = sin_t[j];
+            y[j]        = nj  * c - njh * s;
+            y[j + HALF] = nj  * s + njh * c;
+        } else {
+            y[j]        = nj;
+            y[j + HALF] = njh;
+        }
+    }
+}
+"#;
+
+/// Build the QK-norm+RoPE MSL string for a given head_dim.
+pub fn msl_qk_norm_rope_for(head_dim: usize) -> String {
+    MSL_QK_NORM_ROPE_TEMPLATE
+        .replace("__HEAD_DIM__", &head_dim.to_string())
+        .replace("__HALF__", &(head_dim / 2).to_string())
+        .replace("__N_SIMDS__", &(head_dim / 32).to_string())
+}
+
+/// Legacy alias for head_dim=128 (kept for the static pipeline in HoneycrispBackend::new).
+pub const MSL_QK_NORM_ROPE: &str = r#"
+#include <metal_stdlib>
+using namespace metal;
+
+constant constexpr uint HEAD_DIM = 128u;
+constant constexpr uint HALF     = 64u;
+constant constexpr uint N_SIMDS  = 4u;
+
+struct ParamsNR { uint q_heads; uint kv_heads; uint rope_half; float eps; };
+
+kernel void kmain(
+    device const float   *xq    [[buffer(0)]],
+    device const float   *xk    [[buffer(1)]],
+    device const float   *gq    [[buffer(2)]],
+    device const float   *gk    [[buffer(3)]],
+    device const float   *cos_t [[buffer(4)]],
+    device const float   *sin_t [[buffer(5)]],
+    device       float   *yq    [[buffer(6)]],
+    device       float   *yk    [[buffer(7)]],
+    constant ParamsNR    &p     [[buffer(8)]],
+    uint tid   [[thread_position_in_threadgroup]],
+    uint lane  [[thread_index_in_simdgroup]],
+    uint sgitg [[simdgroup_index_in_threadgroup]],
+    uint bid   [[threadgroup_position_in_grid]]
+) {
+    threadgroup float shared_sq[N_SIMDS];
+
+    bool is_q = bid < p.q_heads;
+    uint lbid = is_q ? bid : bid - p.q_heads;
+    device const float *x = is_q ? xq + lbid * HEAD_DIM : xk + lbid * HEAD_DIM;
+    device const float *g = is_q ? gq : gk;
+    device       float *y = is_q ? yq + lbid * HEAD_DIM : yk + lbid * HEAD_DIM;
+
+    float sq = (tid < HEAD_DIM) ? (x[tid] * x[tid]) : 0.0f;
+    float simd_sq = simd_sum(sq);
+    if (lane == 0) shared_sq[sgitg] = simd_sq;
+    threadgroup_barrier(mem_flags::mem_threadgroup);
+    float total_sq = (lane < N_SIMDS) ? shared_sq[lane] : 0.0f;
+    float inv_rms = rsqrt(simd_sum(total_sq) / HEAD_DIM + p.eps);
+
+    if (tid < HALF) {
+        uint j = tid;
+        float nj  = x[j]        * inv_rms * g[j];
+        float njh = x[j + HALF] * inv_rms * g[j + HALF];
+        if (j < p.rope_half) {
+            float c = cos_t[j], s = sin_t[j];
+            y[j]        = nj  * c - njh * s;
+            y[j + HALF] = nj  * s + njh * c;
+        } else {
+            y[j]        = nj;
+            y[j + HALF] = njh;
+        }
+    }
+}
+"#;
+
 pub fn msl_for(head_dim: usize) -> String {
     MSL_TEMPLATE
         .replace("__HEAD_DIM__", &head_dim.to_string())

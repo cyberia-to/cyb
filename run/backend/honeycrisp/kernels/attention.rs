@@ -35,6 +35,7 @@ constant constexpr uint MAX_SEQ   = __MAX_SEQ__u;
 constant constexpr uint REPEAT    = NUM_HEADS / KV_HEADS;
 constant constexpr uint MAX_SEQ_SHARED_C = 2048u;
 constant constexpr uint LANES = 32u;
+constant constexpr uint ITERS = HEAD_DIM / LANES;  // d-chunks per thread (4 for head_dim=128)
 
 struct Params {
     uint  total_seq;
@@ -43,6 +44,9 @@ struct Params {
     uint  pad;
 };
 
+// Flash decode attention: single pass over s, reads K and V together.
+// Online softmax (no TGS scores buffer, no barriers needed).
+// All 32 lanes parallelise over HEAD_DIM for coalesced reads.
 kernel void kmain(
     device const float  *q       [[buffer(0)]],
     device const float  *k_cache [[buffer(1)]],
@@ -53,62 +57,58 @@ kernel void kmain(
     uint                 lane    [[thread_index_in_simdgroup]]
 ) {
     if (h >= NUM_HEADS) return;
-    // GQA: h maps to kv_h. NeoX-style assignment groups consecutive q-heads
-    // to the same kv-head.
     uint kv_h = h / REPEAT;
     uint q_off = h * HEAD_DIM;
     uint kv_base = kv_h * MAX_SEQ * HEAD_DIM;
 
-    threadgroup float scores[MAX_SEQ_SHARED_C];
-
     uint window_start = (p.window > 0u && p.total_seq > p.window)
         ? (p.total_seq - p.window) : 0u;
 
-    // 1) Compute scaled dot-product scores Q@K^T
-    for (uint s = lane; s < p.total_seq; s += LANES) {
-        if (s < window_start) {
-            scores[s] = -1.0e4f;
-            continue;
+    // Q cached in registers — read once, reused across all s positions.
+    float q_reg[ITERS];
+    for (uint i = 0; i < ITERS; i++) {
+        q_reg[i] = q[q_off + lane + i * LANES];
+    }
+
+    // Flash attention: single sequential pass over s.
+    // Online softmax tracks running max and sum; no TGS memory needed.
+    float max_so_far = -INFINITY;
+    float sum_so_far = 0.0f;
+    float acc_out[ITERS];
+    for (uint i = 0; i < ITERS; i++) acc_out[i] = 0.0f;
+
+    for (uint s = 0; s < p.total_seq; s++) {
+        uint kv_off = kv_base + s * HEAD_DIM;
+
+        // Dot product Q·K[s]: all lanes read coalesced k_cache[s, lane+i*32].
+        float dot = 0.0f;
+        for (uint i = 0; i < ITERS; i++) {
+            dot = fma(q_reg[i], k_cache[kv_off + lane + i * LANES], dot);
         }
-        float acc = 0.0f;
-        uint k_off = kv_base + s * HEAD_DIM;
-        for (uint d = 0; d < HEAD_DIM; d++) {
-            acc = fma(q[q_off + d], k_cache[k_off + d], acc);
+        float score = simd_sum(dot) * p.scale;
+        if (s < window_start) score = -1.0e4f;
+
+        // Online softmax update.
+        float new_max   = max(max_so_far, score);
+        float correction = exp(max_so_far - new_max);  // 0 when max_so_far=-inf
+        float exp_score  = exp(score - new_max);
+
+        sum_so_far = fma(sum_so_far, correction, exp_score);
+
+        // Accumulate V weighted by exp_score, correcting old accumulator.
+        // All lanes read v_cache[s, lane+i*32] coalesced.
+        for (uint i = 0; i < ITERS; i++) {
+            float v = v_cache[kv_off + lane + i * LANES];
+            acc_out[i] = fma(exp_score, v, acc_out[i] * correction);
         }
-        scores[s] = acc * p.scale;
+        max_so_far = new_max;
     }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
 
-    // 2) Softmax: find max, exp, sum, normalize.
-    float local_max = -INFINITY;
-    for (uint s = lane; s < p.total_seq; s += LANES) {
-        local_max = max(local_max, scores[s]);
-    }
-    float global_max = simd_max(local_max);
-
-    float local_sum = 0.0f;
-    for (uint s = lane; s < p.total_seq; s += LANES) {
-        float v = exp(scores[s] - global_max);
-        scores[s] = v;
-        local_sum += v;
-    }
-    float global_sum = simd_sum(local_sum);
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-    float inv_sum = 1.0f / global_sum;
-    for (uint s = lane; s < p.total_seq; s += LANES) {
-        scores[s] *= inv_sum;
-    }
-    threadgroup_barrier(mem_flags::mem_threadgroup);
-
-    // 3) Output: out[h, d] = sum_s scores[s] * V[kv_h, s, d]
-    // DIAGNOSTIC: also compare against bypass paths via env var.
+    // Normalize and write output.
+    float inv_sum = 1.0f / sum_so_far;
     uint out_off = h * HEAD_DIM;
-    for (uint d = lane; d < HEAD_DIM; d += LANES) {
-        float acc = 0.0f;
-        for (uint s = 0; s < p.total_seq; s++) {
-            acc = fma(scores[s], v_cache[kv_base + s * HEAD_DIM + d], acc);
-        }
-        out[out_off + d] = acc;
+    for (uint i = 0; i < ITERS; i++) {
+        out[out_off + lane + i * LANES] = acc_out[i] * inv_sum;
     }
 }
 
@@ -209,6 +209,134 @@ pub fn kv_append_both_msl_for(kv_heads: usize, head_dim: usize, max_seq: usize) 
     KV_APPEND_BOTH_TEMPLATE
         .replace("__KV_HEADS__", &kv_heads.to_string())
         .replace("__HEAD_DIM__", &head_dim.to_string())
+        .replace("__MAX_SEQ__", &max_seq.to_string())
+}
+
+/// Fused RoPE + KV-append + Flash-decode SDPA in one dispatch.
+///
+/// Eliminates the kv_append dispatch and the barrier between kv_append and SDPA.
+/// Grid: (NUM_HEADS, 1, 1) × (32, 1, 1)  — same parallelism as the standalone SDPA dispatch.
+///
+/// Each TG handles one Q head q_h:
+///   1. Compute RoPE'd K and write to k_cache[kv_h, position] (idempotent for GQA: multiple
+///      Q-heads sharing the same kv_h all write the same value to the same location).
+///   2. Copy v_raw[kv_h] to v_cache[kv_h, position] (same idempotency argument).
+///   3. Compute RoPE'd Q in registers (no intermediate buffer).
+///   4. Flash-decode SDPA using the updated k_cache and v_cache.
+///
+/// Steps 1-2 and 4 use the SAME lane index pattern for stores and loads at position p.position,
+/// so within-thread ordering guarantees that each thread's store is visible to its own load —
+/// no explicit inter-thread barrier is required.
+///
+/// HEAD_DIM=128, HALF=64 hardcoded. Templates: NUM_HEADS, KV_HEADS, MAX_SEQ.
+/// Buffers: 0=q_raw, 1=k_raw, 2=v_raw, 3=cos, 4=sin, 5=k_cache, 6=v_cache, 7=out, 8=Params.
+const FUSED_ROPE_KV_ATTN_TEMPLATE: &str = r#"
+#include <metal_stdlib>
+using namespace metal;
+
+constant constexpr uint NUM_HEADS = __NUM_HEADS__u;
+constant constexpr uint KV_HEADS  = __KV_HEADS__u;
+constant constexpr uint HEAD_DIM  = 128u;
+constant constexpr uint HALF      = 64u;
+constant constexpr uint MAX_SEQ   = __MAX_SEQ__u;
+constant constexpr uint REPEAT    = NUM_HEADS / KV_HEADS;
+constant constexpr uint ITERS     = HEAD_DIM / 32u;  // 4
+
+struct Params { uint total_seq; uint position; uint window; float scale; };
+
+kernel void kmain(
+    device const float *q_raw   [[buffer(0)]],
+    device const float *k_raw   [[buffer(1)]],
+    device const float *v_raw   [[buffer(2)]],
+    device const float *cos_t   [[buffer(3)]],
+    device const float *sin_t   [[buffer(4)]],
+    device       float *k_cache [[buffer(5)]],
+    device       float *v_cache [[buffer(6)]],
+    device       float *out     [[buffer(7)]],
+    constant     Params &p      [[buffer(8)]],
+    uint q_h  [[threadgroup_position_in_grid]],
+    uint lane [[thread_index_in_simdgroup]]
+) {
+    if (q_h >= NUM_HEADS) return;
+    uint kv_h    = q_h / REPEAT;
+    uint kv_src  = kv_h * HEAD_DIM;
+    uint kv_dst  = kv_h * MAX_SEQ * HEAD_DIM + p.position * HEAD_DIM;
+    uint kv_base = kv_h * MAX_SEQ * HEAD_DIM;
+
+    // Step 1-2: RoPE-encode k_raw[kv_h] → k_cache[kv_h, position]
+    //           Copy v_raw[kv_h]         → v_cache[kv_h, position]
+    // Multiple Q-heads sharing kv_h write the same values (idempotent — OK).
+    // Within-thread ordering ensures our stores are visible to our subsequent loads.
+    {
+        float x0 = k_raw[kv_src + lane],      x2 = k_raw[kv_src + lane + HALF];
+        float c0 = cos_t[lane],               s0 = sin_t[lane];
+        k_cache[kv_dst + lane]        = x0*c0 - x2*s0;
+        k_cache[kv_dst + lane + HALF] = x0*s0 + x2*c0;
+    }
+    {
+        float x1 = k_raw[kv_src + lane + 32], x3 = k_raw[kv_src + lane + 96];
+        float c1 = cos_t[lane + 32],           s1 = sin_t[lane + 32];
+        k_cache[kv_dst + lane + 32]   = x1*c1 - x3*s1;
+        k_cache[kv_dst + lane + 96]   = x1*s1 + x3*c1;
+    }
+    v_cache[kv_dst + lane]        = v_raw[kv_src + lane];
+    v_cache[kv_dst + lane + 32]   = v_raw[kv_src + lane + 32];
+    v_cache[kv_dst + lane + HALF] = v_raw[kv_src + lane + HALF];
+    v_cache[kv_dst + lane + 96]   = v_raw[kv_src + lane + 96];
+
+    // Step 3: RoPE q_raw[q_h] into registers.
+    float qr[ITERS];
+    {
+        uint q_base = q_h * HEAD_DIM;
+        float x0 = q_raw[q_base + lane],      x2 = q_raw[q_base + lane + HALF];
+        float c0 = cos_t[lane],               s0 = sin_t[lane];
+        qr[0] = x0*c0 - x2*s0;
+        qr[2] = x0*s0 + x2*c0;
+
+        float x1 = q_raw[q_base + lane + 32], x3 = q_raw[q_base + lane + 96];
+        float c1 = cos_t[lane + 32],           s1 = sin_t[lane + 32];
+        qr[1] = x1*c1 - x3*s1;
+        qr[3] = x1*s1 + x3*c1;
+    }
+
+    // Step 4: Flash-decode SDPA (online softmax, sequential pass over KV cache).
+    uint window_start = (p.window > 0u && p.total_seq > p.window)
+        ? (p.total_seq - p.window) : 0u;
+
+    float max_sf = -INFINITY, sum_sf = 0.0f;
+    float acc[ITERS] = {0.0f, 0.0f, 0.0f, 0.0f};
+
+    for (uint s = 0; s < p.total_seq; s++) {
+        uint kv_off = kv_base + s * HEAD_DIM;
+        float dot = 0.0f;
+        for (uint i = 0; i < ITERS; i++) {
+            dot = fma(qr[i], k_cache[kv_off + lane + i * 32u], dot);
+        }
+        float score = simd_sum(dot) * p.scale;
+        if (s < window_start) score = -1.0e4f;
+
+        float new_max = max(max_sf, score);
+        float corr    = exp(max_sf - new_max);
+        float es      = exp(score  - new_max);
+        sum_sf = fma(sum_sf, corr, es);
+        for (uint i = 0; i < ITERS; i++) {
+            acc[i] = fma(es, v_cache[kv_off + lane + i * 32u], acc[i] * corr);
+        }
+        max_sf = new_max;
+    }
+
+    float inv_sum = 1.0f / sum_sf;
+    uint out_off = q_h * HEAD_DIM;
+    for (uint i = 0; i < ITERS; i++) {
+        out[out_off + lane + i * 32u] = acc[i] * inv_sum;
+    }
+}
+"#;
+
+pub fn fused_rope_kv_attn_msl_for(num_heads: usize, kv_heads: usize, max_seq: usize) -> String {
+    FUSED_ROPE_KV_ATTN_TEMPLATE
+        .replace("__NUM_HEADS__", &num_heads.to_string())
+        .replace("__KV_HEADS__", &kv_heads.to_string())
         .replace("__MAX_SEQ__", &max_seq.to_string())
 }
 

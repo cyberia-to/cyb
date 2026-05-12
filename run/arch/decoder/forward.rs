@@ -9,6 +9,7 @@ use crate::format::{FormatError, LoadedModel};
 use crate::core::op::Op;
 use crate::core::tensor::Tensor;
 use std::path::Path;
+use std::sync::Arc;
 
 /// Fused quant matmul — dispatches to backend (Metal on honeycrisp, CPU otherwise).
 /// Uses w.tensor which is GPU-resident after to_backend(), avoiding per-call uploads.
@@ -110,10 +111,12 @@ impl LlamaModel {
         let weights = Weights::load(lm, &config)?;
         let max_seq = config.max_position_embeddings.min(8192);
         // Per-layer KV cache sizing: Gemma-4 full layers use different
-        // (kv_heads, head_dim) than sliding layers.
+        // (kv_heads, head_dim) than sliding layers. Sliding layers cap their
+        // cache to the window size to avoid 10× RAM bloat on large-context models.
         let kv_cache = (0..config.num_hidden_layers)
             .map(|i| {
-                let sz = config.layer_kv_heads(i) * max_seq * config.layer_head_dim(i);
+                let cache_seq = config.layer_kv_cache_seq(i, max_seq);
+                let sz = config.layer_kv_heads(i) * cache_seq * config.layer_head_dim(i);
                 (vec![0f32; sz], vec![0f32; sz])
             })
             .collect();
@@ -143,8 +146,10 @@ impl LlamaModel {
         if upload_quant {
             self.weights.embed_tokens_quant.tensor =
                 backend.to_backend(&self.weights.embed_tokens_quant.tensor)?;
+            self.weights.embed_tokens_quant.bytes = Arc::new(Vec::new());
             if let Some(ref mut lm) = self.weights.lm_head {
                 lm.tensor = backend.to_backend(&lm.tensor)?;
+                lm.bytes = Arc::new(Vec::new());
             }
         }
         for layer in &mut self.weights.layers {
@@ -165,14 +170,27 @@ impl LlamaModel {
             if let Some(ref n) = layer.k_norm {
                 layer.k_norm = Some(backend.to_backend(n)?);
             }
+            if let Some(ref n) = layer.post_attn_norm {
+                layer.post_attn_norm = Some(backend.to_backend(n)?);
+            }
+            if let Some(ref n) = layer.post_ffw_norm {
+                layer.post_ffw_norm = Some(backend.to_backend(n)?);
+            }
             if upload_quant {
                 layer.q_proj.tensor    = backend.to_backend(&layer.q_proj.tensor)?;
+                layer.q_proj.bytes     = Arc::new(Vec::new());
                 layer.k_proj.tensor    = backend.to_backend(&layer.k_proj.tensor)?;
+                layer.k_proj.bytes     = Arc::new(Vec::new());
                 layer.v_proj.tensor    = backend.to_backend(&layer.v_proj.tensor)?;
+                layer.v_proj.bytes     = Arc::new(Vec::new());
                 layer.o_proj.tensor    = backend.to_backend(&layer.o_proj.tensor)?;
+                layer.o_proj.bytes     = Arc::new(Vec::new());
                 layer.gate_proj.tensor = backend.to_backend(&layer.gate_proj.tensor)?;
+                layer.gate_proj.bytes  = Arc::new(Vec::new());
                 layer.up_proj.tensor   = backend.to_backend(&layer.up_proj.tensor)?;
+                layer.up_proj.bytes    = Arc::new(Vec::new());
                 layer.down_proj.tensor = backend.to_backend(&layer.down_proj.tensor)?;
+                layer.down_proj.bytes  = Arc::new(Vec::new());
             }
         }
         Ok(())
@@ -267,44 +285,107 @@ impl LlamaModel {
             eprintln!("post-embed     abs_max={m:.4} rms={s:.4}");
         }
 
-        // Attempt single-batch cross-layer GPU forward (saves ~28 × 3 waits).
-        // Falls back to per-layer loop when backend returns None.
+        // Attempt single-batch cross-layer GPU forward (saves ~N × 3 waits).
+        // For mixed-geometry models (e.g. Gemma-4 sliding vs global layers),
+        // groups consecutive uniform layers and calls fused per group.
+        // Falls back to per-layer loop when any group returns None.
         use crate::backend::LayerFusedInput;
+        use crate::arch::decoder::config::HiddenActivation;
         let fused_inputs: Vec<LayerFusedInput<'_>> = self.weights.layers.iter().enumerate()
             .map(|(i, l)| LayerFusedInput {
-                input_norm:  &l.input_norm,
-                q_proj:      &l.q_proj.tensor,
-                k_proj:      &l.k_proj.tensor,
-                v_proj:      &l.v_proj.tensor,
-                q_norm:      l.q_norm.as_ref(),
-                k_norm:      l.k_norm.as_ref(),
-                o_proj:      &l.o_proj.tensor,
-                post_norm:   &l.post_norm,
-                gate_proj:   &l.gate_proj.tensor,
-                up_proj:     &l.up_proj.tensor,
-                down_proj:   &l.down_proj.tensor,
-                num_heads:   c.num_attention_heads as u32,
-                kv_heads:    c.layer_kv_heads(i) as u32,
-                head_dim:    c.layer_head_dim(i) as u32,
-                rope_dim:    c.layer_rope_dim(i) as u32,
-                rope_theta:  c.layer_rope_theta(i),
-                attn_scale:  c.layer_attn_scale(i),
-                window:      c.layer_window(i).map(|w| w as u32).unwrap_or(0),
-                layer_idx:   i,
+                input_norm:     &l.input_norm,
+                q_proj:         &l.q_proj.tensor,
+                k_proj:         &l.k_proj.tensor,
+                v_proj:         &l.v_proj.tensor,
+                q_bias:         l.q_proj_bias.as_ref(),
+                k_bias:         l.k_proj_bias.as_ref(),
+                v_bias:         l.v_proj_bias.as_ref(),
+                q_norm:         l.q_norm.as_ref(),
+                k_norm:         l.k_norm.as_ref(),
+                o_proj:         &l.o_proj.tensor,
+                post_norm:      &l.post_norm,
+                gate_proj:      &l.gate_proj.tensor,
+                up_proj:        &l.up_proj.tensor,
+                down_proj:      &l.down_proj.tensor,
+                num_heads:      c.num_attention_heads as u32,
+                kv_heads:       c.layer_kv_heads(i) as u32,
+                head_dim:       c.layer_head_dim(i) as u32,
+                rope_dim:       c.layer_rope_dim(i) as u32,
+                rope_theta:     c.layer_rope_theta(i),
+                attn_scale:     c.layer_attn_scale(i),
+                window:         c.layer_window(i).map(|w| w as u32).unwrap_or(0),
+                layer_idx:      i,
+                post_attn_norm: l.post_attn_norm.as_ref(),
+                post_ffw_norm:  l.post_ffw_norm.as_ref(),
+                use_gelu_tanh:  c.hidden_activation == HiddenActivation::GeluTanh,
+                layer_output_scale: l.layer_output_scale.as_ref()
+                    .and_then(|t| t.try_as_f32().ok().and_then(|s| s.first().copied()))
+                    .unwrap_or(1.0_f32),
             })
             .collect();
 
-        let fused_result = if !debug_layers && !prof_enabled {
-            backend.forward_decode_fused_layers(
-                &hidden, &fused_inputs, self.past_seq_len, max_seq as u32, c.rms_norm_eps,
-            )?
-        } else {
-            None
-        };
+        let hc_timing = std::env::var("HC_TIMING").is_ok();
+        let t_fused = Instant::now();
 
-        if let Some(fused_hidden) = fused_result {
-            hidden = fused_hidden;
+        // Try grouped fused forward: split into uniform-geometry groups.
+        // FUSED_MAX_N=N limits group size for diagnostics (default: unlimited).
+        let fused_max_n: usize = std::env::var("FUSED_MAX_N")
+            .ok().and_then(|s| s.parse().ok()).unwrap_or(usize::MAX);
+        let fused_debug = std::env::var("FUSED_DEBUG").is_ok();
+        let used_fused;
+        if !debug_layers && !prof_enabled {
+            let mut li = 0;  // next layer index to process
+            let mut any_fused = false;
+            loop {
+                if li >= c.num_hidden_layers { break; }
+                let l0 = &fused_inputs[li];
+                // Find end of uniform group (same head_dim, kv_heads, window).
+                let mut gi = li + 1;
+                while gi < c.num_hidden_layers {
+                    let lj = &fused_inputs[gi];
+                    if lj.head_dim != l0.head_dim || lj.kv_heads != l0.kv_heads
+                        || lj.num_heads != l0.num_heads || lj.window != l0.window
+                    { break; }
+                    if gi - li >= fused_max_n { break; }
+                    gi += 1;
+                }
+                // For sliding layers, cap GPU KV cache at window size.
+                let group_max_seq = if l0.window > 0 { l0.window } else { max_seq as u32 };
+                match backend.forward_decode_fused_layers(
+                    &hidden, &fused_inputs[li..gi],
+                    self.past_seq_len, group_max_seq, c.rms_norm_eps,
+                )? {
+                    Some(h) => {
+                        if fused_debug {
+                            let vals = backend.download_f32(&h)?;
+                            let nan_c = vals.iter().filter(|v| !v.is_finite()).count();
+                            eprintln!("[FUSED_DEBUG] group li={li}..{gi} n={} nan={nan_c}/{}", gi-li, vals.len());
+                            if nan_c > 0 {
+                                let first8: Vec<_> = vals.iter().take(8).collect();
+                                eprintln!("  first8: {first8:.4?}");
+                            }
+                        }
+                        hidden = h; li = gi; any_fused = true;
+                    }
+                    None => {
+                        // Group can't run fused (geometry mismatch, etc.) — fall back
+                        // per-layer for this group only and continue with the next group.
+                        if fused_debug {
+                            eprintln!("[FUSED_DEBUG] group li={li}..{gi} n={} → per-layer fallback", gi-li);
+                        }
+                        for i in li..gi {
+                            hidden = forward_layer(
+                                &hidden, i, &self.weights.layers[i], c, &pos_tensor, backend,
+                                &mut self.kv_cache[i], self.past_seq_len, None,
+                            )?;
+                        }
+                        li = gi;
+                    }
+                }
+            }
+            used_fused = any_fused;
         } else {
+            used_fused = false;
             for i in 0..c.num_hidden_layers {
                 hidden = forward_layer(
                     &hidden,
@@ -330,6 +411,7 @@ impl LlamaModel {
             }
         }
 
+        let fused_ms = t_fused.elapsed().as_secs_f64() * 1000.0;
         let t_final = Instant::now();
         // Final norm + lm_head
         let final_normed = backend
@@ -340,8 +422,9 @@ impl LlamaModel {
                 &[&hidden, &self.weights.final_norm],
             )?
             .remove(0);
+        let final_ms = t_final.elapsed().as_secs_f64() * 1000.0;
         if prof_enabled {
-            self.prof.final_norm_ms += t_final.elapsed().as_secs_f64() * 1000.0;
+            self.prof.final_norm_ms += final_ms;
         }
 
         let t_lm = Instant::now();
@@ -363,15 +446,25 @@ impl LlamaModel {
             let s = (h.iter().map(|v| v * v).sum::<f32>() / h.len() as f32).sqrt();
             eprintln!("post-lm-head    abs_max={m:.4} rms={s:.4}");
         }
+        let lm_ms = t_lm.elapsed().as_secs_f64() * 1000.0;
         if prof_enabled {
-            self.prof.lm_head_ms += t_lm.elapsed().as_secs_f64() * 1000.0;
+            self.prof.lm_head_ms += lm_ms;
         }
 
         if prof_enabled {
             self.prof.forwards += 1;
         }
         self.past_seq_len += 1;
+        let t_dl = Instant::now();
         let mut logits_vec = backend.download_f32(&logits)?;
+        let dl_ms = t_dl.elapsed().as_secs_f64() * 1000.0;
+        if hc_timing {
+            eprintln!(
+                "  fused={fused_ms:>6.2}ms({})  fn={final_ms:>5.2}ms  lm={lm_ms:>6.2}ms  dl={dl_ms:>5.2}ms  tot={:.2}ms",
+                if used_fused { "Y" } else { "N" },
+                fused_ms + final_ms + lm_ms + dl_ms
+            );
+        }
 
         // LlamaStyle+ (Gemma 3/4): final logit softcapping.
         // Spec: specs/arch.md §"Final logit softcapping"
@@ -405,6 +498,14 @@ impl LlamaModel {
     }
 }
 
+fn dbg_stats_l(layer: usize, label: &str, v: &[f32]) {
+    let m = v.iter().map(|x| x.abs()).fold(0f32, f32::max);
+    let rms = (v.iter().map(|x| x * x).sum::<f32>() / v.len() as f32).sqrt();
+    eprintln!("  L{layer} {:20} abs_max={:>12.4} rms={:>10.4} len={}", label, m, rms, v.len());
+}
+
+fn dbg_stats(label: &str, v: &[f32]) { dbg_stats_l(0, label, v); }
+
 fn forward_layer(
     hidden: &Tensor,
     layer_idx: usize,
@@ -417,7 +518,15 @@ fn forward_layer(
     prof: Option<&mut ForwardProf>,
 ) -> Result<Tensor, BackendError> {
     use std::time::Instant;
+    let debug_layer = std::env::var("RUN_DEBUG_LAYER_IDX")
+        .ok()
+        .and_then(|s| s.parse::<usize>().ok())
+        .unwrap_or(0);
+    let debug_l0 = std::env::var("RUN_DEBUG_LAYERS").is_ok() && layer_idx == debug_layer && past_seq_len == 0;
     let eps = config.rms_norm_eps;
+    if debug_l0 {
+        dbg_stats_l(layer_idx, "hidden_in (embed)", &backend.download_f32(hidden)?);
+    }
     let hidden_size = config.hidden_size;
     // LlamaStyle+ (Gemma-4) per-layer dims. LlamaStyle returns the global ones.
     let head_dim = config.layer_head_dim(layer_idx);
@@ -473,6 +582,12 @@ fn forward_layer(
         (it.next().unwrap(), it.next().unwrap(), it.next().unwrap(), false)
     };
     acc_input_norm += t.elapsed().as_secs_f64() * 1000.0;
+
+    if debug_l0 || (std::env::var("RUN_DEBUG_LAYERS").is_ok() && layer_idx == 1 && past_seq_len == 0) {
+        dbg_stats_l(layer_idx, "q (post-qkv)", &backend.download_f32(&q)?);
+        dbg_stats_l(layer_idx, "k (post-qkv)", &backend.download_f32(&k)?);
+        dbg_stats_l(layer_idx, "v (post-qkv)", &backend.download_f32(&v)?);
+    }
 
     // Attention biases (Qwen2)
     if let Some(bias) = &layer.q_proj_bias {
@@ -535,10 +650,16 @@ fn forward_layer(
         .remove(0);
     acc_rope += t.elapsed().as_secs_f64() * 1000.0;
 
+    if debug_l0 {
+        dbg_stats_l(layer_idx, "q_roped", &backend.download_f32(&q_roped)?);
+        dbg_stats_l(layer_idx, "k_roped", &backend.download_f32(&k_roped)?);
+    }
+
     // 4-5. Attention. Use GPU path when backend supports it (KV cache stays
     // GPU-resident, all of (kv_append + score + softmax + output) lives in
     // ONE Metal command buffer). Falls back to per-token CPU pipeline.
     let max_seq = config.max_position_embeddings.min(8192);
+    let cache_seq = config.layer_kv_cache_seq(layer_idx, max_seq);
     let scale = config.layer_attn_scale(layer_idx);
     let window: u32 = sliding_window.map(|w| w as u32).unwrap_or(0);
     let total_seq = past_seq_len + 1;
@@ -563,7 +684,7 @@ fn forward_layer(
             &q_for_attn, &k_for_attn, &v_for_attn,
             hidden, &layer.o_proj.tensor,
             layer_idx, past_seq_len,
-            num_heads as u32, kv_heads as u32, head_dim as u32, max_seq as u32,
+            num_heads as u32, kv_heads as u32, head_dim as u32, cache_seq as u32,
             scale, window,
         )?;
         acc_kv_append += t.elapsed().as_secs_f64() * 1000.0;
@@ -595,9 +716,10 @@ fn forward_layer(
             v.to_f32_vec()
         };
         let k_flat = k_roped.to_f32_vec();
+        let kv_slot = past_seq_len % cache_seq;
         for h in 0..kv_heads {
             let src_base = h * head_dim;
-            let dst_base = h * max_seq * head_dim + past_seq_len * head_dim;
+            let dst_base = h * cache_seq * head_dim + kv_slot * head_dim;
             for d in 0..head_dim {
                 kv.0[dst_base + d] = k_flat[src_base + d];
                 kv.1[dst_base + d] = v_flat[src_base + d];
@@ -607,14 +729,19 @@ fn forward_layer(
 
         let t = Instant::now();
         let repeat = num_heads / kv_heads;
-        let mut k_full = vec![0f32; num_heads * total_seq * head_dim];
-        let mut v_full = vec![0f32; num_heads * total_seq * head_dim];
+        // Read at most cache_seq tokens (ring buffer wraps for long contexts).
+        let read_seq = total_seq.min(cache_seq);
+        let read_start = if total_seq > cache_seq { total_seq - cache_seq } else { 0 };
+        let mut k_full = vec![0f32; num_heads * read_seq * head_dim];
+        let mut v_full = vec![0f32; num_heads * read_seq * head_dim];
         for h in 0..num_heads {
             let kv_h = h / repeat;
-            for s in 0..total_seq {
+            for si in 0..read_seq {
+                let s = read_start + si;
+                let slot = s % cache_seq;
                 for d in 0..head_dim {
-                    let src = kv_h * max_seq * head_dim + s * head_dim + d;
-                    let dst = h * total_seq * head_dim + s * head_dim + d;
+                    let src = kv_h * cache_seq * head_dim + slot * head_dim + d;
+                    let dst = h * read_seq * head_dim + si * head_dim + d;
                     k_full[dst] = kv.0[src];
                     v_full[dst] = kv.1[src];
                 }
@@ -622,27 +749,23 @@ fn forward_layer(
         }
         let q_heads = q_roped.to_f32_vec();
         let mut attn_out = vec![0f32; num_heads * head_dim];
-        let window_start: Option<usize> = sliding_window.map(|w| total_seq.saturating_sub(w));
         for h in 0..num_heads {
-            let mut scores = vec![0f32; total_seq];
+            let mut scores = vec![0f32; read_seq];
             let q_off = h * head_dim;
-            let kv_off = h * total_seq * head_dim;
-            for s in 0..total_seq {
+            let kv_off = h * read_seq * head_dim;
+            for s in 0..read_seq {
                 let mut acc = 0f32;
                 for d in 0..head_dim {
                     acc += q_heads[q_off + d] * k_full[kv_off + s * head_dim + d];
                 }
                 scores[s] = acc * scale;
             }
-            if let Some(start) = window_start {
-                for s in 0..start { scores[s] = -1e4; }
-            }
             let max_s = scores.iter().cloned().fold(f32::NEG_INFINITY, f32::max);
             let mut sum = 0f32;
             for s in scores.iter_mut() { *s = (*s - max_s).exp(); sum += *s; }
             for s in scores.iter_mut() { *s /= sum; }
             let out_off = h * head_dim;
-            for s in 0..total_seq {
+            for s in 0..read_seq {
                 let v_row = &v_full[kv_off + s * head_dim..kv_off + (s + 1) * head_dim];
                 for d in 0..head_dim {
                     attn_out[out_off + d] += scores[s] * v_row[d];
@@ -653,6 +776,11 @@ fn forward_layer(
         Tensor::from_f32(vec![1, num_heads * head_dim], attn_out)
     };
 
+    let debug_l1 = std::env::var("RUN_DEBUG_LAYERS").is_ok() && layer_idx == 1 && past_seq_len == 0;
+    if debug_l0 || debug_l1 {
+        dbg_stats_l(layer_idx, "attn_out", &backend.download_f32(&attn_tensor)?);
+    }
+
     // 6+7. Output projection + residual. Skipped if hidden1_gpu was produced
     // by the fused attention path above.
     let hidden1 = if let Some(h1) = hidden1_gpu {
@@ -660,6 +788,9 @@ fn forward_layer(
     } else {
         let t = Instant::now();
         let mut attn_proj = qw_matmul(&attn_tensor, &layer.o_proj, backend)?;
+        if debug_l0 || debug_l1 {
+            dbg_stats_l(layer_idx, "o_proj_out", &backend.download_f32(&attn_proj)?);
+        }
         if let Some(ref n) = layer.post_attn_norm {
             attn_proj = backend
                 .execute(&Op::RmsNorm { eps }, &[&attn_proj, n])?
@@ -669,6 +800,9 @@ fn forward_layer(
 
         let t = Instant::now();
         let h1 = backend.execute(&Op::Add, &[hidden, &attn_proj])?.remove(0);
+        if debug_l0 || debug_l1 {
+            dbg_stats_l(layer_idx, "hidden1 (attn+res)", &backend.download_f32(&h1)?);
+        }
         acc_residual += t.elapsed().as_secs_f64() * 1000.0;
         h1
     };
@@ -678,7 +812,10 @@ fn forward_layer(
     use crate::arch::decoder::config::HiddenActivation;
     let mut out_gpu: Option<Tensor> = None;
     let mut ffn_out = match config.hidden_activation {
-        HiddenActivation::Silu if layer.post_ffw_norm.is_none() && layer.layer_output_scale.is_none() => {
+        HiddenActivation::Silu if layer.post_ffw_norm.is_none() && layer.layer_output_scale.is_none() && !debug_l0 => {
+            if std::env::var("RUN_DEBUG_LAYERS").is_ok() && past_seq_len == 0 && layer_idx <= 2 {
+                dbg_stats_l(layer_idx, "hidden1 (fused input)", &backend.download_f32(&hidden1)?);
+            }
             let t = Instant::now();
             let out = backend.fused_ffn_residual(
                 &hidden1,
@@ -690,6 +827,10 @@ fn forward_layer(
             )?;
             acc_post_norm += t.elapsed().as_secs_f64() * 1000.0;
             out_gpu = Some(out);
+            if std::env::var("RUN_DEBUG_LAYERS").is_ok() && past_seq_len == 0 && layer_idx <= 2 {
+                let fused = out_gpu.as_ref().unwrap();
+                dbg_stats_l(layer_idx, "ffn+res (fused)", &backend.download_f32(fused)?);
+            }
             // Placeholder ffn_out — unused on GPU path
             Tensor::from_f32(hidden1.shape.clone(), vec![0.0; hidden_size])
         }
@@ -707,6 +848,10 @@ fn forward_layer(
             let mut gate_up_iter = gate_up.into_iter();
             let gate = gate_up_iter.next().unwrap();
             let up = gate_up_iter.next().unwrap();
+            if debug_l0 {
+                dbg_stats_l(layer_idx, "gate (post_norm+proj)", &backend.download_f32(&gate)?);
+                dbg_stats_l(layer_idx, "up (post_norm+proj)", &backend.download_f32(&up)?);
+            }
             let act: fn(f32) -> f32 = match config.hidden_activation {
                 HiddenActivation::Silu => |x| x / (1.0 + (-x).exp()),
                 HiddenActivation::GeluTanh => |x| {
@@ -736,8 +881,15 @@ fn forward_layer(
             let up_vec = up.to_f32_vec();
             for (m, u) in mid.iter_mut().zip(up_vec.iter()) { *m = act(*m) * *u; }
             let mid_t = Tensor::from_f32(gate.shape.clone(), mid);
+            if debug_l0 {
+                dbg_stats_l(layer_idx, "silu(gate)*up (mid)", &backend.download_f32(&mid_t)?);
+            }
             let _ = t;
-            qw_matmul(&mid_t, &layer.down_proj, backend)?
+            let down_out = qw_matmul(&mid_t, &layer.down_proj, backend)?;
+            if debug_l0 {
+                dbg_stats_l(layer_idx, "down_proj_out", &backend.download_f32(&down_out)?);
+            }
+            down_out
         }
     };
     // Gemma 2/3/4: norm applied to FFN output before residual.
@@ -747,6 +899,14 @@ fn forward_layer(
             .remove(0);
     }
     acc_ffn += t.elapsed().as_secs_f64() * 1000.0;
+
+    if debug_l0 {
+        if let Some(ref o) = out_gpu {
+            dbg_stats_l(layer_idx, "ffn+res (fused)", &backend.download_f32(o)?);
+        } else {
+            dbg_stats_l(layer_idx, "ffn_out", &backend.download_f32(&ffn_out)?);
+        }
+    }
 
     // 9. Residual. Gemma-4 multiplies the final layer output by a SCALAR
     // `layer_scalar` (HF: `hidden_states *= self.layer_scalar`). The tensor

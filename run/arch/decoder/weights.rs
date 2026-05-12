@@ -272,11 +272,38 @@ fn load_layer(
         load_quant_weight_reshaped(lm, &format!("{prefix}.{name}"), vec![n, k])
     };
 
+    let q_proj  = quant_nk("self_attn.q_proj.weight", q_dim, hidden)?;
+    let k_proj  = quant_nk("self_attn.k_proj.weight", kv_dim, hidden)?;
+    let v_proj  = quant_nk("self_attn.v_proj.weight", kv_dim, hidden)?;
+    if i == 0 && std::env::var("RUN_DEBUG_WEIGHTS").is_ok() {
+        for (name, qw) in [("q_proj", &q_proj), ("k_proj", &k_proj), ("v_proj", &v_proj)] {
+            let b = &qw.bytes[..18.min(qw.bytes.len())];
+            let i16_scale = i16::from_le_bytes([b[0], b[1]]) as f32 / 2048.0;
+            let f16_scale = half::f16::from_bits(u16::from_le_bytes([b[0], b[1]])).to_f32();
+            eprintln!("  layer0 {name} dtype={:?} bytes[0..2]={:02X}{:02X} as_i16_scale={:.6} as_f16_scale={:.6}",
+                qw.dtype, b[0], b[1], i16_scale, f16_scale);
+        }
+        let qn_name = format!("{prefix}.self_attn.q_norm.weight");
+        if let Some(qn) = lm.tensors.iter().find(|t| t.name == qn_name) {
+            let qn_bytes = lm.tensor_bytes(&qn_name).unwrap_or(&[]);
+            eprintln!("  layer0 q_norm dtype={:?} size={} shape={:?}", qn.dtype, qn_bytes.len(), qn.shape);
+            if qn_bytes.len() >= 4 {
+                let v = f32::from_le_bytes([qn_bytes[0], qn_bytes[1], qn_bytes[2], qn_bytes[3]]);
+                eprintln!("  layer0 q_norm bytes[0..4]={:02X}{:02X}{:02X}{:02X} as_f32={:.6}",
+                    qn_bytes[0], qn_bytes[1], qn_bytes[2], qn_bytes[3], v);
+            }
+        }
+        let input_norm = must_f32("input_layernorm.weight")?;
+        let in_vals = input_norm.try_as_f32().unwrap_or(&[]);
+        let in_m = in_vals.iter().map(|v| v.abs()).fold(0f32, f32::max);
+        let in_rms = (in_vals.iter().map(|v|v*v).sum::<f32>() / in_vals.len() as f32).sqrt();
+        eprintln!("  layer0 input_norm abs_max={in_m:.4} rms={in_rms:.4} len={}", in_vals.len());
+    }
     Ok(LayerWeights {
         input_norm: must_f32("input_layernorm.weight")?,
-        q_proj: quant_nk("self_attn.q_proj.weight", q_dim, hidden)?,
-        k_proj: quant_nk("self_attn.k_proj.weight", kv_dim, hidden)?,
-        v_proj: quant_nk("self_attn.v_proj.weight", kv_dim, hidden)?,
+        q_proj,
+        k_proj,
+        v_proj,
         o_proj: quant_nk("self_attn.o_proj.weight", hidden, q_dim)?,
         q_proj_bias: try_load_f32("self_attn.q_proj.bias"),
         k_proj_bias: try_load_f32("self_attn.k_proj.bias"),

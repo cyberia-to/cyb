@@ -21,6 +21,24 @@ kernel void kmain(
 }
 "#;
 
+/// In-place element-wise scalar multiply: x[i] *= scalar.
+/// Buffers: 0=x (in-place), constant(1)=Scalar { value, n, pad0, pad1 }.
+pub const MSL_SCALE: &str = r#"
+#include <metal_stdlib>
+using namespace metal;
+
+struct Scalar { float value; uint n; uint pad0; uint pad1; };
+
+kernel void kmain(
+    device float            *x   [[buffer(0)]],
+    constant Scalar         &sc  [[buffer(1)]],
+    uint gid [[thread_position_in_grid]]
+) {
+    if (gid >= sc.n) return;
+    x[gid] *= sc.value;
+}
+"#;
+
 pub fn dispatch(
     dev: &HoneycrispDevice,
     pipeline: &aruminium::Pipeline,

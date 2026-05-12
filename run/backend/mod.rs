@@ -19,25 +19,36 @@ use thiserror::Error;
 /// Per-layer inputs for `forward_decode_fused_layers`.
 /// All quant weight tensors must be GPU-resident (after `to_backend`).
 pub struct LayerFusedInput<'a> {
-    pub input_norm:  &'a Tensor,
-    pub q_proj:      &'a Tensor,
-    pub k_proj:      &'a Tensor,
-    pub v_proj:      &'a Tensor,
-    pub q_norm:      Option<&'a Tensor>,
-    pub k_norm:      Option<&'a Tensor>,
-    pub o_proj:      &'a Tensor,
-    pub post_norm:   &'a Tensor,
-    pub gate_proj:   &'a Tensor,
-    pub up_proj:     &'a Tensor,
-    pub down_proj:   &'a Tensor,
-    pub num_heads:   u32,
-    pub kv_heads:    u32,
-    pub head_dim:    u32,
-    pub rope_dim:    u32,
-    pub rope_theta:  f32,
-    pub attn_scale:  f32,
-    pub window:      u32,
-    pub layer_idx:   usize,
+    pub input_norm:   &'a Tensor,
+    pub q_proj:       &'a Tensor,
+    pub k_proj:       &'a Tensor,
+    pub v_proj:       &'a Tensor,
+    pub q_bias:       Option<&'a Tensor>,
+    pub k_bias:       Option<&'a Tensor>,
+    pub v_bias:       Option<&'a Tensor>,
+    pub q_norm:       Option<&'a Tensor>,
+    pub k_norm:       Option<&'a Tensor>,
+    pub o_proj:       &'a Tensor,
+    pub post_norm:    &'a Tensor,
+    pub gate_proj:    &'a Tensor,
+    pub up_proj:      &'a Tensor,
+    pub down_proj:    &'a Tensor,
+    pub num_heads:      u32,
+    pub kv_heads:       u32,
+    pub head_dim:       u32,
+    pub rope_dim:       u32,
+    pub rope_theta:     f32,
+    pub attn_scale:     f32,
+    pub window:         u32,
+    pub layer_idx:      usize,
+    /// Gemma-2/3/4: RmsNorm applied to attention output before residual add.
+    pub post_attn_norm: Option<&'a Tensor>,
+    /// Gemma-2/3/4: RmsNorm applied to FFN output before residual add.
+    pub post_ffw_norm:  Option<&'a Tensor>,
+    /// Gemma-4: use gelu_pytorch_tanh instead of SiLU for the FFN gate.
+    pub use_gelu_tanh:  bool,
+    /// Gemma-4: per-layer scalar applied to layer output (1.0 = identity).
+    pub layer_output_scale: f32,
 }
 
 /// Three backends + cpu reference library.

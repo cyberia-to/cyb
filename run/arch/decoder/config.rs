@@ -130,6 +130,16 @@ impl LlamaConfig {
         }
     }
 
+    /// Per-layer KV cache capacity (in tokens). Caps sliding-attention layers
+    /// to their window size so huge max_position_embeddings models don't blow
+    /// RAM with mostly-zero KV entries that will never be attended to.
+    pub fn layer_kv_cache_seq(&self, layer: usize, global_max_seq: usize) -> usize {
+        match self.layer_window(layer) {
+            Some(w) if w < global_max_seq => w,
+            _ => global_max_seq,
+        }
+    }
+
     /// Attention scaling per the family profile:
     ///   - `Unity` (Gemma 4): 1.0 — Q and K are pre-normalised.
     ///   - `FixedDivisor(n)` (Gemma 2/3): 1/sqrt(n), independent of head_dim.
