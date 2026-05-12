@@ -71,6 +71,8 @@ the stack has two compiler/runtime pairs — the same pattern at two levels:
 
 trident knows .tri. nox knows nothing about .tri — it just runs .nox. tru knows .graph. glia knows nothing about graphs — it just runs .model. mir reads both.
 
+## foundation — math, identity, commitment
+
 ---
 
 ## strata — algebra
@@ -108,6 +110,10 @@ five polynomial commitment backends — one per strata algebra. same three opera
 
 see [[lens]]
 
+## programs — compile, run, prove
+
+---
+
 ## trident — compile code
 
 the provable language. .tri source compiles to .nox. every trident construct maps to exactly one nox pattern. 57K LOC, 24 VM targets, self-hosts in Stage 2 of the [[bootstrap plan]].
@@ -129,6 +135,8 @@ computation IS linking: `ask(ν, subject, formula, τ, a, v, t)` — seven argum
 [[SuperSpartan]] IOP + [[WHIR]] PCS + [[sumcheck]]. a fundamentally new proof type covering all five execution regimes through one verification backbone. zero trusted setup, post-quantum, sub-millisecond verification.
 
 every nox computation produces a [[zheng]] proof. recursive composition via field tower F_{p³}. see [[zheng]]
+
+## knowledge — link, store
 
 ---
 
@@ -170,6 +178,8 @@ the Big Badass Graph. one polynomial, all state. BBG_poly(index, key, t) = value
 
 bbg is to [[cybergraph]] what a database engine is to a schema. cybergraph defines WHAT. bbg implements HOW. see [[bbg]]
 
+## intelligence — compile model, run model, render
+
 ---
 
 ## tru — compile model
@@ -203,6 +213,8 @@ reads two inputs: tru's field state (particle positions, φ*, focus) and glia's 
 mir knows nothing about graphs or models. it receives coordinates and features and makes them visible. rendering tiers T0–T3 (content entry, labels, analytic impostors, Gaussian splats) + T∞ (neural radiance field, Phase 2+). heat-kernel BVH for LOD. epoch/frame split: heavy geometry frozen per epoch, luminosity and flow animate per frame.
 
 hardware: [[aruminium]] (Metal GPU) for all draw calls; [[unimem]] IOSurface for zero-copy frame handoff. see [[mir]]
+
+## network — encrypt, transmit, consensus
 
 ---
 
