@@ -43,7 +43,13 @@
 - [ ] Farming rewards contract (CosmWasm) to incentivize LPs
 - [ ] Refactor: deduplicate pool caching in localStorage (warp.ts vs usePoolsAssetAmount)
 
-## 8. Linting and code style
+## 8. Wallet / Keys
+- [x] Private key import — raw secp256k1 hex key with AES-256-GCM encryption
+- [x] Unlock flow detects private-key vs wallet accounts
+- [x] ActionBar shows password unlock for private-key accounts
+- [x] Security audit passed (see docs/security_audit_private_key_import.md)
+
+## 9. Linting and code style
 - [ ] Run ESLint, evaluate warnings/errors count
 - [ ] Configure stricter rules where needed
 - [ ] Run stylelint for CSS/SCSS
