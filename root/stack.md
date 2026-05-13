@@ -20,7 +20,7 @@ fourteen repos. fourteen verbs. remove any one → nothing above works.
 | 2 | [[lens]] | commit | five polynomial commitment backends — one per algebra |
 | 3 | [[trident]] | compile code | .tri → .nox. the only way to write programs |
 | 4 | [[nox]] | run code | 16 patterns + [[hint]] + jets. trace = constraint system |
-| 5 | [[zheng]] | prove & verify | [[SuperSpartan]] + [[WHIR]] + [[sumcheck]]. [[zheng]] proof |
+| 5 | [[zheng]] | prove & verify | [[SuperSpartan]] + Brakedown + [[sumcheck]]. [[zheng]] proof |
 | 6 | [[cybergraph]] | link | connects everything to everything. jets, memos, types, knowledge |
 | 7 | [[bbg]] | store | one polynomial, 10 dimensions. ~200 byte proofs, 10-50 μs |
 | 8 | [[tru]] | compile model | .graph → .model + graph field: φ*, eigenvectors, cyberank |
@@ -66,7 +66,7 @@ five algebras — each maps to one lens construction:
 | [[trop]] | (min, +) semiring | tropical | Assayer | optimality — optimization witnesses, dual certificates |
 | [[genies]] | F_q (CSIDH-512) | isogeny | Porphyry | privacy — curve polynomials, stealth addresses |
 
-zheng is decomposed by strata: SuperSpartan constraint evaluation = Dot products over Field; Fiat-Shamir challenges = Reduce over hemera output bytes; WHIR folding = Spectral NTT over nebu extensions. see [[strata]]
+zheng is decomposed by strata: SuperSpartan constraint evaluation = Dot products over Field; Fiat-Shamir challenges = Reduce over hemera output bytes; Brakedown = expander encoding. see [[strata]]
 
 ## hemera — hash
 
@@ -102,7 +102,7 @@ computation IS linking: `ask(ν, subject, formula, τ, a, v, t)` — seven argum
 
 ## zheng — prove & verify
 
-[[SuperSpartan]] IOP + [[WHIR]] PCS + [[sumcheck]]. a fundamentally new proof type covering all five execution regimes through one verification backbone. zero trusted setup, post-quantum, sub-millisecond verification.
+[[SuperSpartan]] IOP + Brakedown PCS + [[sumcheck]]. a fundamentally new proof type covering all five execution regimes through one verification backbone. zero trusted setup, post-quantum, sub-millisecond verification.
 
 every nox computation produces a [[zheng]] proof. recursive composition via field tower F_{p³}. see [[zheng]]
 
@@ -153,6 +153,15 @@ bbg is to [[cybergraph]] what a database engine is to a schema. cybergraph defin
 ---
 
 ## tru — compile model
+
+convergence VM. where [[nox]] derives and [[glia]] executes, tru iterates to a fixed point — φ* emerges, not derived.
+
+| vm | execution model | gödel status |
+|----|-----------------|--------------|
+| [[nox]] | derivation | confined |
+| [[zheng]] | verification | confined |
+| [[glia]] | forward pass | confined |
+| [[tru]] | field convergence | free |
 
 two jobs, one engine: compile and field.
 
