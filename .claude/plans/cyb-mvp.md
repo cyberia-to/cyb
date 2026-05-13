@@ -34,7 +34,7 @@ hardware.
 Five engines, one format:
 
 - import — reverse: HF / GGUF / ONNX / safetensors → IR + weights → .cyb / .model
-- mc — compile: .graph cybergraph snapshot → .cyb / .model (CT-1 spec)
+- mc — compile: .graph cybergraph snapshot → .cyb / .model (CT-0 spec)
 - mr — runtime: .model → tokens, three backends (cpu / wgpu+rs / honeycrisp)
 - cyb-llm — CLI + serve + router around mr (download, hot-swap, OpenAI API)
 - cyb browser — render: visualize the .cyb (graph IR, weights, traces)
@@ -84,7 +84,7 @@ benchmarked honestly.
 Other ground state:
 
 - Apple-Silicon path renamed Metal → honeycrisp (Metal + ANE + AMX + NEON + unimem)
-- mc has the .graph reader and .model writer scaffolding; CT-1 passes 1–8 not yet implemented
+- mc has the .graph reader and .model writer scaffolding; CT-0 passes 1–8 not yet implemented
 - import loads HF safetensors + GGUF + ONNX into a `Weights` table; reverse-to-graph extraction is design-stage
 
 Phase 0 cannot ship until all four manifest models produce verified-correct
@@ -158,7 +158,7 @@ compiles into a runnable .cyb / .model.
 
 ### 1.1 mc compile (graph → .model)
 
-CT-1 spec, 8 passes (`mc/src/pass/`):
+CT-0 spec, 8 passes (`mc/src/pass/`):
 
 | pass | scope | status |
 |------|-------|--------|
@@ -367,7 +367,7 @@ Surface:
 | Registry | centralized hub | none | none | .model NFT on Bostrom |
 | Discovery | keyword | manual | staker voting | CyberRank (real usage) |
 | Runtime | none | llama.cpp | cloud | rust + honeycrisp / wgpu+rs / cpu |
-| Compile graph → model | none | none | none | mc (CT-1 spec) |
+| Compile graph → model | none | none | none | mc (CT-0 spec) |
 | Reverse model → graph | none | none | none | import (HF / GGUF / ONNX → cybergraph) |
 | Render | static page | none | none | cyb browser (graph IR, weights, traces) |
 | Attribution | none | none | staker weights | model + graph neurons earn CyberRank |
