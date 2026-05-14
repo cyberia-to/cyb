@@ -30,6 +30,10 @@ anything.cyb
 └── ~~~image               ← binary file (until EOF)
 ```
 
+## encoding
+
+UTF-8. LF (0x0A) line endings. the delimiter `~~~name` is recognized only when followed by LF. CRLF is not a valid delimiter sequence. tools creating or editing `.cyb` files must write LF and must not convert line endings.
+
 ## frontmatter
 
 TOML. UTF-8. at the start of the file. ends at first `~~~`.
