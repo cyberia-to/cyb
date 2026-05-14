@@ -193,7 +193,7 @@ fn merge_storm_20_devices() {
             let ts = 1000 + dev as u64 * 100 + f as u64;
             let shard_hashes = vec![format!("shard_{}_{}", dev, f)];
             let entry_hash =
-                FileEntry::compute_hash(&name, &shard_hashes, ts, &prev, &device_id);
+                FileEntry::compute_hash(&name, &shard_hashes, ts, &device_id);
 
             let entry = FileEntry {
                 name,
@@ -202,11 +202,9 @@ fn merge_storm_20_devices() {
                 n: 4,
                 shard_hashes,
                 timestamp: ts,
-                prev_hash: prev.clone(),
                 entry_hash: entry_hash.clone(),
                 device_id: device_id.clone(),
                 das_root: "0".repeat(64),
-            vdf_proof: None,
             shard_copies: 1, deleted: false,};
             prev = entry_hash;
             reg.insert(entry);
@@ -238,10 +236,6 @@ fn merge_storm_20_devices() {
     assert_eq!(forward.len(), n_devices * files_per_device);
     assert_eq!(forward.merkle_root(), backward.merkle_root());
     assert_eq!(forward.merkle_root(), interleaved.merkle_root());
-
-    // No equivocations (each device has a clean chain).
-    assert!(forward.detect_equivocation().is_empty());
-
     let elapsed = start.elapsed();
     eprintln!(
         "merge_storm_20_devices: {} entries, 3 merge orders, all identical in {:.2}s",
@@ -263,7 +257,7 @@ fn merge_conflict_10_devices_same_file() {
         let shard_hashes = vec![format!("data_from_dev_{}", dev)];
         let prev = "0".repeat(64);
         let entry_hash =
-            FileEntry::compute_hash("shared.txt", &shard_hashes, ts, &prev, &device_id);
+            FileEntry::compute_hash("shared.txt", &shard_hashes, ts, &device_id);
 
         reg.insert(FileEntry {
             name: "shared.txt".into(),
@@ -272,11 +266,9 @@ fn merge_conflict_10_devices_same_file() {
             n: 2,
             shard_hashes,
             timestamp: ts,
-            prev_hash: prev,
             entry_hash,
             device_id,
             das_root: "0".repeat(64),
-            vdf_proof: None,
             shard_copies: 1, deleted: false,});
         registries.push(reg);
     }
@@ -437,7 +429,7 @@ fn validated_merge_adversarial_1000() {
         if i < 500 {
             // Valid entry.
             let entry_hash =
-                FileEntry::compute_hash(&name, &shard_hashes, ts + i, &prev, "adv");
+                FileEntry::compute_hash(&name, &shard_hashes, ts + i, "adv");
             adversary.insert(FileEntry {
                 name,
                 original_len: 10,
@@ -445,11 +437,9 @@ fn validated_merge_adversarial_1000() {
                 n: 2,
                 shard_hashes,
                 timestamp: ts + i,
-                prev_hash: prev,
                 entry_hash,
                 device_id: "adv".into(),
                 das_root: "0".repeat(64),
-            vdf_proof: None,
             shard_copies: 1, deleted: false,});
             expected_valid += 1;
         } else if i < 750 {
@@ -461,18 +451,16 @@ fn validated_merge_adversarial_1000() {
                 n: 2,
                 shard_hashes,
                 timestamp: ts + i,
-                prev_hash: prev,
                 entry_hash: "forged".repeat(10),
                 device_id: "adv".into(),
                 das_root: "0".repeat(64),
-            vdf_proof: None,
             shard_copies: 1, deleted: false,});
             expected_invalid += 1;
         } else {
             // Future timestamp.
             let future_ts = ts + 999_999_999_999;
             let entry_hash =
-                FileEntry::compute_hash(&name, &shard_hashes, future_ts, &prev, "adv");
+                FileEntry::compute_hash(&name, &shard_hashes, future_ts, "adv");
             adversary.insert(FileEntry {
                 name,
                 original_len: 10,
@@ -480,11 +468,9 @@ fn validated_merge_adversarial_1000() {
                 n: 2,
                 shard_hashes,
                 timestamp: future_ts,
-                prev_hash: prev,
                 entry_hash,
                 device_id: "adv".into(),
                 das_root: "0".repeat(64),
-            vdf_proof: None,
             shard_copies: 1, deleted: false,});
             expected_invalid += 1;
         }
@@ -520,7 +506,7 @@ fn split_brain_rejoin() {
         let prev = "0".repeat(64);
         let device_id = format!("dev_{}", i % 5);
         let entry_hash =
-            FileEntry::compute_hash(&name, &shard_hashes, ts + i, &prev, &device_id);
+            FileEntry::compute_hash(&name, &shard_hashes, ts + i, &device_id);
         partition_a.insert(FileEntry {
             name,
             original_len: 100,
@@ -528,11 +514,9 @@ fn split_brain_rejoin() {
             n: 4,
             shard_hashes,
             timestamp: ts + i,
-            prev_hash: prev,
             entry_hash,
             device_id,
             das_root: "0".repeat(64),
-            vdf_proof: None,
             shard_copies: 1, deleted: false,});
     }
 
@@ -544,7 +528,7 @@ fn split_brain_rejoin() {
         let prev = "0".repeat(64);
         let device_id = format!("dev_{}", 5 + i % 5);
         let entry_hash =
-            FileEntry::compute_hash(&name, &shard_hashes, ts + 100 + i, &prev, &device_id);
+            FileEntry::compute_hash(&name, &shard_hashes, ts + 100 + i, &device_id);
         partition_b.insert(FileEntry {
             name,
             original_len: 200,
@@ -552,11 +536,9 @@ fn split_brain_rejoin() {
             n: 4,
             shard_hashes,
             timestamp: ts + 100 + i,
-            prev_hash: prev,
             entry_hash,
             device_id,
             das_root: "0".repeat(64),
-            vdf_proof: None,
             shard_copies: 1, deleted: false,});
     }
 
@@ -564,7 +546,7 @@ fn split_brain_rejoin() {
     let shared_a = {
         let shard_hashes = vec!["shared_a".into()];
         let prev = "0".repeat(64);
-        let eh = FileEntry::compute_hash("conflict.txt", &shard_hashes, ts + 50, &prev, "dev_0");
+        let eh = FileEntry::compute_hash("conflict.txt", &shard_hashes, ts + 50, "dev_0");
         FileEntry {
             name: "conflict.txt".into(),
             original_len: 100,
@@ -572,17 +554,15 @@ fn split_brain_rejoin() {
             n: 4,
             shard_hashes,
             timestamp: ts + 50,
-            prev_hash: prev,
             entry_hash: eh,
             device_id: "dev_0".into(),
             das_root: "0".repeat(64),
-            vdf_proof: None,
             shard_copies: 1, deleted: false,}
     };
     let shared_b = {
         let shard_hashes = vec!["shared_b".into()];
         let prev = "0".repeat(64);
-        let eh = FileEntry::compute_hash("conflict.txt", &shard_hashes, ts + 150, &prev, "dev_5");
+        let eh = FileEntry::compute_hash("conflict.txt", &shard_hashes, ts + 150, "dev_5");
         FileEntry {
             name: "conflict.txt".into(),
             original_len: 200,
@@ -590,11 +570,9 @@ fn split_brain_rejoin() {
             n: 4,
             shard_hashes,
             timestamp: ts + 150,
-            prev_hash: prev,
             entry_hash: eh,
             device_id: "dev_5".into(),
             das_root: "0".repeat(64),
-            vdf_proof: None,
             shard_copies: 1, deleted: false,}
     };
     partition_a.insert(shared_a);

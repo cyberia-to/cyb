@@ -1,10 +1,12 @@
-//! Sync node implementing structural sync layers 1-5.
+//! Sync node implementing structural sync layers 3-5 for blob availability.
 //!
 //! Layer 1 (validity): Hemera hash verification of every chunk from peers.
-//! Layer 2 (ordering): Timestamp + hash chain per device in FileEntry.
 //! Layer 3 (completeness): Merkle root over registry; verified on sync.
 //! Layer 4 (availability): DAS commitment in FileEntry; sampling on sync.
 //! Layer 5 (merge): LWW-Element-Set CRDT with deterministic conflict resolution.
+//!
+//! Signal ordering (layer 2: VDF, hash chain, equivocation detection) is owned
+//! by cybergraph, not this crate. See cybergraph/src/vdf.rs and chain.rs.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -197,7 +199,7 @@ impl SyncNode {
         Ok(())
     }
 
-    /// Layer 1+2+4: put file with hash verification, ordering, DAS commitment.
+    /// Layer 1+4: put file with hash verification and DAS commitment.
     pub async fn put_file(&self, name: &str, data: &[u8]) -> Result<()> {
         let mut state = self.state.write().await;
         let shards = erasure::encode(data, state.k, state.n);
@@ -225,20 +227,13 @@ impl SyncNode {
             shard_hashes.push(hex);
         }
 
-        // Layer 2: hash chain + VDF — link to previous entry, prove elapsed time.
-        let prev_hash = state.registry.latest_hash(&state.device_id);
         let timestamp = store::now_ms();
         let entry_hash = FileEntry::compute_hash(
             name,
             &shard_hashes,
             timestamp,
-            &prev_hash,
             &state.device_id,
         );
-
-        // VDF: prove physical time since previous entry.
-        let vdf_input = crate::vdf::challenge_from_hash(&prev_hash);
-        let vdf_proof = crate::vdf::evaluate(vdf_input, 100); // 100 iterations for local
 
         let entry = FileEntry {
             name: name.to_string(),
@@ -247,11 +242,9 @@ impl SyncNode {
             n: state.n,
             shard_hashes,
             timestamp,
-            prev_hash,
             entry_hash,
             device_id: state.device_id.clone(),
             das_root,
-            vdf_proof: Some(vdf_proof),
             shard_copies: 1, deleted: false,
         };
 
@@ -364,16 +357,6 @@ impl SyncNode {
             );
         }
 
-        // Layer 2: check for equivocation in remote registry.
-        let forks = response.registry.detect_equivocation();
-        if !forks.is_empty() {
-            eprintln!(
-                "warning: peer {} has {} equivocations (forked hash chains)",
-                peer,
-                forks.len()
-            );
-        }
-
         // Layer 5: validated CRDT merge — verify every entry from peer.
         let mut state = self.state.write().await;
         let before = state.registry.len();
@@ -477,11 +460,10 @@ impl SyncNode {
 
         // Insert tombstone with higher timestamp.
         let timestamp = store::now_ms();
-        let prev_hash = state.registry.latest_hash(&state.device_id);
         let shard_hashes = existing.shard_hashes.clone();
         let device_id = state.device_id.clone();
         let entry_hash = FileEntry::compute_hash(
-            name, &shard_hashes, timestamp, &prev_hash, &device_id,
+            name, &shard_hashes, timestamp, &device_id,
         );
 
         state.registry.insert(FileEntry {
@@ -491,11 +473,9 @@ impl SyncNode {
             n: existing.n,
             shard_hashes,
             timestamp,
-            prev_hash,
             entry_hash,
             device_id,
             das_root: "0".repeat(64),
-            vdf_proof: None,
             shard_copies: 1,
             deleted: true,
         });

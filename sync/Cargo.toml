@@ -16,7 +16,7 @@ name = "cyber-sync"
 path = "src/bin/main.rs"
 
 [dependencies]
-nebu = { path = "../../nebu/rs" }
+nebu = { package = "cyb-nebu", path = "../../strata/nebu/rs" }
 cyber-hemera = { path = "../../hemera/rs" }
 iroh = { path = "../../radio/iroh", features = ["address-lookup-mdns"] }
 serde = { version = "1", features = ["derive"] }

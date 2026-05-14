@@ -1,7 +1,6 @@
-pub mod erasure;
 pub mod das;
+pub mod erasure;
+pub mod nmt;
+pub mod node;
 pub mod store;
 pub mod vdisk;
-pub mod node;
-pub mod vdf;
-pub mod nmt;

@@ -1,8 +1,8 @@
 //! Content-addressed chunk store with CRDT merge.
 //!
-//! Layer 2: FileEntry carries timestamp + hash chain for causal ordering.
-//! Layer 3: Registry has a Hemera Merkle root for completeness verification.
+//! Layer 4: erasure-coded blob storage, content-addressed chunks.
 //! Layer 5: LWW-Element-Set — last-writer-wins by timestamp, deterministic merge.
+//! Layer 3: Registry has a Hemera Merkle root for completeness verification.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -14,8 +14,8 @@ use crate::erasure::Shard;
 
 /// A file tracked by the system.
 ///
-/// Layer 2: each entry carries ordering metadata (timestamp, prev_hash, device_id, vdf_proof).
-/// Layer 4: das_root commits to the erasure-coded shard set.
+/// Layer 4: content-addressed blob entry with erasure coding and DAS commitment.
+/// Layer 5: carries timestamp for LWW merge and device_id for ownership.
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct FileEntry {
     pub name: String,
@@ -24,22 +24,15 @@ pub struct FileEntry {
     pub n: usize,
     /// Hemera hash of each shard (indexed by shard index).
     pub shard_hashes: Vec<String>,
-    /// Unix timestamp in milliseconds when this entry was created.
+    /// Unix timestamp in milliseconds when this entry was created (LWW key).
     pub timestamp: u64,
-    /// Hash of the previous entry from this device (hash chain for causal order).
-    pub prev_hash: String,
-    /// Hash of this entry itself (H(name || shard_hashes || timestamp || prev_hash)).
+    /// Hash of this entry itself (H(name || shard_hashes || timestamp || device_id)).
     pub entry_hash: String,
     /// Device that created this entry.
     pub device_id: String,
     /// DAS commitment root over erasure-coded shards (layer 4).
     pub das_root: String,
-    /// VDF proof: proves physical time elapsed since prev_hash (layer 2 ordering).
-    /// None for legacy entries or when VDF is disabled.
-    #[serde(default)]
-    pub vdf_proof: Option<crate::vdf::VdfProof>,
     /// Number of shard copies per device (controls D/k tradeoff).
-    /// Higher = more availability, more storage. Default 1.
     #[serde(default = "default_shard_copies")]
     pub shard_copies: usize,
     /// Tombstone: true = this file has been deleted. Shards can be GC'd.
@@ -69,8 +62,6 @@ pub enum ValidationError {
     NoShards,
     /// Registry is full.
     RegistryFull,
-    /// VDF proof is invalid (output doesn't match sequential squaring).
-    VdfInvalid,
 }
 
 impl FileEntry {
@@ -79,7 +70,6 @@ impl FileEntry {
         name: &str,
         shard_hashes: &[String],
         timestamp: u64,
-        prev_hash: &str,
         device_id: &str,
     ) -> String {
         let mut data = Vec::new();
@@ -88,7 +78,6 @@ impl FileEntry {
             data.extend_from_slice(h.as_bytes());
         }
         data.extend_from_slice(&timestamp.to_le_bytes());
-        data.extend_from_slice(prev_hash.as_bytes());
         data.extend_from_slice(device_id.as_bytes());
         cyber_hemera::hash(&data).to_hex()
     }
@@ -99,7 +88,6 @@ impl FileEntry {
             &self.name,
             &self.shard_hashes,
             self.timestamp,
-            &self.prev_hash,
             &self.device_id,
         );
         self.entry_hash == expected
@@ -119,17 +107,6 @@ impl FileEntry {
         let now = now_ms();
         if self.timestamp > now + MAX_CLOCK_DRIFT_MS {
             return Err(ValidationError::TimestampFuture);
-        }
-        // Layer 2: verify VDF proof if present.
-        if let Some(ref vdf) = self.vdf_proof {
-            if !crate::vdf::verify(vdf) {
-                return Err(ValidationError::VdfInvalid);
-            }
-            // VDF input must be derived from prev_hash.
-            let expected_input = crate::vdf::challenge_from_hash(&self.prev_hash);
-            if vdf.input != expected_input {
-                return Err(ValidationError::VdfInvalid);
-            }
         }
         Ok(())
     }
@@ -441,40 +418,6 @@ impl GSet {
         hashes
     }
 
-    /// Get the latest entry_hash from this device's chain (for prev_hash linking).
-    pub fn latest_hash(&self, device_id: &str) -> String {
-        let mut latest: Option<&FileEntry> = None;
-        for entry in self.files.values() {
-            if entry.device_id == device_id {
-                match latest {
-                    None => latest = Some(entry),
-                    Some(l) if entry.timestamp > l.timestamp => latest = Some(entry),
-                    _ => {}
-                }
-            }
-        }
-        latest
-            .map(|e| e.entry_hash.clone())
-            .unwrap_or_else(|| "0".repeat(64))
-    }
-
-    /// Detect equivocation: two entries from same device with same prev_hash.
-    pub fn detect_equivocation(&self) -> Vec<(&FileEntry, &FileEntry)> {
-        let mut by_prev: HashMap<(&str, &str), Vec<&FileEntry>> = HashMap::new();
-        for entry in self.files.values() {
-            by_prev
-                .entry((&entry.device_id, &entry.prev_hash))
-                .or_default()
-                .push(entry);
-        }
-        let mut forks = Vec::new();
-        for entries in by_prev.values() {
-            if entries.len() > 1 {
-                forks.push((entries[0], entries[1]));
-            }
-        }
-        forks
-    }
 }
 
 /// Serialize shard data for hashing/storage.
@@ -519,8 +462,7 @@ mod tests {
 
     fn make_entry(name: &str, ts: u64) -> FileEntry {
         let shard_hashes = vec!["aaa".into(), "bbb".into()];
-        let entry_hash =
-            FileEntry::compute_hash(name, &shard_hashes, ts, "0", "dev1");
+        let entry_hash = FileEntry::compute_hash(name, &shard_hashes, ts, "dev1");
         FileEntry {
             name: name.into(),
             original_len: 100,
@@ -528,11 +470,9 @@ mod tests {
             n: 4,
             shard_hashes,
             timestamp: ts,
-            prev_hash: "0".repeat(64),
             entry_hash,
             device_id: "dev1".into(),
             das_root: "0".repeat(64),
-            vdf_proof: None,
             shard_copies: 1, deleted: false,
         }
     }
@@ -625,15 +565,6 @@ mod tests {
         g.insert(make_entry("x", 1));
         let r2 = g.merkle_root();
         assert_ne!(r1, r2);
-    }
-
-    #[test]
-    fn hash_chain_latest() {
-        let mut g = GSet::new();
-        assert_eq!(g.latest_hash("dev1"), "0".repeat(64));
-        g.insert(make_entry("a", 100));
-        let h = g.latest_hash("dev1");
-        assert_ne!(h, "0".repeat(64));
     }
 
     #[test]

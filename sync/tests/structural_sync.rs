@@ -203,59 +203,8 @@ fn das_sampling_honest_vs_tampered() {
     }
 }
 
-// ═══════════════════════════════════════════════════════════════════
-// LAYER 2: ORDERING — hash chain, timestamps, equivocation
-// ═══════════════════════════════════════════════════════════════════
-
-/// Hash chain links entries causally.
-#[test]
-fn ordering_hash_chain() {
-    let mut g = GSet::new();
-
-    let e1 = make_entry("file1", 100, "dev1", &"0".repeat(64));
-    let prev1 = e1.entry_hash.clone();
-    g.insert(e1);
-
-    let e2 = make_entry("file2", 200, "dev1", &prev1);
-    let prev2 = e2.entry_hash.clone();
-    g.insert(e2);
-
-    let e3 = make_entry("file3", 300, "dev1", &prev2);
-    g.insert(e3);
-
-    assert_eq!(g.latest_hash("dev1"), g.get("file3").unwrap().entry_hash);
-
-    // Chain is intact: each entry's prev_hash matches predecessor's entry_hash.
-    let f2 = g.get("file2").unwrap();
-    let f3 = g.get("file3").unwrap();
-    assert_eq!(f2.prev_hash, prev1);
-    assert_eq!(f3.prev_hash, prev2);
-}
-
-/// Equivocation: two entries from same device with same prev_hash = fork.
-#[test]
-fn ordering_equivocation_detection() {
-    let mut g = GSet::new();
-
-    let prev = "0".repeat(64);
-    let e1 = make_entry("fork_a", 100, "dev1", &prev);
-    let e2 = make_entry("fork_b", 100, "dev1", &prev); // same prev = equivocation
-    g.insert(e1);
-    g.insert(e2);
-
-    let forks = g.detect_equivocation();
-    assert_eq!(forks.len(), 1, "should detect 1 equivocation");
-}
-
-/// Different devices can share same prev_hash without equivocation.
-#[test]
-fn ordering_no_false_equivocation() {
-    let mut g = GSet::new();
-    let prev = "0".repeat(64);
-    g.insert(make_entry("a", 100, "dev1", &prev));
-    g.insert(make_entry("b", 100, "dev2", &prev)); // different device = OK
-    assert!(g.detect_equivocation().is_empty());
-}
+// Layer 2 ordering (VDF, hash chain, equivocation detection) is owned by
+// cybergraph, not cyb/sync. Tests for those properties live in cybergraph.
 
 // ═══════════════════════════════════════════════════════════════════
 // LAYER 3: COMPLETENESS — Merkle root
@@ -264,9 +213,9 @@ fn ordering_no_false_equivocation() {
 /// Merkle root is order-independent (commutative).
 #[test]
 fn completeness_merkle_commutative() {
-    let e1 = make_entry("a", 1, "d1", &"0".repeat(64));
-    let e2 = make_entry("b", 2, "d2", &"0".repeat(64));
-    let e3 = make_entry("c", 3, "d3", &"0".repeat(64));
+    let e1 = make_entry("a", 1, "d1");
+    let e2 = make_entry("b", 2, "d2");
+    let e3 = make_entry("c", 3, "d3");
 
     let mut g1 = GSet::new();
     g1.insert(e1.clone());
@@ -287,11 +236,11 @@ fn completeness_merkle_sensitive() {
     let mut g = GSet::new();
     let r0 = g.merkle_root();
 
-    g.insert(make_entry("x", 1, "d", &"0".repeat(64)));
+    g.insert(make_entry("x", 1, "d"));
     let r1 = g.merkle_root();
     assert_ne!(r0, r1);
 
-    g.insert(make_entry("y", 2, "d", &"0".repeat(64)));
+    g.insert(make_entry("y", 2, "d"));
     let r2 = g.merkle_root();
     assert_ne!(r1, r2);
 }
@@ -299,8 +248,8 @@ fn completeness_merkle_sensitive() {
 /// Merged registries have the same root.
 #[test]
 fn completeness_merge_same_root() {
-    let e1 = make_entry("a", 1, "d1", &"0".repeat(64));
-    let e2 = make_entry("b", 2, "d2", &"0".repeat(64));
+    let e1 = make_entry("a", 1, "d1");
+    let e2 = make_entry("b", 2, "d2");
 
     let mut a = GSet::new();
     a.insert(e1.clone());
@@ -326,8 +275,8 @@ fn completeness_merge_same_root() {
 fn merge_commutative() {
     let mut a = GSet::new();
     let mut b = GSet::new();
-    a.insert(make_entry("x", 10, "d1", &"0".repeat(64)));
-    b.insert(make_entry("y", 20, "d2", &"0".repeat(64)));
+    a.insert(make_entry("x", 10, "d1"));
+    b.insert(make_entry("y", 20, "d2"));
 
     let mut ab = a.clone();
     ab.merge(&b);
@@ -344,9 +293,9 @@ fn merge_associative() {
     let mut a = GSet::new();
     let mut b = GSet::new();
     let mut c = GSet::new();
-    a.insert(make_entry("x", 1, "d1", &"0".repeat(64)));
-    b.insert(make_entry("y", 2, "d2", &"0".repeat(64)));
-    c.insert(make_entry("z", 3, "d3", &"0".repeat(64)));
+    a.insert(make_entry("x", 1, "d1"));
+    b.insert(make_entry("y", 2, "d2"));
+    c.insert(make_entry("z", 3, "d3"));
 
     let mut ab_c = a.clone();
     ab_c.merge(&b);
@@ -364,8 +313,8 @@ fn merge_associative() {
 #[test]
 fn merge_idempotent() {
     let mut g = GSet::new();
-    g.insert(make_entry("x", 1, "d1", &"0".repeat(64)));
-    g.insert(make_entry("y", 2, "d2", &"0".repeat(64)));
+    g.insert(make_entry("x", 1, "d1"));
+    g.insert(make_entry("y", 2, "d2"));
 
     let root_before = g.merkle_root();
     let clone = g.clone();
@@ -378,8 +327,8 @@ fn merge_idempotent() {
 #[test]
 fn merge_lww_conflict_resolution() {
     // Device 1 writes file.txt at t=100, device 2 at t=200.
-    let e1 = make_entry_with("file.txt", 100, "dev1", &"0".repeat(64), &["h1"]);
-    let e2 = make_entry_with("file.txt", 200, "dev2", &"0".repeat(64), &["h2"]);
+    let e1 = make_entry_with("file.txt", 100, "dev1", &["h1"]);
+    let e2 = make_entry_with("file.txt", 200, "dev2", &["h2"]);
 
     // Regardless of merge order, t=200 wins.
     let mut g1 = GSet::new();
@@ -519,12 +468,12 @@ fn e2e_registry_sync_with_conflicts() {
     let mut dev_b = GSet::new();
 
     // Both devices write the same filename at different times.
-    dev_a.insert(make_entry_with("shared.txt", 100, "dev_a", &"0".repeat(64), &["old_hash"]));
-    dev_b.insert(make_entry_with("shared.txt", 200, "dev_b", &"0".repeat(64), &["new_hash"]));
+    dev_a.insert(make_entry_with("shared.txt", 100, "dev_a", &["old_hash"]));
+    dev_b.insert(make_entry_with("shared.txt", 200, "dev_b", &["new_hash"]));
 
     // Each device also has unique files.
-    dev_a.insert(make_entry("only_a.txt", 150, "dev_a", &"0".repeat(64)));
-    dev_b.insert(make_entry("only_b.txt", 250, "dev_b", &"0".repeat(64)));
+    dev_a.insert(make_entry("only_a.txt", 150, "dev_a"));
+    dev_b.insert(make_entry("only_b.txt", 250, "dev_b"));
 
     // Merge both directions.
     let mut merged_a = dev_a.clone();
@@ -606,9 +555,9 @@ fn bench_hash_verification_throughput() {
 // Helpers
 // ═══════════════════════════════════════════════════════════════════
 
-fn make_entry(name: &str, ts: u64, device: &str, prev: &str) -> FileEntry {
+fn make_entry(name: &str, ts: u64, device: &str) -> FileEntry {
     let shard_hashes: Vec<String> = vec!["a".repeat(64), "b".repeat(64)];
-    let entry_hash = FileEntry::compute_hash(name, &shard_hashes, ts, prev, device);
+    let entry_hash = FileEntry::compute_hash(name, &shard_hashes, ts, device);
     FileEntry {
         name: name.into(),
         original_len: 100,
@@ -616,23 +565,17 @@ fn make_entry(name: &str, ts: u64, device: &str, prev: &str) -> FileEntry {
         n: 4,
         shard_hashes,
         timestamp: ts,
-        prev_hash: prev.into(),
         entry_hash,
         device_id: device.into(),
         das_root: "0".repeat(64),
-            vdf_proof: None,
-            shard_copies: 1, deleted: false,}
+        shard_copies: 1,
+        deleted: false,
+    }
 }
 
-fn make_entry_with(
-    name: &str,
-    ts: u64,
-    device: &str,
-    prev: &str,
-    hashes: &[&str],
-) -> FileEntry {
+fn make_entry_with(name: &str, ts: u64, device: &str, hashes: &[&str]) -> FileEntry {
     let shard_hashes: Vec<String> = hashes.iter().map(|s| s.to_string()).collect();
-    let entry_hash = FileEntry::compute_hash(name, &shard_hashes, ts, prev, device);
+    let entry_hash = FileEntry::compute_hash(name, &shard_hashes, ts, device);
     FileEntry {
         name: name.into(),
         original_len: 100,
@@ -640,12 +583,12 @@ fn make_entry_with(
         n: 4,
         shard_hashes,
         timestamp: ts,
-        prev_hash: prev.into(),
         entry_hash,
         device_id: device.into(),
         das_root: "0".repeat(64),
-            vdf_proof: None,
-            shard_copies: 1, deleted: false,}
+        shard_copies: 1,
+        deleted: false,
+    }
 }
 
 fn sorted_names(g: &GSet) -> Vec<String> {

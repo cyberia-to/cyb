@@ -251,9 +251,8 @@ impl VDiskManager {
         // Register file in G-Set.
         let timestamp = store::now_ms();
         let device_id = "vdisk".to_string();
-        let prev_hash = self.registry.latest_hash(&device_id);
         let entry_hash = FileEntry::compute_hash(
-            file_name, &shard_hashes, timestamp, &prev_hash, &device_id,
+            file_name, &shard_hashes, timestamp, &device_id,
         );
         let entry = FileEntry {
             name: file_name.to_string(),
@@ -262,11 +261,9 @@ impl VDiskManager {
             n: n_ntt,
             shard_hashes,
             timestamp,
-            prev_hash,
             entry_hash,
             device_id,
             das_root: format!("{:?}", commitment.root),
-            vdf_proof: None,
             shard_copies: 1,
             deleted: false,
         };
@@ -402,12 +399,10 @@ impl VDiskManager {
                     // Step 4: update registry.
                     let timestamp = store::now_ms();
                     let device_id = "vdisk".to_string();
-                    let prev_hash = self.registry.latest_hash(&device_id);
                     let entry_hash = FileEntry::compute_hash(
                         file_name,
                         &shard_hashes,
                         timestamp,
-                        &prev_hash,
                         &device_id,
                     );
                     self.registry.insert(FileEntry {
@@ -417,11 +412,9 @@ impl VDiskManager {
                         n: new_n,
                         shard_hashes,
                         timestamp,
-                        prev_hash,
                         entry_hash,
                         device_id,
                         das_root: format!("{:?}", commitment.root),
-                        vdf_proof: None,
                         shard_copies: config.shard_copies, deleted: false,
                     });
                     rechunked += 1;
@@ -710,11 +703,9 @@ mod tests {
             n: 2,
             shard_hashes: vec![],
             timestamp: store::now_ms(),
-            prev_hash: "0".repeat(64),
             entry_hash: "a".repeat(64),
             device_id: "other".into(),
             das_root: "0".repeat(64),
-            vdf_proof: None,
             shard_copies: 1,
             deleted: false,
         });

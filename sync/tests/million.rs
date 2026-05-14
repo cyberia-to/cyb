@@ -156,15 +156,14 @@ fn chaos() {
 
                 // Registry.
                 let ts = store::now_ms() + op as u64;
-                let prev = registry.latest_hash("chaos");
-                let entry_hash = FileEntry::compute_hash(&name, &shard_hashes, ts, &prev, "chaos");
+                let entry_hash = FileEntry::compute_hash(&name, &shard_hashes, ts, "chaos");
                 registry.insert(FileEntry {
                     name: name.clone(), original_len: data.len(), k, n,
                     shard_hashes: shard_hashes.clone(),
-                    timestamp: ts, prev_hash: prev, entry_hash,
+                    timestamp: ts, entry_hash,
                     device_id: "chaos".into(), das_root: format!("{:?}", commitment.root),
-            vdf_proof: None,
-            shard_copies: 1, deleted: false,});
+                    shard_copies: 1, deleted: false,
+                });
 
                 files.insert(name, FileTruth { data, k, n, shards, shard_hashes, das_commitment: commitment });
                 s.put += 1;
