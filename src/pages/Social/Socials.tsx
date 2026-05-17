@@ -28,14 +28,22 @@ export default function Socials() {
         <span>Hub links</span>
       </LinkWindow>
       <br />
+      <DisplayTitle inDisplay title="websites" />
+
+      <LinkWindow className={styles.hubLinks} to="https://bostrom.network/">
+        <div>🌐</div>
+        <span>bostrom.network</span>
+      </LinkWindow>
+
+      <br />
       <DisplayTitle inDisplay title="other" />
       <a
-        href="mailto:info.cyb.ai@protonmail.com"
+        href="mailto:bostromboot@gmail.com"
         target="_blank"
         rel="noreferrer noopener"
         className={styles.email}
       >
-        info.cyb.ai@protonmail.com
+        bostromboot@gmail.com
       </a>
     </div>
   );
