@@ -60,12 +60,6 @@ export function GitHub() {
           <img alt="github" style={{ width: 30, height: 30 }} src={githubIcon} />
           <span>app</span>
         </LinkWindow>
-
-        <LinkWindow to="https://github.com/cybercongress">
-          <img alt="github" style={{ width: 30, height: 30 }} src={githubIcon} />
-
-          <span>congress</span>
-        </LinkWindow>
       </div>
     );
   }
