@@ -28,6 +28,7 @@ yarn-debug.log*
 yarn-error.log*
 
 storybook-static
+.env
 .env.*.local
 
 # Local Netlify folder
@@ -41,8 +42,6 @@ src-tauri/bin/
 src-tauri/gen/
 src-tauri/target/
 
-# Deno
-deno.lock
 
 # Rust build artifacts
 cyb/target/
