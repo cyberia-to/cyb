@@ -20,25 +20,34 @@ build
 !.vscode/settings.json
 
 .circleci
-.DS_Store
+**/.DS_Store
 
 .yarn
 .yarnrc
 yarn-debug.log*
 yarn-error.log*
-src/.DS_Store
 
 storybook-static
+.env
 .env.*.local
 
 # Local Netlify folder
 .netlify
 
-# Deno
-deno.lock
+# WASM build artifacts (installed via uhash-web npm package)
+public/wasm
+
+# Tauri build artifacts
+src-tauri/bin/
+src-tauri/gen/
+src-tauri/target/
+
 
 # Rust build artifacts
 cyb/target/
+cyb/cyb-portal/target/
+cyb/cyb-portal/dist/
+cyb-boot/target/
 
 # Claude Code
 .claude/*
