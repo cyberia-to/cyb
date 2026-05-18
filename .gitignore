@@ -42,8 +42,6 @@ src-tauri/bin/
 src-tauri/gen/
 src-tauri/target/
 
-# Deno
-deno.lock
 
 # Rust build artifacts
 cyb/target/
