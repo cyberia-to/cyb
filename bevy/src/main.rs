@@ -1,4 +1,5 @@
 mod agent;
+mod prysm;
 mod shell;
 mod worlds;
 
@@ -6,8 +7,6 @@ use bevy::prelude::*;
 use bevy::render::renderer::{RenderDevice, RenderQueue};
 use bevy::render::RenderApp;
 
-/// Clones Bevy's GPU resources (Device, Queue) into the main world
-/// so non-render systems (like Terminal) can use them.
 struct GpuBridgePlugin;
 
 impl Plugin for GpuBridgePlugin {
@@ -44,9 +43,14 @@ fn main() {
         }))
         .insert_resource(ClearColor(bevy::color::Color::BLACK))
         .add_plugins(GpuBridgePlugin)
+        .add_plugins(prysm::PrysmPlugin)
         .add_plugins(worlds::WorldsPlugin)
         .add_plugins(shell::hotkeys::HotkeysPlugin)
         .add_plugins(worlds::splash::SplashWorldPlugin)
+        .add_plugins(worlds::spells::SpellsWorldPlugin)
+        .add_plugins(worlds::sense::SenseWorldPlugin)
+        .add_plugins(mir::bevy::GraphWorldPlugin)
+        .add_plugins(worlds::graph::GraphBridgePlugin)
         .add_plugins(worlds::interface::InterfaceWorldPlugin)
         .add_plugins(worlds::portal::PortalWorldPlugin)
         .add_plugins(worlds::legacy::LegacyWorldPlugin)

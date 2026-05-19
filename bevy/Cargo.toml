@@ -37,9 +37,13 @@ required-features = ["desktop"]
 # Core (all platforms)
 wry = { version = "0.53", features = ["transparent"] }
 futures = "0.3"
+futures-lite = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 log = "0.4"
+mir = { path = "../../mir", features = ["bevy-plugin"] }
+bip39 = { workspace = true, features = ["rand"] }
+ureq = { workspace = true }
 
 # Desktop (behind "desktop" feature)
 bevy = { workspace = true, optional = true }

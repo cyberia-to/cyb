@@ -109,7 +109,7 @@ fn update_splash(
     }
 
     if timer.0 >= SPLASH_DURATION {
-        next_state.set(WorldState::Legacy);
+        next_state.set(WorldState::Spells);
     }
 }
 
