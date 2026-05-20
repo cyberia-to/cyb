@@ -1,7 +1,9 @@
 use bevy::input::keyboard::{Key, KeyboardInput};
+use bevy::ecs::message::MessageReader;
 use bevy::prelude::*;
 use super::theme;
 use super::atoms::{GlassDepth, glass_bg, saber_h};
+use crate::worlds::WorldState;
 
 #[derive(Component)]
 pub struct TabItem {
@@ -45,6 +47,7 @@ pub fn spawn_commander(
                 for (i, &label) in labels.iter().enumerate() {
                     row.spawn((
                         TabItem { index: i },
+                        Button,
                         Node {
                             flex_direction: FlexDirection::Column,
                             align_items: AlignItems::Center,
@@ -110,40 +113,76 @@ pub fn spawn_button(parent: &mut ChildSpawnerCommands, label: &str) -> Entity {
 
 #[derive(Component)]
 pub struct TextInput {
-    pub value:   String,
-    pub focused: bool,
+    pub value:       String,
+    pub focused:     bool,
+    pub placeholder: String,
 }
 
 #[derive(Component)]
 pub struct CursorBlink(pub f32);
 
 pub fn text_input_system(
-    mut keyboard_events: MessageReader<KeyboardInput>,
-    mut q:               Query<(&mut TextInput, &mut Text)>,
+    mut key_evts: MessageReader<KeyboardInput>,
+    mut input_q:  Query<(&mut TextInput, &Children)>,
+    mut text_q:   Query<&mut Text>,
 ) {
-    for (mut input, mut text) in &mut q {
-        if !input.focused { continue; }
+    let events: Vec<_> = key_evts.read().cloned().collect();
+    if events.is_empty() { return; }
 
-        for ev in keyboard_events.read() {
+    for (mut input, children) in &mut input_q {
+        if !input.focused { continue; }
+        for ev in &events {
             if !ev.state.is_pressed() { continue; }
             match (&ev.logical_key, &ev.text) {
-                (Key::Backspace, _) => {
-                    input.value.pop();
-                }
-                (Key::Enter, _) => {}
+                (Key::Backspace, _) => { input.value.pop(); }
+                (Key::Enter, _)     => {}
                 (_, Some(t)) => {
                     for ch in t.chars() {
-                        if !ch.is_ascii_control() {
-                            input.value.push(ch);
-                        }
+                        if !ch.is_ascii_control() { input.value.push(ch); }
                     }
                 }
                 _ => {}
             }
         }
+        let display = if input.value.is_empty() {
+            format!("{}|", input.placeholder)
+        } else {
+            format!("{}|", input.value)
+        };
+        for child in children.iter() {
+            if let Ok(mut t) = text_q.get_mut(child) { **t = display.clone(); }
+        }
+    }
+}
 
-        let display = format!("{}|", input.value);
-        **text = display;
+pub fn input_focus_system(
+    interaction_q: Query<(Entity, &Interaction), (With<TextInput>, Changed<Interaction>)>,
+    mut all_q:     Query<(Entity, &mut TextInput)>,
+) {
+    let mut pressed: Option<Entity> = None;
+    for (e, i) in &interaction_q {
+        if *i == Interaction::Pressed { pressed = Some(e); }
+    }
+    let Some(target) = pressed else { return };
+    for (e, mut inp) in &mut all_q {
+        inp.focused = e == target;
+    }
+}
+
+pub fn tab_navigation_system(
+    tab_q: Query<(&Interaction, &TabItem), Changed<Interaction>>,
+    mut next_state: ResMut<NextState<WorldState>>,
+) {
+    for (interaction, tab) in &tab_q {
+        if *interaction == Interaction::Pressed {
+            let target = match tab.index {
+                0 => WorldState::Spells,
+                1 => WorldState::Graph,
+                2 => WorldState::Sense,
+                _ => continue,
+            };
+            next_state.set(target);
+        }
     }
 }
 
@@ -151,6 +190,8 @@ pub fn spawn_input(parent: &mut ChildSpawnerCommands, placeholder: &str) -> Enti
     let placeholder = placeholder.to_string();
     parent
         .spawn((
+            Button,
+            TextInput { value: String::new(), focused: false, placeholder: placeholder.clone() },
             Node {
                 width: Val::Percent(100.0),
                 padding: UiRect::all(Val::Px(theme::G)),
@@ -160,7 +201,6 @@ pub fn spawn_input(parent: &mut ChildSpawnerCommands, placeholder: &str) -> Enti
         ))
         .with_children(|p| {
             p.spawn((
-                TextInput { value: String::new(), focused: false },
                 Text::new(format!("{}|", placeholder)),
                 TextFont { font_size: theme::BODY, ..default() },
                 TextColor(theme::TEXT_DIM),

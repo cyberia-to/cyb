@@ -9,8 +9,11 @@ pub use theme::{
     DARK_BASE, TEXT_PRIMARY, TEXT_DIM,
 };
 pub use atoms::{GlassDepth, Glass, Saber, glass_bg, saber_h};
-pub use molecules::{TabItem, Commander, ActiveTab, ButtonPrysm, TextInput, CursorBlink,
-    spawn_commander, spawn_button, spawn_input, text_input_system};
+pub use molecules::{
+    TabItem, Commander, ActiveTab, ButtonPrysm, TextInput, CursorBlink,
+    spawn_commander, spawn_button, spawn_input,
+    text_input_system, input_focus_system, tab_navigation_system,
+};
 
 use bevy::prelude::*;
 
@@ -19,6 +22,10 @@ pub struct PrysmPlugin;
 impl Plugin for PrysmPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ActiveTab>()
-            .add_systems(Update, molecules::text_input_system);
+            .add_systems(Update, (
+                molecules::text_input_system,
+                molecules::input_focus_system,
+                molecules::tab_navigation_system,
+            ));
     }
 }

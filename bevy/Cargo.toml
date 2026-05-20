@@ -44,6 +44,10 @@ log = "0.4"
 mir = { path = "../../mir", features = ["bevy-plugin"] }
 bip39 = { workspace = true, features = ["rand"] }
 ureq = { workspace = true }
+hmac = "0.12"
+sha2 = "0.10"
+k256 = { version = "0.13", features = ["arithmetic", "ecdh"] }
+bech32 = "0.9"
 
 # Desktop (behind "desktop" feature)
 bevy = { workspace = true, optional = true }

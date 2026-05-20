@@ -16,7 +16,7 @@ struct SenseMarker;
 
 #[derive(Component)]
 struct MessageItem {
-    pub is_user: bool,
+    is_user: bool,
 }
 
 #[derive(Component)]
@@ -30,6 +30,12 @@ struct SenseInputMarker;
 
 #[derive(Component)]
 struct MessagesContainer;
+
+#[derive(Component)]
+struct GliaStatus;
+
+#[derive(Component)]
+struct GliaTask(Task<String>);
 
 #[derive(Resource, Default)]
 struct ChatHistory {
@@ -52,13 +58,17 @@ impl Plugin for SenseWorldPlugin {
             .add_systems(OnExit(WorldState::Sense), hide_sense)
             .add_systems(
                 Update,
-                (handle_send, poll_inference_tasks, update_chat_display)
+                (handle_send, poll_inference_tasks, update_chat_display, poll_glia_task)
                     .run_if(in_state(WorldState::Sense)),
             );
     }
 }
 
 fn show_sense(mut commands: Commands, history: Res<ChatHistory>) {
+    let glia_task = AsyncComputeTaskPool::get().spawn(async move {
+        call_model_check()
+    });
+
     commands
         .spawn((
             SenseMarker,
@@ -112,38 +122,60 @@ fn show_sense(mut commands: Commands, history: Res<ChatHistory>) {
 
             root.spawn((
                 Node {
-                    flex_direction: FlexDirection::Row,
-                    column_gap: Val::Px(theme::G),
+                    flex_direction: FlexDirection::Column,
                     width: Val::Percent(100.0),
                     max_width: Val::Px(640.0),
-                    align_items: AlignItems::Center,
+                    row_gap: Val::Px(theme::G * 0.5),
                     margin: UiRect::vertical(Val::Px(theme::G)),
                     ..default()
                 },
                 BackgroundColor(Color::NONE),
             ))
-            .with_children(|bar| {
-                bar.spawn((
-                    SenseInputMarker,
-                    TextInput { value: String::new(), focused: true },
+            .with_children(|col| {
+                col.spawn((
+                    GliaStatus,
+                    Text::new("checking glia…"),
+                    TextFont { font_size: theme::MICRO, ..default() },
+                    TextColor(theme::TEXT_DIM),
+                ));
+
+                col.spawn((
                     Node {
-                        flex_grow: 1.0,
-                        padding: UiRect::all(Val::Px(theme::G)),
+                        flex_direction: FlexDirection::Row,
+                        column_gap: Val::Px(theme::G),
+                        width: Val::Percent(100.0),
+                        align_items: AlignItems::Center,
                         ..default()
                     },
-                    glass_bg(GlassDepth::Midground),
+                    BackgroundColor(Color::NONE),
                 ))
-                .with_children(|p| {
-                    p.spawn((
-                        MessageText,
-                        Text::new("|"),
-                        TextFont { font_size: theme::BODY, ..default() },
-                        TextColor(theme::TEXT_PRIMARY),
-                    ));
-                });
+                .with_children(|bar| {
+                    bar.spawn((
+                        SenseInputMarker,
+                        Button,
+                        TextInput {
+                            value: String::new(),
+                            focused: true,
+                            placeholder: "ask anything…".to_string(),
+                        },
+                        Node {
+                            flex_grow: 1.0,
+                            padding: UiRect::all(Val::Px(theme::G)),
+                            ..default()
+                        },
+                        glass_bg(GlassDepth::Midground),
+                    ))
+                    .with_children(|p| {
+                        p.spawn((
+                            Text::new("ask anything…|"),
+                            TextFont { font_size: theme::BODY, ..default() },
+                            TextColor(theme::TEXT_DIM),
+                        ));
+                    });
 
-                let btn = spawn_button(bar, "send");
-                bar.commands().entity(btn).insert(SendButton);
+                    let btn = spawn_button(bar, "send");
+                    bar.commands().entity(btn).insert(SendButton);
+                });
             });
 
             root.spawn((
@@ -158,19 +190,39 @@ fn show_sense(mut commands: Commands, history: Res<ChatHistory>) {
                 spawn_commander(footer, 2, &["spells", "graph", "sense"]);
             });
         });
+
+    commands.spawn(GliaTask(glia_task));
 }
 
-fn hide_sense(mut commands: Commands, q: Query<Entity, With<SenseMarker>>) {
+fn hide_sense(mut commands: Commands, q: Query<Entity, With<SenseMarker>>, tasks: Query<Entity, With<GliaTask>>) {
     for e in &q {
+        commands.entity(e).despawn();
+    }
+    for e in &tasks {
         commands.entity(e).despawn();
     }
 }
 
+fn poll_glia_task(
+    mut commands: Commands,
+    mut tasks: Query<(Entity, &mut GliaTask)>,
+    mut status_q: Query<&mut Text, With<GliaStatus>>,
+) {
+    for (entity, mut task) in &mut tasks {
+        if let Some(result) = future::block_on(future::poll_once(&mut task.0)) {
+            if let Ok(mut text) = status_q.single_mut() {
+                **text = result;
+            }
+            commands.entity(entity).despawn();
+        }
+    }
+}
+
 fn handle_send(
-    send_q:      Query<&Interaction, (Changed<Interaction>, With<SendButton>)>,
-    keys:        Res<ButtonInput<KeyCode>>,
-    mut input_q: Query<&mut TextInput, With<SenseInputMarker>>,
-    mut history: ResMut<ChatHistory>,
+    send_q:       Query<&Interaction, (Changed<Interaction>, With<SendButton>)>,
+    keys:         Res<ButtonInput<KeyCode>>,
+    mut input_q:  Query<&mut TextInput, With<SenseInputMarker>>,
+    mut history:  ResMut<ChatHistory>,
     mut commands: Commands,
 ) {
     let send_pressed = send_q.iter().any(|i| *i == Interaction::Pressed);
@@ -254,6 +306,19 @@ fn spawn_message(parent: &mut ChildSpawnerCommands, text: String, is_user: bool)
                 TextColor(if is_user { theme::TEXT_PRIMARY } else { theme::TEXT_DIM }),
             ));
         });
+}
+
+fn call_model_check() -> String {
+    let mut resp = ureq::get("http://localhost:11434/v1/models")
+        .call()
+        .ok();
+    if let Some(mut r) = resp {
+        let json: serde_json::Value = r.body_mut().read_json().ok().unwrap_or_default();
+        if let Some(id) = json["data"][0]["id"].as_str() {
+            return format!("via glia • {}", id);
+        }
+    }
+    "glia offline — run: cyb-llm serve".to_string()
 }
 
 fn call_cyb_llm(prompt: String) -> Option<String> {
