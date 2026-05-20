@@ -51,12 +51,15 @@ impl Plugin for SpellsWorldPlugin {
     }
 }
 
-fn show_spells(mut commands: Commands, mnemonic: Res<NeuronMnemonic>) {
-    let words = if mnemonic.words.is_empty() {
-        fresh_words()
-    } else {
-        mnemonic.words.clone()
-    };
+fn show_spells(mut commands: Commands, mut mnemonic: ResMut<NeuronMnemonic>) {
+    if mnemonic.words.is_empty() {
+        let words = fresh_words();
+        let address = derive_address_from_words(&words);
+        mnemonic.words   = words;
+        mnemonic.address = address;
+        mnemonic.active  = true;
+    }
+    let words = mnemonic.words.clone();
 
     commands
         .spawn((
@@ -151,16 +154,26 @@ fn show_spells(mut commands: Commands, mnemonic: Res<NeuronMnemonic>) {
                 });
 
                 let addr_text = if mnemonic.address.is_empty() {
-                    "…".to_string()
+                    "generating address…".to_string()
                 } else {
                     mnemonic.address.clone()
                 };
                 col.spawn((
-                    AddressDisplay,
-                    Text::new(addr_text),
-                    TextFont { font_size: theme::MICRO, ..default() },
-                    TextColor(theme::TEXT_DIM),
-                ));
+                    Node {
+                        padding: UiRect::axes(Val::Px(theme::G), Val::Px(theme::G * 0.5)),
+                        margin: UiRect::top(Val::Px(theme::G * 0.5)),
+                        ..default()
+                    },
+                    glass_bg(GlassDepth::Subtle),
+                ))
+                .with_children(|addr_row| {
+                    addr_row.spawn((
+                        AddressDisplay,
+                        Text::new(addr_text),
+                        TextFont { font_size: theme::MICRO, ..default() },
+                        TextColor(theme::ACID_BLUE),
+                    ));
+                });
             });
 
             root.spawn((

@@ -23,13 +23,17 @@ fn insert_graph_config(mut commands: Commands) {
 }
 
 fn sync_graph_state(
-    world_state: Res<State<WorldState>>,
+    world_state:     Res<State<WorldState>>,
+    graph_state_cur: Res<State<GraphWorldState>>,
     mut graph_state: ResMut<NextState<GraphWorldState>>,
 ) {
-    if *world_state.get() == WorldState::Graph {
-        graph_state.set(GraphWorldState::Active);
+    let target = if *world_state.get() == WorldState::Graph {
+        GraphWorldState::Active
     } else {
-        graph_state.set(GraphWorldState::Inactive);
+        GraphWorldState::Inactive
+    };
+    if *graph_state_cur.get() != target {
+        graph_state.set(target);
     }
 }
 

@@ -63,7 +63,7 @@ pub fn spawn_commander(
                             TextColor(if i == active_tab {
                                 theme::TEXT_PRIMARY
                             } else {
-                                theme::TEXT_DIM
+                                Color::srgba(0.62, 0.62, 0.68, 1.0)
                             }),
                         ));
                         if i == active_tab {
