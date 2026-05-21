@@ -27,10 +27,6 @@ coverage
 # Netlify
 .netlify
 
-# Claude Code
-.claude/*
-!.claude/plans/
-
 # Misc
 *.xml
 *.iml
