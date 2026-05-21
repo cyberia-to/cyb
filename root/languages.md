@@ -225,7 +225,7 @@ all nineteen languages share one toolchain. each programmer face has its own syn
 
 ### Languages as Type Systems over Nox Patterns
 
-the execution languages are type systems and compilers over [[Nox]]'s 16 algebra-polymorphic patterns. each language adds domain-specific syntax, type checking, and compilation strategy — but the target is always nox pattern trees. domain-specific operations become jets: compositions of the 16 patterns recognized by formula hash and accelerated to [[Goldilocks field processor]] hardware primitives.
+the execution languages are type systems and compilers over [[Nox]]'s 18 patterns (16 algebra-polymorphic compute patterns + call + look). each language adds domain-specific syntax, type checking, and compilation strategy — but the target is always nox pattern trees. domain-specific operations become jets: compositions of the 16 compute patterns recognized by formula hash and accelerated to [[Goldilocks field processor]] hardware primitives.
 
 ```
 language operation           nox composition              jet              GFP primitive
@@ -247,7 +247,7 @@ rune is not a separate language. it is Rs syntax parsed to [[Nox]] nouns and int
 
 | Capability | [[Nox]] mechanism | What it does |
 |---|---|---|
-| `hint` | pattern 16 (non-deterministic) | Async input — yields, resumes when data arrives |
+| `hint` (`call`) | pattern 16 (non-deterministic) | Async input — yields, resumes when data arrives |
 | `host(target, args)` | host jet dispatch | Calls WASM/GPU/ONNX — exits [[proof]] boundary, returns noun |
 | `eval(noun)` | quote + reduce | Runtime metaprogramming — execute a dynamically constructed formula |
 

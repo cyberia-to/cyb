@@ -243,7 +243,7 @@ no jet for a new op? the model still runs. write the jet later. this is how the 
 
 | concept | Nox | llm runtime |
 |---------|-----|-------------|
-| primitives | 16 patterns (axis, quote, cons...) | 8 atoms (mul, add, cmp, exp, read, write, reduce, slide) |
+| primitives | 18 patterns (axis, quote, cons... + call + look) | 8 atoms (mul, add, cmp, exp, read, write, reduce, slide) |
 | acceleration | jets recognized by formula hash | fused GPU kernels by op hash |
 | provability | STARK trace over reductions | STARK trace over atom compositions |
 | extensibility | new jet = new hash, same semantics | new shader = new hash, same atoms |

@@ -155,7 +155,7 @@ Tri ([[Trident]]) — [[field]] tower F_{pⁿ} over [[Goldilocks field processor
 
 ### Composition Tier — one meta-language
 
-[[Nox]] — 16 algebra-polymorphic patterns over trees. Simultaneously the universal pattern set (the 16 patterns compute), the structural IR (all languages compile through it), and the composition tier (orchestrates [[proof]] aggregation). The patterns are field-parametric: the same `add(a,b)` computes modular addition in F_p, extension field addition in F_{p³}, or XOR in F₂. The [[proof]] system is a parameter — [[zheng]] STARK for field-native work, Binius for binary-native work. Domain-specific language operations (matrix multiply, geometric product, FFT, activation functions) are compositions of nox patterns recognized by formula hash and accelerated as jets. See [[nox]] for the pattern specification.
+[[Nox]] — 18 patterns over trees: 16 algebra-polymorphic compute patterns + call (witness injection) + look (state read). Simultaneously the universal pattern set (the 16 compute patterns cover all algebras), the structural IR (all languages compile through it), and the composition tier (orchestrates [[proof]] aggregation). The patterns are field-parametric: the same `add(a,b)` computes modular addition in F_p, extension field addition in F_{p³}, or XOR in F₂. The [[proof]] system is a parameter — [[zheng]] STARK for field-native work, Binius for binary-native work. Domain-specific language operations (matrix multiply, geometric product, FFT, activation functions) are compositions of nox patterns recognized by formula hash and accelerated as jets. See [[nox]] for the pattern specification.
 
 ---
 
