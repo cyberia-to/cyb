@@ -6,13 +6,44 @@ use mir::bevy::resources::GraphWorldConfig;
 use mir::bevy::world::GraphWorldState;
 
 use super::WorldState;
+use crate::prysm::molecules::spawn_commander;
+
+#[derive(Component)]
+struct GraphUIMarker;
 
 pub struct GraphBridgePlugin;
 
 impl Plugin for GraphBridgePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, insert_graph_config)
+            .add_systems(OnEnter(WorldState::Graph), show_graph_ui)
+            .add_systems(OnExit(WorldState::Graph),  hide_graph_ui)
             .add_systems(Update, sync_graph_state);
+    }
+}
+
+fn show_graph_ui(mut commands: Commands) {
+    commands
+        .spawn((
+            GraphUIMarker,
+            Node {
+                width:            Val::Percent(100.0),
+                height:           Val::Percent(100.0),
+                flex_direction:   FlexDirection::Column,
+                justify_content:  JustifyContent::FlexEnd,
+                position_type:    PositionType::Absolute,
+                ..default()
+            },
+            BackgroundColor(Color::NONE),
+        ))
+        .with_children(|root| {
+            spawn_commander(root, 1, &["spells", "graph", "sense"]);
+        });
+}
+
+fn hide_graph_ui(mut commands: Commands, q: Query<Entity, With<GraphUIMarker>>) {
+    for e in &q {
+        commands.entity(e).despawn();
     }
 }
 

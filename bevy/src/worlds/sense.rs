@@ -308,22 +308,40 @@ fn spawn_message(parent: &mut ChildSpawnerCommands, text: String, is_user: bool)
         });
 }
 
+const TARGET_MODEL: &str = "qwen3:0.6b";
+
+fn model_available() -> bool {
+    let mut resp = match ureq::get("http://localhost:11434/v1/models").call().ok() {
+        Some(r) => r,
+        None => return false,
+    };
+    let json: serde_json::Value = resp.body_mut().read_json().ok().unwrap_or_default();
+    json["data"].as_array()
+        .map(|arr| arr.iter().any(|m| m["id"].as_str() == Some(TARGET_MODEL)))
+        .unwrap_or(false)
+}
+
 fn call_model_check() -> String {
-    let mut resp = ureq::get("http://localhost:11434/v1/models")
-        .call()
-        .ok();
-    if let Some(mut r) = resp {
-        let json: serde_json::Value = r.body_mut().read_json().ok().unwrap_or_default();
-        if let Some(id) = json["data"][0]["id"].as_str() {
-            return format!("via glia • {}", id);
+    match ureq::get("http://localhost:11434/v1/models").call() {
+        Err(_) => "glia offline — run: ollama serve".to_string(),
+        Ok(mut r) => {
+            let json: serde_json::Value = r.body_mut().read_json().ok().unwrap_or_default();
+            let has_target = json["data"].as_array()
+                .map(|arr| arr.iter().any(|m| m["id"].as_str() == Some(TARGET_MODEL)))
+                .unwrap_or(false);
+            if has_target {
+                format!("via glia • {}", TARGET_MODEL)
+            } else {
+                format!("model missing — run: ollama pull {}", TARGET_MODEL)
+            }
         }
     }
-    "glia offline — run: cyb-llm serve".to_string()
 }
 
 fn call_cyb_llm(prompt: String) -> Option<String> {
+    let model = TARGET_MODEL;
     let body = serde_json::json!({
-        "model": "default",
+        "model": model,
         "messages": [{"role": "user", "content": prompt}],
         "stream": false
     });
