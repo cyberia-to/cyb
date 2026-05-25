@@ -278,4 +278,4 @@ nothing is shipped except the Rust binary and the WASM bundle. the browser engin
 
 ---
 
-see [[prysm]] for the design system and component model, [[mir]] for the graph renderer, [[prysm/layout]] for the layout algebra, [[nu]] for the nushell integration
+see [[routing]] for the full navigation mechanism and flows, [[prysm]] for the design system and component model, [[mir]] for the graph renderer, [[prysm/layout]] for the layout algebra, [[nu]] for the nushell integration
