@@ -131,40 +131,7 @@ for surfaces 2 and 3: the content inside them follows their own rules (3D graph,
 
 ## routing
 
-the URL is the single address space. there are no routing levels, no IPC for navigation, no sync between Bevy and Leptos.
-
-```
-URL changes
-  → wry fires navigation event → Bevy reads URL, activates right surface
-  → Leptos reads window.location, renders right aip
-```
-
-both react independently to the same URL. they do not coordinate.
-
-**writing the URL:**
-
-| who | how | example |
-|---|---|---|
-| hotkey fires | Bevy calls `webview.load_url(...)` | Cmd+2 → `/brain` |
-| user taps link | Leptos calls `history.pushState()` | tap oracle result → `/oracle/:cid` |
-| tray item | Bevy calls `webview.load_url(...)` | tray → `/sense` |
-
-**in the browser (no Bevy).** Leptos router handles everything alone. same URLs, same components. Bevy's absence changes nothing — Leptos always reads `window.location` and never asks Bevy for the route.
-
-**address space:**
-
-```
-/oracle            search and knowledge exploration
-/oracle/:cid       single particle view
-/brain             3D cybergraph — activates mir surface
-/sense             messages
-/sigma             wallet and balances
-/portal            onboarding and citizenship
-/sphere            heroes and staking
-/senate            governance
-/teleport          token transfers and swaps
-/terminal          nushell — activates sugarloaf surface
-```
+the URL is the single address space. wry owns it. Bevy and Leptos both subscribe — neither owns it. see [[routing]] for the full address space, aip routes, sub-routes, and browser vs desktop behavior.
 
 ---
 
