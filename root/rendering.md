@@ -131,6 +131,58 @@ the graph world is the one case where Bevy renders something the user sees direc
 
 Leptos does not know about Bevy's graph. Bevy does not know about Leptos's chrome. both react to the URL independently and happen to compose correctly because the WebView is transparent.
 
+## terminal surface: sugarloaf + nushell
+
+the terminal world is a third kind of surface — not WebView, not a live wgpu scene. it is a GPU-rendered texture composited as a Bevy sprite.
+
+**the pipeline:**
+
+```
+nushell (shell interpreter, vendored)
+  ↓  executes commands, produces output
+alacritty_terminal (VT100/ANSI parser, vendored)
+  ↓  parses escape sequences, maintains terminal grid state
+sugarloaf (Rio terminal renderer, vendored)
+  ↓  renders terminal grid to an offscreen wgpu texture
+     GPU-quality text: subpixel rendering, ligatures, ANSI colors
+Bevy Image asset
+  ↓  sugarloaf's offscreen texture is read back to CPU pixels
+     uploaded into a Bevy Image (Bgra8UnormSrgb)
+Bevy sprite / quad
+  ↓  Bevy renders the Image as a mesh in the scene
+displayed in the Bevy window
+```
+
+**the GPU sharing trick.** sugarloaf does not create its own GPU context. it runs on **Bevy's wgpu device and queue**. `GpuBridgePlugin` extracts Bevy's `RenderDevice` and `RenderQueue` into the main world at startup. when the terminal world initializes, it passes those handles to sugarloaf:
+
+```rust
+let device = world.resource::<RenderDevice>().wgpu_device().clone();
+let queue  = world.resource::<RenderQueue>()...clone();
+let ctx    = SugarloafContext::new_external(device, queue, ...);
+```
+
+one GPU context, shared. sugarloaf renders offscreen into a texture on Bevy's device, reads the pixels back, and uploads them to a Bevy Image. no second GPU stack, no context switching overhead.
+
+**why this approach and not a WebView terminal:**
+
+a WebView terminal (xterm.js style) would work but adds JS, a DOM terminal emulator, and loses native font rendering. sugarloaf is the Rio terminal engine — production-quality GPU text rendering designed for exactly this use case, written in Rust, runs on the same wgpu context as the rest of cyb.
+
+**nushell** is the shell. not bash, not zsh. nu gives the terminal structured output (tables, records, lists) rather than raw text streams. nu scripts are used in the cyb build system (`nu/`) and in the agent scripting layer. the terminal world embeds the full nu engine — `nu_cli`, `nu_command`, `nu_protocol`, `nu_engine` — as native Rust crates.
+
+**prysm and the terminal.** the terminal content (the text grid rendered by sugarloaf) does not obey prysm layout rules — it is a terminal, it has its own grid. the **chrome around it** (the glass pane border, context bar, commander) is rendered by Leptos in the WebView layer above, and those elements do obey prysm. the terminal is a raw wgpu texture inside a prysm glass container.
+
+## surfaces summary
+
+three kinds of surface exist in cyb:
+
+| surface | renderer | what it shows | prysm |
+|---|---|---|---|
+| WebView | WKWebView / Chromium | all prysm UI, all aips | full contract |
+| native wgpu scene | Bevy + mir | 3D cybergraph | chrome only (WebView layer) |
+| offscreen texture | sugarloaf → Bevy Image | nushell terminal | chrome only (WebView layer) |
+
+the WebView is transparent. Bevy renders behind it. native surfaces (graph, terminal) are Bevy content that shows through the transparent WebView where there are no DOM elements.
+
 ## prysm contract
 
 [[prysm]] is the law for all rendering in cyb. every visual element — whether rendered by Leptos in the DOM or by Bevy in a native surface — obeys prysm's three rules: ECS structure, fold conformations, and layout algebra. the rendering layer is an implementation detail. the prysm contract is not.
