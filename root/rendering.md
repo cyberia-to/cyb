@@ -30,14 +30,14 @@ Bevy
   owns: native window (winit), wgpu device + queue, worlds state machine,
         hotkeys, tray, GPU bridge
   ↓
-wry
-  owns: WebView embedded in Bevy's window, URL, navigation events
-  ↓
-Leptos WASM
-  owns: all [[prysm]] components, all aips, DOM rendering inside the WebView
-  ↓
-WKWebView / Android WebView
-  not shipped — provided by the OS. handles HTML, CSS, video, inputs.
+  ├── wry → WebView → Leptos WASM → WKWebView / Android WebView (OS-provided)
+  │         URL, navigation events   all prysm UI, all aips
+  │
+  ├── mir → wgpu native surface
+  │         3D cybergraph (/brain)
+  │
+  └── sugarloaf → offscreen wgpu texture → Bevy Image → Bevy sprite
+                  nushell terminal (/terminal)
 ```
 
 **Bevy owns the window.** Bevy creates the native window via winit. it owns the wgpu device and render queue — the hardware GPU handle. `GpuBridgePlugin` extracts these at startup and makes them available as Bevy resources so other systems (sugarloaf) can share the same GPU context without creating a second one.
