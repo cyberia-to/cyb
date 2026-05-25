@@ -6,290 +6,268 @@ crystal-domain: cyber
 
 # rendering
 
-the rendering stack of [[cyb]]. explains what owns what, why each layer exists, and how they compose.
+how [[cyb]] turns data into pixels. three surfaces, one prysm contract, one address space.
 
-## why this stack
+---
 
-cyb is a knowledge interface. it renders text, images, video, data tables, search results, transaction feeds, and 3D graph visualizations. these are fundamentally different rendering problems:
+## the problem
 
-- text, video, inputs, tables — the browser engine is the best renderer ever built for this. it handles hardware-accelerated video decode, mobile IME, copy/paste, accessibility, CSS layout, web fonts. reimplementing any of this is waste.
-- 3D graph visualization — a real-time GPU problem. the browser's WebGL is adequate but the cybergraph renderer ([[mir]]) is a native Bevy plugin. it needs ECS, direct wgpu access, and a GPU buffer shared with the rest of the engine.
-- desktop shell — global hotkeys, tray icon, native window chrome, multi-world state machine. these require native code.
+cyb renders fundamentally different kinds of content:
 
-the stack is layered to give each problem its ideal tool without compromise.
+- text, video, images, tables, forms, search results — the browser engine solves this better than anything else. it handles hardware-accelerated video decode, mobile IME, copy/paste, accessibility, fonts, CSS layout. reimplementing any of it is waste.
+- 3D graph visualization — a real-time GPU problem. [[mir]] is a Bevy plugin with direct wgpu access and ECS-native scene management.
+- terminal — GPU-quality text rendering with a live shell. sugarloaf renders nushell output at native quality using the same wgpu device as everything else.
+- desktop shell — global hotkeys, tray, native window chrome, multi-world state machine. requires native code.
 
-## layers
+the stack gives each problem its ideal tool. no layer compromises for another.
+
+---
+
+## stack and ownership
 
 ```
-Bevy (desktop shell)
-  owns: native window, GPU device, worlds state machine, hotkeys, tray
+Bevy
+  owns: native window (winit), wgpu device + queue, worlds state machine,
+        hotkeys, tray, GPU bridge
   ↓
-wry (WebView host)
+wry
   owns: WebView embedded in Bevy's window, URL, navigation events
   ↓
-Leptos WASM (web UI)
-  owns: all [[prysm]] components, all aips, DOM rendering
-```
-
-## ownership
-
-**Bevy owns the window.** Bevy creates the native window via winit. It controls the window's lifetime, size, and position. It owns the wgpu device and render queue — the hardware GPU handle.
-
-**wry owns the WebView.** wry borrows Bevy's window handle and embeds a WebView inside it (WKWebView on macOS, Android System WebView on Android). The WebView is transparent — Bevy's black background shows through by default, creating the glass-on-void effect of [[prysm]] without any special treatment.
-
-**wry owns the URL.** The URL lives in the WebView's navigation state. It is the single source of truth for where the user is. Neither Bevy nor Leptos owns it — both subscribe to it.
-
-## surfaces
-
-two kinds of surface exist:
-
-**WebView surface** — the default. Leptos renders [[prysm]] components into the DOM. Glass, depth, emotion, typography, all aips — all here. Web-native: video, inputs, text selection, accessibility, copy/paste all work because WKWebView is a real browser engine.
-
-**native surface** — the 3D graph world. [[mir]] is a Bevy plugin that renders directly to wgpu. when the user navigates to `/brain`, Bevy activates the mir graph alongside the WebView. the graph canvas occupies its rectangle of the screen. Leptos renders the chrome around it (context bar, commander, glass panes) in the WebView layer above.
-
-## routing
-
-the URL is the single address space. there are no routing levels, no sync, no IPC for navigation.
-
-```
-URL changes  →  wry fires navigation event  →  Bevy reads URL, shows right surface
-             →  Leptos reads window.location, renders right aip
-```
-
-both Bevy and Leptos react to the URL independently. they do not coordinate.
-
-**writing the URL:**
-
-- hotkey fires → `webview.load_url("cyb://brain")` — Bevy writes via wry
-- user taps link → `history.pushState()` — Leptos writes via browser API
-- tray item selected → `webview.load_url(...)` — Bevy writes via wry
-
-no IPC for routing. the WebView's URL is the message bus.
-
-**in the browser (no Bevy):** Leptos router handles everything alone. same URLs, same components, same behavior. Bevy's absence changes nothing for Leptos — it always read `window.location`, never asked Bevy for the route.
-
-## address space
-
-```
-/oracle          search and knowledge exploration
-/oracle/:cid     single particle view
-/brain           3D cybergraph (mir surface activated)
-/sense           messages
-/sigma           wallet and balances
-/portal          onboarding
-/sphere          heroes and staking
-/senate          governance
-/teleport        token transfers
-/terminal        nushell (native surface)
-```
-
-Bevy maps these to surfaces. Leptos maps these to aips. The URL is the contract between them.
-
-## platforms
-
-| platform | window | WebView | Leptos | native surfaces |
-|---|---|---|---|---|
-| macOS | Bevy/winit | WKWebView | ✓ WASM | graph (wgpu), terminal |
-| web browser | — | the browser itself | ✓ WASM | graph (WebGL via mir) |
-| Android | Bevy/winit | Android System WebView | ✓ WASM | graph (wgpu) |
-
-the Leptos WASM bundle is identical across all three. the shell (Bevy) is platform-specific. the web UI (Leptos) is not.
-
-## dependency graph
-
-```
-winit (window events)
+Leptos WASM
+  owns: all [[prysm]] components, all aips, DOM rendering inside the WebView
   ↓
-Bevy (ECS, wgpu, worlds)
-  ↓
-wry (WebView, URL, IPC)
-  ↓
-Leptos WASM (prysm components, aips)
-  ↓
-WebKit / Chromium (platform browser engine — not shipped, OS-provided)
+WKWebView / Android WebView
+  not shipped — provided by the OS. handles HTML, CSS, video, inputs.
 ```
 
-nothing is shipped except the Rust binary and the Leptos WASM bundle. the browser engine comes from the OS. no Electron, no Node.js, no bundled Chromium.
+**Bevy owns the window.** Bevy creates the native window via winit. it owns the wgpu device and render queue — the hardware GPU handle. `GpuBridgePlugin` extracts these at startup and makes them available as Bevy resources so other systems (sugarloaf) can share the same GPU context without creating a second one.
 
-## glass and depth
+**wry owns the WebView.** wry borrows Bevy's window handle and embeds a WebView into it. the WebView is transparent — Bevy renders black (`ClearColor::BLACK`) behind it. [[prysm]]'s glass-on-void effect costs nothing: the WebView is already transparent.
 
-[[prysm/glass]] is CSS. `backdrop-filter: blur()` and `rgba()` opacity. z-index is CSS z-index. emotion is CSS color variables. none of this needs a canvas. the browser composites glass panes natively using the GPU, the same as it composites any semi-transparent DOM element.
+**wry owns the URL.** the URL lives in the WebView's navigation state. it is the single source of truth for where the user is. neither Bevy nor Leptos owns it — both subscribe to it.
 
-the wry WebView is transparent. Bevy renders black (`ClearColor::BLACK`) behind it. the glass panes of prysm float over void by default, with zero special handling.
+---
 
-## 3D and Leptos
+## three surfaces
 
-the graph world is the one case where Bevy renders something the user sees directly (not behind a WebView). the pattern:
+### 1. WebView surface
+
+the default surface. Leptos renders [[prysm]] components into the DOM. all aips live here.
+
+```
+Leptos WASM
+  renders: prysm atoms, molecules, cells, aips
+  via: HTML + CSS in WKWebView / Android WebView
+  native: video, inputs, text selection, copy/paste, accessibility, fonts
+```
+
+glass depth is `backdrop-filter: blur()` + `rgba()` opacity. z-index is CSS z-index. emotion is CSS color variables. none of this needs a canvas — the OS browser engine composites semi-transparent DOM elements on the GPU natively.
+
+### 2. native wgpu surface (graph)
+
+[[mir]] is a Bevy plugin. when the user navigates to `/brain`, Bevy activates the mir `GraphWorldPlugin`. mir renders directly to wgpu — the same device Bevy owns. it paints behind the transparent WebView.
 
 ```
 /brain navigation:
-  1. Bevy activates mir GraphWorldPlugin — wgpu renders graph to native surface
-  2. Leptos renders glass chrome (context bar, commander) in WebView above
-  3. the WebView is transparent where there are no DOM elements
-  4. user sees: graph rendered by Bevy through the transparent WebView chrome
+  Bevy activates mir → wgpu renders 3D cybergraph to native surface
+  Leptos renders glass chrome (context bar, commander) in WebView above
+  WebView is transparent where there are no DOM elements
+  result: graph visible through the glass chrome
 ```
 
-Leptos does not know about Bevy's graph. Bevy does not know about Leptos's chrome. both react to the URL independently and happen to compose correctly because the WebView is transparent.
+Leptos does not know about mir. mir does not know about Leptos. both react to the URL independently and compose correctly because the WebView is transparent.
 
-## terminal surface: sugarloaf + nushell
+### 3. offscreen texture surface (terminal)
 
-the terminal world is a third kind of surface — not WebView, not a live wgpu scene. it is a GPU-rendered texture composited as a Bevy sprite.
+the terminal world is a GPU-rendered texture composited as a Bevy sprite. it does not use a WebView and does not render to the live wgpu scene directly.
 
-**the pipeline:**
+**pipeline:**
 
 ```
-nushell (shell interpreter, vendored)
-  ↓  executes commands, produces output
-alacritty_terminal (VT100/ANSI parser, vendored)
-  ↓  parses escape sequences, maintains terminal grid state
-sugarloaf (Rio terminal renderer, vendored)
-  ↓  renders terminal grid to an offscreen wgpu texture
-     GPU-quality text: subpixel rendering, ligatures, ANSI colors
-Bevy Image asset
-  ↓  sugarloaf's offscreen texture is read back to CPU pixels
-     uploaded into a Bevy Image (Bgra8UnormSrgb)
+nushell (vendored nu_* crates)
+  shell interpreter — executes commands, produces structured output
+  ↓
+alacritty_terminal (vendored)
+  VT100/ANSI parser — maintains terminal grid state, handles escape sequences
+  ↓
+sugarloaf (vendored Rio renderer)
+  renders terminal grid to an offscreen wgpu texture
+  GPU-quality text: subpixel rendering, ligatures, ANSI colors, cursor
+  runs on Bevy's wgpu device + queue — no separate GPU context
+  ↓
+CPU readback
+  sugarloaf reads offscreen pixels back to CPU
+  ↓
+Bevy Image asset (Bgra8UnormSrgb)
+  pixels uploaded into a Bevy-managed texture
+  ↓
 Bevy sprite / quad
-  ↓  Bevy renders the Image as a mesh in the scene
-displayed in the Bevy window
+  Bevy renders the Image as a mesh in the scene — visible through the WebView
 ```
 
-**the GPU sharing trick.** sugarloaf does not create its own GPU context. it runs on **Bevy's wgpu device and queue**. `GpuBridgePlugin` extracts Bevy's `RenderDevice` and `RenderQueue` into the main world at startup. when the terminal world initializes, it passes those handles to sugarloaf:
+**GPU sharing.** sugarloaf does not spin up its own GPU context. `GpuBridgePlugin` exposes Bevy's device and queue in the main world. the terminal world passes them directly to sugarloaf at init:
 
 ```rust
 let device = world.resource::<RenderDevice>().wgpu_device().clone();
-let queue  = world.resource::<RenderQueue>()...clone();
+let queue  = /* from RenderQueue */;
 let ctx    = SugarloafContext::new_external(device, queue, ...);
 ```
 
-one GPU context, shared. sugarloaf renders offscreen into a texture on Bevy's device, reads the pixels back, and uploads them to a Bevy Image. no second GPU stack, no context switching overhead.
+one GPU. no context switching. sugarloaf renders offscreen, reads pixels back, Bevy uploads and draws.
 
-**why this approach and not a WebView terminal:**
+**why not a WebView terminal (xterm.js).** a WebView terminal would add a JS emulator and lose native font rendering. sugarloaf is the Rio terminal engine — production-quality GPU text rendering written in Rust, sharing the same wgpu context as mir and the rest of the engine. nushell gives structured output (tables, records) rather than raw text streams.
 
-a WebView terminal (xterm.js style) would work but adds JS, a DOM terminal emulator, and loses native font rendering. sugarloaf is the Rio terminal engine — production-quality GPU text rendering designed for exactly this use case, written in Rust, runs on the same wgpu context as the rest of cyb.
+### surfaces compared
 
-**nushell** is the shell. not bash, not zsh. nu gives the terminal structured output (tables, records, lists) rather than raw text streams. nu scripts are used in the cyb build system (`nu/`) and in the agent scripting layer. the terminal world embeds the full nu engine — `nu_cli`, `nu_command`, `nu_protocol`, `nu_engine` — as native Rust crates.
-
-**prysm and the terminal.** the terminal content (the text grid rendered by sugarloaf) does not obey prysm layout rules — it is a terminal, it has its own grid. the **chrome around it** (the glass pane border, context bar, commander) is rendered by Leptos in the WebView layer above, and those elements do obey prysm. the terminal is a raw wgpu texture inside a prysm glass container.
-
-## surfaces summary
-
-three kinds of surface exist in cyb:
-
-| surface | renderer | what it shows | prysm |
+| surface | renderer | content | prysm |
 |---|---|---|---|
-| WebView | WKWebView / Chromium | all prysm UI, all aips | full contract |
-| native wgpu scene | Bevy + mir | 3D cybergraph | chrome only (WebView layer) |
-| offscreen texture | sugarloaf → Bevy Image | nushell terminal | chrome only (WebView layer) |
+| WebView | WKWebView / Android WebView | all aips, all prysm UI | full contract |
+| native wgpu | Bevy + mir (wgpu) | 3D cybergraph | chrome in WebView |
+| offscreen texture | sugarloaf → Bevy Image | nushell terminal | chrome in WebView |
 
-the WebView is transparent. Bevy renders behind it. native surfaces (graph, terminal) are Bevy content that shows through the transparent WebView where there are no DOM elements.
+for surfaces 2 and 3: the content inside them follows their own rules (3D graph, terminal grid). the **chrome around them** — glass panes, context bar, commander — is always Leptos in the WebView layer above, following the full prysm contract.
+
+---
+
+## routing
+
+the URL is the single address space. there are no routing levels, no IPC for navigation, no sync between Bevy and Leptos.
+
+```
+URL changes
+  → wry fires navigation event → Bevy reads URL, activates right surface
+  → Leptos reads window.location, renders right aip
+```
+
+both react independently to the same URL. they do not coordinate.
+
+**writing the URL:**
+
+| who | how | example |
+|---|---|---|
+| hotkey fires | Bevy calls `webview.load_url(...)` | Cmd+2 → `/brain` |
+| user taps link | Leptos calls `history.pushState()` | tap oracle result → `/oracle/:cid` |
+| tray item | Bevy calls `webview.load_url(...)` | tray → `/sense` |
+
+**in the browser (no Bevy).** Leptos router handles everything alone. same URLs, same components. Bevy's absence changes nothing — Leptos always reads `window.location` and never asks Bevy for the route.
+
+**address space:**
+
+```
+/oracle            search and knowledge exploration
+/oracle/:cid       single particle view
+/brain             3D cybergraph — activates mir surface
+/sense             messages
+/sigma             wallet and balances
+/portal            onboarding and citizenship
+/sphere            heroes and staking
+/senate            governance
+/teleport          token transfers and swaps
+/terminal          nushell — activates sugarloaf surface
+```
+
+---
 
 ## prysm contract
 
-[[prysm]] is the law for all rendering in cyb. every visual element — whether rendered by Leptos in the DOM or by Bevy in a native surface — obeys prysm's three rules: ECS structure, fold conformations, and layout algebra. the rendering layer is an implementation detail. the prysm contract is not.
+[[prysm]] is the law for all rendering in cyb. every visual element obeys prysm's rules regardless of which layer renders it. the rendering layer is an implementation detail. the contract is not.
+
+### shared types
+
+both Leptos and Bevy depend on one crate that holds the prysm vocabulary:
+
+```
+prysm/
+├── types.rs    Sizing, GlassDepth, Emotion, FoldSet, Conformation, Urgency
+├── palette.rs  9 emotion values and all color tokens as constants
+├── grid.rs     G = 8px constant, grid unit math
+└── layout.rs   Sizing → CSS string (Leptos), Sizing → taffy Val (Bevy)
+```
+
+no rendering dependency. pure types and constants. the contract is enforced at the type level — a component that takes `depth: GlassDepth` cannot receive an arbitrary opacity float.
 
 ### ECS
 
-prysm defines components (organelles) and systems, not inheritance hierarchies. in Leptos this is an architectural pattern, not a runtime:
+prysm defines components and systems, not inheritance. in Leptos this is an architectural pattern:
 
-| prysm ECS | Leptos implementation |
-|---|---|
-| entity (organelle) | component function |
-| ECS component (`Sizing`, `GlassDepth`, `Emotion`) | typed prop |
-| system (`ConstrainSystem`, `EmotionSystem`) | reactive effect / memo |
-| component tree | Leptos view tree |
+| prysm ECS concept | Leptos | Bevy |
+|---|---|---|
+| entity (organelle) | component function | ECS entity |
+| ECS component (`Sizing`, `GlassDepth`, `Emotion`) | typed prop | Bevy component |
+| system (`ConstrainSystem`, `EmotionSystem`) | reactive effect / memo | Bevy system |
 
-a `<Glass>` component in Leptos takes `depth: GlassDepth` and `emotion: ReadSignal<Emotion>` as typed props. these are prysm's ECS components expressed as Rust types. the system that computes emotion from cyberank state is a Leptos effect that writes to those signals.
-
-in Bevy, ECS is native — prysm components are actual Bevy components (`GlassDepth`, `Emotion`, `Sizing`) and prysm systems are actual Bevy systems. no translation needed.
-
-the same prysm vocabulary (`Sizing::Fix(n)`, `GlassDepth::Midground`, `Emotion::Joy`) is used in both layers. the types are shared in a common crate. Leptos and Bevy both depend on it.
-
-### fold
-
-every component declares its fold conformations — the set of conformations it can collapse to at different widths. the active conformation is selected by container width, not viewport width.
-
-```
-component declares:
-  l₁  (w ≥ 40g)  full layout
-  l₂  (w ≥ 20g)  compact
-  l₃  (w ≥ 10g)  minimal
-
-runtime selects:
-  ResizeObserver watches the component's container
-  signal carries current width in g units
-  memo derives active conformation
-  component renders the matching layout
-```
-
-in Leptos: `use_fold(breakpoints)` returns a `ReadSignal<Conformation>`. the component switches its `view!` branch on it. CSS container queries handle the simple cases declaratively; the signal handles cases where Rust logic is needed.
-
-in Bevy: `FoldSet` is a component. `FoldSystem` reads the organelle's `OccupiedSize`, writes `ActiveConformation`. the rendering system reads `ActiveConformation` and picks the right layout.
+in Bevy, ECS is native — no translation needed. in Leptos, the same vocabulary (`Sizing::Fix(6)`, `GlassDepth::Midground`, `Emotion::Joy`) is expressed as typed Rust props. the types are shared; only the runtime model differs.
 
 ### layout
 
-prysm's layout algebra — constrain → occupy → place — maps directly to CSS Flexbox/Grid. the browser already implements these properties. the job is to encode prysm's sizing types as CSS, not to re-implement layout:
+prysm's constrain → occupy → place maps directly to CSS Flexbox/Grid. the browser already implements these properties — the job is to encode prysm's sizing types as CSS, not to reimplement layout:
 
-| prysm | CSS |
-|---|---|
-| `g = 8px` | `--g: 8px` CSS variable |
-| `Sizing::Fix(n)` | `width: calc(n * var(--g))` |
-| `Sizing::Fill` | `flex: 1` / `width: 100%` |
-| `Sizing::Scale(r)` | `flex-grow: r` |
-| stack horizontal | `display: flex; flex-direction: row; gap: var(--g)` |
-| stack vertical | `display: flex; flex-direction: column; gap: var(--g)` |
-| grid zones | `display: grid; grid-template-areas: ...` |
-| `padding: g` | `padding: var(--g)` |
+| prysm | Leptos (CSS) | Bevy (taffy) |
+|---|---|---|
+| `g = 8px` | `--g: 8px` | `const G: f32 = 8.0` |
+| `Sizing::Fix(n)` | `width: calc(n * var(--g))` | `Val::Px(n * G)` |
+| `Sizing::Fill` | `flex: 1` | `Val::Percent(100.0)` |
+| `Sizing::Scale(r)` | `flex-grow: r` | `FlexGrow(r)` |
+| stack horizontal | `display: flex; flex-direction: row` | `FlexDirection::Row` |
+| stack vertical | `display: flex; flex-direction: column` | `FlexDirection::Column` |
+| grid zones | `display: grid; grid-template-areas: ...` | `bevy_ui` grid |
+| `padding: g` | `padding: var(--g)` | `UiRect::all(Val::Px(G))` |
 
-every Leptos component in prysm takes a `sizing: Sizing` prop and translates it to the corresponding CSS at render time. the layout algebra's theorems (T1–T14) hold because CSS Flexbox/Grid implements exactly these properties — the proofs describe what the browser does, not a custom engine.
+### fold
 
-in Bevy: `bevy_ui` with `taffy` handles layout. `Sizing::Fix(n)` maps to `Val::Px(n * G)`. `Sizing::Fill` maps to `Val::Percent(100.0)`. the same types, the same mapping, different backend.
+every component declares conformations — layouts it can collapse to at different container widths. the active conformation is selected at runtime from the container's measured width.
+
+```
+component declares:  l₁ (w ≥ 40g)  full
+                     l₂ (w ≥ 20g)  compact
+                     l₃ (w ≥ 10g)  minimal
+
+Leptos:  ResizeObserver → width signal → memo → active conformation
+         use_fold(breakpoints) → ReadSignal<Conformation>
+
+Bevy:    OccupiedSize component → FoldSystem reads it → writes ActiveConformation
+         rendering system picks layout branch from ActiveConformation
+```
 
 ### emotion
 
-emotion is an ambient signal — it flows down the component tree without being passed explicitly as a prop to every child. it is computed from cyberank and context state, not assigned manually.
+emotion is an ambient signal flowing down the component tree. it is computed from cyberank, karma, and context state — not assigned manually by components.
 
 ```
 bbg / cybergraph state
   ↓
 EmotionContext (Leptos context provider at app root)
-  provides: ReadSignal<Emotion>
   ↓
-any component calls use_emotion() → gets the current emotion signal
+any component: use_emotion() → ReadSignal<Emotion>
   ↓
-glass tint, saber glow, text color all derive from it
+glass tint (15% color overlay), saber glow, text color all derive from it
 ```
 
-the tri-kernel computes the emotion value from: cyberank of visible content, karma of active neuron, transaction state, message state. the result is one of nine values from the [[prysm/palette]]. components consume it without knowing where it came from.
-
-in Bevy: `Emotion` is a Bevy resource (global) or component (per-entity). `EmotionSystem` writes to it. rendering systems read it.
-
-### the shared prysm crate
-
-both Leptos and Bevy depend on one crate that defines the prysm vocabulary:
-
-```
-prysm/
-├── types.rs      Sizing, GlassDepth, Emotion, FoldSet, Conformation, Urgency
-├── palette.rs    the 9 emotion values and all color tokens as constants
-├── grid.rs       G constant, grid unit math
-└── layout.rs     Sizing → CSS string / Sizing → taffy Val conversions
-```
-
-this crate has no rendering dependency. it is pure types and constants. Leptos uses `Sizing → CSS`. Bevy uses `Sizing → taffy Val`. the prysm contract is enforced at the type level — if a component takes `depth: GlassDepth`, it cannot receive an arbitrary opacity value.
+in Bevy: `Emotion` is a Bevy resource (global) or component (per-entity). `EmotionSystem` computes and writes it.
 
 ### summary
 
-```
-prysm rule      Leptos                    Bevy
-────────────    ──────────────────────    ──────────────────────
-ECS             architectural pattern     native ECS runtime
-fold            use_fold() signal         FoldSystem + FoldSet
-layout          Sizing → CSS props        Sizing → taffy Val
-emotion         use_emotion() context     Emotion resource/component
-glass/depth     CSS backdrop-filter       bevy_ui material
-grid (g=8)      --g CSS variable          G constant in Val::Px
-```
+| prysm rule | Leptos | Bevy |
+|---|---|---|
+| ECS | architectural pattern (typed props + effects) | native ECS |
+| layout | `Sizing` → CSS Flexbox/Grid | `Sizing` → taffy |
+| fold | `use_fold()` signal + ResizeObserver | `FoldSystem` + `ActiveConformation` |
+| emotion | `use_emotion()` context provider | `Emotion` resource/component |
+| glass/depth | CSS `backdrop-filter` + `rgba()` | `bevy_ui` material |
+| grid (g=8) | `--g: 8px` CSS variable | `const G: f32 = 8.0` |
 
-the rendering layer changes. the prysm contract does not.
+---
 
-see [[prysm/layout]] for the component model, [[mir]] for the graph renderer, [[prysm]] for the design system
+## platforms
+
+| platform | window | WebView | Leptos WASM | native surfaces |
+|---|---|---|---|---|
+| macOS desktop | Bevy / winit | WKWebView | ✓ via Trunk | graph (wgpu), terminal (sugarloaf) |
+| web browser | — | the browser itself | ✓ served statically | graph (WebGL via mir) |
+| Android | Bevy / winit | Android System WebView | ✓ via Trunk | graph (wgpu), terminal (sugarloaf) |
+
+the Leptos WASM bundle is identical across all three targets. the shell (Bevy + wry) is platform-specific. nothing is shipped except the Rust binary and the WASM bundle. the browser engine is OS-provided. no Electron, no Node.js, no bundled Chromium.
+
+---
+
+see [[prysm]] for the design system and component model, [[mir]] for the graph renderer, [[prysm/layout]] for the layout algebra, [[nu]] for the nushell integration
