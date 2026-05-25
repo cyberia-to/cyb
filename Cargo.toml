@@ -1,7 +1,7 @@
 [workspace]
 resolver = "2"
-members = ["bevy", "nu"]
-exclude = ["vendor/nushell", "leptos"]
+members = ["shell"]
+exclude = ["apps"]
 
 [workspace.dependencies]
 bevy = "0.18.0"
@@ -17,7 +17,7 @@ codegen-units = 1
 opt-level = 3
 
 [patch.crates-io]
-naga = { path = "vendor/naga" }
+naga = { path = "../evy/forks/naga" }
 aruminium = { path = "../honeycrisp/aruminium" }
 acpu      = { path = "../honeycrisp/acpu" }
 unimem    = { path = "../honeycrisp/unimem" }

@@ -1,7 +1,0 @@
-query cyberlinksCountByParticle($cid: String, $where: cyberlinks_bool_exp) {
-  cyberlinks_aggregate(where: $where) {
-    aggregate {
-      count
-    }
-  }
-}

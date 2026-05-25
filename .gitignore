@@ -1,14 +1,8 @@
 # Rust build artifacts
 target/
-leptos/target/
-leptos/dist/
-
-# React/Node (inside react/)
-react/node_modules/
-react/build/
-react/deno.lock
-react/.env.*.local
-react/public/wasm
+shell/target/
+apps/target/
+apps/dist/
 
 # Logs
 logs
@@ -18,8 +12,7 @@ coverage
 
 # IDE
 .idea
-.vscode/*
-!.vscode/settings.json
+.vscode/
 
 # OS
 **/.DS_Store
