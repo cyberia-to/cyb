@@ -6,128 +6,101 @@ crystal-domain: cyber
 
 # routing
 
-how [[cyb]] navigates. one address space, two routing levels, one source of truth.
+how [[cyb]] navigates. one history, one write path, two reactive subscribers.
 
 ---
 
-## the address
+## the problem
 
-the URL is the single source of truth for where the user is. it lives in the WebView (owned by wry). neither Bevy nor Leptos owns it — both subscribe to it.
+cyb has two subsystems that care about where the user is — Bevy (activates surfaces) and Leptos (renders aips). if both write the URL, you get two histories and back/forward breaks.
+
+specifically: `webview.load_url()` is a **full page reload**. it blows away Leptos state and does not push a history entry. `history.pushState()` is an **SPA navigation** — it preserves state, adds to history, and fires a popState event. mixing them fragments history from the user's perspective.
+
+---
+
+## the rule
+
+**`history.pushState()` is the only navigation mechanism in cyb.**
+
+Bevy never calls `webview.load_url()` for in-app routing. it only reacts.
+
+---
+
+## navigation flow
+
+### user-initiated (link, button, programmatic)
 
 ```
-URL changes
-  → Bevy reads it via wry navigation event  → activates the right surface
-  → Leptos reads window.location            → renders the right aip and sub-page
+Leptos calls use_navigate() / <A href=...>
+  → history.pushState(new URL)
+  → wry fires navigation event
+  → Bevy reads URL → activates right surface (if changed)
+  → Leptos router reads URL → renders right aip + sub-page
 ```
 
-both react independently. no sync, no IPC for routing.
+### hotkey / tray
 
-**writing the URL:**
+```
+user presses Cmd+2 (or tray item)
+  → Bevy fires hotkey event
+  → Bevy sends IPC message to WebView: { navigate: "/brain" }
+  → Leptos receives IPC message → calls use_navigate()("/brain")
+  → history.pushState("/brain")
+  → wry fires navigation event
+  → Bevy reacts: activates mir surface
+  → Leptos reacts: renders brain aip
+```
 
-| trigger | who writes | how |
+Bevy does not navigate directly. it delegates to Leptos via IPC and reacts to the result. the round-trip is ~1ms — invisible to the user.
+
+### back / forward
+
+```
+user presses back (gesture, keyboard, button)
+  → browser history.back() → popState fires in WebView
+  → Leptos router reacts: renders previous aip + sub-page
+  → wry fires navigation event
+  → Bevy reacts: activates surface for previous URL
+```
+
+back/forward work for the full history — across aip switches (Cmd+hotkey) and within-aip navigation (link taps) — because every navigation went through pushState.
+
+---
+
+## ownership
+
+| concern | owner | mechanism |
 |---|---|---|
-| global hotkey | Bevy | `webview.load_url("cyb://brain")` |
-| tray menu item | Bevy | `webview.load_url(...)` |
-| user taps a link | Leptos | `history.pushState()` / `<A href=...>` |
-| programmatic nav | Leptos | `use_navigate()` |
+| navigation history | browser history API | pushState / popState |
+| writing the URL | Leptos (only) | `use_navigate()` / `history.pushState()` |
+| surface activation | Bevy | reacts to wry navigation events |
+| aip + sub-page render | Leptos | reacts to URL via router |
+| hotkey dispatch | Bevy | IPC message → Leptos navigates |
 
-in the browser (no Bevy): Leptos router handles everything alone. same URLs, same behavior. Bevy's absence is invisible to Leptos.
-
----
-
-## two levels
-
-### level 1 — aip routing (Bevy + Leptos)
-
-the first path segment selects the aip. Bevy reads it to activate the right rendering surface. Leptos reads it to render the right aip component.
-
-| path | aip | Bevy surface |
-|---|---|---|
-| `/oracle` | oracle — search and knowledge | WebView |
-| `/brain` | brain — cybergraph explorer | WebView + mir (wgpu) |
-| `/sense` | sense — messages and feed | WebView |
-| `/sigma` | sigma — wallet and balances | WebView |
-| `/portal` | portal — onboarding | WebView |
-| `/sphere` | sphere — heroes and staking | WebView |
-| `/senate` | senate — governance | WebView |
-| `/teleport` | teleport — token transfers | WebView |
-| `/hfr` | hfr — supercomputing resources | WebView |
-| `/terminal` | terminal — nushell shell | WebView + sugarloaf |
-
-### level 2 — sub-routing (Leptos only)
-
-within each aip, Leptos handles sub-navigation. Bevy is unaware — it only cares about the first segment.
-
-**oracle:**
-```
-/oracle                     main search page
-/oracle/:cid                single particle view
-/oracle/:cid/backlinks      incoming cyberlinks to particle
-/oracle/particles           all particles feed
-/oracle/neurons             neuron directory
-/oracle/blocks              block explorer
-/oracle/txs                 transaction explorer
-/oracle/contracts           smart contracts
-```
-
-**brain:**
-```
-/brain                      full cybergraph visualization
-/brain/:cid                 graph centered on particle
-/brain/:neuron/graph        neuron's personal graph
-```
-
-**sense:**
-```
-/sense                      personal feed
-/sense/:neuron              specific neuron's messages
-/sense/thread/:cid          message thread
-```
-
-**sigma:**
-```
-/sigma                      wallet overview
-/sigma/send                 send tokens
-/sigma/stake                delegate stake
-/sigma/history              transaction history
-```
-
-**sphere:**
-```
-/sphere                     heroes list
-/sphere/:neuron             hero profile and delegation
-```
-
-**senate:**
-```
-/senate                     active proposals
-/senate/:id                 specific proposal and voting
-```
-
-**teleport:**
-```
-/teleport                   swap interface
-/teleport/:from/:to         specific pair (e.g. /teleport/boot/hydrogen)
-```
-
-**portal:**
-```
-/portal                     onboarding entry
-/portal/passport            identity and avatar setup
-/portal/gift                gift claiming
-```
+Bevy owns surface activation. Leptos owns URL writes. the history API owns history. nobody owns more than their domain.
 
 ---
 
-## particle addressing
+## address space
 
-any particle in the [[cybergraph]] has a URL:
+the URL is the shared state. first segment = aip, rest = sub-page within that aip.
 
 ```
-/oracle/:cid
+/oracle            search and knowledge
+/oracle/:cid       single particle
+/brain             3D cybergraph          → activates mir surface
+/brain/:cid        graph centered on particle
+/sense             personal feed
+/sigma             wallet
+/portal            onboarding
+/sphere            heroes and staking
+/senate            governance
+/teleport          token swaps
+/hfr               supercomputing resources
+/terminal          nushell shell          → activates sugarloaf surface
 ```
 
-where `:cid` is the particle's content hash. this means every piece of knowledge in cyb is directly addressable. share a URL, share a particle. the oracle aip renders whatever particle type it is — text, image, video, code, pdf.
+Bevy only reacts to the first segment (surface selection). Leptos handles the full path (aip + sub-page). neither layer needs to know about the other's domain.
 
 ---
 
@@ -135,14 +108,14 @@ where `:cid` is the particle's content hash. this means every piece of knowledge
 
 | | browser | desktop |
 |---|---|---|
-| URL host | browser address bar | wry WebView |
-| level 1 routing | Leptos (no Bevy) | Bevy activates surface + Leptos renders |
-| level 2 routing | Leptos | Leptos |
-| surface activation | Leptos renders canvas elements for 3D/terminal | Bevy activates mir / sugarloaf |
-| back / forward | browser history API | Leptos history API + Bevy reacts |
+| history | browser history API | browser history API (same) |
+| navigation write path | Leptos `use_navigate()` | Leptos `use_navigate()` (same) |
+| hotkey dispatch | not applicable | Bevy → IPC → Leptos |
+| surface activation | Leptos renders canvas/fallback | Bevy activates mir / sugarloaf |
+| back/forward | browser UI | browser history API + Bevy reacts |
 
-the Leptos router is identical in both cases. on desktop it has a silent co-subscriber (Bevy) that reacts to level 1 changes to activate native surfaces. on web, Leptos handles it alone.
+the navigation model is identical in both targets. on desktop, Bevy adds surface activation and hotkey dispatch. on web, Leptos handles everything alone. the history API is the same.
 
 ---
 
-see [[rendering]] for how surfaces are activated, [[prysm/layout]] for the grid those surfaces inhabit
+see [[rendering]] for how surfaces are activated once the URL changes
