@@ -129,12 +129,6 @@ for surfaces 2 and 3: the content inside them follows their own rules (3D graph,
 
 ---
 
-## routing
-
-the URL is the single address space. wry owns it. Bevy and Leptos both subscribe — neither owns it. see [[routing]] for the full address space, aip routes, sub-routes, and browser vs desktop behavior.
-
----
-
 ## prysm contract
 
 [[prysm]] is the law for all rendering in cyb. every visual element obeys prysm's rules regardless of which layer renders it. the rendering layer is an implementation detail. the contract is not.
@@ -237,4 +231,4 @@ the Leptos WASM bundle is identical across all three targets. the shell (Bevy + 
 
 ---
 
-see [[prysm]] for the design system and component model, [[mir]] for the graph renderer, [[prysm/layout]] for the layout algebra, [[nu]] for the nushell integration
+see [[routing]] for the address space and navigation model, [[prysm]] for the design system and component model, [[mir]] for the graph renderer, [[prysm/layout]] for the layout algebra, [[nu]] for the nushell integration
