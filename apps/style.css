@@ -5,49 +5,23 @@
 }
 
 :root {
-    --cyan: #36d6ae;
-    --cyan-dim: #1a8a6a;
-    --pink: #f62bfd;
-    --bg: #000000;
-    --surface: #111111;
-    --text: #ffffff;
+    --cyan:     #36d6ae;
+    --pink:     #f62bfd;
+    --text:     #ffffff;
     --text-dim: #888888;
-    --font: 'Play', sans-serif;
 }
 
 html, body {
     height: 100%;
-    background: var(--bg);
+    background: transparent;
     color: var(--text);
-    font-family: var(--font);
+    font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    pointer-events: none;
 }
 
-a {
-    color: var(--cyan);
-    text-decoration: none;
-}
-
-a:hover {
-    color: var(--text);
-}
-
-/* ── Layout ─────────────────────────────────────── */
-
-.app {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-}
-
-.content {
-    flex: 1;
-    display: flex;
-    justify-content: center;
-    align-items: center;
-}
-
-/* ── Commander (bottom bar) ─────────────────────── */
+/* ── Commander (bottom, centered) ──────────────── */
 
 .commander-bar {
     position: fixed;
@@ -57,11 +31,13 @@ a:hover {
     width: 62%;
     max-width: calc(100vw - 200px);
     z-index: 10;
+    pointer-events: none;
 }
 
 .commander-wrapper {
     position: relative;
     background: rgba(0, 0, 0, 0.79);
+    pointer-events: auto;
 }
 
 .commander-input {
@@ -71,7 +47,6 @@ a:hover {
     background: transparent;
     border: none;
     color: var(--text);
-    font-family: var(--font);
     font-size: 20px;
     text-align: center;
     outline: none;
@@ -83,7 +58,7 @@ a:hover {
     opacity: 0.5;
 }
 
-/* Gradient trapezoid with perspective */
+/* Gradient trapezoid */
 .commander-gradient {
     position: absolute;
     bottom: 2px;
@@ -116,13 +91,12 @@ a:hover {
     pointer-events: none;
 }
 
-/* Active state (focus) */
 .commander-wrapper.active .commander-line {
     height: 1px;
     box-shadow: 0px 0px 6px 2px rgba(246, 43, 253, 0.65);
 }
 
-/* ── Nav links ──────────────────────────────────── */
+/* ── Mode switcher ──────────────────────────────── */
 
 .nav-bottom {
     position: fixed;
@@ -132,68 +106,21 @@ a:hover {
     display: flex;
     gap: 24px;
     z-index: 9;
+    pointer-events: none;
 }
 
 .nav-link {
+    pointer-events: auto;
     color: var(--text-dim);
     font-size: 13px;
     text-transform: lowercase;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    padding: 0;
 }
 
 .nav-link:hover {
     color: var(--cyan);
-}
-
-/* ── Oracle (home) ──────────────────────────────── */
-
-.oracle {
-    text-align: center;
-}
-
-.oracle-title {
-    font-size: 72px;
-    font-weight: 700;
-    color: var(--cyan);
-    letter-spacing: 8px;
-    margin-bottom: 16px;
-}
-
-.oracle-sub {
-    color: var(--text-dim);
-    font-size: 16px;
-}
-
-/* ── Search ─────────────────────────────────────── */
-
-.search {
-    width: 100%;
-    max-width: 800px;
-    padding: 32px;
-}
-
-.search-query {
-    color: var(--cyan);
-    margin-bottom: 24px;
-}
-
-/* ── Generic page ───────────────────────────────── */
-
-.page {
-    width: 100%;
-    max-width: 800px;
-    padding: 32px;
-}
-
-.page h2 {
-    color: var(--cyan);
-    margin-bottom: 16px;
-}
-
-.placeholder {
-    color: var(--text-dim);
-}
-
-.not-found {
-    font-size: 48px;
-    color: var(--text-dim);
 }
