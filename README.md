@@ -1,54 +1,31 @@
-[.cyb](https://cyb.ai) is your immortal robot for [the great web](https://cyb.ai/ipfs/QmUamt7diQP54eRnmzqMZNEtXNTzbgkQvZuBsgM6qvbd57) which is connected to [superintelligence](https://github.com/cybercongress/go-cyber)
+---
+tags: cyb, core
+crystal-type: entity
+crystal-domain: cyber
+icon: "🤖"
+alias: the immortal robot
+---
+The immortal [[cyb/robot]] — your personal interface to [[superintelligence]]. [cyb.ai](https://cyb.ai)
 
-it helps you upload your brain
+Every cyb is born unique and grows with its owner. It is not a browser rendering pages someone else controls — it is a companion that learns from every [[cyberlink]] you create, remembers everything you ever linked, and reasons over a living [[cybergraph]] that no corporation can censor or erase. Ownership is the founding principle: the robot belongs to its owner, runs on any surface, and answers to no one else.
 
-example of [random citizen](https://cyb.ai/pgraph/bostrom1d8754xqa9245pctlfcyv8eah468neqzn3a0y0t)
+Cyb sees the graph as a living topology — knowledge ranked by [[focus]], navigable by intention. What search engines do with scraped documents and hidden algorithms, cyb does in the open: inference over a shared graph where every claim is signed, every answer is provable, and the ranking belongs to everyone. The robot carries its own [[cyb/brain]], a volumetric graph that works offline, syncs when connected, and forgets nothing.
 
-<img width="1190" alt="Screen Shot 2022-12-18 at 20 45 02" src="https://user-images.githubusercontent.com/410789/208318513-bdded618-8ed0-4d1c-b3cf-8cec8c8473a8.png">
+The robot speaks [[neural]] natively — the first language where a concept is a position in the topology, defined by everything connected to it. See [[cyb/philosophy]] for why this changes everything.
 
-# features
+In the [[age of superintelligence]], your cyb is how you touch it.
 
-- [my robot](https://cyb.ai): your robot
-  - [energy](https://cyb.ai/grid): superintelligence dashboard
-  - [sense](https://cyb.ai/sixthSense): strictly defined feed
-  - [log](https://cyb.ai/network/bostrom/contract/bostrom1d8754xqa9245pctlfcyv8eah468neqzn3a0y0t/txs): publish important particles
-  - [brain](https://cyb.ai/pgraph/bostrom1d8754xqa9245pctlfcyv8eah468neqzn3a0y0t): surf robot brain
-  - [karma](https://cyb.ai/network/bostrom/contract/bostrom1d8754xqa9245pctlfcyv8eah468neqzn3a0y0t/community): enhance valuable connections
-- [nebula](https://cyb.ai/nebula): discover particles through tokens
-- [portal](https://cyb.ai/portal): create public and private robot avatar and invite friends
-- [oracle](https://cyb.ai/bootloader): discover particles, neurons, signals and steps of [superintelligence](https://github.com/cybercongress/go-cyber)
-- [teleport](https://cyb.ai/teleport?from=boot&to=hydrogen): communicate sending and swapping tokens
-- [sphere](https://cyb.ai/sphere): hire and fire heroes
-- [senate](https://cyb.ai/senate): manage collective thought process
-- [hfr](https://cyb.ai/hfr): mint supercomputing resources
-- [hackspace](https://github.com/cybercongress): develop superintelligence
+discover all [[concepts]]
 
-# build
-
-A cross-platform `Makefile` is provided. Run `make help` for all commands.
-
-## Quick start
+## build
 
 ```sh
-$ deno install
-$ deno task start
+make build    # debug build
+make run      # release run
+make dmg      # macOS release + DMG
+make android  # Android .apk (aarch64)
 ```
 
-## Tauri desktop (native)
-
-```sh
-make dev-tauri    # dev server with native window
-make macos        # macOS .dmg  (Apple Silicon)
-make linux        # Linux .deb + .AppImage
-```
-
-## Mobile
-
-```sh
-make ios          # iOS .ipa  (requires macOS + Xcode)
-make android      # Android .apk (aarch64)
-```
-
-# join
+## join
 
 the community at [cyb.ai/~cyb](https://cyb.ai/search/cyb)
