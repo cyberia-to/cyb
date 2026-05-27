@@ -1,6 +1,6 @@
 [workspace]
 resolver = "2"
-members = ["shell"]
+members = ["core", "cyb-stream", "prysm", "shell"]
 exclude = ["apps"]
 
 [workspace.dependencies]
@@ -11,10 +11,19 @@ tokio = { version = "1.40", features = ["full"] }
 bip39 = { version = "2", features = ["rand"] }
 ureq = { version = "3", features = ["json"] }
 
+[profile.dev]
+split-debuginfo = "unpacked"
+
 [profile.release]
 lto = "fat"
 codegen-units = 1
 opt-level = 3
+
+[profile.release-dev]
+inherits = "release"
+lto = "thin"
+codegen-units = 8
+debug = false
 
 [patch.crates-io]
 naga = { path = "../evy/forks/naga" }
