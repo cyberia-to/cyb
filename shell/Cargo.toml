@@ -29,13 +29,19 @@ crate-type = ["cdylib", "lib"]
 path = "src/lib.rs"
 
 [[bin]]
-name = "cyb-shell"
+name = "cyb"
 path = "src/main.rs"
 required-features = ["desktop"]
 
 [dependencies]
+# cyb workspace crates
+cyb-core   = { path = "../core" }
+cyb-stream = { path = "../cyb-stream" }
+prysm      = { path = "../prysm" }
+
 # Core (all platforms)
 wry = { version = "0.53", features = ["transparent"] }
+arboard = "3"
 futures = "0.3"
 futures-lite = "2"
 serde = { workspace = true }

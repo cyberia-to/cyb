@@ -36,12 +36,16 @@ use sugarloaf::context::Context as SugarloafContext;
 use sugarloaf::font::FontLibrary;
 use sugarloaf::layout::RootStyle;
 
+pub mod nushell_to_stream;
 use super::WorldState;
 
 const FONT_SIZE: f32 = 16.0;
+const CONTENT_RATIO: f32 = 0.62;
 
-const NU_ENV_SOURCE: &str = include_str!("../../assets/nu-config/env.nu");
-const NU_CONFIG_SOURCE: &str = include_str!("../../assets/nu-config/config.nu");
+use crate::shell::chrome::{CHROME_TOP_H, CHROME_BOTTOM_H};
+
+const NU_ENV_SOURCE: &str = include_str!("../../../assets/nu-config/env.nu");
+const NU_CONFIG_SOURCE: &str = include_str!("../../../assets/nu-config/config.nu");
 
 pub struct TerminalWorldPlugin;
 
@@ -263,11 +267,19 @@ impl LineBuffer {
     }
 }
 
-// --- Eval result from background thread ---
+// --- Streaming eval messages from the background thread ---
+//
+// `Chunk` is fired every time the running command produces more output —
+// for external programs this is whatever the OS pipe gives us per read.
+// `Done` is fired exactly once when the command finishes, returning the
+// engine so the foreground can reuse it for the next prompt.
 
-struct EvalResult {
-    output: Vec<u8>,
-    error: Option<String>,
+enum EvalMsg {
+    Chunk(Vec<u8>),
+    Done {
+        engine: NuShellEngine,
+        error: Option<String>,
+    },
 }
 
 // --- NonSend terminal state (contains !Sync types) ---
@@ -282,13 +294,17 @@ struct TerminalNonSendState {
     rich_text_id: usize,
     sugarloaf: Sugarloaf<'static>,
     image_handle: Handle<Image>,
-    eval_rx: Option<std::sync::mpsc::Receiver<(EvalResult, NuShellEngine)>>,
+    eval_rx: Option<std::sync::mpsc::Receiver<EvalMsg>>,
     eval_in_progress: bool,
     key_cursor: bevy::ecs::message::MessageCursor<KeyboardInput>,
     last_width: u32,
     last_height: u32,
     ctrlc_flag: Arc<AtomicBool>,
     force_full_render: bool,
+    content_phys_w: u32,
+    content_phys_h: u32,
+    content_logical_w: f32,
+    content_logical_h: f32,
 }
 
 // --- Nushell engine initialization ---
@@ -376,7 +392,7 @@ fn wire_ctrlc_signal(engine: &mut NuShellEngine, flag: Arc<AtomicBool>) {
 // --- Window resize handling ---
 
 /// Resize sugarloaf + term grid. Returns true if dimensions actually changed.
-fn handle_resize(state: &mut TerminalNonSendState, new_width: u32, new_height: u32) -> bool {
+fn handle_resize(state: &mut TerminalNonSendState, new_width: u32, new_height: u32, scale: f32) -> bool {
     if (new_width, new_height) == (state.last_width, state.last_height) {
         return false;
     }
@@ -384,8 +400,14 @@ fn handle_resize(state: &mut TerminalNonSendState, new_width: u32, new_height: u
         return false; // minimized
     }
 
-    // 1. Update sugarloaf context dimensions
-    state.sugarloaf.resize(new_width, new_height);
+    let content_w = ((new_width as f32) * CONTENT_RATIO) as u32;
+    let chrome_phys = ((CHROME_TOP_H + CHROME_BOTTOM_H) * scale) as u32;
+    let content_h   = new_height.saturating_sub(chrome_phys);
+
+    // 1. Update sugarloaf context to content-column × chrome-excluded dimensions
+    state.sugarloaf.resize(content_w, content_h);
+    state.content_phys_w  = content_w;
+    state.content_phys_h  = content_h;
 
     // 2. Recreate offscreen texture at new size
     state.sugarloaf.ctx.enable_offscreen();
@@ -395,8 +417,8 @@ fn handle_resize(state: &mut TerminalNonSendState, new_width: u32, new_height: u
     let cell_w = if dims.width > 0.0 { dims.width } else { 9.0 };
     let cell_h = if dims.height > 0.0 { dims.height } else { 18.0 };
 
-    let new_cols = (new_width as f32 / cell_w).floor().max(2.0) as usize;
-    let new_rows = (new_height as f32 / cell_h).floor().max(1.0) as usize;
+    let new_cols = (content_w as f32 / cell_w).floor().max(2.0) as usize;
+    let new_rows = (content_h as f32 / cell_h).floor().max(1.0) as usize;
 
     // 4. Resize alacritty terminal grid if needed
     if new_cols != state.cols || new_rows != state.rows {
@@ -405,10 +427,10 @@ fn handle_resize(state: &mut TerminalNonSendState, new_width: u32, new_height: u
         term.resize(term_dims);
         state.cols = new_cols;
         state.rows = new_rows;
-        info!("Terminal resized to {}x{} ({}x{}px)", new_cols, new_rows, new_width, new_height);
+        info!("Terminal resized to {}x{} ({}x{}px content)", new_cols, new_rows, content_w, new_height);
     }
 
-    // 5. Update stored dimensions
+    // 5. Update stored dimensions (full screen, not content — for change detection)
     state.last_width = new_width;
     state.last_height = new_height;
     state.force_full_render = true;
@@ -416,33 +438,36 @@ fn handle_resize(state: &mut TerminalNonSendState, new_width: u32, new_height: u
 }
 
 fn check_resize(world: &mut World) {
-    let win_dims: Option<(u32, u32, f32, f32)> = world
+    let win_dims: Option<(u32, u32, f32, f32, f32)> = world
         .query_filtered::<Entity, With<PrimaryWindow>>()
         .single(world)
         .ok()
         .map(|e| {
             let w = world.get::<Window>(e).unwrap();
-            (w.physical_width(), w.physical_height(), w.width(), w.height())
+            (w.physical_width(), w.physical_height(), w.width(), w.height(), w.scale_factor())
         });
-    let Some((phys_w, phys_h, logical_w, logical_h)) = win_dims else { return };
+    let Some((phys_w, phys_h, logical_w, logical_h, scale)) = win_dims else { return };
 
-    // Phase 1: resize sugarloaf + term (only borrows NonSend, uses physical dims)
-    let (resized, image_handle) = {
+    // Phase 1: resize sugarloaf + term
+    let (resized, image_handle, content_phys_w, content_phys_h) = {
         let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
-        let resized = handle_resize(state, phys_w, phys_h);
-        (resized, state.image_handle.clone())
+        let resized = handle_resize(state, phys_w, phys_h, scale);
+        (resized, state.image_handle.clone(), state.content_phys_w, state.content_phys_h)
     };
 
     if !resized { return; }
 
-    // Phase 2: update Bevy Image at physical size (borrows Assets<Image>)
+    let content_logical_w = logical_w * CONTENT_RATIO;
+    let content_logical_h = logical_h - CHROME_TOP_H - CHROME_BOTTOM_H;
+
+    // Phase 2: update Bevy Image to new content size
     {
         let mut images = world.resource_mut::<Assets<Image>>();
         if let Some(image) = images.get_mut(&image_handle) {
             *image = Image::new_fill(
                 bevy::render::render_resource::Extent3d {
-                    width: phys_w,
-                    height: phys_h,
+                    width: content_phys_w,
+                    height: content_phys_h,
                     depth_or_array_layers: 1,
                 },
                 bevy::render::render_resource::TextureDimension::D2,
@@ -453,18 +478,33 @@ fn check_resize(world: &mut World) {
         }
     }
 
-    // Phase 3: update Sprite custom_size at logical size (borrows ECS components)
+    // Phase 3: update Sprite to new content-column logical size
     {
         let mut sprites = world.query_filtered::<&mut Sprite, With<TerminalMarker>>();
         for mut sprite in sprites.iter_mut(world) {
-            sprite.custom_size = Some(Vec2::new(logical_w, logical_h));
+            sprite.custom_size = Some(Vec2::new(content_logical_w, content_logical_h));
         }
+    }
+
+    // Update stored logical dims
+    {
+        let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
+        state.content_logical_w = content_logical_w;
+        state.content_logical_h = content_logical_h;
     }
 }
 
 // --- Evaluate nushell command and capture output as bytes ---
 
-fn evaluate_and_capture(engine: &mut NuShellEngine, input: &str) -> EvalResult {
+/// Evaluate `input` and stream every byte of output through `tx` as soon
+/// as it is produced. Returns an error string if parsing or evaluation
+/// fails before any output is generated. The caller is responsible for
+/// sending the final `EvalMsg::Done`.
+fn evaluate_and_capture(
+    engine: &mut NuShellEngine,
+    input: &str,
+    tx: &std::sync::mpsc::Sender<EvalMsg>,
+) -> Option<String> {
     let input_bytes = input.as_bytes();
 
     // Parse
@@ -472,18 +512,12 @@ fn evaluate_and_capture(engine: &mut NuShellEngine, input: &str) -> EvalResult {
     let block = parse(&mut working_set, Some("input"), input_bytes, false);
 
     if let Some(err) = working_set.parse_errors.first() {
-        return EvalResult {
-            output: Vec::new(),
-            error: Some(format!("Parse error: {:?}", err)),
-        };
+        return Some(format!("Parse error: {:?}", err));
     }
 
     let delta = working_set.render();
     if let Err(e) = engine.engine_state.merge_delta(delta) {
-        return EvalResult {
-            output: Vec::new(),
-            error: Some(format!("Merge error: {:?}", e)),
-        };
+        return Some(format!("Merge error: {:?}", e));
     }
 
     // Redirect stdout/stderr to Pipe so external commands output through PipelineData
@@ -504,43 +538,63 @@ fn evaluate_and_capture(engine: &mut NuShellEngine, input: &str) -> EvalResult {
         match result {
             Ok(exec_data) => exec_data.body,
             Err(e) => {
-                return EvalResult {
-                    output: Vec::new(),
-                    error: Some(format!("{:?}", e)),
-                };
+                return Some(format!("{:?}", e));
             }
         }
         // guard drops here, restoring stack redirection state
     };
 
-    // Capture output — pipe through `table` command for proper formatting
-    let output = capture_pipeline_output(pipeline_data, engine);
+    // Stream the output into `tx`. For ByteStream this happens
+    // incrementally; for structured data we format then send once.
+    stream_pipeline_output(pipeline_data, engine, tx);
 
     // Merge env changes (cd, export, etc.)
     if let Err(e) = engine.engine_state.merge_env(&mut engine.stack) {
         warn!("Failed to merge env: {:?}", e);
     }
 
-    EvalResult {
-        output,
-        error: None,
-    }
+    None
 }
 
-fn capture_pipeline_output(data: PipelineData, engine: &mut NuShellEngine) -> Vec<u8> {
+/// Push the data from `data` through `tx`, chunked for `ByteStream` so
+/// long-running externals (cargo, git clone, ffmpeg…) surface progress
+/// as it happens instead of in one wall after the fact.
+fn stream_pipeline_output(
+    data: PipelineData,
+    engine: &mut NuShellEngine,
+    tx: &std::sync::mpsc::Sender<EvalMsg>,
+) {
+    use std::io::Read;
+    const CHUNK_BYTES: usize = 4096;
+
     match data {
-        PipelineData::Empty => Vec::new(),
-        PipelineData::Value(Value::Nothing { .. }, _) => Vec::new(),
+        PipelineData::Empty | PipelineData::Value(Value::Nothing { .. }, _) => {}
         PipelineData::ByteStream(stream, _) => {
-            match stream.into_bytes() {
-                Ok(bytes) => bytes,
-                Err(e) => format!("Error: {}", e).into_bytes(),
+            let Some(mut reader) = stream.reader() else { return };
+            let mut buf = [0u8; CHUNK_BYTES];
+            loop {
+                match reader.read(&mut buf) {
+                    Ok(0) => break,
+                    Ok(n) => {
+                        if tx.send(EvalMsg::Chunk(buf[..n].to_vec())).is_err() {
+                            // Foreground dropped the receiver — bail.
+                            break;
+                        }
+                    }
+                    Err(_) => break,
+                }
             }
         }
-        PipelineData::Value(Value::String { val, .. }, _) => val.into_bytes(),
-        // For structured data (records, lists, tables) — pipe through `table` command
+        PipelineData::Value(Value::String { val, .. }, _) => {
+            let _ = tx.send(EvalMsg::Chunk(val.into_bytes()));
+        }
         other => {
-            pipe_through_table(other, engine)
+            // Structured data → table command. These outputs are bounded
+            // (no infinite streams here) so one chunk is fine.
+            let bytes = pipe_through_table(other, engine);
+            if !bytes.is_empty() {
+                let _ = tx.send(EvalMsg::Chunk(bytes));
+            }
         }
     }
 }
@@ -649,24 +703,14 @@ fn setup_terminal(world: &mut World) {
         // Handle resize if window changed while terminal was inactive
         check_resize(world);
 
-        // Get logical window size for sprite
-        let logical_size: Option<(f32, f32)> = world
-            .query_filtered::<Entity, With<PrimaryWindow>>()
-            .single(world)
-            .ok()
-            .map(|e| {
-                let w = world.get::<Window>(e).unwrap();
-                (w.width(), w.height())
-            });
-
-        // Read current state for spawning entities
-        let image_handle = {
+        // Read stored content dimensions and image handle
+        let (image_handle, content_lw, content_lh) = {
             let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
             state.force_full_render = true;
-            state.image_handle.clone()
+            (state.image_handle.clone(), state.content_logical_w, state.content_logical_h)
         };
 
-        let (lw, lh) = logical_size.unwrap_or((1280.0, 800.0));
+        let sprite_y = (CHROME_BOTTOM_H - CHROME_TOP_H) / 2.0;
 
         // Re-spawn camera + sprite for this world
         world.spawn((
@@ -682,9 +726,10 @@ fn setup_terminal(world: &mut World) {
             TerminalMarker,
             Sprite {
                 image: image_handle,
-                custom_size: Some(Vec2::new(lw, lh)),
+                custom_size: Some(Vec2::new(content_lw, content_lh)),
                 ..default()
             },
+            Transform::from_xyz(0.0, sprite_y, 0.0),
         ));
         info!("Terminal resumed (state persisted)");
         return;
@@ -706,6 +751,12 @@ fn setup_terminal(world: &mut World) {
         )
     };
 
+    // Exclude chrome bars from terminal area
+    let chrome_top_phys    = (CHROME_TOP_H    * scale_factor) as u32;
+    let chrome_bottom_phys = (CHROME_BOTTOM_H * scale_factor) as u32;
+    let content_logical_h  = logical_h - CHROME_TOP_H - CHROME_BOTTOM_H;
+    let content_phys_h     = win_h.saturating_sub(chrome_top_phys + chrome_bottom_phys);
+
     // Get Bevy's GPU resources (cloned into main world by GpuBridgePlugin)
     let device = world.resource::<bevy::render::renderer::RenderDevice>().wgpu_device().clone();
     let queue: sugarloaf::wgpu::Queue = {
@@ -714,15 +765,18 @@ fn setup_terminal(world: &mut World) {
         inner.clone()
     };
 
-    // Create Sugarloaf with Bevy's device/queue (no separate GPU stack)
+    let content_phys_w   = ((win_w as f32) * CONTENT_RATIO) as u32;
+    let content_logical_w = logical_w * CONTENT_RATIO;
+
+    // Create Sugarloaf at content-column width, chrome-excluded height
     let surface_format = sugarloaf::wgpu::TextureFormat::Bgra8UnormSrgb;
     let ctx = SugarloafContext::new_external(
         device,
         queue,
         surface_format,
         SugarloafWindowSize {
-            width: win_w as f32,
-            height: win_h as f32,
+            width:  content_phys_w as f32,
+            height: content_phys_h as f32,
         },
         scale_factor,
     );
@@ -753,8 +807,8 @@ fn setup_terminal(world: &mut World) {
     let cell_w = if dims.width > 0.0 { dims.width } else { 9.0 };
     let cell_h = if dims.height > 0.0 { dims.height } else { 18.0 };
 
-    let cols = (win_w as f32 / cell_w).floor().max(2.0) as usize;
-    let rows = (win_h as f32 / cell_h).floor().max(1.0) as usize;
+    let cols = (content_phys_w as f32 / cell_w).floor().max(2.0) as usize;
+    let rows = (content_phys_h as f32 / cell_h).floor().max(1.0) as usize;
 
     // Create alacritty terminal grid (NO PTY)
     let config = Config::default();
@@ -767,28 +821,40 @@ fn setup_terminal(world: &mut World) {
     let mut nu_engine = init_nushell_engine();
     wire_ctrlc_signal(&mut nu_engine, ctrlc_flag.clone());
 
-    // Render initial prompt
+    // Pre-fill rows-1 blank lines so the prompt anchors to the bottom.
+    // Use a single space per row so alacritty initialises each cell and
+    // sugarloaf's layout sees real (non-empty) lines.
+    {
+        let mut t = term.lock();
+        let fill = " \r\n".repeat(rows.saturating_sub(1));
+        processor.advance(&mut *t, fill.as_bytes());
+    }
+
+    // Render initial prompt at bottom
     let prompt_bytes = evaluate_prompt(&mut nu_engine);
     {
         let mut t = term.lock();
         processor.advance(&mut *t, &prompt_bytes);
     }
 
-    // Create Bevy Image (Bgra8UnormSrgb, matching sugarloaf output)
+    // Create Bevy Image at content-column × chrome-excluded height
     let image = Image::new_fill(
         bevy::render::render_resource::Extent3d {
-            width: win_w,
-            height: win_h,
+            width: content_phys_w,
+            height: content_phys_h,
             depth_or_array_layers: 1,
         },
         bevy::render::render_resource::TextureDimension::D2,
-        &[0, 0, 0, 255], // BGRA dark background
+        &[0, 0, 0, 255],
         bevy::render::render_resource::TextureFormat::Bgra8UnormSrgb,
         RenderAssetUsages::MAIN_WORLD | RenderAssetUsages::RENDER_WORLD,
     );
     let image_handle = world.resource_mut::<Assets<Image>>().add(image);
 
-    // Spawn Camera2d + fullscreen Sprite (tonemapping disabled for accurate terminal colors)
+    // Sprite y: center of the available area between chrome bars (Camera2d, y-up)
+    let sprite_y = (CHROME_BOTTOM_H - CHROME_TOP_H) / 2.0;
+
+    // Camera + centered column sprite (positioned between chrome bars)
     world.spawn((
         TerminalMarker,
         Camera2d,
@@ -802,9 +868,10 @@ fn setup_terminal(world: &mut World) {
         TerminalMarker,
         Sprite {
             image: image_handle.clone(),
-            custom_size: Some(Vec2::new(logical_w, logical_h)),
+            custom_size: Some(Vec2::new(content_logical_w, content_logical_h)),
             ..default()
         },
+        Transform::from_xyz(0.0, sprite_y, 0.0),
     ));
 
     world.insert_non_send_resource(TerminalNonSendState {
@@ -824,11 +891,15 @@ fn setup_terminal(world: &mut World) {
         last_height: win_h,
         ctrlc_flag,
         force_full_render: true,
+        content_phys_w,
+        content_phys_h,
+        content_logical_w,
+        content_logical_h,
     });
 
     info!(
-        "Terminal created ({}x{}) cell={:.0}x{:.0} (embedded nushell + sugarloaf → Bevy Sprite)",
-        cols, rows, cell_w, cell_h
+        "Terminal created {}x{} cells, {}px content column (bottom-anchored)",
+        cols, rows, content_phys_w
     );
 }
 
@@ -839,6 +910,20 @@ fn terminal_update(world: &mut World) {
     if world.get_non_send_resource::<TerminalNonSendState>().is_none() {
         setup_terminal(world);
         return; // skip this frame, render next frame
+    }
+
+    // Run any command forwarded from the commander bar
+    let pending = world
+        .get_resource_mut::<crate::worlds::PendingShellCmd>()
+        .and_then(|mut p| p.0.take());
+    if let Some(cmd) = pending {
+        let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
+        if !state.eval_in_progress {
+            // Echo command to terminal, then run it
+            let echo = format!("{}\r\n", cmd);
+            feed_term(&state.term, &mut state.processor, echo.as_bytes());
+            dispatch_eval(state, cmd);
+        }
     }
 
     // Check for window resize
@@ -876,15 +961,21 @@ fn process_scroll_input(world: &mut World) {
 }
 
 fn process_keyboard_input(world: &mut World) {
-    // Clone cursor from state, read new messages, update cursor back
+    // Always advance the cursor (even while chrome is focused) so we don't
+    // replay commander key events when focus returns to the terminal.
     let Some(state_ref) = world.get_non_send_resource::<TerminalNonSendState>() else { return };
     let mut cursor = state_ref.key_cursor.clone();
-    drop(state_ref);
 
     let events: Vec<KeyboardInput> = {
         let messages = world.resource::<bevy::ecs::message::Messages<KeyboardInput>>();
         cursor.read(messages).cloned().collect()
     };
+
+    // Check chrome blocking BEFORE mutably borrowing state
+    let chrome_blocking = world
+        .get_resource::<crate::shell::chrome::ChromeState>()
+        .map(|c| c.focused || c.just_submitted)
+        .unwrap_or(false);
 
     // Check modifier keys
     let (cmd_held, ctrl_held) = {
@@ -895,9 +986,46 @@ fn process_keyboard_input(world: &mut World) {
         )
     };
 
+    // Cmd+V: paste clipboard into the line buffer. Read before borrowing
+    // state mutably so we don't fight the `world` borrow.
+    let paste_text = if cmd_held && !chrome_blocking {
+        let keys = world.resource::<ButtonInput<KeyCode>>();
+        if keys.just_pressed(KeyCode::KeyV) {
+            crate::shell::clipboard::read_clipboard().ok()
+        } else {
+            None
+        }
+    } else {
+        None
+    };
+
     let Some(state) = world.get_non_send_resource_mut::<TerminalNonSendState>() else { return };
     let state = state.into_inner();
-    state.key_cursor = cursor;
+    state.key_cursor = cursor; // always update to discard stale events
+
+    if chrome_blocking {
+        return;
+    }
+
+    if let Some(text) = paste_text {
+        if !state.eval_in_progress {
+            {
+                let mut term = state.term.lock();
+                term.scroll_display(Scroll::Bottom);
+            }
+            for ch in text.chars() {
+                // Convert newlines to space so a multi-line paste does
+                // not silently auto-submit anything dangerous. The user
+                // can press Enter explicitly when ready.
+                let ch = if ch == '\n' || ch == '\r' { ' ' } else { ch };
+                if ch.is_control() { continue; }
+                state.line_buffer.insert_char(ch);
+                let bytes = ch.to_string().into_bytes();
+                feed_term(&state.term, &mut state.processor, &bytes);
+            }
+        }
+        return;
+    }
 
     for event in &events {
         if !event.state.is_pressed() {
@@ -1045,12 +1173,12 @@ fn dispatch_eval(state: &mut TerminalNonSendState, input: String) {
 
     std::thread::spawn(move || {
         let mut engine = engine;
-        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-            evaluate_and_capture(&mut engine, &input)
-        })) {
-            Ok(result) => {
-                let _ = tx.send((result, engine));
-            }
+        let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+            evaluate_and_capture(&mut engine, &input, &tx)
+        }));
+
+        let error = match outcome {
+            Ok(maybe_err) => maybe_err,
             Err(panic_info) => {
                 let panic_msg = if let Some(s) = panic_info.downcast_ref::<&str>() {
                     s.to_string()
@@ -1059,13 +1187,11 @@ fn dispatch_eval(state: &mut TerminalNonSendState, input: String) {
                 } else {
                     "Unknown panic".to_string()
                 };
-                let result = EvalResult {
-                    output: Vec::new(),
-                    error: Some(format!("Internal panic: {}", panic_msg)),
-                };
-                let _ = tx.send((result, engine));
+                Some(format!("Internal panic: {}", panic_msg))
             }
-        }
+        };
+
+        let _ = tx.send(EvalMsg::Done { engine, error });
     });
 }
 
@@ -1077,11 +1203,30 @@ fn poll_eval_results(world: &mut World) {
         return;
     }
 
-    let result: (EvalResult, NuShellEngine) = {
+    // Drain every message currently waiting so a fast-emitting command
+    // (cargo, ffmpeg, big find) doesn't sit one-frame-behind the producer.
+    // `done` collects the terminating message so we run the engine
+    // restoration once after the loop.
+    let mut done: Option<EvalMsg> = None;
+    let mut last_chunk_ended_with_newline = true;
+
+    loop {
         let Some(ref rx) = state.eval_rx else { return };
         match rx.try_recv() {
-            Ok(result) => result,
-            Err(std::sync::mpsc::TryRecvError::Empty) => return,
+            Ok(EvalMsg::Chunk(bytes)) => {
+                if bytes.is_empty() { continue; }
+                last_chunk_ended_with_newline = bytes.ends_with(b"\n");
+                let translated = convert_lf_to_crlf(&bytes);
+                feed_term(&state.term, &mut state.processor, &translated);
+            }
+            Ok(msg @ EvalMsg::Done { .. }) => {
+                done = Some(msg);
+                break;
+            }
+            Err(std::sync::mpsc::TryRecvError::Empty) => {
+                // More chunks may arrive next frame; bail out for now.
+                return;
+            }
             Err(std::sync::mpsc::TryRecvError::Disconnected) => {
                 warn!("Eval thread lost — rebuilding nushell engine");
                 state.eval_in_progress = false;
@@ -1102,30 +1247,25 @@ fn poll_eval_results(world: &mut World) {
                 return;
             }
         }
-    };
+    }
 
-    let (eval_result, mut engine) = result;
+    let Some(EvalMsg::Done { mut engine, error }) = done else { return };
+
     state.eval_rx = None;
     state.eval_in_progress = false;
     state.ctrlc_flag.store(false, Ordering::Relaxed);
     engine.engine_state.reset_signals();
 
-    // Feed output into terminal
-    if !eval_result.output.is_empty() {
-        let output = convert_lf_to_crlf(&eval_result.output);
-        feed_term(&state.term, &mut state.processor, &output);
-        if !eval_result.output.ends_with(b"\n") {
-            feed_term(&state.term, &mut state.processor, b"\r\n");
-        }
+    // Make sure the trailing prompt starts on its own line.
+    if !last_chunk_ended_with_newline {
+        feed_term(&state.term, &mut state.processor, b"\r\n");
     }
 
-    // Show error if any
-    if let Some(ref err) = eval_result.error {
+    if let Some(err) = error {
         let err_msg = format!("\x1b[31mError: {}\x1b[0m\r\n", err);
         feed_term(&state.term, &mut state.processor, err_msg.as_bytes());
     }
 
-    // Render prompt
     let prompt = evaluate_prompt(&mut engine);
     feed_term(&state.term, &mut state.processor, &prompt);
 

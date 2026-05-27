@@ -1,5 +1,4 @@
 mod agent;
-mod prysm;
 mod shell;
 mod worlds;
 
@@ -45,14 +44,11 @@ fn main() {
         .add_plugins(GpuBridgePlugin)
         .add_plugins(prysm::PrysmPlugin)
         .add_plugins(worlds::WorldsPlugin)
+        .add_plugins(shell::chrome::ChromePlugin)
         .add_plugins(shell::hotkeys::HotkeysPlugin)
-        .add_plugins(worlds::splash::SplashWorldPlugin)
-        .add_plugins(worlds::spells::SpellsWorldPlugin)
-        .add_plugins(worlds::sense::SenseWorldPlugin)
+        .add_plugins(shell::nav::NavPlugin)
         .add_plugins(mir::bevy::GraphWorldPlugin)
         .add_plugins(worlds::graph::GraphBridgePlugin)
-        .add_plugins(worlds::interface::InterfaceWorldPlugin)
-        .add_plugins(worlds::portal::PortalWorldPlugin)
         .add_plugins(worlds::terminal::TerminalWorldPlugin)
         .add_plugins(agent::AgentPlugin)
         .add_plugins(shell::tray::TrayPlugin)
