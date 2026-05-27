@@ -1,0 +1,17 @@
+[package]
+name = "prysm"
+version = "0.1.0"
+edition = "2024"
+description = "cyb's visual composition layer — atoms, molecules, theme. Renderer-agnostic primitives plus a Bevy plugin for the default desktop runtime."
+license = "Cyber"
+
+[dependencies]
+cyb-core = { path = "../core" }
+cyb-stream = { path = "../cyb-stream" }
+bevy = { workspace = true }
+crossbeam-channel = "0.5"
+serde_json = { workspace = true }
+
+[[example]]
+name = "stream_demo"
+path = "examples/stream_demo.rs"

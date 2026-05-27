@@ -8,6 +8,8 @@
 //! - varint LEB128 unsigned integer (payload length in bytes)
 //! - payload N bytes; may contain nested frames for composition chunks
 
+pub use bytes;
+
 use std::io::{self, Read, Write};
 
 pub mod sigil {
@@ -362,7 +364,7 @@ pub fn encode_nested(chunks: &[Chunk]) -> bytes::Bytes {
 }
 
 /// Decode all chunks from a nested payload (component, table, etc.).
-pub fn decode_nested(payload: &bytes::Bytes) -> Vec<Chunk> {
+pub fn decode_nested(payload: &[u8]) -> Vec<Chunk> {
     let mut reader = Reader::new();
     reader.feed(payload);
     let mut out = Vec::new();
