@@ -1,4 +1,5 @@
 ---
+title: Cyb
 tags: cyb, core
 crystal-type: entity
 crystal-domain: cyber
