@@ -1,7 +1,7 @@
+use js_sys::{Function, Reflect};
 use leptos::prelude::*;
 use leptos_meta::*;
-use leptos_router::components::*;
-use leptos_router::path;
+use wasm_bindgen::JsCast;
 
 fn main() {
     console_error_panic_hook::set_once();
@@ -11,25 +11,23 @@ fn main() {
 #[component]
 fn App() -> impl IntoView {
     provide_meta_context();
-
     view! {
         <Stylesheet href="/style.css"/>
-        <Router>
-            <div class="app">
-                <main class="content">
-                    <Routes fallback=|| view! { <p class="not-found">"404"</p> }>
-                        <Route path=path!("/") view=OraclePage/>
-                        <Route path=path!("/search/:query") view=SearchPage/>
-                        <Route path=path!("/particles") view=ParticlesPage/>
-                        <Route path=path!("/graph") view=GraphPage/>
-                        <Route path=path!("/settings") view=SettingsPage/>
-                    </Routes>
-                </main>
-                <Commander/>
-            </div>
-        </Router>
+        <Commander />
+        <NavBottom />
     }
 }
+
+fn ipc_post(msg: &str) {
+    let Some(win) = web_sys::window() else { return };
+    let Ok(ipc) = Reflect::get(&win, &"ipc".into()) else { return };
+    let Ok(post_msg) = Reflect::get(&ipc, &"postMessage".into()) else { return };
+    if let Some(f) = post_msg.dyn_ref::<Function>() {
+        let _ = f.call1(&ipc, &msg.into());
+    }
+}
+
+// ── Commander ──────────────────────────────────────────────────────────────
 
 #[component]
 fn Commander() -> impl IntoView {
@@ -40,17 +38,14 @@ fn Commander() -> impl IntoView {
         ev.prevent_default();
         let q = query.get();
         if !q.is_empty() {
-            let navigate = leptos_router::hooks::use_navigate();
-            navigate(&format!("/search/{}", q), Default::default());
+            ipc_post(&format!(r#"{{"type":"command","text":"{}"}}"#,
+                q.replace('\\', "\\\\").replace('"', "\\\"")));
+            set_query.set(String::new());
         }
     };
 
     let wrapper_class = move || {
-        if focused.get() {
-            "commander-wrapper active"
-        } else {
-            "commander-wrapper"
-        }
+        if focused.get() { "commander-wrapper active" } else { "commander-wrapper" }
     };
 
     view! {
@@ -72,59 +67,20 @@ fn Commander() -> impl IntoView {
     }
 }
 
-#[component]
-fn OraclePage() -> impl IntoView {
-    view! {
-        <div class="oracle">
-            <h1 class="oracle-title">"cyb"</h1>
-            <p class="oracle-sub">"your immortal robot for the great web"</p>
-        </div>
-    }
-}
+// ── Mode switcher ──────────────────────────────────────────────────────────
 
 #[component]
-fn SearchPage() -> impl IntoView {
-    let params = leptos_router::hooks::use_params_map();
-    let query = move || {
-        params.with(|p| p.get("query").unwrap_or_default())
+fn NavBottom() -> impl IntoView {
+    let nav = move |path: &'static str| {
+        move |_: web_sys::MouseEvent| {
+            ipc_post(&format!(r#"{{"type":"navigate","path":"{}"}}"#, path));
+        }
     };
 
     view! {
-        <div class="search">
-            <h2 class="search-query">{query}</h2>
-            <div class="search-results">
-                <p class="placeholder">"searching the knowledge graph..."</p>
-            </div>
-        </div>
-    }
-}
-
-#[component]
-fn ParticlesPage() -> impl IntoView {
-    view! {
-        <div class="page">
-            <h2>"particles"</h2>
-            <p class="placeholder">"cyberlinks and particles explorer"</p>
-        </div>
-    }
-}
-
-#[component]
-fn GraphPage() -> impl IntoView {
-    view! {
-        <div class="page">
-            <h2>"graph"</h2>
-            <p class="placeholder">"knowledge graph visualization"</p>
-        </div>
-    }
-}
-
-#[component]
-fn SettingsPage() -> impl IntoView {
-    view! {
-        <div class="page">
-            <h2>"settings"</h2>
-            <p class="placeholder">"keys, backends, preferences"</p>
+        <div class="nav-bottom">
+            <button class="nav-link" on:click=nav("/brain")   >"graph"</button>
+            <button class="nav-link" on:click=nav("/terminal")>"terminal"</button>
         </div>
     }
 }

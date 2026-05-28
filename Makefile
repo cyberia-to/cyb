@@ -1,14 +1,18 @@
-.PHONY: dev build run clean check apps dmg android android-rust android-assets android-apk
+.PHONY: dev fast build run clean check apps dmg android android-rust android-assets android-apk
 
-# Development: run shell
+# Development: debug build (fastest iteration, no opt)
 dev:
 	cargo run -p cyb-shell
+
+# Fast release-quality dev build (thin-LTO, 8 CUs — ~60s incremental vs 290s fat)
+fast:
+	cargo run --profile release-dev -p cyb-shell
 
 # Build (debug)
 build:
 	cargo build -p cyb-shell
 
-# Build release
+# Build release (fat-LTO, for DMG)
 release:
 	cargo build --release -p cyb-shell
 
@@ -24,9 +28,11 @@ check:
 clean:
 	cargo clean
 
+RUSTUP_RUSTC := $(HOME)/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc
+
 # Build Leptos WASM apps
 apps:
-	cd apps && trunk build --release
+	cd apps && RUSTC=$(RUSTUP_RUSTC) trunk build --release
 
 # Build macOS .dmg
 dmg: release apps

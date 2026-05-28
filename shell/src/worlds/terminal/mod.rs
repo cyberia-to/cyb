@@ -6,22 +6,22 @@ use std::sync::atomic::{AtomicBool, Ordering};
 
 use bevy::ecs::system::SystemState;
 use bevy::input::keyboard::{Key, KeyboardInput};
+use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
 
 use nu_cli::{gather_parent_env_vars, eval_source};
 use nu_cmd_lang::create_default_context;
 use nu_command::add_shell_command_context;
 use nu_engine::env::convert_env_values;
-use nu_engine::ClosureEvalOnce;
 use nu_parser::parse;
-use nu_protocol::engine::{EngineState, Redirection, Stack, StateWorkingSet, Closure};
+use nu_protocol::engine::{EngineState, Redirection, Stack, StateWorkingSet};
 use nu_protocol::debugger::WithoutDebug;
-use nu_protocol::{OutDest, PipelineData, Signals, Value};
+use nu_protocol::{OutDest, PipelineData, Signals};
 use nu_std::load_standard_library;
 
 use cyb_stream::Chunk;
 use prysm::stream::{StreamScrollback, MoleculeRegistry, register_v0_molecules};
-use prysm::{theme, atoms::glass_bg, atoms::GlassDepth};
+use prysm::theme;
 
 use super::WorldState;
 use crate::shell::chrome::{CHROME_TOP_H, CHROME_BOTTOM_H};
@@ -140,13 +140,17 @@ struct TerminalNonSendState {
     nu_engine: Option<NuShellEngine>,
     line_buffer: LineBuffer,
     eval_rx: Option<std::sync::mpsc::Receiver<StreamMsg>>,
+    engine_rx: Option<std::sync::mpsc::Receiver<NuShellEngine>>,
     eval_in_progress: bool,
     ctrlc_flag: Arc<AtomicBool>,
     key_cursor: bevy::ecs::message::MessageCursor<KeyboardInput>,
+    wheel_cursor: bevy::ecs::message::MessageCursor<MouseWheel>,
     // UI entity IDs (persisted across world switches)
     scrollback_entity: Entity,
+    scroll_area_entity: Entity,
     prompt_entity: Entity,
     input_entity: Entity,
+    scroll_offset: f32,
 }
 
 // ── Nushell init ──────────────────────────────────────────────────────────────
@@ -211,35 +215,16 @@ fn wire_ctrlc_signal(engine: &mut NuShellEngine, flag: Arc<AtomicBool>) {
     engine.engine_state.set_signals(Signals::new(flag));
 }
 
-fn get_env_closure(engine_state: &EngineState, stack: &Stack, var_name: &str) -> Option<Closure> {
-    let val = stack.get_env_var(engine_state, var_name)
-        .or_else(|| engine_state.get_env_var(var_name))?;
-    match val {
-        Value::Closure { val, .. } => Some(*val.clone()),
-        _ => None,
-    }
-}
-
 /// Build the prompt text: cwd display (no ANSI, just text).
-fn prompt_text(engine: &NuShellEngine) -> String {
-    // Try PROMPT_COMMAND closure
-    if let Some(prompt_cmd) = get_env_closure(&engine.engine_state, &engine.stack, "PROMPT_COMMAND") {
-        if let Ok(data) = ClosureEvalOnce::new(&engine.engine_state, &engine.stack, prompt_cmd)
-            .run_with_input(PipelineData::empty())
-        {
-            let config = (*engine.engine_state.get_config()).clone();
-            if let Ok(s) = data.collect_string("", &config) {
-                let clean: String = s.chars().filter(|c| c.is_ascii_graphic() || *c == ' ' || *c == '/').collect();
-                if !clean.is_empty() {
-                    return format!("{} ▸ ", clean.trim());
-                }
-            }
-        }
-    }
-    // Fallback: cwd
+fn prompt_text(_engine: &NuShellEngine) -> String {
     let cwd = std::env::current_dir()
         .map(|p| p.display().to_string())
         .unwrap_or_else(|_| "~".to_string());
+    if let Ok(home) = std::env::var("HOME") {
+        if cwd.starts_with(&home) {
+            return format!("~{} ▸ ", &cwd[home.len()..]);
+        }
+    }
     format!("{} ▸ ", cwd)
 }
 
@@ -297,24 +282,31 @@ fn dispatch_eval(state: &mut TerminalNonSendState, input: String) {
     };
 
     state.eval_in_progress = true;
+    state.scroll_offset = 0.0; // auto-scroll to bottom on new command
     let (tx, rx) = std::sync::mpsc::channel::<StreamMsg>();
+    let (engine_tx, engine_rx) = std::sync::mpsc::channel::<NuShellEngine>();
     state.eval_rx = Some(rx);
+    state.engine_rx = Some(engine_rx);
 
     std::thread::spawn(move || {
         let mut engine = engine;
         let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
             evaluate_and_capture(&mut engine, &input, &tx)
         }));
-        let error = match outcome {
-            Ok(e) => e,
+        match outcome {
+            Ok(error) => {
+                // Send engine back before Done so it's available when Done arrives
+                let _ = engine_tx.send(engine);
+                let _ = tx.send(StreamMsg::Done { error });
+            }
             Err(panic) => {
                 let msg = if let Some(s) = panic.downcast_ref::<&str>() { s.to_string() }
                     else if let Some(s) = panic.downcast_ref::<String>() { s.clone() }
                     else { "unknown panic".to_string() };
-                Some(format!("panic: {msg}"))
+                // Don't return engine on panic — it may be corrupt
+                let _ = tx.send(StreamMsg::Done { error: Some(format!("panic: {msg}")) });
             }
-        };
-        let _ = tx.send(StreamMsg::Done { error });
+        }
     });
 }
 
@@ -352,14 +344,15 @@ fn poll_eval_results(world: &mut World) {
     }
 
     let scrollback_entity = state.scrollback_entity;
-    let (engine_back, error_str) = if let Some(err) = done_error {
+    let (engine_back, returned_engine) = if let Some(_err) = done_error {
+        // Retrieve engine from the return channel (sent before Done by the eval thread)
+        let eng = state.engine_rx.as_ref().and_then(|rx| rx.try_recv().ok());
         state.eval_rx = None;
+        state.engine_rx = None;
         state.eval_in_progress = false;
         state.ctrlc_flag.store(false, Ordering::Relaxed);
-        // Engine is returned via StreamMsg::Done — but it's in the spawned thread
-        // (we don't get it back here since we use StreamMsg, not EvalMsg).
-        // Re-init a fresh engine — TODO: thread returns engine once we adopt a channel that carries it.
-        (true, err)
+        state.scroll_offset = 0.0; // auto-scroll to bottom after command finishes
+        (true, eng)
     } else {
         (false, None)
     };
@@ -377,7 +370,6 @@ fn poll_eval_results(world: &mut World) {
             if let Some(mol) = registry.get(chunk.sigil, chunk.render) {
                 mol.spawn(&mut commands, scrollback_entity, chunk);
             } else {
-                // Fallback: plain text
                 commands.spawn((
                     Text::new(String::from_utf8_lossy(&chunk.payload).into_owned()),
                     TextFont { font_size: theme::BODY, ..default() },
@@ -390,16 +382,13 @@ fn poll_eval_results(world: &mut World) {
     }
 
     if engine_back {
-        // Re-initialize engine (v0: fresh engine; v1: return engine from thread)
-        let mut engine = init_nushell_engine();
+        let mut engine = returned_engine.unwrap_or_else(|| {
+            warn!("Engine not returned from eval thread (panic?), reinitializing");
+            init_nushell_engine()
+        });
         let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
-        if let Some(err) = error_str {
-            // Error chunk already spawned above
-            let _ = err;
-        }
         wire_ctrlc_signal(&mut engine, state.ctrlc_flag.clone());
         state.nu_engine = Some(engine);
-        // Refresh prompt
         update_prompt(world);
     }
 }
@@ -546,7 +535,11 @@ fn setup_terminal(world: &mut World) {
             let state = world.get_non_send_resource::<TerminalNonSendState>().unwrap();
             (state.scrollback_entity, state.prompt_entity, state.input_entity)
         };
-        spawn_terminal_ui(world, scrollback_entity, prompt_entity, input_entity);
+        let scroll_area_entity = spawn_terminal_ui(world, scrollback_entity, prompt_entity, input_entity);
+        {
+            let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
+            state.scroll_area_entity = scroll_area_entity;
+        }
         update_prompt(world);
         update_input_display(world);
         info!("Terminal resumed");
@@ -559,7 +552,15 @@ fn setup_terminal(world: &mut World) {
     wire_ctrlc_signal(&mut nu_engine, ctrlc_flag.clone());
 
     // Create persistent entities (not children of root yet — will be attached below)
-    let scrollback_entity = world.spawn(StreamScrollback::default()).id();
+    let scrollback_entity = world.spawn((
+        StreamScrollback::default(),
+        Node {
+            flex_direction: FlexDirection::Column,
+            width: Val::Percent(100.0),
+            row_gap: Val::Px(1.0),
+            ..default()
+        },
+    )).id();
     let prompt_text_init = prompt_text(&nu_engine);
     let prompt_entity = world.spawn((
         PromptLabel,
@@ -575,18 +576,22 @@ fn setup_terminal(world: &mut World) {
     )).id();
 
     // Build the UI tree
-    spawn_terminal_ui(world, scrollback_entity, prompt_entity, input_entity);
+    let scroll_area_entity = spawn_terminal_ui(world, scrollback_entity, prompt_entity, input_entity);
 
     world.insert_non_send_resource(TerminalNonSendState {
         nu_engine: Some(nu_engine),
         line_buffer: LineBuffer::new(),
         eval_rx: None,
+        engine_rx: None,
         eval_in_progress: false,
         key_cursor: Default::default(),
+        wheel_cursor: Default::default(),
         ctrlc_flag,
         scrollback_entity,
+        scroll_area_entity,
         prompt_entity,
         input_entity,
+        scroll_offset: 0.0,
     });
 
     info!("Terminal world initialized");
@@ -597,7 +602,7 @@ fn spawn_terminal_ui(
     scrollback_entity: Entity,
     prompt_entity: Entity,
     input_entity: Entity,
-) {
+) -> Entity {
     // Root container: full screen, column flex, padding for chrome bars
     let root = world.spawn((
         TerminalMarker,
@@ -614,15 +619,15 @@ fn spawn_terminal_ui(
         BackgroundColor(theme::DARK_BASE),
     )).id();
 
-    // Scrollback area (flex-grow)
+    // Scrollback area (flex-grow, content anchored to bottom via FlexEnd)
     let scroll_area = world.spawn((
         TerminalMarker,
         Node {
             flex_grow: 1.0,
             flex_direction: FlexDirection::Column,
+            justify_content: JustifyContent::FlexEnd,
             overflow: Overflow::clip_y(),
             padding: UiRect::all(Val::Px(G)),
-            row_gap: Val::Px(1.0),
             ..default()
         },
         ChildOf(root),
@@ -647,6 +652,56 @@ fn spawn_terminal_ui(
     // Attach prompt and input entities into the prompt row
     world.entity_mut(prompt_entity).insert(ChildOf(prompt_row));
     world.entity_mut(input_entity).insert(ChildOf(prompt_row));
+
+    scroll_area
+}
+
+// ── Scroll ────────────────────────────────────────────────────────────────────
+
+fn process_scroll(world: &mut World) {
+    // Read mouse wheel events using the Messages API (same as KeyboardInput)
+    let delta_y: f32 = {
+        let Some(state_ref) = world.get_non_send_resource::<TerminalNonSendState>() else { return };
+        let mut cursor = state_ref.wheel_cursor.clone();
+        drop(state_ref);
+        let messages = world.resource::<bevy::ecs::message::Messages<MouseWheel>>();
+        let dy: f32 = cursor.read(messages).map(|e| -e.y).sum();
+        let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
+        state.wheel_cursor = cursor;
+        dy
+    };
+
+    if delta_y == 0.0 { return; }
+
+    // Get content / viewport heights for clamping
+    let (scrollback_h, area_h) = {
+        let state = world.get_non_send_resource::<TerminalNonSendState>().unwrap();
+        let sb_h = world.get::<ComputedNode>(state.scrollback_entity)
+            .map(|cn| cn.size().y).unwrap_or(0.0);
+        let sa_h = world.get::<ComputedNode>(state.scroll_area_entity)
+            .map(|cn| cn.size().y).unwrap_or(0.0);
+        (sb_h, sa_h)
+    };
+
+    let max_scroll = (scrollback_h - area_h).max(0.0);
+    let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
+    state.scroll_offset = (state.scroll_offset + delta_y * 40.0).clamp(0.0, max_scroll);
+}
+
+fn apply_scroll_offset(world: &mut World) {
+    let (offset, scrollback_entity, scrollback_h, area_h) = {
+        let state = world.get_non_send_resource::<TerminalNonSendState>().unwrap();
+        let sb_h = world.get::<ComputedNode>(state.scrollback_entity)
+            .map(|cn| cn.size().y).unwrap_or(0.0);
+        let sa_h = world.get::<ComputedNode>(state.scroll_area_entity)
+            .map(|cn| cn.size().y).unwrap_or(0.0);
+        (state.scroll_offset, state.scrollback_entity, sb_h, sa_h)
+    };
+    let max_scroll = (scrollback_h - area_h).max(0.0);
+    let clamped = offset.clamp(0.0, max_scroll);
+    if let Some(mut node) = world.get_mut::<Node>(scrollback_entity) {
+        node.top = Val::Px(clamped);
+    }
 }
 
 // ── Update ────────────────────────────────────────────────────────────────────
@@ -659,6 +714,8 @@ fn terminal_update(world: &mut World) {
 
     process_keyboard_input(world);
     poll_eval_results(world);
+    process_scroll(world);
+    apply_scroll_offset(world);
 }
 
 // ── Teardown ──────────────────────────────────────────────────────────────────

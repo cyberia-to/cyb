@@ -331,6 +331,26 @@ dependencies = [
 ]
 
 [[package]]
+name = "arboard"
+version = "3.6.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0348a1c054491f4bfe6ab86a7b6ab1e44e45d899005de92f58b3df180b36ddaf"
+dependencies = [
+ "clipboard-win",
+ "image",
+ "log",
+ "objc2 0.6.3",
+ "objc2-app-kit 0.3.2",
+ "objc2-core-foundation",
+ "objc2-core-graphics",
+ "objc2-foundation 0.3.2",
+ "parking_lot",
+ "percent-encoding",
+ "windows-sys 0.60.2",
+ "x11rb",
+]
+
+[[package]]
 name = "arc-swap"
 version = "1.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -555,6 +575,17 @@ name = "base64ct"
 version = "1.8.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
+
+[[package]]
+name = "bbg"
+version = "0.1.0"
+dependencies = [
+ "cyb-nebu",
+ "cyber-hemera",
+ "cyber-lens",
+ "nox",
+ "zheng",
+]
 
 [[package]]
 name = "bech32"
@@ -2296,6 +2327,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3a822ea5bc7590f9d40f1ba12c0dc3c2760f3482c6984db1573ad11031420831"
 
 [[package]]
+name = "clipboard-win"
+version = "5.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bde03770d3df201d4fb868f2c9c59e66a3e4e2bd06692a0fe701e7103c7e84d4"
+dependencies = [
+ "error-code",
+]
+
+[[package]]
 name = "codepage"
 version = "0.1.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2852,14 +2892,119 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
+name = "cyb-core"
+version = "0.1.0"
+dependencies = [
+ "cybergraph",
+]
+
+[[package]]
+name = "cyb-genies"
+version = "0.1.0"
+dependencies = [
+ "strata-core",
+ "strata-ext",
+ "strata-proof",
+]
+
+[[package]]
+name = "cyb-jali"
+version = "0.1.0"
+dependencies = [
+ "cyb-nebu",
+ "strata-core",
+]
+
+[[package]]
+name = "cyb-kuro"
+version = "0.1.0"
+dependencies = [
+ "strata-core",
+ "strata-ext",
+ "strata-proof",
+]
+
+[[package]]
+name = "cyb-lens-assayer"
+version = "0.1.0"
+dependencies = [
+ "cyb-lens-brakedown",
+ "cyb-lens-core",
+ "cyb-nebu",
+ "cyb-trop",
+]
+
+[[package]]
+name = "cyb-lens-binius"
+version = "0.1.0"
+dependencies = [
+ "cyb-kuro",
+ "cyb-lens-core",
+ "cyber-hemera",
+]
+
+[[package]]
+name = "cyb-lens-brakedown"
+version = "0.1.0"
+dependencies = [
+ "cyb-lens-core",
+ "cyb-nebu",
+ "cyber-hemera",
+]
+
+[[package]]
+name = "cyb-lens-core"
+version = "0.1.0"
+dependencies = [
+ "cyb-nebu",
+ "cyber-hemera",
+ "strata-core",
+ "strata-proof",
+]
+
+[[package]]
+name = "cyb-lens-ikat"
+version = "0.1.0"
+dependencies = [
+ "cyb-jali",
+ "cyb-lens-brakedown",
+ "cyb-lens-core",
+ "cyb-nebu",
+]
+
+[[package]]
+name = "cyb-lens-porphyry"
+version = "0.1.0"
+dependencies = [
+ "cyb-genies",
+ "cyb-lens-core",
+ "cyber-hemera",
+]
+
+[[package]]
+name = "cyb-nebu"
+version = "0.1.0"
+dependencies = [
+ "acpu",
+ "strata-compute",
+ "strata-core",
+ "strata-ext",
+ "strata-proof",
+]
+
+[[package]]
 name = "cyb-shell"
 version = "0.1.0"
 dependencies = [
  "alacritty_terminal",
  "android_logger",
+ "arboard",
  "bech32",
  "bevy",
  "bip39",
+ "chrono",
+ "cyb-core",
+ "cyb-stream",
  "futures",
  "futures-lite",
  "global-hotkey",
@@ -2876,6 +3021,7 @@ dependencies = [
  "nu-protocol",
  "nu-std",
  "nu-utils",
+ "prysm",
  "serde",
  "serde_json",
  "sha2",
@@ -2884,6 +3030,46 @@ dependencies = [
  "tray-icon",
  "ureq",
  "wry",
+]
+
+[[package]]
+name = "cyb-stream"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+]
+
+[[package]]
+name = "cyb-trop"
+version = "0.1.0"
+dependencies = [
+ "strata-core",
+]
+
+[[package]]
+name = "cyber-hemera"
+version = "0.3.0"
+
+[[package]]
+name = "cyber-lens"
+version = "0.1.0"
+dependencies = [
+ "cyb-lens-assayer",
+ "cyb-lens-binius",
+ "cyb-lens-brakedown",
+ "cyb-lens-core",
+ "cyb-lens-ikat",
+ "cyb-lens-porphyry",
+]
+
+[[package]]
+name = "cybergraph"
+version = "0.1.0"
+dependencies = [
+ "bbg",
+ "cyb-nebu",
+ "cyber-hemera",
+ "zheng",
 ]
 
 [[package]]
@@ -3327,6 +3513,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "error-code"
+version = "3.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "dea2df4cf52843e0452895c455a1a2cfbb842a1e7329671acf418fdc53ed4c59"
+
+[[package]]
 name = "euclid"
 version = "0.22.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3378,6 +3570,12 @@ name = "fastrand"
 version = "2.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "37909eebbb50d72f9059c3b6d82c0463f2ff062c9e95845c43a6c9c0355411be"
+
+[[package]]
+name = "fax"
+version = "0.2.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "caf1079563223d5d59d83c85886a56e586cfd5c1a26292e971a0fa266531ac5a"
 
 [[package]]
 name = "fd-lock"
@@ -4720,8 +4918,9 @@ dependencies = [
  "moxcms",
  "num-traits",
  "png 0.18.1",
- "zune-core",
- "zune-jpeg",
+ "tiff",
+ "zune-core 0.5.1",
+ "zune-jpeg 0.5.12",
 ]
 
 [[package]]
@@ -5903,6 +6102,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "nox"
+version = "0.1.0"
+dependencies = [
+ "cyb-lens-brakedown",
+ "cyb-lens-core",
+ "cyb-nebu",
+ "cyber-hemera",
+]
+
+[[package]]
 name = "ntapi"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6469,6 +6678,7 @@ dependencies = [
  "bitflags 2.11.0",
  "objc2 0.6.3",
  "objc2-core-foundation",
+ "objc2-core-graphics",
  "objc2-foundation 0.3.2",
 ]
 
@@ -6526,7 +6736,10 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e022c9d066895efa1345f8e33e584b9f958da2fd4cd116792e15e07e4720a807"
 dependencies = [
  "bitflags 2.11.0",
+ "dispatch2",
+ "objc2 0.6.3",
  "objc2-core-foundation",
+ "objc2-io-surface",
 ]
 
 [[package]]
@@ -6601,6 +6814,17 @@ checksum = "33fafba39597d6dc1fb709123dfa8289d39406734be322956a69f0931c73bb15"
 dependencies = [
  "bitflags 2.11.0",
  "libc",
+ "objc2-core-foundation",
+]
+
+[[package]]
+name = "objc2-io-surface"
+version = "0.3.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "180788110936d59bab6bd83b6060ffdfffb3b922ba1396b312ae795e1de9d81d"
+dependencies = [
+ "bitflags 2.11.0",
+ "objc2 0.6.3",
  "objc2-core-foundation",
 ]
 
@@ -7552,6 +7776,17 @@ name = "profiling"
 version = "1.0.17"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3eb8486b569e12e2c32ad3e204dbaba5e4b5b216e9367044f25f1dba42341773"
+
+[[package]]
+name = "prysm"
+version = "0.1.0"
+dependencies = [
+ "bevy",
+ "crossbeam-channel",
+ "cyb-core",
+ "cyb-stream",
+ "serde_json",
+]
 
 [[package]]
 name = "pure-rust-locales"
@@ -8623,6 +8858,31 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "a2eb9349b6444b326872e140eb1cf5e7c522154d69e7a0ffb0fb81c06b37543f"
 
 [[package]]
+name = "strata-compute"
+version = "0.1.0"
+dependencies = [
+ "strata-core",
+]
+
+[[package]]
+name = "strata-core"
+version = "0.1.0"
+
+[[package]]
+name = "strata-ext"
+version = "0.1.0"
+dependencies = [
+ "strata-core",
+]
+
+[[package]]
+name = "strata-proof"
+version = "0.1.0"
+dependencies = [
+ "strata-core",
+]
+
+[[package]]
 name = "strict-num"
 version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9055,6 +9315,20 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f60246a4944f24f6e018aa17cdeffb7818b76356965d03b07d6a9886e8962185"
 dependencies = [
  "cfg-if",
+]
+
+[[package]]
+name = "tiff"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "af9605de7fee8d9551863fd692cce7637f548dbd9db9180fcc07ccc6d26c336f"
+dependencies = [
+ "fax",
+ "flate2",
+ "half",
+ "quick-error",
+ "weezl",
+ "zune-jpeg 0.4.21",
 ]
 
 [[package]]
@@ -11578,6 +11852,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "zheng"
+version = "0.1.0"
+dependencies = [
+ "cyb-nebu",
+ "cyber-hemera",
+ "cyber-lens",
+ "nox",
+]
+
+[[package]]
 name = "zigzag"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -11626,9 +11910,24 @@ dependencies = [
 
 [[package]]
 name = "zune-core"
+version = "0.4.12"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "3f423a2c17029964870cfaabb1f13dfab7d092a62a29a89264f4d36990ca414a"
+
+[[package]]
+name = "zune-core"
 version = "0.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cb8a0807f7c01457d0379ba880ba6322660448ddebc890ce29bb64da71fb40f9"
+
+[[package]]
+name = "zune-jpeg"
+version = "0.4.21"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "29ce2c8a9384ad323cf564b67da86e21d3cfdff87908bc1223ed5c99bc792713"
+dependencies = [
+ "zune-core 0.4.12",
+]
 
 [[package]]
 name = "zune-jpeg"
@@ -11636,7 +11935,7 @@ version = "0.5.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "410e9ecef634c709e3831c2cfdb8d9c32164fae1c67496d5b68fff728eec37fe"
 dependencies = [
- "zune-core",
+ "zune-core 0.5.1",
 ]
 
 [[patch.unused]]

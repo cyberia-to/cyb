@@ -87,6 +87,9 @@ fn spawn_cell(commands: &mut Commands, row: Entity, text: &str, is_header: bool)
         (theme::BODY, theme::TEXT_PRIMARY)
     };
     commands.spawn((
+        Text::new(text.to_string()),
+        TextFont { font_size: size, ..default() },
+        TextColor(color),
         Node {
             flex_grow: 1.0,
             flex_basis: Val::Px(0.0),
@@ -94,13 +97,7 @@ fn spawn_cell(commands: &mut Commands, row: Entity, text: &str, is_header: bool)
             ..default()
         },
         ChildOf(row),
-    )).with_children(|c| {
-        c.spawn((
-            Text::new(text.to_string()),
-            TextFont { font_size: size, ..default() },
-            TextColor(color),
-        ));
-    });
+    ));
 }
 
 fn split_table_rows(rows: &[Chunk]) -> (Vec<String>, Vec<Vec<Chunk>>) {

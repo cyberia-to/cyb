@@ -172,6 +172,7 @@ pub fn register_v0_molecules(registry: &mut MoleculeRegistry) {
     registry.register(text::NeuronMolecule);
     registry.register(error::ErrorMolecule);
     registry.register(log::LogMolecule);
+    registry.register(status::StatusMolecule);
     registry.register(progress::ProgressMolecule);
     registry.register(action::ActionMolecule);
     registry.register(component::ComponentMolecule);

@@ -33,7 +33,6 @@ pub fn pipeline_to_chunks(
             value_to_chunks(v, engine_state, stack, tx);
         }
         PipelineData::ListStream(stream, _) => {
-            // Collect all records; if uniform shape → table, else → list of chunks
             let vals: Vec<Value> = stream.into_iter().collect();
             let chunk = list_to_chunk(vals, engine_state, stack);
             let _ = tx.send(StreamMsg::Chunk(chunk));
@@ -58,7 +57,7 @@ pub fn value_to_chunks(
         Value::Bool    { val, .. }  => Chunk::text(if val { "true" } else { "false" }),
         Value::Filesize{ val, .. }  => Chunk::text(&format_filesize(val.get())),
         Value::Duration{ val, .. }  => Chunk::text(&format_duration(val)),
-        Value::Date    { val, .. }  => Chunk::text(&val.to_string()),
+        Value::Date    { val, .. }  => Chunk::text(&format_date_relative(&val)),
         Value::Range   { val, .. }  => Chunk::text(&format!("{val:?}")),
         Value::Record  { val, .. }  => record_to_chunk(val.into_owned().into_iter().collect()),
         Value::List    { vals, .. } => list_to_chunk(vals, engine_state, stack),
@@ -204,7 +203,7 @@ fn value_as_chunk(v: Value) -> Chunk {
         Value::Bool    { val, .. }  => Chunk::text(if val { "true" } else { "false" }),
         Value::Filesize{ val, .. }  => Chunk::text(&format_filesize(val.get())),
         Value::Duration{ val, .. }  => Chunk::text(&format_duration(val)),
-        Value::Date    { val, .. }  => Chunk::text(&val.to_string()),
+        Value::Date    { val, .. }  => Chunk::text(&format_date_relative(&val)),
         Value::Nothing { .. }       => Chunk::text(""),
         Value::Error   { error, .. }=> error_to_chunk(&error.to_string()),
         Value::Record  { val, .. }  => record_to_chunk(val.into_owned().into_iter().collect()),
@@ -215,6 +214,17 @@ fn value_as_chunk(v: Value) -> Chunk {
         }
         other => Chunk::annotation(&format!("[{}]", other.get_type())),
     }
+}
+
+fn format_date_relative(dt: &chrono::DateTime<chrono::FixedOffset>) -> String {
+    let now = chrono::Utc::now();
+    let secs = now.signed_duration_since(dt.with_timezone(&chrono::Utc)).num_seconds();
+    if secs < 0   { return dt.format("%Y-%m-%d").to_string(); }
+    if secs < 60  { return format!("{secs}s ago"); }
+    if secs < 3600 { return format!("{}m ago", secs / 60); }
+    if secs < 86400 { return format!("{}h ago", secs / 3600); }
+    if secs < 86400 * 7 { return format!("{}d ago", secs / 86400); }
+    dt.format("%Y-%m-%d").to_string()
 }
 
 fn format_filesize(bytes: i64) -> String {

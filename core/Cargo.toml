@@ -1,0 +1,9 @@
+[package]
+name = "cyb-core"
+version = "0.1.0"
+edition = "2024"
+description = "Minimal cyb runtime core — chroma graph, signal bus, well-known particles"
+license = "Cyber"
+
+[dependencies]
+cybergraph = { path = "../../cybergraph" }

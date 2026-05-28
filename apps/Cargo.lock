@@ -220,6 +220,7 @@ name = "cyb-portal"
 version = "0.1.0"
 dependencies = [
  "console_error_panic_hook",
+ "js-sys",
  "leptos",
  "leptos_meta",
  "leptos_router",
