@@ -1,6 +1,6 @@
-//! PipelineData → cyb-stream chunk adapter.
+//! PipelineData → tape chunk adapter.
 //!
-//! Converts nushell's structured output types into typed cyb-stream chunks
+//! Converts nushell's structured output types into typed tape chunks
 //! without ever converting to ANSI byte sequences. Runs on the eval thread
 //! (not the Bevy main thread), so it must be Send.
 
@@ -10,7 +10,7 @@ use std::sync::mpsc::Sender;
 use nu_protocol::{PipelineData, Value};
 use nu_protocol::engine::{EngineState, Stack};
 
-use cyb_stream::{Chunk, sigil, render, encode_nested, table_chunk};
+use tape::{Chunk, sigil, render, encode_nested, table_chunk};
 
 pub enum StreamMsg {
     Chunk(Chunk),
@@ -93,7 +93,7 @@ pub fn byte_stream_to_chunks(
                         let chunk = Chunk::new(
                             sigil::SIG,
                             render::TEXT,
-                            cyb_stream::bytes::Bytes::from(trimmed.to_owned().into_bytes()),
+                            tape::bytes::Bytes::from(trimmed.to_owned().into_bytes()),
                         );
                         if tx.send(StreamMsg::Chunk(chunk)).is_err() { return; }
                     }
@@ -111,7 +111,7 @@ pub fn byte_stream_to_chunks(
             let chunk = Chunk::new(
                 sigil::SIG,
                 render::TEXT,
-                cyb_stream::bytes::Bytes::from(trimmed.to_owned().into_bytes()),
+                tape::bytes::Bytes::from(trimmed.to_owned().into_bytes()),
             );
             let _ = tx.send(StreamMsg::Chunk(chunk));
         }
@@ -312,7 +312,7 @@ mod tests {
         assert_eq!(c.sigil, sigil::FAS);
         assert_eq!(c.render, render::STRUCT);
         // Inner is a sequence of (: s) pairs
-        let inner = cyb_stream::decode_nested(&c.payload);
+        let inner = tape::decode_nested(&c.payload);
         assert_eq!(inner.len(), 2);
         assert_eq!(inner[0].sigil, sigil::COL);
         assert_eq!(inner[0].render, render::STRUCT);
@@ -341,7 +341,7 @@ mod tests {
         assert_eq!(c.sigil, sigil::HAX);
         assert_eq!(c.render, render::TABLE);
         // Inner: schema row + 2 data rows
-        let inner = cyb_stream::decode_nested(&c.payload);
+        let inner = tape::decode_nested(&c.payload);
         assert_eq!(inner.len(), 3); // schema + row1 + row2
     }
 

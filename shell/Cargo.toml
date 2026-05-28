@@ -36,8 +36,8 @@ required-features = ["desktop"]
 [dependencies]
 # cyb workspace crates
 cyb-core   = { path = "../core" }
-cyb-stream = { path = "../cyb-stream" }
-prysm      = { path = "../prysm" }
+tape       = { path = "../../tape/impl/rust" }
+prysm      = { path = "../../prysm" }
 
 # Core (all platforms)
 wry = { version = "0.53", features = ["transparent"] }

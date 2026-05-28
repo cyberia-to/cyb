@@ -1,9 +1,9 @@
 ---
-tags: aip, cyb, prysm
+tags: cell, cyb, prysm
 crystal-type: entity
 crystal-domain: cyber
 ---
-the onboarding [[aip]] in [[cyb]]
+the onboarding [[cell]] in [[cyb]]
 
 cell in [[prysm]]
 

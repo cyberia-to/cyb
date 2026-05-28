@@ -19,9 +19,8 @@ use nu_protocol::debugger::WithoutDebug;
 use nu_protocol::{OutDest, PipelineData, Signals};
 use nu_std::load_standard_library;
 
-use cyb_stream::Chunk;
-use prysm::stream::{StreamScrollback, MoleculeRegistry, register_v0_molecules};
-use prysm::theme;
+use tape::Chunk;
+use prysm::{StreamScrollback, dispatch, theme};
 
 use super::WorldState;
 use crate::shell::chrome::{CHROME_TOP_H, CHROME_BOTTOM_H};
@@ -282,7 +281,7 @@ fn dispatch_eval(state: &mut TerminalNonSendState, input: String) {
     };
 
     state.eval_in_progress = true;
-    state.scroll_offset = 0.0; // auto-scroll to bottom on new command
+    state.scroll_offset = 100_000.0; // auto-scroll to bottom on new command
     let (tx, rx) = std::sync::mpsc::channel::<StreamMsg>();
     let (engine_tx, engine_rx) = std::sync::mpsc::channel::<NuShellEngine>();
     state.eval_rx = Some(rx);
@@ -351,7 +350,7 @@ fn poll_eval_results(world: &mut World) {
         state.engine_rx = None;
         state.eval_in_progress = false;
         state.ctrlc_flag.store(false, Ordering::Relaxed);
-        state.scroll_offset = 0.0; // auto-scroll to bottom after command finishes
+        state.scroll_offset = 100_000.0; // auto-scroll to bottom after command finishes
         (true, eng)
     } else {
         (false, None)
@@ -362,21 +361,12 @@ fn poll_eval_results(world: &mut World) {
         chunks.push(Chunk::status(0));
     }
 
-    // Spawn molecules for all chunks using SystemState<Commands>
+    // Dispatch all chunks to Bevy widgets via the typed molecule match
     if !chunks.is_empty() {
-        let mut ss: SystemState<(Commands, Res<MoleculeRegistry>)> = SystemState::new(world);
-        let (mut commands, registry) = ss.get_mut(world);
+        let mut ss: SystemState<Commands> = SystemState::new(world);
+        let mut commands = ss.get_mut(world);
         for chunk in &chunks {
-            if let Some(mol) = registry.get(chunk.sigil, chunk.render) {
-                mol.spawn(&mut commands, scrollback_entity, chunk);
-            } else {
-                commands.spawn((
-                    Text::new(String::from_utf8_lossy(&chunk.payload).into_owned()),
-                    TextFont { font_size: theme::BODY, ..default() },
-                    TextColor(theme::TEXT_PRIMARY),
-                    ChildOf(scrollback_entity),
-                ));
-            }
+            dispatch(&mut commands, scrollback_entity, chunk);
         }
         ss.apply(world);
     }
@@ -420,9 +410,10 @@ fn update_input_display(world: &mut World) {
 
 fn process_keyboard_input(world: &mut World) {
     let events: Vec<KeyboardInput> = {
-        let Some(state_ref) = world.get_non_send_resource::<TerminalNonSendState>() else { return };
-        let mut cursor = state_ref.key_cursor.clone();
-        drop(state_ref);
+        let mut cursor = {
+            let Some(state_ref) = world.get_non_send_resource::<TerminalNonSendState>() else { return };
+            state_ref.key_cursor.clone()
+        };
         let messages = world.resource::<bevy::ecs::message::Messages<KeyboardInput>>();
         let evts: Vec<KeyboardInput> = cursor.read(messages).cloned().collect();
         // Store cursor back
@@ -521,14 +512,6 @@ fn process_keyboard_input(world: &mut World) {
 // ── Setup ─────────────────────────────────────────────────────────────────────
 
 fn setup_terminal(world: &mut World) {
-    // Register molecules on first entry
-    {
-        let mut registry = world.resource_mut::<MoleculeRegistry>();
-        if registry.get(cyb_stream::sigil::HAX, cyb_stream::render::TEXT).is_none() {
-            register_v0_molecules(&mut registry);
-        }
-    }
-
     // If state persists, re-attach scrollback to a new root and show
     if world.get_non_send_resource::<TerminalNonSendState>().is_some() {
         let (scrollback_entity, prompt_entity, input_entity) = {
@@ -557,6 +540,8 @@ fn setup_terminal(world: &mut World) {
         Node {
             flex_direction: FlexDirection::Column,
             width: Val::Percent(100.0),
+            min_height: Val::Percent(100.0),
+            justify_content: JustifyContent::FlexEnd,
             row_gap: Val::Px(1.0),
             ..default()
         },
@@ -619,17 +604,17 @@ fn spawn_terminal_ui(
         BackgroundColor(theme::DARK_BASE),
     )).id();
 
-    // Scrollback area (flex-grow, content anchored to bottom via FlexEnd)
+    // Scrollback area (flex-grow, scrolled via ScrollPosition)
     let scroll_area = world.spawn((
         TerminalMarker,
         Node {
             flex_grow: 1.0,
             flex_direction: FlexDirection::Column,
-            justify_content: JustifyContent::FlexEnd,
             overflow: Overflow::clip_y(),
             padding: UiRect::all(Val::Px(G)),
             ..default()
         },
+        ScrollPosition::default(),
         ChildOf(root),
     )).id();
 
@@ -661,9 +646,10 @@ fn spawn_terminal_ui(
 fn process_scroll(world: &mut World) {
     // Read mouse wheel events using the Messages API (same as KeyboardInput)
     let delta_y: f32 = {
-        let Some(state_ref) = world.get_non_send_resource::<TerminalNonSendState>() else { return };
-        let mut cursor = state_ref.wheel_cursor.clone();
-        drop(state_ref);
+        let mut cursor = {
+            let Some(state_ref) = world.get_non_send_resource::<TerminalNonSendState>() else { return };
+            state_ref.wheel_cursor.clone()
+        };
         let messages = world.resource::<bevy::ecs::message::Messages<MouseWheel>>();
         let dy: f32 = cursor.read(messages).map(|e| -e.y).sum();
         let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
@@ -689,18 +675,15 @@ fn process_scroll(world: &mut World) {
 }
 
 fn apply_scroll_offset(world: &mut World) {
-    let (offset, scrollback_entity, scrollback_h, area_h) = {
+    let (offset, scroll_area_entity, scrollback_entity) = {
         let state = world.get_non_send_resource::<TerminalNonSendState>().unwrap();
-        let sb_h = world.get::<ComputedNode>(state.scrollback_entity)
-            .map(|cn| cn.size().y).unwrap_or(0.0);
-        let sa_h = world.get::<ComputedNode>(state.scroll_area_entity)
-            .map(|cn| cn.size().y).unwrap_or(0.0);
-        (state.scroll_offset, state.scrollback_entity, sb_h, sa_h)
+        (state.scroll_offset, state.scroll_area_entity, state.scrollback_entity)
     };
-    let max_scroll = (scrollback_h - area_h).max(0.0);
-    let clamped = offset.clamp(0.0, max_scroll);
-    if let Some(mut node) = world.get_mut::<Node>(scrollback_entity) {
-        node.top = Val::Px(clamped);
+    let sb_h = world.get::<ComputedNode>(scrollback_entity).map(|cn| cn.size().y).unwrap_or(0.0);
+    let sa_h = world.get::<ComputedNode>(scroll_area_entity).map(|cn| cn.size().y).unwrap_or(0.0);
+    let max_scroll = (sb_h - sa_h).max(0.0);
+    if let Some(mut sp) = world.get_mut::<ScrollPosition>(scroll_area_entity) {
+        sp.y = offset.clamp(0.0, max_scroll);
     }
 }
 

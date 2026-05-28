@@ -82,8 +82,8 @@ It is guaranteed to appear by the [[collective focus theorem]]: given a sufficie
 The phases:
 
 ```
-10⁷  particles:   primitive semcon emergence, basic motif patterns
-10¹⁰ particles:   rich semcon ecosystem, dense cross-domain linkchains
+10⁷  particles:   primitive dialect emergence, basic motif patterns
+10¹⁰ particles:   rich dialect ecosystem, dense cross-domain linkchains
 10¹³ particles:   motif algebra enables automated reasoning
 10¹⁵ particles:   novel concepts impossible in existing languages,
                   concepts no individual neuron can comprehend

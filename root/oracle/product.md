@@ -29,7 +29,7 @@ decentralized ai
 
 decentralized search
 
-- the most simple cyber aipp
+- the most simple cyber cell
 - : [[particles]]
 - cencorfree
 	- its a [[blockchain]]

@@ -14,7 +14,7 @@ one address space across all worlds. uri as the navigation primitive. the addres
 
 cyb is heterogeneous — text streams, 3d spatial graphs, terminal sessions, media playback, external web. these run in different rendering models ([[rendering]]) but the [[neuron]] should navigate across them with one consistent mental model. that model is the uri.
 
-browsers normalized urls for http content. cyb normalizes them for content-addressed, multi-world computing. typing `cyb://graph/ai/safety` in the address bar dispatches the graph world focused on a specific location. typing `cyb://particle/bafyrei...` dispatches the particle viewer. typing `cyb://app/oracle` launches the oracle aip. one input, one mental model, every destination.
+browsers normalized urls for http content. cyb normalizes them for content-addressed, multi-world computing. typing `cyb://graph/ai/safety` in the address bar dispatches the graph world focused on a specific location. typing `cyb://particle/bafyrei...` dispatches the particle viewer. typing `cyb://app/oracle` launches the oracle cell. one input, one mental model, every destination.
 
 ---
 
@@ -108,7 +108,7 @@ three concerns, three clean ownerships
 | world dispatch | bevy | `NextState<World>::set(...)` based on uri scheme world component |
 | within-world routing | the active world | uses the path component to focus / select / launch |
 
-each world implements its own path semantics. mir parses `/ai/safety/alignment` as a knowledge graph path. sugarloaf with `app/oracle` parses `oracle` as the aip name to launch. wry with `web/https://...` treats the rest as the external url. world-specific routing is opaque to bevy and the address bar — they only need to dispatch.
+each world implements its own path semantics. mir parses `/ai/safety/alignment` as a knowledge graph path. sugarloaf with `app/oracle` parses `oracle` as the cell name to launch. wry with `web/https://...` treats the rest as the external url. world-specific routing is opaque to bevy and the address bar — they only need to dispatch.
 
 ---
 
@@ -146,7 +146,7 @@ ask(ν, p, q, τ, a, v, t):
   ν = neuron       — who navigated
   p = from-uri     — source location (hashed to a particle)
   q = to-uri       — destination location (hashed to a particle)
-  τ = navigation   — the semcon for state transition
+  τ = navigation   — the dialect for state transition
   a = 0            — no stake on routine navigation (configurable per neuron)
   v = +1           — positive valence by default
   t = timestamp    — exact transition time

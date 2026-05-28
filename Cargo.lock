@@ -3004,7 +3004,6 @@ dependencies = [
  "bip39",
  "chrono",
  "cyb-core",
- "cyb-stream",
  "futures",
  "futures-lite",
  "global-hotkey",
@@ -3027,16 +3026,10 @@ dependencies = [
  "sha2",
  "sugarloaf",
  "tao",
+ "tape",
  "tray-icon",
  "ureq",
  "wry",
-]
-
-[[package]]
-name = "cyb-stream"
-version = "0.1.0"
-dependencies = [
- "bytes",
 ]
 
 [[package]]
@@ -7784,8 +7777,7 @@ dependencies = [
  "bevy",
  "crossbeam-channel",
  "cyb-core",
- "cyb-stream",
- "serde_json",
+ "tape",
 ]
 
 [[package]]
@@ -9197,6 +9189,13 @@ dependencies = [
  "proc-macro2",
  "quote",
  "syn 2.0.117",
+]
+
+[[package]]
+name = "tape"
+version = "0.1.0"
+dependencies = [
+ "bytes",
 ]
 
 [[package]]

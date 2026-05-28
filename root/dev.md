@@ -21,7 +21,7 @@ related products
 
 complexity
 
-- 14 [[aips]]
+- 14 [[cells]]
 - 35 [[pages]]
 - TODO 23 [[cyb/features]]
 - 100 [[actions]]

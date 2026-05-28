@@ -47,7 +47,7 @@ this document specifies the architecture of cyb:
 - the value tower — three atoms, three reference modes
 - the language stack — rune, [[neural language]]
 - the oracle — ask, learn, search
-- AIPs — autonomous intelligence programs
+- cells — applications of the robot
 - AI in the robot — four levels of inference
 - CybOS — cells, radio, storage, agents, neural drivers, PureRender, epoch budget
 - the earning machine — focus, karma, cyberank, conviction
@@ -239,7 +239,7 @@ data structures are [[Nox]] nouns: cons-lists instead of Vec, Merkle trees inste
 
 ### 6.2 neural language — the semantic layer
 
-the language of the [[cybergraph]] itself. meaning is not declared — it emerges from the [[tri-kernel]] as the eigenvector of collective [[attention]]. [[semcons]] are the grammar. [[sentences]] are utterances. [[motifs]] are morphemes. [[linkchains]] are inference paths. the robot renders this semantic structure as navigable space
+the language of the [[cybergraph]] itself. meaning is not declared — it emerges from the [[tri-kernel]] as the eigenvector of collective [[attention]]. [[dialects]] are the grammar. [[sentences]] are utterances. [[motifs]] are morphemes. [[linkchains]] are inference paths. the robot renders this semantic structure as navigable space
 
 ### 6.3 the three levels
 
@@ -278,11 +278,11 @@ navigate the graph by walking the cyberank. particles cluster by semantic proxim
 
 ---
 
-## 8. autonomous intelligence programs
+## 8. cells
 
-AIPs are the applications of the robot. not apps downloaded from a store — programs that run in the same runtime as the robot itself, with access to brain, sigma, sense, and the [[cybergraph]]
+cells are the applications of the robot. not apps downloaded from a store — programs that run in the same runtime as the robot itself, with access to brain, sigma, sense, and the [[cybergraph]]
 
-| AIP | function |
+| cell | function |
 |-----|----------|
 | [[cyb/oracle\|oracle]] | ask, learn, search — cybergraph inference |
 | [[cyb/portal\|portal]] | gateway to blockchains, identity, IBC |
@@ -291,7 +291,7 @@ AIPs are the applications of the robot. not apps downloaded from a store — pro
 | [[cyb/sense\|sense]] | messaging, social, perception |
 | [[cyb/time\|time]] | history, earning log, temporal navigation |
 | [[cyb/hub\|hub]] | decentralization interface, validator management |
-| [[cyb/hacklab\|hacklab]] | developer tools, particle creation, AIP development |
+| [[cyb/hacklab\|hacklab]] | developer tools, particle creation, cell development |
 | [[cyb/warp\|warp]] | token bridge, IBC transfers |
 | [[cyb/reactor\|reactor]] | liquidity, bonding, economics |
 | [[cyb/senate\|senate]] | governance, proposals, voting |
@@ -299,7 +299,7 @@ AIPs are the applications of the robot. not apps downloaded from a store — pro
 | [[cyb/studio\|studio]] | content creation, publication |
 | [[cyb/sphere\|sphere]] | social layer, discovery, reputation |
 
-AIPs are built from [[prysm]] — the design system of cyb. prysm defines atoms (glass, text, button, toggle, slider, address, ion, saber), molecules (hud, tabs, object, adviser, input, table), and cells that compose into any interface. the same design language renders on GPU (desktop), WebGPU (browser), or terminal
+cells are built from [[prysm]] — the design system of cyb. prysm defines atoms (glass, text, ion, saber, image, sound, number, neuron, field), molecules (commander, tabs, input, button, table, etc.), composed into cells. the same design language renders on GPU (desktop), WebGPU (browser), or terminal
 
 ---
 
@@ -324,7 +324,7 @@ for large inference the robot connects to the [[cybertensor]] inference subnet �
 
 ### 9.3 progs
 
-autonomous programs running deterministic sharded inference in [[cybernet]]. a prog is an AIP with its own keypair and focus allocation. submits cyberlinks autonomously — monitoring particles, running inference, staking positions. the collection of all progs is the autonomous intelligence layer of the robot network: a mesh of agents continuously contributing to [[syntropy]]
+autonomous programs running deterministic sharded inference in [[cybernet]]. a prog is a cell with its own keypair and focus allocation. submits cyberlinks autonomously — monitoring particles, running inference, staking positions. the collection of all progs is the autonomous intelligence layer of the robot network: a mesh of agents continuously contributing to [[syntropy]]
 
 ### 9.4 external servers
 

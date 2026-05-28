@@ -73,7 +73,7 @@ when weights come from [[graph]] compilation (not random init), architecture par
 | parameter | standard (empirical) | compiled (from graph) |
 |-----------|---------------------|----------------------|
 | layers L | 32 (chosen by grid search) | diam(G) × ⌈log(1/ε)/log(1/κ)⌉ |
-| heads H | 32 (chosen by ablation) | \|Semcon(G)\| (relation types) |
+| heads H | 32 (chosen by ablation) | \|Dialect(G)\| (relation types) |
 | hidden D | 4096 (scaling law) | r* (effective rank of [[focus]] covariance) |
 | FFN ratio | 8/3 (empirical) | derived from S+H operator spectrum |
 
@@ -85,7 +85,7 @@ norm may be removable for compiled weights — compiled weights already in corre
 
 fewer layers: L* = diam(G) × convergence_factor. for focused domain graph with small diameter — potentially 8–16 layers instead of 32
 
-fewer heads: h* = \|Semcon(G)\|. focused domain graph may have 8–16 [[semcon]] types instead of 32 heads
+fewer heads: h* = \|Dialect(G)\|. focused domain graph may have 8–16 [[dialect]] types instead of 32 heads
 
 ## .cyb arch config
 
@@ -99,7 +99,7 @@ parallel = true
 pre_norm = true
 
 D = "r_star"
-H = "semcon_count"
+H = "dialect_count"
 L = "diam_times_convergence"
 
 rope_theta = 500000

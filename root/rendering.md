@@ -264,15 +264,14 @@ terminal-only operation is a first-class deploy target. `cyb` running over ssh i
 
 ## prysm contract
 
-[[prysm]] is the composition protocol for cell-grid content. it specifies how atoms (glass, text, ion, saber, images) combine into molecules, cells, and aips. it does not specify how cells are painted to pixels — that is the renderer's job.
+[[prysm]] is the composition protocol for cell-grid content. it specifies how atoms (glass, text, ion, saber, images) combine into molecules and cells. it does not specify how cells are painted to pixels — that is the renderer's job.
 
 | layer | role |
 |---|---|
 | prysm core | layout function: element tree × viewport → cell coordinates |
-| prysm atoms | the five primitives (glass, text, ion, saber, images) |
-| prysm molecules | 22 composed widgets (commander, input, button, neuron-card, etc.) |
-| prysm cells | regional compositions (oracle-cell, sphere-cell, etc.) |
-| prysm aips | full-screen applications (oracle, brain, sense, sigma, etc.) |
+| prysm atoms | the nine primitives (glass, text, ion, saber, image, sound, number, neuron, field) |
+| prysm molecules | 24 composed widgets (commander, input, button, neuron-card, etc.) |
+| prysm cells | full-screen applications (oracle, brain, sense, sigma, etc.) |
 
 prysm is renderer-blind. the same prysm tree can rasterize to wgpu cells (sugarloaf), to ansi escapes (terminal stdout), to html (seo export), or to any future cell-grid backend. the layout is pure: tree × viewport → coordinates, deterministic, o(n).
 
@@ -295,4 +294,4 @@ these are not solved — they do not exist. the architecture removes the conditi
 
 ---
 
-see [[routing]] for how addresses dispatch worlds and drive navigation, [[prysm]] for the composition protocol and atom/molecule/cell/aip system, [[mir]] for the spatial graph renderer, [[sugarloaf]] for the cell-grid wgpu backend, [[nu]] for the nushell integration, [[radio]] for particle resolution behind osc references
+see [[routing]] for how addresses dispatch worlds and drive navigation, [[prysm]] for the composition protocol and atom/molecule/cell system, [[mir]] for the spatial graph renderer, [[sugarloaf]] for the cell-grid wgpu backend, [[nu]] for the nushell integration, [[radio]] for particle resolution behind osc references

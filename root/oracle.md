@@ -1,9 +1,9 @@
 ---
-tags: aip, cyb, prysm
+tags: cell, cyb, prysm
 crystal-type: entity
 crystal-domain: cyber
 ---
-the search and discovery [[aip]] in [[cyb]]
+the search and discovery [[cell]] in [[cyb]]
 
 cell in [[prysm]]
 

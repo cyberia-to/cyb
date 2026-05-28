@@ -7,6 +7,6 @@ instantly and censorfree
 
 find and deliver content
 
-decentralized search is just one [[aip]]
+decentralized search is just one [[cell]]
 
 [[amount]] of [[particles]] and growing
