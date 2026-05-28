@@ -123,9 +123,9 @@ pub fn consume_chunks(
     for chunk in channel.rx.try_iter() {
         // Status chunk: record exit code, don't render anything visible
         if chunk.sigil == cyb_stream::sigil::DOT && chunk.render == cyb_stream::render::STATUS {
-            if let Ok(v) = serde_json::from_slice::<serde_json::Value>(&chunk.payload) {
-                scrollback.last_status = v["code"].as_i64().map(|c| c as i32);
-            }
+            scrollback.last_status = cyb_stream::read_kv(&chunk.payload)
+                .get("code")
+                .and_then(|c| String::from_utf8_lossy(&c.payload).parse().ok());
             continue;
         }
 

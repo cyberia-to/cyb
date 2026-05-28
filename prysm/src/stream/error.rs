@@ -4,7 +4,7 @@ use super::Molecule;
 use crate::theme;
 
 /// `(!, e)` — typed error with source location.
-/// Payload is JSON: `{level, source, message, span?}`
+/// Payload is nested `(=, s)` key-value pairs: level, source, message, span?
 pub struct ErrorMolecule;
 
 impl Molecule for ErrorMolecule {
@@ -56,12 +56,10 @@ impl Molecule for ErrorMolecule {
 }
 
 fn parse_error(payload: &[u8]) -> (String, String, String) {
-    if let Ok(v) = serde_json::from_slice::<serde_json::Value>(payload) {
-        let level   = v["level"].as_str().unwrap_or("error").to_string();
-        let source  = v["source"].as_str().unwrap_or("").to_string();
-        let message = v["message"].as_str().unwrap_or("unknown error").to_string();
-        (level, source, message)
-    } else {
-        ("error".into(), "".into(), String::from_utf8_lossy(payload).into_owned())
-    }
+    let m = cyb_stream::read_kv(payload);
+    let text = |key, default: &str| -> String {
+        m.get(key).map(|c| String::from_utf8_lossy(&c.payload).into_owned())
+            .unwrap_or_else(|| default.to_string())
+    };
+    (text("level", "error"), text("source", ""), text("message", "unknown error"))
 }

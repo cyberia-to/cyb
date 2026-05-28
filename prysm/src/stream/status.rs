@@ -33,8 +33,8 @@ impl Molecule for StatusMolecule {
 }
 
 fn parse_code(payload: &[u8]) -> i32 {
-    serde_json::from_slice::<serde_json::Value>(payload)
-        .ok()
-        .and_then(|v| v["code"].as_i64())
-        .unwrap_or(0) as i32
+    cyb_stream::read_kv(payload)
+        .get("code")
+        .and_then(|c| String::from_utf8_lossy(&c.payload).parse().ok())
+        .unwrap_or(0)
 }

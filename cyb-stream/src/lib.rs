@@ -114,30 +114,43 @@ impl Chunk {
         Self::new(sigil::SIG, render::TEXT, bytes::Bytes::copy_from_slice(s.as_bytes()))
     }
 
-    /// Create a typed error chunk `(!, e)` — JSON payload `{level, source, message}`.
+    /// Create a typed error chunk `(!, e)` — nested `(=, s)` key-value pairs.
     pub fn error(message: &str) -> Self {
-        let payload = format!(r#"{{"level":"error","source":"","message":{message:?}}}"#);
-        Self::new(sigil::ZAP, render::ERROR, bytes::Bytes::from(payload.into_bytes()))
+        let payload = encode_nested(&[
+            kv("level",   Self::text("error")),
+            kv("source",  Self::text("")),
+            kv("message", Self::text(message)),
+        ]);
+        Self::new(sigil::ZAP, render::ERROR, payload)
     }
 
-    /// Create a log line chunk `(., l)` — JSON payload `{level, source, message}`.
+    /// Create a log line chunk `(., l)` — nested `(=, s)` key-value pairs.
     pub fn log(level: &str, source: &str, message: &str) -> Self {
-        let payload = format!(r#"{{"level":{level:?},"source":{source:?},"message":{message:?}}}"#);
-        Self::new(sigil::DOT, render::LOG, bytes::Bytes::from(payload.into_bytes()))
+        let payload = encode_nested(&[
+            kv("level",   Self::text(level)),
+            kv("source",  Self::text(source)),
+            kv("message", Self::text(message)),
+        ]);
+        Self::new(sigil::DOT, render::LOG, payload)
     }
 
-    /// Create a progress chunk `(., p)` — JSON payload `{id, label, current, total}`.
+    /// Create a progress chunk `(., p)` — nested `(=, s)` key-value pairs.
     pub fn progress(id: u64, label: &str, current: u64, total: u64) -> Self {
-        let payload = format!(r#"{{"id":{id},"label":{label:?},"current":{current},"total":{total}}}"#);
-        let mut chunk = Self::new(sigil::DOT, render::PROGRESS, bytes::Bytes::from(payload.into_bytes()));
+        let payload = encode_nested(&[
+            kv("id",      Self::text(&id.to_string())),
+            kv("label",   Self::text(label)),
+            kv("current", Self::text(&current.to_string())),
+            kv("total",   Self::text(&total.to_string())),
+        ]);
+        let mut chunk = Self::new(sigil::DOT, render::PROGRESS, payload);
         chunk.id = Some(ChunkId(id));
         chunk
     }
 
-    /// Create an end-of-command status chunk `(., x)` — JSON payload `{code}`.
+    /// Create an end-of-command status chunk `(., x)` — nested `(=, s)` key-value pair.
     pub fn status(code: i32) -> Self {
-        let payload = format!(r#"{{"code":{code}}}"#);
-        Self::new(sigil::DOT, render::STATUS, bytes::Bytes::from(payload.into_bytes()))
+        let payload = encode_nested(&[kv("code", Self::text(&code.to_string()))]);
+        Self::new(sigil::DOT, render::STATUS, payload)
     }
 
     /// Create a scope / breadcrumb chunk `(/, c)` with nested payload bytes.
@@ -377,6 +390,37 @@ pub fn decode_nested(payload: &[u8]) -> Vec<Chunk> {
     out
 }
 
+// ── key-value helpers ─────────────────────────────────────────────────────────
+
+/// Build a `key = value` binding: `(=, s)` containing `(~, t)[key]` + value chunk.
+///
+/// This is the cyb-stream native equivalent of a TOML `key = value` pair.
+/// Used in meta chunk payloads (progress, log, error, status) and anywhere
+/// a named binding needs to be expressed in the stream.
+pub fn kv(key: &str, value: Chunk) -> Chunk {
+    let inner = encode_nested(&[Chunk::annotation(key), value]);
+    Chunk::new(sigil::TIS, render::STRUCT, inner)
+}
+
+/// Read all `(=, s)` key-value pairs from a nested payload.
+/// Returns a map from key text to value chunk.
+pub fn read_kv(payload: &[u8]) -> std::collections::HashMap<String, Chunk> {
+    decode_nested(payload)
+        .into_iter()
+        .filter(|c| c.sigil == sigil::TIS && c.render == render::STRUCT)
+        .filter_map(|pair| {
+            let mut inner = decode_nested(&pair.payload);
+            if inner.len() >= 2 {
+                let value = inner.remove(1);
+                let key = String::from_utf8_lossy(&inner[0].payload).into_owned();
+                Some((key, value))
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
 // ── table helpers ─────────────────────────────────────────────────────────────
 
 /// Build a `(#, T)` table chunk from column headers and rows of cell chunks.
@@ -464,7 +508,9 @@ mod tests {
         let r = roundtrip(c);
         assert_eq!(r.sigil, sigil::ZAP);
         assert_eq!(r.render, render::ERROR);
-        assert!(r.payload.starts_with(b"{"));
+        let m = read_kv(&r.payload);
+        assert_eq!(m.get("message").map(|c| &c.payload[..]), Some(b"something went wrong".as_ref()));
+        assert_eq!(m.get("level").map(|c| &c.payload[..]), Some(b"error".as_ref()));
     }
 
     #[test]
@@ -489,7 +535,25 @@ mod tests {
         let r = roundtrip(c);
         assert_eq!(r.sigil, sigil::DOT);
         assert_eq!(r.render, render::STATUS);
-        assert_eq!(&r.payload[..], b"{\"code\":0}");
+        let m = read_kv(&r.payload);
+        assert_eq!(m.get("code").map(|c| &c.payload[..]), Some(b"0".as_ref()));
+    }
+
+    #[test]
+    fn kv_roundtrip() {
+        let pair = kv("level", Chunk::text("error"));
+        assert_eq!(pair.sigil, sigil::TIS);
+        assert_eq!(pair.render, render::STRUCT);
+
+        let map_bytes = encode_nested(&[
+            kv("level",   Chunk::text("warn")),
+            kv("source",  Chunk::text("compiler")),
+            kv("message", Chunk::text("unused variable")),
+        ]);
+        let m = read_kv(&map_bytes);
+        assert_eq!(m.get("level").map(|c| &c.payload[..]),   Some(b"warn".as_ref()));
+        assert_eq!(m.get("source").map(|c| &c.payload[..]),  Some(b"compiler".as_ref()));
+        assert_eq!(m.get("message").map(|c| &c.payload[..]), Some(b"unused variable".as_ref()));
     }
 
     #[test]

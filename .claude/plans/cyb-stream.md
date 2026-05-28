@@ -139,14 +139,14 @@ Minimum set to bring up the terminal world. Each entry: `(sigil, render)` — me
 
 ### meta / stream control
 
-| Chunk     | Meaning                                  | Payload (JSON in v0; nested chunks in v1)          |
+| Chunk     | Meaning                                  | Payload                                            |
 |-----------|------------------------------------------|----------------------------------------------------|
-| `(., p)`  | progress update                          | `{id, label, current, total}`                      |
-| `(., l)`  | log line                                 | `{level, source, message}`                         |
-| `(!, e)`  | typed error                              | `{level, source, message, span?}`                  |
-| `(., x)`  | status / end-of-command                  | `{code}`                                           |
+| `(., p)`  | progress update                          | nested `(=, s)`: id, label, current, total         |
+| `(., l)`  | log line                                 | nested `(=, s)`: level, source, message            |
+| `(!, e)`  | typed error                              | nested `(=, s)`: level, source, message, span?     |
+| `(., x)`  | status / end-of-command                  | nested `(=, s)`: code                              |
 
-JSON inside payloads is a v0 expediency. v1 replaces it with nested cyb-stream — keep the protocol single-layer at the wire level.
+Each `(=, s)` pair contains `(~, t)[key]` + typed value chunk. Read with `cyb_stream::read_kv()`. The TIS sigil (`=`) is "binding / equivalence" — the same semantics as a TOML `key = value` assignment, expressed natively in the protocol.
 
 ### table chunk layout
 

@@ -87,13 +87,14 @@ impl Molecule for ProgressMolecule {
 
 fn parse_progress(payload: &[u8], id: Option<ChunkId>) -> (ChunkId, String, f32) {
     let default_id = id.unwrap_or(ChunkId(0));
-    if let Ok(v) = serde_json::from_slice::<serde_json::Value>(payload) {
-        let chunk_id  = v["id"].as_u64().map(ChunkId).unwrap_or(default_id);
-        let label     = v["label"].as_str().unwrap_or("").to_string();
-        let current   = v["current"].as_u64().unwrap_or(0) as f32;
-        let total     = v["total"].as_u64().unwrap_or(1).max(1) as f32;
-        (chunk_id, label, current / total)
-    } else {
-        (default_id, String::from_utf8_lossy(payload).into_owned(), 0.0)
-    }
+    let m = cyb_stream::read_kv(payload);
+    let u64_val = |key| -> u64 {
+        m.get(key).and_then(|c| String::from_utf8_lossy(&c.payload).parse().ok()).unwrap_or(0)
+    };
+    let chunk_id = m.get("id").and_then(|c| String::from_utf8_lossy(&c.payload).parse().ok())
+        .map(ChunkId).unwrap_or(default_id);
+    let label   = m.get("label").map(|c| String::from_utf8_lossy(&c.payload).into_owned()).unwrap_or_default();
+    let current = u64_val("current") as f32;
+    let total   = u64_val("total").max(1) as f32;
+    (chunk_id, label, current / total)
 }

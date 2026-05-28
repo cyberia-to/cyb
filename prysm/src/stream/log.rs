@@ -4,7 +4,7 @@ use super::Molecule;
 use crate::theme;
 
 /// `(., l)` — structured log line.
-/// Payload is JSON: `{level, source, message}`
+/// Payload is nested `(=, s)` key-value pairs: level, source, message
 pub struct LogMolecule;
 
 impl Molecule for LogMolecule {
@@ -30,14 +30,12 @@ impl Molecule for LogMolecule {
 }
 
 fn parse_log(payload: &[u8]) -> (String, String, String) {
-    if let Ok(v) = serde_json::from_slice::<serde_json::Value>(payload) {
-        let level   = v["level"].as_str().unwrap_or("info").to_string();
-        let source  = v["source"].as_str().unwrap_or("").to_string();
-        let message = v["message"].as_str().unwrap_or("").to_string();
-        (level, source, message)
-    } else {
-        ("info".into(), "".into(), String::from_utf8_lossy(payload).into_owned())
-    }
+    let m = cyb_stream::read_kv(payload);
+    let text = |key, default: &str| -> String {
+        m.get(key).map(|c| String::from_utf8_lossy(&c.payload).into_owned())
+            .unwrap_or_else(|| default.to_string())
+    };
+    (text("level", "info"), text("source", ""), text("message", ""))
 }
 
 fn level_style(level: &str) -> (&'static str, Color) {

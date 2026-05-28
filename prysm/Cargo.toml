@@ -10,7 +10,6 @@ cyb-core = { path = "../core" }
 cyb-stream = { path = "../cyb-stream" }
 bevy = { workspace = true }
 crossbeam-channel = "0.5"
-serde_json = { workspace = true }
 
 [[example]]
 name = "stream_demo"
