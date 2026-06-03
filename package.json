@@ -80,7 +80,7 @@
     "@cybercongress/gravity": "0.0.15",
     "@ethersproject/providers": "^5.7.2",
     "@helia/unixfs": "^1.4.2",
-    "@ledgerhq/hw-transport-webusb": "5.53.0",
+    "@ledgerhq/hw-transport-webusb": "^6.31.4",
     "@milkdown/plugin-automd": "^7.5.0",
     "@milkdown/react": "^7.5.0",
     "@milkdown/theme-nord": "^7.5.0",

@@ -2,7 +2,7 @@
   "version": "5",
   "specifiers": {
     "npm:@ai-sdk/openai@^0.0.63": "0.0.63_zod@3.25.76",
-    "npm:@apollo/client@^3.9.4": "3.14.1_graphql@16.14.0_graphql-ws@5.16.2__graphql@16.14.0_react@18.3.1_react-dom@18.3.1__react@18.3.1_@types+react@18.3.28",
+    "npm:@apollo/client@^3.9.4": "3.14.1_graphql@16.14.0_graphql-ws@5.16.2__graphql@16.14.0_react@18.3.1_react-dom@18.3.1__react@18.3.1",
     "npm:@biomejs/biome@^2.4.3": "2.4.15",
     "npm:@chain-registry/utils@^1.51.1": "1.51.359",
     "npm:@confio/relayer@0.4.0": "0.4.0",
@@ -27,7 +27,7 @@
     "npm:@graphql-codegen/typescript-react-apollo@^4.3.0": "4.4.2_graphql@16.14.0",
     "npm:@graphql-codegen/typescript@^4.0.6": "4.1.6_graphql@16.14.0",
     "npm:@helia/unixfs@^1.4.2": "1.4.3",
-    "npm:@ledgerhq/hw-transport-webusb@5.53.0": "5.53.0",
+    "npm:@ledgerhq/hw-transport-webusb@^6.31.4": "6.34.2",
     "npm:@milkdown/kit@^7.5.0": "7.21.1_@codemirror+language@6.12.3_@codemirror+state@6.6.0_@codemirror+view@6.43.0_typescript@5.9.3",
     "npm:@milkdown/plugin-automd@^7.5.0": "7.21.1",
     "npm:@milkdown/react@^7.5.0": "7.21.1_react@18.3.1_react-dom@18.3.1__react@18.3.1_@codemirror+language@6.12.3_@codemirror+state@6.6.0_@codemirror+view@6.43.0_typescript@5.9.3",
@@ -329,7 +329,7 @@
         "vue"
       ]
     },
-    "@apollo/client@3.14.1_graphql@16.14.0_graphql-ws@5.16.2__graphql@16.14.0_react@18.3.1_react-dom@18.3.1__react@18.3.1_@types+react@18.3.28": {
+    "@apollo/client@3.14.1_graphql@16.14.0_graphql-ws@5.16.2__graphql@16.14.0_react@18.3.1_react-dom@18.3.1__react@18.3.1": {
       "integrity": "sha512-SgGX6E23JsZhUdG2anxiyHvEvvN6CUaI4ZfMsndZFeuHPXL3H0IsaiNAhLITSISbeyeYd+CBd9oERXQDdjXWZw==",
       "dependencies": [
         "@graphql-typed-document-node/core",
@@ -3214,13 +3214,13 @@
     "@ledgerhq/errors@6.35.0": {
       "integrity": "sha512-qk9PbqIvze7NXGogVxNCsz60rNo5FrGj8gKqs7pcyDk+em5L6s70G7cRxR+1HTXdam4WoPfntUq+WX9zQUynkg=="
     },
-    "@ledgerhq/hw-transport-webusb@5.53.0": {
-      "integrity": "sha512-ht5masmuSmDlonuSaYcgGMqgz9GCDm0zX6dK0n2UlVZ7RCixuABY5M5pzMmVTBocqHCydbSDSJDFZOHqNlJ/4g==",
+    "@ledgerhq/hw-transport-webusb@6.34.2": {
+      "integrity": "sha512-2nRe72vfUsxWkIFSgV8b/RR8BXA27284Uy5Yx+JJnxs1D5bCdvO4WDYg1kXsDd2E3Q1eCZBvV5gSHQbi+uKsvA==",
       "dependencies": [
-        "@ledgerhq/devices@5.51.1",
-        "@ledgerhq/errors@5.50.0",
-        "@ledgerhq/hw-transport@5.51.1",
-        "@ledgerhq/logs@5.50.0"
+        "@ledgerhq/devices@8.14.2",
+        "@ledgerhq/errors@6.35.0",
+        "@ledgerhq/hw-transport@6.35.2",
+        "@ledgerhq/logs@6.17.0"
       ]
     },
     "@ledgerhq/hw-transport@5.51.1": {
@@ -3244,6 +3244,15 @@
       "integrity": "sha512-HqB2Whl2qbrzyvs9gC/GmLhIy8RO4CWzjqHS4k0bPWDZRqKa8m6H32vjrbXGO//pUL1Mlu87UwvxvLyuICdjwg==",
       "dependencies": [
         "@ledgerhq/devices@8.5.0",
+        "@ledgerhq/errors@6.35.0",
+        "@ledgerhq/logs@6.17.0",
+        "events"
+      ]
+    },
+    "@ledgerhq/hw-transport@6.35.2": {
+      "integrity": "sha512-eSXFFqMDAB2Ra/5uqmlru0cUyc2XDQPEKf4ITWHeMms2fHhETw9lcgAEl61vszkiz0RLUVB4VQsLJjj7O8kCvg==",
+      "dependencies": [
+        "@ledgerhq/devices@8.14.2",
         "@ledgerhq/errors@6.35.0",
         "@ledgerhq/logs@6.17.0",
         "events"
@@ -5040,10 +5049,7 @@
       ]
     },
     "@types/react-transition-group@4.4.12_@types+react@18.3.28": {
-      "integrity": "sha512-8TV6R3h2j7a91c+1DXdJi3Syo69zzIZbz7Lg5tORM5LEJG7X/E6a1V3drRyBRZq7/utz7A+c4OgYLiLcYGHG6w==",
-      "dependencies": [
-        "@types/react@18.3.28"
-      ]
+      "integrity": "sha512-8TV6R3h2j7a91c+1DXdJi3Syo69zzIZbz7Lg5tORM5LEJG7X/E6a1V3drRyBRZq7/utz7A+c4OgYLiLcYGHG6w=="
     },
     "@types/react@16.14.69": {
       "integrity": "sha512-NdnAamzkxLX9LBssSdt9Q0tQ3LR94hYxotI4/sRUs1vHKFXaDx9xDbK8S4wuw5bwrxiiXbTYyhKeITtFnwDvEA==",
@@ -7594,7 +7600,8 @@
       "integrity": "sha512-r8K7KGKEcztXfA/nfabSYB2hg9tDphORJTdf8xprN/luSLGmNhOBN8dm1/SYjqLLet6YUFEXOcrdTuwryp/Bew==",
       "optionalDependencies": [
         "@types/trusted-types"
-      ]
+      ],
+      "deprecated": true
     },
     "dot-case@3.0.4": {
       "integrity": "sha512-Kv5nKlh6yRrdrGvxeJ2e5y2eRUpkUosIW4A2AS38zwSz27zu7ufDwQPi5Jhs3XAlGNetl3bmnGhQsMtkKJnj3w==",
@@ -14148,7 +14155,6 @@
       "integrity": "sha512-ibMcc0EbfmbwApqJD8AUr0yls8BSrKzIbHaUsPidQljxToCqFh34nwtu3CXNEItcVJNzpjDHrhK8A+MAh2JW3A==",
       "dependencies": [
         "@types/hast@2.3.10",
-        "@types/react@18.3.28",
         "@types/unist@2.0.11",
         "comma-separated-tokens",
         "hast-util-whitespace",
@@ -14586,11 +14592,9 @@
     "rehackt@0.1.0_@types+react@18.3.28_react@18.3.1": {
       "integrity": "sha512-7kRDOuLHB87D/JESKxQoRwv4DzbIdwkAGQ7p6QKGdVlY1IZheUnVhlk/4UZlNUVxdAXpyxikE3URsG067ybVzw==",
       "dependencies": [
-        "@types/react@18.3.28",
         "react@18.3.1"
       ],
       "optionalPeers": [
-        "@types/react@18.3.28",
         "react@18.3.1"
       ]
     },
@@ -17311,7 +17315,7 @@
         "npm:@graphql-codegen/typescript-react-apollo@^4.3.0",
         "npm:@graphql-codegen/typescript@^4.0.6",
         "npm:@helia/unixfs@^1.4.2",
-        "npm:@ledgerhq/hw-transport-webusb@5.53.0",
+        "npm:@ledgerhq/hw-transport-webusb@^6.31.4",
         "npm:@milkdown/kit@^7.5.0",
         "npm:@milkdown/plugin-automd@^7.5.0",
         "npm:@milkdown/react@^7.5.0",
