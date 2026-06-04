@@ -315,6 +315,35 @@ see [[cyb/languages]] for the algebraic completeness argument. see [[cyb/multipr
 
 ---
 
+## Helical navigation
+
+cyberspace — the navigable semantic space of the [[cybergraph]] — has a natural helical geometry derived from the tri-kernel's three operators.
+
+the three axes of cyberspace:
+
+| axis | operator | navigation direction | what you find |
+|------|----------|---------------------|---------------|
+| D (helix axis) | diffusion | follow links outward from a particle | concepts downstream in the same attention flow |
+| S (helix radius) | springs | rotate to structurally equivalent particles | concepts at the same focus level, different domain |
+| H (helix pitch) | heat | zoom scale: atom → enzyme → bridge → article → deep | concepts at the same location but different resolution |
+
+the three axes are orthogonal — movement along one does not change position on the others. this gives cyberspace the structure of a helical coordinate system: (D-distance, S-angle, H-scale).
+
+navigation primitives derived from the helix:
+
+```
+step_along(p, n)     — follow D-axis n hops; returns particles in the diffusion stream from p
+rotate_to(p, domain) — move to S-angle of target domain; returns particles at same focus level
+zoom_to(p, scale)    — adjust H-pitch to target size class; returns same concept at new resolution
+unwind(cluster)      — compute the winding number of a cluster; returns its topological charge (φ*)
+```
+
+the Arc universe (topology language, #4 in the fourteen) is the natural computation substrate for helical navigation. Arc graphs have adjacency algebra — the right structure for winding numbers and helical traversal. Arc's canonical rendering is vector paths — the natural visualization of helical trajectories in the graph.
+
+### Graph world helical visualization
+
+the Graph world (Cmd+2) renders the [[cybergraph]] as a force-directed layout. the helix geometry suggests an alternative: project the tri-kernel's three axes onto a 3D helical coordinate system. particles at the same focus level sit at the same helix radius. high-focus particles (φ* > 0.01) sit near the helix axis. the Graph world can toggle between flat (current) and helical projection — giving an intuitive view of where conceptual density concentrates.
+
 ## The Thesis
 
 cyb/os rests on three observations and one boundary.
