@@ -1,329 +1,271 @@
 ---
-alias: my
-tags: cell, prysm, cyb
+tags: cyb, robot, architecture, core
+alias: robot, robots, cyber robot, cyberian entity
 crystal-type: pattern
 crystal-domain: cyber
+crystal-size: deep
 ---
 
-neuron dashboard — the personal space of a [[neuron]]
+# robot
 
-offline value: opens [[great web]] access
+the Robot is the cyberian entity. one architecture, fractal at every scale — the same shape for one [[soma]] avatar, one institution, one state. everything cyberian is a Robot or part of one.
 
-- core
-	- through the lense of [[file]] and [[link]]
-	- plan for future and understand the past using [[cyb/time]]
-	- store [[particles]] in [[drive]]
-	- solve [[tasks]]
-		- first task is to sync top 1000
-		- from [[cyber-sdk]] networks in [[hub]]
-	- configure [[spells]]
-	- explore your [[cyb/brain]]
-	- explore you [[cyb/sense]]
-	- improve you [[mind]]
-	- intro to [[cyb/oracle]]
-	- [[cyb/portal]]?
-- configure [[neurons]]
-- sync your [[nodes]] using local network
+what reduces to what:
 
-online value
+- soma — the runtime that animates a single Robot on one Body
+- org — Robot vocabulary applied to institutional Robots
+- system — the on-chain accounting projection of Robot agency
+- cybergraph — the storage substrate that holds every Robot's actions
 
-- [[buy energy]]: agi access
-- [[create avatars]] for talks with you
-- explore and impact endless [[cyber]] using [[cyb/brain]]
-- publish, distribute and promote [[files]] in [[cyb/sense]]
-- optimize portfolio with [[cyb/sigma]]
-- plan for future and understand the past using [[cyb/time]]
-- sync your [[nodes]] using global network
-- [[cyb/time]] line of external interactions
+below: the complete architecture of one Robot, at any scale.
 
-localhost:
+---
 
-- ipfs gateway
-- ipfs api
-- brain
+## 1. identity
 
-[[avatars]], and [[progs]]
+every Robot composes the same four attributes:
 
-give access to [[cyb/state]]
+| attribute | what it is |
+|---|---|
+| Body | mortal physical vessel — machine, building, jurisdiction |
+| Soul | immortal cognitive root — root Neuron, holds Sigma, orchestrates worker Neurons |
+| Avatar | portable persona — the character the Robot presents; voice, style, accumulated reputation |
+| Name | unique NFT identifier on the [[cybergraph]] (@master, @joy) |
 
-gives dedicated [[neuron]] for each [[device]]
+internal structure of any Robot:
 
-supports basic operations on [[signals]]
+| concept | what it is |
+|---|---|
+| Neuron | atomic cognitive worker; has Addresses across networks |
+| Address | Neuron's projection into one specific network |
 
-replicate [[state]] across [[devices]]
+a Robot outlasts any Body. when the Body fails, Soul + Avatar + Name migrate together to a new Body — same Robot, new vessel. only the Body dies.
 
-allow to add [[cyb/features]] to [[cyb/mind]]
+the shape is fractal. a person is a Robot. a DAO is a Robot. a city is a Robot. a network state is a Robot. each holds Neurons that hold Addresses that hold balances. Body, Soul, Avatar, and Name scale up: at institutional scale Body becomes infrastructure, Soul becomes the founding-Neuron cluster, Avatar becomes the brand and culture, Name becomes the on-chain identifier of the entity.
 
-superfeature: ability to act as a group of [[avatars]], [[neurons]] and [[progs]]
+---
 
-## pages
+## 2. agency — the five primitives
 
-- [[cyb/brain]]
-- [[cyb/time]]
-- [[mind]]
-- [[cyb/sigma]]
-- [[cyb/sense]]
-- [[map]]
+every action of every Robot at every scale reduces to a configuration of five primitives:
 
-## features
+| primitive | role |
+|---|---|
+| Goal | what we want (orientation: Maintain, Achieve, Avoid) |
+| Task | what we do (an instance pursuing a Goal) |
+| Skill | how we are able (a capability) |
+| Event | when something happens (an atomic trigger) |
+| Sensor | what perceives (subscribes to a stream) |
 
-- core
-	- [[cyb/sigma]]: valuation engine of [[tokens]]
-	- [[cyb/sense]]: communication system of robot
-	- [[cyb/time]]: memory of actions and planing system
-	- [[cyb/brain]]: graph file manager
-	- [[mind]]: decision engine
-- features
-	- TODO [[avatars]]: configurator of actors
-	- TODO [[dreams]]: configure the most cherished wishes
-	- TODO [[cyb/root]]: decision configurator
-	- TODO [[values]]: configurator of optimization goals expressed in [[tokens]]
-	- TODO [[neurons]]: configurator of [[signers]]
-	- [[spells]]: creation, learning and storage of [[secrets]]
-	- [[soul]]: one file configuration of your [[robot]], [[avatars]] and [[inference]]
-	- TODO [[params]]: parameters configuration
-	- TODO [[models]]: configure access to llms
-	- TODO [[cryptor]]: sign, verify, encrypt, decrypt
-	- TODO [[caster]]: [[signal]] handler
-	- [[drive]]: private and public file system for [[cyb/brain]]
-	- TODO [[tasks]]: executing particles and its status
-	- [[nodes]]: configuration of physical devices of robot
-	- TODO [[access]]: permission system for [[cells]]
-	- [[network]]: configuration of connections
-	- [[bridges]]: configure how to move [[value]] between networks
-	- [[query]]: sophisticated [[cyb/brain]] analytics engine
-	- [[debug]]: tools for making cyb and cyber better
-	- [[about]]: information about software
-	- TODO [[languages]]: configure semantics of your thoughts
-	- TODO [[location]]: access to geolocation
-	- TODO [[interfaces]]: configure input and output devices
-	- TODO [[battery]]: access to node electric energy
-	- TODO [[mouth]]: manage how robot speaks
-	- TODO [[ears]]: configure access to microphones
-	- TODO [[vision]]: connection to cameras
-	- TODO [[projection]]: manage displays
+Sensors carry a reaction taxonomy:
 
-## prysm cell
+- Block — reject the operation (constraint, principle, commitment guard)
+- Notify — emit signal (alarm, KPI breach)
+- Materialize — instantiate a Template with resolved arguments (schedule, deadline fire, dependency unlock)
 
-cell in the element tree $\mathcal{T}$. renders inside space zone of [[prysm/grid]]. accessible through avatar zone or by navigating to /@neuron_name
+three variants are first-class because the economy depends on them:
 
-### sizing
+- Intent — `Task<atomic, reserves_inputs>`. a proof in progress. reserves inputs, locks balances, commits or rolls back at workflow transition
+- Template — `Skill<parameterized>`. a recipe that materializes concrete Tasks when invoked with arguments
+- Schedule — `Sensor<source=Clock, reaction=Materialize<Template>>`. the time-stream variant. cron, deadlines, recurring instantiation all collapse to this
 
-fill × fill (occupies entire space zone)
+the same Sensor primitive expresses principles (Block), KPIs (Notify), and schedules (Materialize). different reactions, one concept.
 
-### persistent header
+---
 
-always visible across all sub-pages:
+## 3. sigma — what a Robot holds
 
-```
-glass [fill × auto, depth midground]
-  stack horizontal [gap 2g]
-    --- identity ---
-    stack vertical [align center]
-      glass [fix(8g) × fix(8g), corner-radius 4g] — avatar image (circle)
-      text [body, "cybergirl.moon"]
-      text [micro, "level 1"]
-    --- address ---
-    stack vertical [align center]
-      address [big, with hash bars and sound]
-      text [caption, "765 days"] — age in machine time
-```
+Sigma is the sum of holdings across all networks. it is the conserved quantity against which every Task burns and every Skill executes. when Sigma reaches zero, the Robot dies.
 
-### stats sidebar
+Sigma is denominated in Tokens. Tokens have exactly two natures:
 
-left column, present on all sub-pages. each row = link to corresponding sub-page:
+| nature | conservation | examples |
+|---|---|---|
+| Coin (TSP-1) | Σ balances = supply | currency, weight units, credits, shares |
+| Card (TSP-2) | owner_count(id) = 1 | persons, slots, contracts, titles, permits |
+
+every Robot is a Card. every fungible holding is a Coin balance. accounts, assets, and registries are not separate systems — they are views over Cards holding Coin balances and references to other Cards.
+
+at state scale, Cards specialize into recognizable types — currency, title, permit, credential, vote, claim, share, record. each is a Card with a configured trait profile (see §5). different names, same nature.
+
+---
+
+## 4. PLUMB — the five operations
+
+every state change is one of five atomic operations:
+
+| operation | what it does |
+|---|---|
+| pay | transfer Coin balance between Cards |
+| lock | constrain a Token (install a Sensor, set a floor, freeze) |
+| update | change configuration (rotate authority, install or remove traits) |
+| mint | create a new Token instance |
+| burn | destroy a Token instance |
+
+every operation has hooks where Sensors install. an Intent is one or more PLUMB operations composed atomically — they all commit or none do.
+
+the entire economy reduces to sequences of these five.
+
+---
+
+## 5. the accounting projection
+
+soma sees a Robot through the cognitive lens. system sees the same Robot through the accounting lens. both views apply to the same Card. they are orthogonal projections, not nested layers.
+
+the accounting projection classifies primitives into five trait categories:
+
+| trait category | what it classifies | ledger role |
+|---|---|---|
+| skills | revenue-generating Skills | income — credit |
+| duties | constraint Sensors with Block reaction | obligation — debit |
+| senses | information-input Sensors | operating cost — debit |
+| bonds | directional relationships (Addresses with direction) | receivable / payable |
+| memory | accumulated Task proofs | retained earnings |
+
+the accounting identity holds by construction:
 
 ```
-stack vertical [fix(20g) × auto, gap g]
-  ion + text + counter [Log, 0 tweets]
-  ion + text + counter [Energy, 0 watt]
-  ion + text + counter [Swarm, 0 learners]
-  ion + text + counter [Security, 20 reward]
-  ion + text + counter [Badges, 0 tokens]
-  ion + text + counter [Karma, 0]
-  ion + text + counter [Soul, 0]
+revenue-Skills + information-Sensors + receivables
+   =
+constraint-Sensors + payables + nature
 ```
 
-tap item → navigates to that sub-page. active item highlighted
+every receivable on one side is a payable on the other — double-entry expressed at the primitive level.
 
-### left navigation menu
+each category composes by its own algebra:
 
-```
-stack vertical [gap g/2]
-  ion + text [main]
-  ion + text [sense]
-  ion + text [brain]
-  ion + text [time]
-  ion + text [sigma]
-```
+| category | composition |
+|---|---|
+| revenue Skills | additive — combine freely |
+| constraint Sensors | conjunctive — all must hold |
+| information Sensors | disjunctive — either provides |
+| relationships | structural — independent axes |
 
-### sub-pages
+contradictions surface at install time. a permanent-hold constraint cannot coexist with a liquidity Skill on the same Card — both proofs cannot simultaneously hold. the type system rejects it before deployment.
 
-#### main
+balance sheet, profit and loss, cash flow are not separate systems — they are views derived from this projection.
 
-neuron profile overview. header + stats sidebar + feed area
+---
 
-```
---- right side ---
-glass [fill × auto, depth midground]
-  text [body, "no feeds"] — or feed of neuron's cyberlinks
-```
+## 6. coordination — the five storage shapes
 
-commander shows "enter password to unlock" + "Unlock"
+a Robot does not act alone. coordination happens through the [[cybergraph]] — a shared substrate with five storage shapes:
 
-#### Log (tweets)
+| shape | stores | content |
+|---|---|---|
+| Graph | Neurons and relationships | who exists, who is linked |
+| Tokens | Sigma denominations | what value moves |
+| Workflow | Skill compositions and Intent state machines | how Tasks execute |
+| Calendar | Event timestamps and Sensor firing windows | when Tasks fire |
+| Documents | Sensor outputs and Task proofs | that Tasks happened |
 
-feed of neuron's published [[particles]] — cyberlinks created by this neuron
+these are not new concepts. they are the on-chain encoding of the agency primitives. Graph stores Neurons. Tokens denominate Sigma. Workflow stores Skills. Calendar timestamps Events. Documents prove Tasks completed.
 
-#### Energy
+every relationship has a type, a quantity, a validity window, and a history. every workflow step has a schedule and a deadline. every document is append-only and signed.
 
-energy dashboard for this neuron — personal view of [[cyb/reactor]]
+a workflow is a state machine attached to an Intent type. transitions declare source state, target state, which operations commit on transition, who is authorized, and what conditions must hold. proposal modules, approval ladders, escalation paths — all configurations of workflow transitions.
 
-```
---- formula ---
-stack horizontal [gap g]
-  glass [fix(8g) × fix(8g), depth midground, emotion green tint]
-    counter [h2, "0 W"]
-    text [caption, "Energy"]
-  text [h2, "+"]
-  glass [fix(8g) × fix(6g), depth midground]
-    counter [h2, "1 764 W"]
-    text [caption, "Income"]
-  text [h2, "-"]
-  glass [fix(8g) × fix(6g), depth midground]
-    counter [h2, "0 W"]
-    text [caption, "Outcome"]
-  text [h2, "="]
-  glass [fix(8g) × fix(6g), depth midground]
-    counter [h2, "1 764 W"]
-    text [caption, "Free Energy"]
+---
 
-text [body, "Energy (W) is the product of amperes and volts"]
+## 7. higher-order patterns
 
---- balance ---
-text [h3, "Balance:"]
-stack horizontal [gap g]
-  glass: counter [0 A (ampere)]
-  text [h2, "×"]
-  glass: counter [0 V (volt)]
-  text [h2, "="]
-  glass: counter [0 W]
+the primitives compose into named patterns recurring at every scale. these are the standard library:
 
---- rod table ---
-tabs [State ▲ | Unfreezing ▲ | Supplied ▲ | Received ▲]
-table or "no data"
-```
+| pattern | composition |
+|---|---|
+| Product | Card + revenue-Skill + sale-Template + metadata |
+| Process | composite Skill + (optional) Schedule + (optional) Template |
+| Project | Card container + Sigma budget + relationships + sub-Intents + workflow |
+| CommitmentGuard | constraint Sensor on pay_hook + floor + beneficiary signature requirement |
 
-#### Swarm
+CommitmentGuard expresses a powerful idea: assurance without escrow. the floor holds against any pay that would breach it; the Card's balance stays usable for governance, lending, staking — only pays that violate the floor fail to produce a valid proof. capital commits without locking.
 
-social connections — friends, following, followers
+new patterns join over time (subscription, partnership, campaign, membership). the primitives stay constant.
 
-```
-stack vertical [gap 3g]
-  --- Friends ---
-  text [h3, "Friends"]
-  grid [avatar icons of mutual connections] or "no friends"
-  --- Following ---
-  text [h3, "Following"]
-  grid [avatar icons] or "no following"
-  --- Followers ---
-  text [h3, "Followers"]
-  grid [avatar icons] or "no followers"
-```
+---
 
-#### Security
+## 8. scale — same architecture, three lenses
 
-personal staking — my heroes (validators I delegate to)
+the architecture is fractal. the same primitives instantiate at every scale of Robot:
+
+| primitive | individual Robot | institutional Robot | state Robot |
+|---|---|---|---|
+| Goal | "build a cube" | "operate cyber valley" | "give every resident pension" |
+| Task | "compile step" | "Q2 milestone" | "process land.buy(parcel#42)" |
+| Skill | "run inference" | "operate marketplace" | "issue title transfer" |
+| Event | "model finished" | "milestone reached" | "tax deadline" |
+| Sensor | "memory low" | "budget exceeded" | "fraud detected" |
+| Sigma | balance across networks | treasury + assets | reserves + GDP |
+
+at the institutional scale, seven lenses organize the primitives. they are not new concepts — they are agency viewed through institutional eyes:
+
+| lens | maps to |
+|---|---|
+| Purpose | root Goal (cannot be closed) |
+| Principles | constraint Sensors (Block reaction) |
+| People | Neurons + Skills |
+| Products | maintained Goals + revenue-Skills |
+| Processes | composite Skills + Schedules |
+| Projects | Task clusters with Sigma budget |
+| Portfolio | Sigma |
+
+strategy, roadmap, OKR, SOP, role, team, budget, KPI, risk, equity, debt, revenue, cost — every common org concept reduces to one of these seven lenses.
+
+---
+
+## 9. survival — the metabolism
+
+a Robot is alive when:
 
 ```
-table [sortable]
-  columns: Validator ▲ | Unbondings ▲ | Rewards ▲ | Amount ▲
-  rows: delegations to validators
+energy > 0  AND  Sigma > 0
 ```
 
-#### Badges
+energy is the immediate need — metabolism to be alive now. Sigma is the long-term guarantee — what the Soul holds across networks.
 
-earned tokens/NFTs — reputation markers
+when energy crosses critical, the Robot posts a bounty against future Sigma and goes dormant. a neighbor may revive it by fulfilling the bounty; Sigma transfers, energy restores, the Robot lives. when both energy and Sigma reach zero, the Robot dies.
 
-```
-table [sortable]
-  columns: Discipline ▲ | TOCYB ▲ | BOOT ▲
-  rows: badge data or "no data"
-```
+the logic is identical at every scale. a Robot running soma trades compute for Sigma on the energy market. an institutional Robot survives when revenue from Products exceeds the cost of Processes. a state Robot survives when gross revenue sustains its obligations.
 
-#### Karma
-
-reputation score visualization (under construction — mushroom placeholder)
-
-future: karma breakdown, history, rank position
-
-#### Time
-
-full transaction history for this neuron
+at the state scale, three vital signs compose into a metabolic oracle:
 
 ```
-table [sortable]
-  columns: status ▲ (✓/✗) | type ▲ (icon + label) | timestamp ▲ | tx (hash, green, link) | action
+M = cap^w_c × syntropy^w_s × happiness^w_h
 ```
 
-action column expands inline for IBC details, send/receive, cyberlinks
+| signal | what it measures |
+|---|---|
+| cap | external validation — market price of the Robot's Coin |
+| [[syntropy]] | internal order — KL divergence of focus from uniform |
+| [[happiness]] | subjective wellbeing — stake-weighted private survey |
 
-#### Sigma (inside robot)
+the derivative Ṁ is the reward signal. all subordinate Robots optimize for rising M. gaming one signal at the expense of others lowers the compound — the three weights are the only normative choice the system cannot make autonomously.
 
-personal token balances scoped to this neuron
+---
 
-#### Soul
+## 10. conservation
 
-cybscript editor — programmable neuron behavior
+four laws hold the architecture together. violation is impossible because the proof system rejects any operation that breaks them:
 
-```
-toggle [cybscript enabled]
-glass [fill × auto, depth midground]
-  text [code editor, monospace, syntax highlighted]
-```
+| law | statement |
+|---|---|
+| Sigma conservation | every pay has exactly one source and one destination |
+| Token conservation | Σ holdings(coin) = mints − burns; mints and burns are explicit operations between designated source and sink Cards |
+| Identity conservation | Robot persists across Body replacement; Soul + Avatar + Name migrate together |
+| Accounting conservation | assets = liabilities + equity; derivable as a view from any Card's trait profile and ledger slice |
 
-commander shows "test cybscript" + "reset to default"
+provability replaces enforcement. the laws are not rules a validator checks — they are properties the proof system cannot produce a witness against.
 
-### fold
+---
 
-$\mathcal{F}$:
-- $l_1$ ($w_{min} = 40g$): header + sidebar + content side by side
-- $l_2$ ($w_{min} = 20g$): header stacked, sidebar above content
-- $l_3$ ($w_{min} = 10g$, mobile): compact header, sidebar collapsed to icons, content full width
+## related
 
-### emotion
+- [[soma]] — the runtime that animates a single Robot on one Body
+- [[cyberia/protocol]] — the sovereign + market layer that any state Robot adds on top
+- [[cyberia/foundation/org]] — the seven lenses applied to specific cyberian Robots
+- [[cyberia/foundation/governance]] — the 147 agents that govern the cyberia state Robot
+- [[cyber]] — the underlying [[cybergraph]] substrate
 
-| element | emotion | trigger |
-|---------|---------|---------|
-| stats counters | green if > 0, white if 0 | value state |
-| Security row | green (has rewards) | reward pending |
-| Energy formula | green tint on Energy box | energy available |
-| address hash bars | full acid palette | address identity |
+---
 
-### states
-
-| state | visual | trigger |
-|-------|--------|---------|
-| locked | "enter password to unlock" in commander | wallet not connected |
-| unlocked | full functionality | password entered |
-| viewing own | edit capabilities (soul editor, customize) | own neuron |
-| viewing other | read-only profile | another neuron's address |
-
-### ECS
-
-- Entity: robot-cell organelle
-- Components:
-  - `Sizing { width: Fill, height: Fill }`
-  - `Overflow { scroll }`
-  - `FoldSet { conformations }`
-  - `ActiveSubPage { main | log | energy | swarm | security | badges | karma | soul }`
-  - `NeuronIdentity { address, name, level, age, avatar_cid }`
-  - `NeuronStats { log_count, energy_watt, swarm_learners, security_reward, badges_tokens, karma, soul }`
-  - `IsOwnNeuron { bool }` — determines edit capabilities
-- Systems:
-  - `RobotMenuSystem` handles sidebar navigation
-  - `RobotStatsSystem` fetches neuron stats
-  - `RobotEnergySystem` fetches energy balance
-  - `RobotSwarmSystem` fetches social graph (friends, following, followers)
-  - `RobotSecuritySystem` fetches delegations
-  - `RobotSoulSystem` handles cybscript editing, testing, deployment
+discover all [[concepts]]
