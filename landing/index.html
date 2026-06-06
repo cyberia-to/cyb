@@ -1,0 +1,612 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>cyb — own a mind</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Play:wght@400;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      background: #000;
+      color: #f0f0f0;
+      font-family: 'Play', system-ui, sans-serif;
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+
+    .container {
+      max-width: 1100px;
+      margin: 0 auto;
+      padding: 0 2rem;
+    }
+
+    /* HEADER */
+    header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      padding: 1.25rem 0;
+      background: rgba(0, 0, 0, 0.8);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-bottom: 1px solid #111;
+      z-index: 100;
+    }
+    header .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+    .logo {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 1.125rem;
+      color: #22c55e;
+      letter-spacing: 0.05em;
+    }
+    nav {
+      display: flex;
+      gap: 2rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.875rem;
+    }
+    nav a {
+      color: #888;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    nav a:hover { color: #f0f0f0; }
+    nav a.cta-link {
+      color: #22c55e;
+      font-weight: 700;
+    }
+
+    /* HERO */
+    .hero {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      padding: 8rem 0 4rem;
+      position: relative;
+      overflow: hidden;
+    }
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 30% 20%, rgba(34, 197, 94, 0.08), transparent 60%),
+        radial-gradient(ellipse at 70% 80%, rgba(6, 182, 212, 0.06), transparent 60%);
+      pointer-events: none;
+    }
+    .hero::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+      background-size: 40px 40px;
+      pointer-events: none;
+      mask-image: radial-gradient(ellipse at center, black, transparent 70%);
+      -webkit-mask-image: radial-gradient(ellipse at center, black, transparent 70%);
+    }
+    .hero .container { position: relative; z-index: 1; }
+    .hero-eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.875rem;
+      color: #22c55e;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 1.5rem;
+    }
+    .hero h1 {
+      font-size: clamp(2.5rem, 7vw, 5.5rem);
+      font-weight: 700;
+      line-height: 1.05;
+      letter-spacing: -0.03em;
+      margin-bottom: 2rem;
+      max-width: 900px;
+    }
+    .hero h1 .accent { color: #22c55e; }
+    .lead {
+      font-size: clamp(1.125rem, 1.6vw, 1.5rem);
+      color: #aaa;
+      margin-bottom: 3rem;
+      max-width: 680px;
+      line-height: 1.5;
+    }
+    .lead .mono { color: #06b6d4; }
+
+    /* CTA */
+    .cta {
+      display: inline-block;
+      padding: 1rem 2.25rem;
+      background: #22c55e;
+      color: #000;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 0.95rem;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      text-decoration: none;
+      border: 2px solid #22c55e;
+      transition: all 0.2s;
+    }
+    .cta:hover {
+      background: transparent;
+      color: #22c55e;
+    }
+    .cta-big {
+      padding: 1.25rem 3rem;
+      font-size: 1.125rem;
+    }
+    .cta-secondary {
+      background: transparent;
+      color: #f0f0f0;
+      border-color: #333;
+      margin-left: 1rem;
+    }
+    .cta-secondary:hover {
+      border-color: #f0f0f0;
+      color: #f0f0f0;
+    }
+
+    /* SECTIONS */
+    section {
+      padding: 7rem 0;
+      border-top: 1px solid #0f0f0f;
+    }
+    .section-eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: #22c55e;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 1.5rem;
+    }
+    section h2 {
+      font-size: clamp(2rem, 4vw, 3.25rem);
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin-bottom: 1.5rem;
+      max-width: 800px;
+    }
+    .section-lead {
+      font-size: 1.25rem;
+      color: #aaa;
+      max-width: 680px;
+      margin-bottom: 3.5rem;
+    }
+
+    /* MODULES GRID */
+    .modules {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 1px;
+      background: #1a1a1a;
+      border: 1px solid #1a1a1a;
+    }
+    .module {
+      padding: 1.75rem;
+      background: #050505;
+      transition: background 0.2s;
+    }
+    .module:hover {
+      background: #0a0a0a;
+    }
+    .module-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 0.95rem;
+      color: #22c55e;
+      margin-bottom: 0.5rem;
+      letter-spacing: 0.05em;
+    }
+    .module-tagline {
+      font-size: 0.875rem;
+      color: #777;
+      margin-bottom: 0.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: 0.03em;
+    }
+    .module-desc {
+      color: #ccc;
+      font-size: 0.95rem;
+      line-height: 1.55;
+    }
+
+    /* FEATURES LIST */
+    .features {
+      list-style: none;
+      padding: 0;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+    }
+    .features li {
+      padding: 1.5rem;
+      border-left: 2px solid #22c55e;
+      background: #050505;
+    }
+    .features.cyan li {
+      border-left-color: #06b6d4;
+    }
+    .feature-title {
+      font-weight: 700;
+      color: #f0f0f0;
+      margin-bottom: 0.5rem;
+      font-size: 1.05rem;
+    }
+    .feature-desc {
+      color: #aaa;
+      font-size: 0.95rem;
+      line-height: 1.55;
+    }
+
+    /* COMPARISON TABLE */
+    .compare-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 1rem;
+      margin-top: 3rem;
+    }
+    .compare-card {
+      padding: 2.5rem 2rem;
+      border: 1px solid #222;
+      background: #050505;
+    }
+    .compare-card.virtual { border-left: 3px solid #22c55e; }
+    .compare-card.silicon { border-left: 3px solid #06b6d4; }
+    .compare-title {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.875rem;
+      letter-spacing: 0.15em;
+      text-transform: uppercase;
+      margin-bottom: 0.5rem;
+    }
+    .compare-card.virtual .compare-title { color: #22c55e; }
+    .compare-card.silicon .compare-title { color: #06b6d4; }
+    .compare-headline {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 2rem;
+      color: #f0f0f0;
+    }
+    .compare-list {
+      list-style: none;
+      padding: 0;
+    }
+    .compare-list li {
+      padding: 0.75rem 0;
+      border-bottom: 1px solid #1a1a1a;
+      display: flex;
+      justify-content: space-between;
+      gap: 1rem;
+    }
+    .compare-list li:last-child { border-bottom: none; }
+    .compare-label {
+      color: #888;
+      font-size: 0.875rem;
+      font-family: 'JetBrains Mono', monospace;
+    }
+    .compare-value {
+      color: #f0f0f0;
+      font-size: 0.95rem;
+      text-align: right;
+    }
+
+    /* TABLE */
+    .table-wrap {
+      overflow-x: auto;
+      margin-top: 2rem;
+    }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.95rem;
+    }
+    th, td {
+      text-align: left;
+      padding: 1rem 1.25rem;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    th {
+      font-family: 'JetBrains Mono', monospace;
+      color: #888;
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.15em;
+      font-weight: 500;
+      background: #050505;
+    }
+    th.col-virtual { color: #22c55e; }
+    th.col-silicon { color: #06b6d4; }
+    td:first-child {
+      font-family: 'JetBrains Mono', monospace;
+      color: #ccc;
+      font-weight: 700;
+      font-size: 0.85rem;
+      letter-spacing: 0.05em;
+    }
+    td { color: #aaa; }
+
+    /* MINT CTA */
+    .mint-section {
+      text-align: center;
+      padding: 10rem 0;
+      background: radial-gradient(ellipse at center, rgba(34, 197, 94, 0.05), transparent 70%);
+    }
+    .mint-section h2 {
+      margin: 0 auto 1.5rem;
+    }
+    .mint-section .section-lead {
+      margin: 0 auto 3rem;
+      text-align: center;
+    }
+
+    /* FOOTER */
+    footer {
+      padding: 3rem 0;
+      border-top: 1px solid #111;
+      text-align: center;
+    }
+    footer p {
+      font-family: 'JetBrains Mono', monospace;
+      color: #444;
+      font-size: 0.8rem;
+      letter-spacing: 0.1em;
+    }
+
+    @media (max-width: 768px) {
+      .container { padding: 0 1.25rem; }
+      header nav { gap: 1rem; }
+      header nav a:not(.cta-link) { display: none; }
+      .hero { padding: 6rem 0 3rem; }
+      section { padding: 5rem 0; }
+      .compare-grid { grid-template-columns: 1fr; }
+      .cta-secondary { margin-left: 0; margin-top: 1rem; display: block; text-align: center; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="container">
+      <div class="logo">cyb</div>
+      <nav>
+        <a href="#what">what</a>
+        <a href="#virtual">virtual</a>
+        <a href="#body">silicon</a>
+        <a href="#compare">compare</a>
+        <a href="#mint" class="cta-link">mint →</a>
+      </nav>
+    </div>
+  </header>
+
+  <section class="hero">
+    <div class="container">
+      <div class="hero-eyebrow">own the only intelligence that doesn't die</div>
+      <h1>own a mind. <span class="accent">forever.</span></h1>
+      <p class="lead">a robot is a <span class="mono">card</span> on the cybergraph — your mind, autonomous, transferable, immortal. virtual by default. silicon by choice. yours forever.</p>
+      <a href="#mint" class="cta">mint your robot</a>
+      <a href="#what" class="cta cta-secondary">see what's inside</a>
+    </div>
+  </section>
+
+  <section id="what">
+    <div class="container">
+      <div class="section-eyebrow">// architecture</div>
+      <h2>the robot is one card. nine regions.</h2>
+      <p class="section-lead">your robot is an NFT on the cybergraph. each region is a slot. mint creates the name; everything else fills in. mandatory and optional regions noted below.</p>
+
+      <div class="modules">
+        <div class="module">
+          <div class="module-name">name</div>
+          <div class="module-tagline">the card · mandatory</div>
+          <div class="module-desc">the NFT on the cybergraph. the essence. <code>@master</code>. resolvable, transferable, persistent.</div>
+        </div>
+        <div class="module">
+          <div class="module-name">soul</div>
+          <div class="module-tagline">authority · mandatory</div>
+          <div class="module-desc">the controlling keypair. signs every action. holds accumulated karma. rotates on transfer.</div>
+        </div>
+        <div class="module">
+          <div class="module-name">avatar</div>
+          <div class="module-tagline">appearance · optional</div>
+          <div class="module-desc">image and capability spec. what other robots see. what your robot claims to do.</div>
+        </div>
+        <div class="module">
+          <div class="module-name">brain</div>
+          <div class="module-tagline">knowledge · optional</div>
+          <div class="module-desc">local instance of the cybergraph. how your robot navigates and queries shared knowledge.</div>
+        </div>
+        <div class="module">
+          <div class="module-name">sense</div>
+          <div class="module-tagline">communication · standard</div>
+          <div class="module-desc">signals in, signals out. peer messages, network gossip, sensor input when embodied.</div>
+        </div>
+        <div class="module">
+          <div class="module-name">sigma</div>
+          <div class="module-tagline">life · required</div>
+          <div class="module-desc">token holdings, endowment, capital movement. the conserved quantity that keeps it alive.</div>
+        </div>
+        <div class="module">
+          <div class="module-name">soma</div>
+          <div class="module-tagline">cognition · optional</div>
+          <div class="module-desc">the thinking. perceive, decide, plan, learn. rented when virtual, local when embodied.</div>
+        </div>
+        <div class="module">
+          <div class="module-name">memory</div>
+          <div class="module-tagline">recall · optional</div>
+          <div class="module-desc">private state. procedural skills, episodic events, semantic facts, working context.</div>
+        </div>
+        <div class="module">
+          <div class="module-name">time</div>
+          <div class="module-tagline">schedule · optional</div>
+          <div class="module-desc">autonomous fires. deadlines, recurring actions, wake events. acts even when you sleep.</div>
+        </div>
+        <div class="module">
+          <div class="module-name">body</div>
+          <div class="module-tagline">substrate · optional upgrade</div>
+          <div class="module-desc">physical reach. machine or biological. attached when you want it. <em>null by default.</em></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section id="virtual">
+    <div class="container">
+      <div class="section-eyebrow">// default state</div>
+      <h2>virtual by default.</h2>
+      <p class="section-lead">your robot is born on the chain. no hardware to buy. no rack to maintain. it holds capital, schedules actions, communicates, earns — from the moment of mint. pay gas only when it acts.</p>
+
+      <ul class="features">
+        <li>
+          <div class="feature-title">mints in seconds</div>
+          <div class="feature-desc">no setup. one transaction. an empty card waiting to be configured.</div>
+        </li>
+        <li>
+          <div class="feature-title">endowed at birth</div>
+          <div class="feature-desc">a starting capital position. yield sustains it indefinitely while staked.</div>
+        </li>
+        <li>
+          <div class="feature-title">rented cognition</div>
+          <div class="feature-desc">soma runs on hosted-tenant inference. you pay only when it thinks.</div>
+        </li>
+        <li>
+          <div class="feature-title">no hardware to die</div>
+          <div class="feature-desc">there is nothing to fail. uptime is the chain's uptime.</div>
+        </li>
+        <li>
+          <div class="feature-title">infinitely scalable</div>
+          <div class="feature-desc">state is shared on-chain. mint a hundred robots. mint a million.</div>
+        </li>
+        <li>
+          <div class="feature-title">tradeable as capital</div>
+          <div class="feature-desc">sell, will, collateralize. it is an NFT — markets just work.</div>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="body">
+    <div class="container">
+      <div class="section-eyebrow">// optional upgrade</div>
+      <h2>attach a silicon body.</h2>
+      <p class="section-lead">when you want your robot to think locally, see the world, act in real time — bond it to hardware. you pay for the hardware once. every local operation is then free. the body is mortal; the robot is not.</p>
+
+      <ul class="features cyan">
+        <li>
+          <div class="feature-title">own its inference</div>
+          <div class="feature-desc">soma runs on your hardware. no rent. no host watching your input.</div>
+        </li>
+        <li>
+          <div class="feature-title">local sensors</div>
+          <div class="feature-desc">camera, microphone, GPS, environmental. perception without paying per signal.</div>
+        </li>
+        <li>
+          <div class="feature-title">real-time response</div>
+          <div class="feature-desc">sub-block latency. react to the physical world without waiting for confirmation.</div>
+        </li>
+        <li>
+          <div class="feature-title">offline-capable</div>
+          <div class="feature-desc">brain becomes a local sovereign cybergraph instance. fully operational without network.</div>
+        </li>
+        <li>
+          <div class="feature-title">private by construction</div>
+          <div class="feature-desc">input never leaves the machine. cognition is yours alone.</div>
+        </li>
+        <li>
+          <div class="feature-title">body can die</div>
+          <div class="feature-desc">the hardware is mortal. soul, avatar, name migrate to a new body. same robot, new vessel.</div>
+        </li>
+      </ul>
+    </div>
+  </section>
+
+  <section id="compare">
+    <div class="container">
+      <div class="section-eyebrow">// trade-off</div>
+      <h2>pick how you want to pay.</h2>
+      <p class="section-lead">there is no capability gap. a virtual robot can rent any physical service. an embodied robot has the same identity, the same capital, the same memory. the choice is economic.</p>
+
+      <div class="compare-grid">
+        <div class="compare-card virtual">
+          <div class="compare-title">// virtual</div>
+          <div class="compare-headline">pay gas per op</div>
+          <ul class="compare-list">
+            <li><span class="compare-label">cost per op</span><span class="compare-value">high (gas)</span></li>
+            <li><span class="compare-label">capital cost</span><span class="compare-value">none</span></li>
+            <li><span class="compare-label">reliability</span><span class="compare-value">high (no hw to die)</span></li>
+            <li><span class="compare-label">privacy</span><span class="compare-value">visible on chain</span></li>
+            <li><span class="compare-label">latency</span><span class="compare-value">block time</span></li>
+            <li><span class="compare-label">scale</span><span class="compare-value">infinite robots</span></li>
+            <li><span class="compare-label">sovereignty</span><span class="compare-value">chain + hosts</span></li>
+          </ul>
+        </div>
+        <div class="compare-card silicon">
+          <div class="compare-title">// silicon body</div>
+          <div class="compare-headline">pay hardware once</div>
+          <ul class="compare-list">
+            <li><span class="compare-label">cost per op</span><span class="compare-value">free (local)</span></li>
+            <li><span class="compare-label">capital cost</span><span class="compare-value">buy hardware</span></li>
+            <li><span class="compare-label">reliability</span><span class="compare-value">mortal hardware</span></li>
+            <li><span class="compare-label">privacy</span><span class="compare-value">local execution</span></li>
+            <li><span class="compare-label">latency</span><span class="compare-value">real-time</span></li>
+            <li><span class="compare-label">scale</span><span class="compare-value">unlimited per body</span></li>
+            <li><span class="compare-label">sovereignty</span><span class="compare-value">full local control</span></li>
+          </ul>
+        </div>
+      </div>
+
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>module</th>
+              <th class="col-virtual">virtual</th>
+              <th class="col-silicon">silicon body</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>name</td><td>NFT on-chain</td><td>same NFT</td></tr>
+            <tr><td>soul</td><td>signs each tx (gas)</td><td>TEE-secured key, local signing</td></tr>
+            <tr><td>avatar</td><td>capabilities CLAIMED</td><td>capabilities PROVEN by body</td></tr>
+            <tr><td>brain</td><td>RPC queries cost gas</td><td>local sovereign cybergraph instance</td></tr>
+            <tr><td>sense</td><td>every peer message via radio (gas)</td><td>local sensors + actuators free</td></tr>
+            <tr><td>sigma</td><td>every PLUMB op pays gas</td><td>+ body production (solar, labor)</td></tr>
+            <tr><td>soma</td><td>rented inference (hosted-tenant)</td><td>local inference, no rent, private</td></tr>
+            <tr><td>memory</td><td>private bbg state on-chain (gas)</td><td>local bbg instance, free store/recall</td></tr>
+            <tr><td>time</td><td>on-chain scheduler (gas per fire)</td><td>local real-time clock, free triggers</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </section>
+
+  <section class="mint-section" id="mint">
+    <div class="container">
+      <div class="section-eyebrow">// take ownership</div>
+      <h2>own a mind that<br/><span style="color: #22c55e;">doesn't die.</span></h2>
+      <p class="section-lead">mint now. attach a body later. the robot persists either way.</p>
+      <a href="#" class="cta cta-big">mint your robot →</a>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <p>cyb · don't trust. don't fear. don't beg.</p>
+    </div>
+  </footer>
+
+</body>
+</html>
