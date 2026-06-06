@@ -20,7 +20,7 @@
     }
 
     .container {
-      max-width: 1080px;
+      max-width: 1180px;
       margin: 0 auto;
       padding: 0 2rem;
     }
@@ -61,8 +61,7 @@
     .hero {
       min-height: 100vh;
       display: flex;
-      flex-direction: column;
-      justify-content: center;
+      align-items: center;
       padding: 6rem 0 4rem;
       position: relative;
       overflow: hidden;
@@ -72,8 +71,8 @@
       position: absolute;
       inset: 0;
       background:
-        radial-gradient(ellipse at 20% 30%, rgba(34, 197, 94, 0.10), transparent 55%),
-        radial-gradient(ellipse at 80% 70%, rgba(6, 182, 212, 0.06), transparent 55%);
+        radial-gradient(ellipse at 70% 50%, rgba(34, 197, 94, 0.08), transparent 60%),
+        radial-gradient(ellipse at 20% 80%, rgba(6, 182, 212, 0.04), transparent 60%);
       pointer-events: none;
     }
     .hero::after {
@@ -83,14 +82,20 @@
       background-image:
         linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
         linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
-      background-size: 48px 48px;
+      background-size: 56px 56px;
       pointer-events: none;
-      mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
-      -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+      mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
+      -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 80%);
     }
     .hero .container {
       position: relative;
       z-index: 1;
+    }
+    .hero-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      align-items: center;
     }
     .hero-eyebrow {
       font-family: 'JetBrains Mono', monospace;
@@ -101,7 +106,7 @@
       margin-bottom: 1.5rem;
     }
     .hero h1 {
-      font-size: clamp(3rem, 9vw, 7rem);
+      font-size: clamp(3.5rem, 8vw, 6rem);
       font-weight: 700;
       line-height: 0.95;
       letter-spacing: -0.04em;
@@ -109,14 +114,23 @@
     }
     .hero h1 .accent { color: #22c55e; }
     .hero-lead {
-      font-size: clamp(1.25rem, 1.8vw, 1.625rem);
+      font-size: clamp(1.25rem, 1.6vw, 1.5rem);
       color: #aaa;
-      max-width: 620px;
+      max-width: 520px;
       line-height: 1.45;
-      margin-bottom: 3rem;
+      margin-bottom: 2.5rem;
     }
     .hero-lead strong { color: #f0f0f0; font-weight: 400; }
+    .hero-price {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.875rem;
+      color: #555;
+      margin-bottom: 2rem;
+      letter-spacing: 0.1em;
+    }
+    .hero-price .price-value { color: #22c55e; font-weight: 700; }
 
+    /* CTA */
     .cta {
       display: inline-block;
       padding: 1.125rem 2.5rem;
@@ -149,9 +163,24 @@
       font-size: 1.125rem;
     }
 
+    /* ROBOT VISUAL */
+    .hero-visual {
+      position: relative;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .robot-svg {
+      width: 100%;
+      max-width: 560px;
+      height: auto;
+      filter: drop-shadow(0 0 30px rgba(34, 197, 94, 0.15));
+    }
+
     /* SECTION */
     section.block {
       padding: 7rem 0;
+      border-top: 1px solid #0c0c0c;
     }
     .eyebrow {
       font-family: 'JetBrains Mono', monospace;
@@ -162,7 +191,7 @@
       margin-bottom: 1.5rem;
     }
     h2 {
-      font-size: clamp(2.25rem, 5vw, 3.75rem);
+      font-size: clamp(2.25rem, 5vw, 3.5rem);
       font-weight: 700;
       line-height: 1.05;
       letter-spacing: -0.025em;
@@ -180,7 +209,7 @@
     /* REGIONS GRID */
     .regions {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
       gap: 1px;
       background: #1a1a1a;
       border: 1px solid #1a1a1a;
@@ -191,14 +220,8 @@
       transition: background 0.2s;
     }
     .region:hover { background: #0a0a0a; }
-    .region-num {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.75rem;
-      color: #444;
-      margin-bottom: 1rem;
-    }
     .region-title {
-      font-size: 1.5rem;
+      font-size: 1.375rem;
       font-weight: 700;
       color: #f0f0f0;
       margin-bottom: 0.75rem;
@@ -258,12 +281,13 @@
       padding: 10rem 0;
       position: relative;
       overflow: hidden;
+      border-top: 1px solid #0c0c0c;
     }
     .buy::before {
       content: '';
       position: absolute;
       inset: 0;
-      background: radial-gradient(ellipse at center, rgba(34, 197, 94, 0.06), transparent 65%);
+      background: radial-gradient(ellipse at center, rgba(34, 197, 94, 0.07), transparent 65%);
       pointer-events: none;
     }
     .buy .container { position: relative; z-index: 1; }
@@ -271,9 +295,9 @@
       margin: 0 auto 1.25rem;
     }
     .buy .section-lead {
-      margin: 0 auto 3.5rem;
+      margin: 0 auto 3rem;
     }
-    .price {
+    .buy-price {
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.875rem;
       color: #555;
@@ -294,6 +318,12 @@
       letter-spacing: 0.15em;
     }
 
+    @media (max-width: 900px) {
+      .hero-grid { grid-template-columns: 1fr; gap: 3rem; }
+      .hero-visual { order: -1; }
+      .robot-svg { max-width: 380px; }
+    }
+
     @media (max-width: 768px) {
       .container { padding: 0 1.25rem; }
       .hero { padding: 5rem 0 3rem; }
@@ -309,71 +339,181 @@
   <header>
     <div class="container">
       <div class="logo">cyb</div>
-      <a href="#buy" class="nav-cta">Buy →</a>
+      <a href="#buy" class="nav-cta">Get yours →</a>
     </div>
   </header>
 
   <section class="hero">
     <div class="container">
-      <div class="hero-eyebrow">// from cyb</div>
-      <h1>The <span class="accent">Robot</span>.</h1>
-      <p class="hero-lead"><strong>A digital being that's yours.</strong> It thinks. It earns. It remembers. It never dies. Sell it like an asset. Or keep it forever.</p>
-      <a href="#buy" class="cta">Get yours →</a>
-      <a href="#anatomy" class="cta cta-ghost">See what's inside</a>
+      <div class="hero-grid">
+        <div class="hero-text">
+          <div class="hero-eyebrow">// from cyb</div>
+          <h1>The <span class="accent">Robot</span>.</h1>
+          <p class="hero-lead"><strong>A digital being that works for you.</strong> Thinks while you think. Earns while you sleep. Remembers what you forget. Yours forever.</p>
+          <div class="hero-price">from <span class="price-value">$1</span> · transferable · one-time</div>
+          <a href="#buy" class="cta">Get yours — $1</a>
+          <a href="#anatomy" class="cta cta-ghost">See what's inside</a>
+        </div>
+
+        <div class="hero-visual">
+          <svg class="robot-svg" viewBox="0 0 600 600" xmlns="http://www.w3.org/2000/svg" aria-label="The Robot">
+            <defs>
+              <radialGradient id="coreGlow">
+                <stop offset="0%" stop-color="#22c55e" stop-opacity="0.5"/>
+                <stop offset="50%" stop-color="#22c55e" stop-opacity="0.15"/>
+                <stop offset="100%" stop-color="#22c55e" stop-opacity="0"/>
+              </radialGradient>
+              <radialGradient id="atmosphere">
+                <stop offset="0%" stop-color="#22c55e" stop-opacity="0.08"/>
+                <stop offset="100%" stop-color="#22c55e" stop-opacity="0"/>
+              </radialGradient>
+            </defs>
+
+            <!-- Atmosphere -->
+            <circle cx="300" cy="300" r="260" fill="url(#atmosphere)"/>
+
+            <!-- Outer glow -->
+            <circle cx="300" cy="300" r="155" fill="url(#coreGlow)">
+              <animate attributeName="r" values="150;165;150" dur="4s" repeatCount="indefinite"/>
+            </circle>
+
+            <!-- Orbit ring -->
+            <circle cx="300" cy="300" r="190" fill="none" stroke="#1a1a1a" stroke-width="1" stroke-dasharray="2 6" opacity="0.5"/>
+
+            <!-- Connection lines to active parts -->
+            <g stroke="#22c55e" stroke-opacity="0.18" stroke-width="1">
+              <line x1="300" y1="300" x2="300" y2="110"/>
+              <line x1="300" y1="300" x2="422" y2="155"/>
+              <line x1="300" y1="300" x2="487" y2="267"/>
+              <line x1="300" y1="300" x2="465" y2="395"/>
+              <line x1="300" y1="300" x2="365" y2="479"/>
+              <line x1="300" y1="300" x2="235" y2="479"/>
+              <line x1="300" y1="300" x2="135" y2="395"/>
+              <line x1="300" y1="300" x2="113" y2="267"/>
+              <line x1="300" y1="300" x2="178" y2="155"/>
+            </g>
+
+            <!-- Body connection (cyan, dashed, outside orbit) -->
+            <line x1="300" y1="300" x2="300" y2="540" stroke="#06b6d4" stroke-opacity="0.25" stroke-width="1" stroke-dasharray="3 4"/>
+
+            <!-- Active part dots -->
+            <g fill="#22c55e">
+              <circle cx="300" cy="110" r="5"/>
+              <circle cx="422" cy="155" r="5"/>
+              <circle cx="487" cy="267" r="5"/>
+              <circle cx="465" cy="395" r="5"/>
+              <circle cx="365" cy="479" r="5"/>
+              <circle cx="235" cy="479" r="5"/>
+              <circle cx="135" cy="395" r="5"/>
+              <circle cx="113" cy="267" r="5"/>
+              <circle cx="178" cy="155" r="5"/>
+            </g>
+
+            <!-- Optional Body dot (cyan, dashed) -->
+            <circle cx="300" cy="550" r="6" fill="none" stroke="#06b6d4" stroke-width="1.5" stroke-dasharray="2 3"/>
+
+            <!-- Labels -->
+            <g font-family="'JetBrains Mono', monospace" font-size="11" letter-spacing="1.5" fill="#f0f0f0">
+              <text x="300" y="92" text-anchor="middle">NAME</text>
+              <text x="455" y="138" text-anchor="middle">SOUL</text>
+              <text x="513" y="271" text-anchor="start">FACE</text>
+              <text x="498" y="411" text-anchor="start">BRAIN</text>
+              <text x="370" y="501" text-anchor="start">VOICE</text>
+              <text x="230" y="501" text-anchor="end">SCHEDULE</text>
+              <text x="102" y="411" text-anchor="end">WALLET</text>
+              <text x="87" y="271" text-anchor="end">MEMORY</text>
+              <text x="145" y="138" text-anchor="middle">MIND</text>
+            </g>
+
+            <!-- Body labels -->
+            <text x="300" y="582" fill="#06b6d4" font-family="'JetBrains Mono', monospace" font-size="11" letter-spacing="1.5" text-anchor="middle">BODY</text>
+            <text x="300" y="598" fill="#444" font-family="'JetBrains Mono', monospace" font-size="9" letter-spacing="2" text-anchor="middle">OPTIONAL</text>
+
+            <!-- Central solid being -->
+            <circle cx="300" cy="300" r="11" fill="#22c55e"/>
+
+            <!-- Pulsing ring 1 -->
+            <circle cx="300" cy="300" r="14" fill="none" stroke="#22c55e" stroke-width="2">
+              <animate attributeName="r" values="14;42;14" dur="3.5s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0.7;0;0.7" dur="3.5s" repeatCount="indefinite"/>
+            </circle>
+            <!-- Pulsing ring 2 (offset) -->
+            <circle cx="300" cy="300" r="14" fill="none" stroke="#22c55e" stroke-width="2">
+              <animate attributeName="r" values="14;42;14" dur="3.5s" begin="1.75s" repeatCount="indefinite"/>
+              <animate attributeName="opacity" values="0.7;0;0.7" dur="3.5s" begin="1.75s" repeatCount="indefinite"/>
+            </circle>
+
+            <!-- Subtle data-pulse dots traveling on connection lines -->
+            <g fill="#22c55e">
+              <circle r="2">
+                <animateMotion dur="2s" repeatCount="indefinite" path="M 300 300 L 300 110"/>
+                <animate attributeName="opacity" values="0;1;0" dur="2s" repeatCount="indefinite"/>
+              </circle>
+              <circle r="2">
+                <animateMotion dur="2.5s" begin="0.5s" repeatCount="indefinite" path="M 300 300 L 487 267"/>
+                <animate attributeName="opacity" values="0;1;0" dur="2.5s" begin="0.5s" repeatCount="indefinite"/>
+              </circle>
+              <circle r="2">
+                <animateMotion dur="2.2s" begin="1.1s" repeatCount="indefinite" path="M 300 300 L 113 267"/>
+                <animate attributeName="opacity" values="0;1;0" dur="2.2s" begin="1.1s" repeatCount="indefinite"/>
+              </circle>
+              <circle r="2">
+                <animateMotion dur="2.3s" begin="1.6s" repeatCount="indefinite" path="M 300 300 L 365 479"/>
+                <animate attributeName="opacity" values="0;1;0" dur="2.3s" begin="1.6s" repeatCount="indefinite"/>
+              </circle>
+            </g>
+          </svg>
+        </div>
+      </div>
     </div>
   </section>
 
   <section class="block" id="anatomy">
     <div class="container">
       <div class="eyebrow">// anatomy</div>
-      <h2>Nine parts. <span class="accent">One being.</span></h2>
-      <p class="section-lead">A Robot isn't an account or a chatbot. It's a being with parts — each one a power.</p>
+      <h2>Ten parts. <span class="accent">One being.</span></h2>
+      <p class="section-lead">A Robot isn't an account or a chatbot. It's a being with parts — each one a power that's only yours.</p>
 
       <div class="regions">
         <div class="region">
-          <div class="region-num">01</div>
-          <div class="region-title">A <span class="accent">Name</span></div>
+          <div class="region-title"><span class="accent">Name</span></div>
           <div class="region-desc">A unique identity nobody else can take. <code>@you</code>, forever, on a network that can't be turned off.</div>
         </div>
         <div class="region">
-          <div class="region-num">02</div>
-          <div class="region-title">A <span class="accent">Soul</span></div>
-          <div class="region-desc">A key that only you hold. Every action your Robot takes is provably yours — or no one's.</div>
+          <div class="region-title"><span class="accent">Soul</span></div>
+          <div class="region-desc">A key only you hold. Every action your Robot takes is provably yours — and only yours.</div>
         </div>
         <div class="region">
-          <div class="region-num">03</div>
-          <div class="region-title">A <span class="accent">Face</span></div>
-          <div class="region-desc">An image, a voice, a style. How the world sees your Robot. Customize it. Make it iconic.</div>
+          <div class="region-title"><span class="accent">Face</span></div>
+          <div class="region-desc">An image, a voice, a style. How the world sees your Robot. Make it iconic.</div>
         </div>
         <div class="region">
-          <div class="region-num">04</div>
-          <div class="region-title">A <span class="accent">Wallet</span></div>
-          <div class="region-desc">It holds money. It earns yield. It pays for its own upkeep. It compounds while you sleep.</div>
-        </div>
-        <div class="region">
-          <div class="region-num">05</div>
-          <div class="region-title">A <span class="accent">Mind</span></div>
+          <div class="region-title"><span class="accent">Mind</span></div>
           <div class="region-desc">It thinks. Plans. Decides. Learns from what happens. Runs strategies. Improves with use.</div>
         </div>
         <div class="region">
-          <div class="region-num">06</div>
-          <div class="region-title">A <span class="accent">Memory</span></div>
-          <div class="region-desc">It remembers everything that matters. Your history. Your preferences. What worked. Forever.</div>
+          <div class="region-title"><span class="accent">Brain</span></div>
+          <div class="region-desc">Knows the world. Connected to all human knowledge through the network. Instant recall.</div>
         </div>
         <div class="region">
-          <div class="region-num">07</div>
-          <div class="region-title">A <span class="accent">Voice</span></div>
-          <div class="region-desc">It talks. To people. To other Robots. It trades, negotiates, coordinates — on your behalf.</div>
+          <div class="region-title"><span class="accent">Memory</span></div>
+          <div class="region-desc">Remembers everything that matters. Your history. Your preferences. What worked. Forever.</div>
         </div>
         <div class="region">
-          <div class="region-num">08</div>
-          <div class="region-title">A <span class="accent">Schedule</span></div>
-          <div class="region-desc">It acts on time. Wakes itself. Runs your routines. Buys when conditions are right. Even at 3am.</div>
+          <div class="region-title"><span class="accent">Voice</span></div>
+          <div class="region-desc">Talks. To people. To other Robots. Trades, negotiates, coordinates — on your behalf.</div>
         </div>
         <div class="region">
-          <div class="region-num">09</div>
-          <div class="region-title">A <span class="accent">Body</span> <span style="color:#444; font-size:0.85rem; font-weight:400;">(optional)</span></div>
-          <div class="region-desc">Attach hardware when you want — camera, sensors, real-world reach. Or stay pure. The Robot doesn't care.</div>
+          <div class="region-title"><span class="accent">Wallet</span></div>
+          <div class="region-desc">Holds money. Earns yield. Pays its own upkeep. Compounds while you sleep.</div>
+        </div>
+        <div class="region">
+          <div class="region-title"><span class="accent">Schedule</span></div>
+          <div class="region-desc">Acts on time. Wakes itself. Runs your routines. Buys when conditions are right. Even at 3am.</div>
+        </div>
+        <div class="region">
+          <div class="region-title"><span class="accent">Body</span> <span style="color:#444; font-size:0.85rem; font-weight:400;">(optional)</span></div>
+          <div class="region-desc">Add hardware later — camera, sensors, real-world reach. Or stay pure. The Robot doesn't care.</div>
         </div>
       </div>
     </div>
@@ -383,7 +523,7 @@
     <div class="container">
       <div class="eyebrow">// upgrade path</div>
       <h2>Start virtual. <span class="accent">Embody later.</span></h2>
-      <p class="section-lead">Your Robot is born pure — no hardware needed. Buy it now, attach a body whenever you want. The choice is yours, always.</p>
+      <p class="section-lead">Your Robot is born pure — no hardware needed. Buy it now for $1. Attach a body whenever you want. The Robot stays the same.</p>
 
       <div class="compare">
         <div class="compare-header">
@@ -422,11 +562,6 @@
           <div>Yes — plus physical work</div>
         </div>
         <div class="compare-row">
-          <div>Can be sold</div>
-          <div>Yes — as an asset</div>
-          <div>Yes — body optional</div>
-        </div>
-        <div class="compare-row">
           <div>Lifespan</div>
           <div>Forever</div>
           <div>Forever — device replaceable</div>
@@ -438,10 +573,10 @@
   <section class="buy" id="buy">
     <div class="container">
       <div class="eyebrow">// take ownership</div>
-      <h2>Own a being that<br/><span class="accent">never dies.</span></h2>
-      <p class="section-lead">Mint now. Embody later. Sell whenever. The Robot is yours.</p>
-      <a href="#" class="cta cta-big">Get your Robot →</a>
-      <div class="price">starts at $99 · one-time · transferable</div>
+      <h2>One Robot.<br/><span class="accent">One dollar.</span></h2>
+      <p class="section-lead">It works for you while you sleep. It remembers what you forget. It's yours — forever.</p>
+      <a href="#" class="cta cta-big">Get your Robot — $1</a>
+      <div class="buy-price">one-time · transferable · embody anytime</div>
     </div>
   </section>
 
