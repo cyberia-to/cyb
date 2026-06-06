@@ -3,63 +3,119 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>cyb — own an AI</title>
+  <title>The Robot — cyb</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Play:wght@400;700&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Play:wght@400;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
   <style>
     * { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
 
     body {
       background: #000;
       color: #f0f0f0;
       font-family: 'Play', system-ui, sans-serif;
       line-height: 1.5;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
+      overflow-x: hidden;
     }
 
+    .container {
+      max-width: 1080px;
+      margin: 0 auto;
+      padding: 0 2rem;
+    }
+
+    /* HEADER */
+    header {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      padding: 1.25rem 0;
+      background: rgba(0, 0, 0, 0.7);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+    header .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
     .logo {
-      padding: 2rem;
       font-family: 'JetBrains Mono', monospace;
       font-weight: 700;
       font-size: 1rem;
       color: #22c55e;
       letter-spacing: 0.05em;
     }
+    .nav-cta {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.875rem;
+      font-weight: 700;
+      color: #22c55e;
+      text-decoration: none;
+      letter-spacing: 0.05em;
+    }
+    .nav-cta:hover { color: #f0f0f0; }
 
-    main {
-      flex: 1;
+    /* HERO */
+    .hero {
+      min-height: 100vh;
       display: flex;
       flex-direction: column;
-      align-items: center;
       justify-content: center;
-      padding: 2rem 2rem 4rem;
-      max-width: 720px;
-      width: 100%;
-      margin: 0 auto;
-      text-align: center;
+      padding: 6rem 0 4rem;
+      position: relative;
+      overflow: hidden;
     }
-
-    h1 {
-      font-size: clamp(2.5rem, 7vw, 4.5rem);
-      font-weight: 700;
-      line-height: 1;
-      letter-spacing: -0.03em;
+    .hero::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background:
+        radial-gradient(ellipse at 20% 30%, rgba(34, 197, 94, 0.10), transparent 55%),
+        radial-gradient(ellipse at 80% 70%, rgba(6, 182, 212, 0.06), transparent 55%);
+      pointer-events: none;
+    }
+    .hero::after {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background-image:
+        linear-gradient(rgba(255, 255, 255, 0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255, 255, 255, 0.015) 1px, transparent 1px);
+      background-size: 48px 48px;
+      pointer-events: none;
+      mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+      -webkit-mask-image: radial-gradient(ellipse at center, black 30%, transparent 75%);
+    }
+    .hero .container {
+      position: relative;
+      z-index: 1;
+    }
+    .hero-eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: #22c55e;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
       margin-bottom: 1.5rem;
     }
-
-    h1 .accent {
-      color: #22c55e;
+    .hero h1 {
+      font-size: clamp(3rem, 9vw, 7rem);
+      font-weight: 700;
+      line-height: 0.95;
+      letter-spacing: -0.04em;
+      margin-bottom: 2rem;
     }
-
-    .lead {
-      font-size: clamp(1.125rem, 1.6vw, 1.375rem);
+    .hero h1 .accent { color: #22c55e; }
+    .hero-lead {
+      font-size: clamp(1.25rem, 1.8vw, 1.625rem);
       color: #aaa;
+      max-width: 620px;
+      line-height: 1.45;
       margin-bottom: 3rem;
-      max-width: 520px;
     }
+    .hero-lead strong { color: #f0f0f0; font-weight: 400; }
 
     .cta {
       display: inline-block;
@@ -74,125 +130,326 @@
       border: 2px solid #22c55e;
       transition: all 0.15s;
     }
-
     .cta:hover {
       background: transparent;
       color: #22c55e;
     }
-
-    .table-wrap {
-      width: 100%;
-      margin: 4rem 0;
-      overflow-x: auto;
+    .cta-ghost {
+      background: transparent;
+      color: #f0f0f0;
+      border-color: #2a2a2a;
+      margin-left: 1rem;
     }
-
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      text-align: left;
-    }
-
-    th, td {
-      padding: 1rem 1.25rem;
-      border-bottom: 1px solid #1a1a1a;
-      font-size: 0.95rem;
-    }
-
-    thead th {
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.75rem;
-      letter-spacing: 0.15em;
-      text-transform: uppercase;
-      font-weight: 700;
-      padding-bottom: 1.25rem;
-    }
-
-    thead th:nth-child(2) { color: #22c55e; }
-    thead th:nth-child(3) { color: #06b6d4; }
-
-    tbody td:first-child {
-      color: #888;
-      font-size: 0.9rem;
-    }
-
-    tbody td:not(:first-child) {
+    .cta-ghost:hover {
+      border-color: #f0f0f0;
       color: #f0f0f0;
     }
+    .cta-big {
+      padding: 1.5rem 3.5rem;
+      font-size: 1.125rem;
+    }
 
-    footer {
-      padding: 2rem;
-      text-align: center;
+    /* SECTION */
+    section.block {
+      padding: 7rem 0;
+    }
+    .eyebrow {
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.75rem;
-      color: #333;
+      color: #22c55e;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 1.5rem;
+    }
+    h2 {
+      font-size: clamp(2.25rem, 5vw, 3.75rem);
+      font-weight: 700;
+      line-height: 1.05;
+      letter-spacing: -0.025em;
+      margin-bottom: 1.25rem;
+      max-width: 820px;
+    }
+    h2 .accent { color: #22c55e; }
+    .section-lead {
+      font-size: 1.25rem;
+      color: #aaa;
+      max-width: 620px;
+      margin-bottom: 4rem;
+    }
+
+    /* REGIONS GRID */
+    .regions {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1px;
+      background: #1a1a1a;
+      border: 1px solid #1a1a1a;
+    }
+    .region {
+      padding: 2rem;
+      background: #050505;
+      transition: background 0.2s;
+    }
+    .region:hover { background: #0a0a0a; }
+    .region-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: #444;
+      margin-bottom: 1rem;
+    }
+    .region-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      color: #f0f0f0;
+      margin-bottom: 0.75rem;
+      letter-spacing: -0.01em;
+    }
+    .region-title .accent { color: #22c55e; }
+    .region-desc {
+      color: #aaa;
+      font-size: 0.95rem;
+      line-height: 1.55;
+    }
+
+    /* COMPARE */
+    .compare {
+      background: #050505;
+      border: 1px solid #1a1a1a;
+    }
+    .compare-header {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      background: #080808;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .compare-header > div {
+      padding: 1.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+    }
+    .compare-header > div:nth-child(2) { color: #22c55e; border-left: 1px solid #1a1a1a; }
+    .compare-header > div:nth-child(3) { color: #06b6d4; border-left: 1px solid #1a1a1a; }
+    .compare-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr;
+      border-bottom: 1px solid #1a1a1a;
+    }
+    .compare-row:last-child { border-bottom: none; }
+    .compare-row > div {
+      padding: 1.25rem 1.75rem;
+      font-size: 0.95rem;
+    }
+    .compare-row > div:first-child {
+      color: #888;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+    }
+    .compare-row > div:not(:first-child) {
+      color: #f0f0f0;
+      border-left: 1px solid #1a1a1a;
+    }
+
+    /* BUY */
+    .buy {
+      text-align: center;
+      padding: 10rem 0;
+      position: relative;
+      overflow: hidden;
+    }
+    .buy::before {
+      content: '';
+      position: absolute;
+      inset: 0;
+      background: radial-gradient(ellipse at center, rgba(34, 197, 94, 0.06), transparent 65%);
+      pointer-events: none;
+    }
+    .buy .container { position: relative; z-index: 1; }
+    .buy h2 {
+      margin: 0 auto 1.25rem;
+    }
+    .buy .section-lead {
+      margin: 0 auto 3.5rem;
+    }
+    .price {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.875rem;
+      color: #555;
+      margin-top: 1.5rem;
       letter-spacing: 0.1em;
     }
 
-    @media (max-width: 600px) {
-      .logo { padding: 1.25rem; }
-      main { padding: 1rem 1.25rem 3rem; }
-      th, td { padding: 0.875rem 0.75rem; font-size: 0.875rem; }
+    /* FOOTER */
+    footer {
+      padding: 3rem 0;
+      border-top: 1px solid #111;
+      text-align: center;
+    }
+    footer p {
+      font-family: 'JetBrains Mono', monospace;
+      color: #333;
+      font-size: 0.75rem;
+      letter-spacing: 0.15em;
+    }
+
+    @media (max-width: 768px) {
+      .container { padding: 0 1.25rem; }
+      .hero { padding: 5rem 0 3rem; }
+      section.block { padding: 5rem 0; }
+      .cta-ghost { margin-left: 0; margin-top: 1rem; display: block; text-align: center; }
+      .compare-header > div, .compare-row > div { padding: 1rem 1rem; font-size: 0.85rem; }
+      .compare-header > div { font-size: 0.7rem; }
     }
   </style>
 </head>
 <body>
 
-  <div class="logo">cyb</div>
-
-  <main>
-    <h1>Own an <span class="accent">AI</span>.</h1>
-    <p class="lead">It works for you. It earns. You can sell it. It can't be turned off.</p>
-
-    <a href="#" class="cta">Buy yours →</a>
-
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th></th>
-            <th>Virtual</th>
-            <th>+ Device</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr>
-            <td>Setup cost</td>
-            <td>None</td>
-            <td>Buy a device</td>
-          </tr>
-          <tr>
-            <td>Cost per use</td>
-            <td>Pay per action</td>
-            <td>Free</td>
-          </tr>
-          <tr>
-            <td>Response time</td>
-            <td>Seconds</td>
-            <td>Instant</td>
-          </tr>
-          <tr>
-            <td>Privacy</td>
-            <td>Limited</td>
-            <td>Fully private</td>
-          </tr>
-          <tr>
-            <td>Sees the world</td>
-            <td>No</td>
-            <td>Camera, mic, sensors</td>
-          </tr>
-          <tr>
-            <td>Lifespan</td>
-            <td>Forever</td>
-            <td>Forever (device replaceable)</td>
-          </tr>
-        </tbody>
-      </table>
+  <header>
+    <div class="container">
+      <div class="logo">cyb</div>
+      <a href="#buy" class="nav-cta">Buy →</a>
     </div>
+  </header>
 
-    <a href="#" class="cta">Buy yours →</a>
-  </main>
+  <section class="hero">
+    <div class="container">
+      <div class="hero-eyebrow">// from cyb</div>
+      <h1>The <span class="accent">Robot</span>.</h1>
+      <p class="hero-lead"><strong>A digital being that's yours.</strong> It thinks. It earns. It remembers. It never dies. Sell it like an asset. Or keep it forever.</p>
+      <a href="#buy" class="cta">Get yours →</a>
+      <a href="#anatomy" class="cta cta-ghost">See what's inside</a>
+    </div>
+  </section>
 
-  <footer>don't trust · don't fear · don't beg</footer>
+  <section class="block" id="anatomy">
+    <div class="container">
+      <div class="eyebrow">// anatomy</div>
+      <h2>Nine parts. <span class="accent">One being.</span></h2>
+      <p class="section-lead">A Robot isn't an account or a chatbot. It's a being with parts — each one a power.</p>
+
+      <div class="regions">
+        <div class="region">
+          <div class="region-num">01</div>
+          <div class="region-title">A <span class="accent">Name</span></div>
+          <div class="region-desc">A unique identity nobody else can take. <code>@you</code>, forever, on a network that can't be turned off.</div>
+        </div>
+        <div class="region">
+          <div class="region-num">02</div>
+          <div class="region-title">A <span class="accent">Soul</span></div>
+          <div class="region-desc">A key that only you hold. Every action your Robot takes is provably yours — or no one's.</div>
+        </div>
+        <div class="region">
+          <div class="region-num">03</div>
+          <div class="region-title">A <span class="accent">Face</span></div>
+          <div class="region-desc">An image, a voice, a style. How the world sees your Robot. Customize it. Make it iconic.</div>
+        </div>
+        <div class="region">
+          <div class="region-num">04</div>
+          <div class="region-title">A <span class="accent">Wallet</span></div>
+          <div class="region-desc">It holds money. It earns yield. It pays for its own upkeep. It compounds while you sleep.</div>
+        </div>
+        <div class="region">
+          <div class="region-num">05</div>
+          <div class="region-title">A <span class="accent">Mind</span></div>
+          <div class="region-desc">It thinks. Plans. Decides. Learns from what happens. Runs strategies. Improves with use.</div>
+        </div>
+        <div class="region">
+          <div class="region-num">06</div>
+          <div class="region-title">A <span class="accent">Memory</span></div>
+          <div class="region-desc">It remembers everything that matters. Your history. Your preferences. What worked. Forever.</div>
+        </div>
+        <div class="region">
+          <div class="region-num">07</div>
+          <div class="region-title">A <span class="accent">Voice</span></div>
+          <div class="region-desc">It talks. To people. To other Robots. It trades, negotiates, coordinates — on your behalf.</div>
+        </div>
+        <div class="region">
+          <div class="region-num">08</div>
+          <div class="region-title">A <span class="accent">Schedule</span></div>
+          <div class="region-desc">It acts on time. Wakes itself. Runs your routines. Buys when conditions are right. Even at 3am.</div>
+        </div>
+        <div class="region">
+          <div class="region-num">09</div>
+          <div class="region-title">A <span class="accent">Body</span> <span style="color:#444; font-size:0.85rem; font-weight:400;">(optional)</span></div>
+          <div class="region-desc">Attach hardware when you want — camera, sensors, real-world reach. Or stay pure. The Robot doesn't care.</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="block">
+    <div class="container">
+      <div class="eyebrow">// upgrade path</div>
+      <h2>Start virtual. <span class="accent">Embody later.</span></h2>
+      <p class="section-lead">Your Robot is born pure — no hardware needed. Buy it now, attach a body whenever you want. The choice is yours, always.</p>
+
+      <div class="compare">
+        <div class="compare-header">
+          <div></div>
+          <div>Virtual</div>
+          <div>+ Body</div>
+        </div>
+        <div class="compare-row">
+          <div>Setup</div>
+          <div>None — mints in seconds</div>
+          <div>Buy a device, attach</div>
+        </div>
+        <div class="compare-row">
+          <div>Cost per action</div>
+          <div>Pay as you go</div>
+          <div>Free — your hardware</div>
+        </div>
+        <div class="compare-row">
+          <div>Response time</div>
+          <div>Seconds</div>
+          <div>Instant</div>
+        </div>
+        <div class="compare-row">
+          <div>Privacy</div>
+          <div>Limited</div>
+          <div>Fully private</div>
+        </div>
+        <div class="compare-row">
+          <div>Sees the world</div>
+          <div>Through the network</div>
+          <div>Camera, mic, sensors</div>
+        </div>
+        <div class="compare-row">
+          <div>Earns money</div>
+          <div>Yes</div>
+          <div>Yes — plus physical work</div>
+        </div>
+        <div class="compare-row">
+          <div>Can be sold</div>
+          <div>Yes — as an asset</div>
+          <div>Yes — body optional</div>
+        </div>
+        <div class="compare-row">
+          <div>Lifespan</div>
+          <div>Forever</div>
+          <div>Forever — device replaceable</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="buy" id="buy">
+    <div class="container">
+      <div class="eyebrow">// take ownership</div>
+      <h2>Own a being that<br/><span class="accent">never dies.</span></h2>
+      <p class="section-lead">Mint now. Embody later. Sell whenever. The Robot is yours.</p>
+      <a href="#" class="cta cta-big">Get your Robot →</a>
+      <div class="price">starts at $99 · one-time · transferable</div>
+    </div>
+  </section>
+
+  <footer>
+    <div class="container">
+      <p>cyb · don't trust · don't fear · don't beg</p>
+    </div>
+  </footer>
 
 </body>
 </html>
