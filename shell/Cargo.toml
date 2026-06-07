@@ -39,6 +39,14 @@ cyb-core   = { path = "../core" }
 tape       = { path = "../../tape/impl/rust" }
 prysm      = { path = "../../prysm" }
 
+# rune — open-computation language; terminal `rune` command path
+rune-ast     = { path = "../../rune/crates/rune-ast" }
+rune-parse   = { path = "../../rune/crates/rune-parse" }
+rune-lower   = { path = "../../rune/crates/rune-lower" }
+rune-interp  = { path = "../../rune/crates/rune-interp" }
+rune-subject = { path = "../../rune/crates/rune-subject" }
+rune-prysm   = { path = "../../rune/crates/rune-prysm" }
+
 # Core (all platforms)
 wry = { version = "0.53", features = ["transparent"] }
 arboard = "3"

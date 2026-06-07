@@ -275,6 +275,15 @@ fn evaluate_and_capture(
 }
 
 fn dispatch_eval(state: &mut TerminalNonSendState, input: String) {
+    // `rune <expr>` routes to the rune interpreter instead of nushell. Its
+    // result noun decodes to the SAME tape chunks nushell emits, so the rest
+    // of the pipeline (poll → dispatch → prysm) is identical. This is the
+    // rune↔prysm seam, live in the terminal.
+    if let Some(expr) = input.strip_prefix("rune ") {
+        dispatch_rune(state, expr.to_string());
+        return;
+    }
+
     let Some(engine) = state.nu_engine.take() else {
         warn!("No nushell engine for eval");
         return;
@@ -307,6 +316,72 @@ fn dispatch_eval(state: &mut TerminalNonSendState, input: String) {
             }
         }
     });
+}
+
+// ── rune eval ───────────────────────────────────────────────────────────────
+
+/// Evaluate a `rune <expr>` command. rune is instant-start (no compile phase),
+/// so this runs synchronously on the main thread and pushes its chunks into the
+/// same `StreamMsg` channel nushell uses. The engine is handed straight back
+/// untouched so `poll_eval_results` restores it without reinitializing.
+fn dispatch_rune(state: &mut TerminalNonSendState, expr: String) {
+    let Some(engine) = state.nu_engine.take() else {
+        warn!("No engine slot for rune eval");
+        return;
+    };
+    state.eval_in_progress = true;
+    state.scroll_offset = 100_000.0;
+    let (tx, rx) = std::sync::mpsc::channel::<StreamMsg>();
+    let (engine_tx, engine_rx) = std::sync::mpsc::channel::<NuShellEngine>();
+    state.eval_rx = Some(rx);
+    state.engine_rx = Some(engine_rx);
+    let _ = engine_tx.send(engine); // rune never touches the nu engine
+
+    let error = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        rune_eval_to_chunks(&expr, &tx)
+    }))
+    .unwrap_or_else(|_| Some("rune: panic during eval".to_string()));
+    let _ = tx.send(StreamMsg::Done { error });
+}
+
+/// Parse → lower → interpret a rune expression against a minimal subject, then
+/// decode the result noun into prysm chunks. Returns `Some(msg)` on error.
+fn rune_eval_to_chunks(
+    expr: &str,
+    tx: &std::sync::mpsc::Sender<StreamMsg>,
+) -> Option<String> {
+    let ast = match rune_parse::parse(expr) {
+        Ok(a) => a,
+        Err(e) => return Some(format!("rune parse error: {}", e.message)),
+    };
+    let formula = match rune_lower::lower(ast) {
+        Ok(n) => n,
+        Err(e) => return Some(format!("rune lower error: {}", e.message)),
+    };
+    let subject = rune_subject::Subject::minimal().to_noun();
+    let result = match rune_interp::eval(&subject, &formula) {
+        Ok(n) => n,
+        Err(e) => return Some(format!("rune eval error: {}", e.message)),
+    };
+
+    let chunks = rune_prysm::noun_to_chunks(&result);
+    if chunks.is_empty() {
+        // Non-UI result (e.g. `rune add(2, 3)`) — show the raw noun as text.
+        let _ = tx.send(StreamMsg::Chunk(Chunk::text(&noun_text(&result))));
+    } else {
+        for c in chunks {
+            let _ = tx.send(StreamMsg::Chunk(c));
+        }
+    }
+    None
+}
+
+/// Render a noun in `[head tail]` display form (atoms as decimals).
+fn noun_text(n: &rune_ast::Noun) -> String {
+    match n {
+        rune_ast::Noun::Atom(a) => a.to_string(),
+        rune_ast::Noun::Cell(h, t) => format!("[{} {}]", noun_text(h), noun_text(t)),
+    }
 }
 
 // ── poll_eval_results ─────────────────────────────────────────────────────────
