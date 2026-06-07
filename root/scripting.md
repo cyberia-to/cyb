@@ -1,407 +1,145 @@
-# soul: scripting guide
+---
+tags: cyb, core, scripting, rune
+alias: scripting, rune scripting, soul script, cybscript
+crystal-type: pattern
+crystal-domain: cyber
+---
 
-[rune Language]: https://rune-rs.github.io
-[cyb]: https://cyb.ai
+# scripting
 
-[cyb] uses [rune Language] for embeddable scripting aka [[cybscript]].
+how a [[neuron]] writes code that runs inside the [[robot]] — to tune its [[soul]], extend its behavior, render its own surfaces, and react to the [[cybergraph]]. the language is [[rune]].
 
-rune is virtual machine that runs inside cyb and process all commands and rendering results
+> *formerly "cybscript", an embedding of a third-party language. that is retired. cyb's scripting language is [[rune]] — [[Rs]] syntax on [[Nox]], homegrown, provable, instant-start. there is one language now, not a host plus a guest.*
 
-## why we choose new language?
+---
 
-rune is dynamic, compact, portable, async and fast scripting language which is specially targeted to rust developers.
+## the spine
 
-to our dismay we was not able to find any other way to provide dynamic execution in existing browsers which are compatable with future wasm based browsers.
-
-rune is wasm module written in rust.
-
-we hope you will enjoy it.
-
-Using cybscript any cyber citizen can
-
-- tune-up his [[soul]]
-- extend and modify robot behaivior and functionality
-
-soul is stored in [[ipfs]] and is linked directly to avatars passport.
-
-## CYB module
-
-cyb module provide bindings that connect cyber-scripting with app and extend [Rune language] functionality.
-
-#### Distributed computing
-
-Allows to evaluate code from external IPFS scripts in verifiable way, execute remote computations
+there is one law, and everything else is convention on top of it. a program is a **gate** (a function). the robot hands it a **subject** (everything it can see). it returns **chunks** (what to render) and may **request acts** along the way.
 
 ```
-// Evaluate function from IPFS
-cyb::eval_script_from_ipfs(cid,'func_name', #{'name': 'john-the-baptist', 'evangelist': true, 'age': 33})
-
-// Evaluate remote function(in developement)
-cyb::eval_remote_script(peer_id, func_name, params)
+   ~self ~world ~here          |= input            [text … button … ]
+   ~caps ~mem  ~now    ──────►     body     ──────►   chunk-noun     ──►  prysm
+   ────────────────             ─────────           ─────────────
+   the subject                  a rune gate         what it emits
+   (the robot, materialized)    (your program)      (rendered cells)
 ```
 
-#### Passport
+[[Nox]]'s one execution primitive — evaluate a formula against a subject — *is* the mechanism. so "an entrypoint" is not a separate system to register with. it is just a gate the shell calls with a subject it built. the kinds of entrypoint below differ only in **what triggers them** and **what `input` they receive**. same spine throughout.
 
-Get info about Citizenship
+---
 
+## the language
+
+[[rune]] gives you **instant start** (parse → run, no compile phase) and **two registers** over one AST: classic (familiar to any Rust/Go/TS programmer) and pure (sigil-form, alien and precise). both lower to the same [[Nox]] noun. pure code is provable unconditionally; reactive code relative to its event log; [[host|ward]] calls relative to their results.
+
+```rust
+fn double(x: @nebu) -> @nebu { x * 2 }      // classic register
 ```
-// Get passport data by nickname
-cyb::get_passport_by_nickname(nickname: string) -> json;
 ```
-
-#### Cyber links
-
-Work with Knowelege Graph
-
-```
-cyb::get_cyberlinks_from_cid(cid: string) -> json;
-cyb::get_cyberlinks_to_cid(cid: string)  -> json;
-
-// Search links by text or cid
-cyb::cyber_search(query: string) -> json;
-
-// Create cyber link
-// (this action requires trigger signer)
-cyb::cyber_link(from_cid: string, to_cid: string);
+|=  x=@nebu  (mul x 2)                       :: pure register
 ```
 
-#### IPFS
+full language: [[rune]].
 
-Work with IPFS
+rune is cyb's **authoring** runtime — the dynamic, instant-start one a [[neuron]] reaches for first. it is not the only runtime: [[Nox]] is the substrate everything compiles to, [[Inf]] runs [[Datalog]] queries over the graph, [[glia]] runs model [[inference]], [[wysm]] runs sandboxed WASM. they share the subject, the act set, and the [[ward]] (see [[languages]] for the full landscape). this guide is about writing rune; the spine and the permission model below are common to all of them.
 
-```
-cyb::get_text_from_ipfs(cid: string) -> string;
-cyb::add_content_to_ipfs(text: string);
-```
+---
 
-#### Local relational-graph-vector database
+## the subject — what code sees
 
-Access to [[cozo]] and your [[brain]] data represented in text and vector-based formats.
+every name resolves through the subject by tree-slot lookup. the subject is the robot materialized for one evaluation: identity and context projected into eight slots.
 
-```
-// return N closest particles based on embeddings of each
-cyb::search_by_embedding(text:string, count: int) -> string[];
-```
+| slot | axis | holds |
+|------|------|-------|
+| `~self`  | 2   | [[neuron]] / [[soul]] identity |
+| `~now`   | 6   | current time |
+| `~here`  | 14  | current world / surface / graph location |
+| `~caps`  | 30  | the capabilities granted to this code — see [[ward]] |
+| `~code`  | 62  | the running program core |
+| `~libs`  | 126 | imported library cores |
+| `~mem`   | 254 | persistent state |
+| `~world` | 255 | the visible [[cybergraph]] slice |
 
-#### Experemental
+identity (`~self`) and authority (`~caps`) are not two systems bolted together — they are slots of the one subject the shell constructs before it calls your gate.
 
-OpenAI promts(beta)
+---
 
-- api key should be added using cyb-keys
-- this is wrapper around [openai api](https://platform.openai.com/docs/api-reference/chat/create)
+## output — prysm chunks
 
-```
-// Apply prompt OpenAI and get result
-cyb::open_ai_completions(messages: object[]; apiKey: string;  params: json) -> string | AsyncIterable<string>;
-```
+a program that renders returns a **chunk-noun**: a tree built from [[prysm]] element constructors. these lower to `tape` chunks, which [[prysm]] renders identically to GPU cells, ansi, or html. the vocabulary:
 
-#### Debug
+| constructor | renders as |
+|-------------|-----------|
+| `text("…")`   | body text |
+| `anno("…")`   | dim annotation |
+| `error("…")`  | error widget |
+| `log("…")`    | log line |
+| `button(label, target)` | action button |
+| `col(a, b, …)` | a column of elements |
 
-Logging and debug methods
+emitting chunks is the `emit` act, gated by the [[ward]]. drawing is the only thing a render gate is allowed to do unless granted more.
 
-```
-// Add debug info to script output
-dbg(`personal_processor ${cid} ${content_type} ${content}`);
+---
 
-// console.log
-cyb:log("blah");
-```
+## entrypoints — gates, by trigger
 
-## Entrypoints
+five conventions, one classification axis: **what fires the gate**. each fixes the `input`; the rest is the spine.
 
-Entrypoint is important concept of cyber scripting, literally that is the place where cyber-script is inlined into app pipeline.
-At the moment all entrypoint types is related to some particle in cyber:
+| trigger | entrypoint | input | fires when | typical caps | status |
+|---------|-----------|-------|-----------|--------------|--------|
+| imperative | **command** | the typed line / args | you run it | `{emit}` | **live** |
+| surface | **cell** | input events for its region | a world/app is open | `{emit, query}` | planned |
+| pipeline | **processor** | one particle `[cid type content]` | a particle enters view | `{emit, query}` | planned |
+| address | **resolver** | a [[cybermark]] address | someone hits `@name` / `#path` / `.moon` | `{emit, query}` | planned |
+| reactive | **companion** | an event stream (via `hint`) | graph / sensor events arrive | `{emit, query, subscribe, link}` | planned |
 
-- Moon Domain Resolver
-- Personal Processor
-- Ask Companion
+### command — live today
 
-### Entrypoint principles
-
-Each entrypoint is function that accept some arguments as **input**.
-
-```
-pub async fn personal_processor(cid, content_type, content) {
-    // ... //
-}
-```
-
-_`personal_processor` is entrypoint for each-single particle(see. furter)_
-
-Second convention that each entrypoint should return **output** object - with one required property named _action_ and some optional props depending on action for ex. `#{action: 'pass'}`.
-
-Cyber-scripting has helpers to construct object-like responses, with mandatory "action" field and some optional fields:
+the imperative entrypoint. type it, it runs once, it returns chunks. this is the [[terminal]] world: prefix a line with `rune` and it evaluates through [[rune]] instead of [[nu|nushell]], emitting [[prysm]] chunks into the same stream nushell feeds.
 
 ```
-pass() // pass untouched = #{action: 'pass'}
+> rune col(text("hello cyber"), error("boom"), button("ok", "@master"))
+   hello cyber                 (body text)
+   boom                        (error widget)
+   [ ok → @master ]            (action button)
 
-hide() // hide particle = #{ "action": "hide" }
-
-cid_result(cid) // change particle's cid and parse = #{ "action": "cid_result", "cid": cid  }
-
-content_result(content) //  modify particle content = #{ "action": "content_result", "content": content }
-
-error(message) // error ^_^ = #{ "action": "error", "message": message }
+> rune add(2, 3)
+   5                           (non-UI result shown as text)
 ```
 
-So minimal entrypoint looks like this:
+mechanism: the typed line is the gate's `input`; the shell evaluates it against a [[subject|#the-subject-what-code-sees]] and routes `emit` to the [[terminal]]'s render stream. today the terminal grants full trust (caps ungated); the [[ward]] makes this enforced.
 
-```
-pub async fn personal_processor(cid, content_type, content) {
-    return pass() // keep data stream untouched
-}
-```
+### the other four — planned
 
-### Entrypoint types
+same spine, different trigger and `input`:
 
-#### Particle processor
+- **cell** `(events) -> chunks` — owns a surface; renders and handles input. the shape of a cyb app (oracle, settings, sense).
+- **processor** `(particle) -> chunks | action` — runs as a particle enters view; transforms, filters, annotates. *(replaces the old `personal_processor`.)*
+- **resolver** `(address) -> particle` — maps a [[cybermark]] address to content. native to [[rune]]'s sigil layer. *(replaces `moon_domain_resolver`.)*
+- **companion** `hint -> chunks | signals` — a reactive gate; subscribes to events and acts. *(replaces `ask_companion`, generalized.)* **[[soma]]'s four loops are companions** — reactive rune gates, dynamically updatable, which is what makes the avatar's mind a living [[soul]] script rather than frozen Rust.
 
-Every single particle goes thru the pipeline and **personal_processor** function is applied to it content:
+---
 
-```mermaid
-graph LR
-A[particle] -- cid --> B[IPFS] -- content --> C(("personal<br />processor")) -- content mutation --> D(app)
-```
+## acts and permission
 
-```
-// params:
-//      cid: CID of the content
-//      content_type: text, image, link, pdf, video, directory, html etc...
-//      content: (text only supported at the moment)
-pub async fn personal_processor(cid, content_type, content) {
-    /* SOME CODE */
-}
-```
+a gate touches the world only through acts — `emit`, `query`, `subscribe`, `link`, `seal`, `host`. it does not perform them; it **requests** them, and the [[ward]] decides. the caps granted to the gate live in `~caps`; pure computation needs none. the [[ward]] is shared infrastructure: the same boundary governs every cyb runtime ([[rune]], [[wysm]], [[glia]], [[Nox]], [[Inf]]), not rune alone — rune is simply one requester. the full model — caps, grants, the permission prompt, attenuation, provable confinement — is [[ward]].
 
-User can do any transformation of the particle in pipeline
+this is why running a stranger's `.moon` resolver is safe: it is mounted with `{emit}` and nothing more unless you grant it.
 
-```
-// Update content
-return content_result("Transformed content")
+---
 
-// Replace CID -> re-apply new particle
-return cid_result("Qm.....")
+## status
 
-// Hide item from UI
-return hide()
+| piece | state |
+|-------|-------|
+| rune language (parse → lower → [[Nox]] interpret) | working |
+| rune↔[[prysm]] binding (chunk-noun → `tape` chunks) | working, tested |
+| **command** entrypoint in the [[terminal]] (`rune <expr>`) | **live** (compiles; emit ungated) |
+| cell / processor / resolver / companion | planned |
+| [[ward]] (capability enforcement) | designed, not built |
+| [[soma]] as companions | design; current soma is a non-working draft to rebuild on rune |
 
-// Keep it as is
-return pass()
-```
+---
 
-#### .moon domain resolver
-
-Every user can write his own .moon domain resolver: _[username].moon_. When any other user meep particle with exactly such text, entrypoint will be executed.
-
-```mermaid
-graph LR
-B(username.moon) -- username --> C["cyber<br/>passport<br/>particle"] --  cid --> D(IPFS) -- script code --> E(( particle<br/> resolver)) -- render content --> F(result)
-```
-
-Minimal resolver can looks like this: \* _no input params but context is used(user that look at your domain)_
-
-```
-pub async fn moon_domain_resolver() {
-
-    // particle consumer from context
-    let name = cyb::context.nickname;
-
-    // respond
-    // as string
-    return content_result(`Hello ${name}!`)
-
-    // or CID(can be any text/image or even app hosted inside IPFS)
-    // return cid_result("QmcqikiVZJLmum6QRDH7kmLSUuvoPvNiDnCKY4A5nuRw17")
-}
-```
-
-And there is minimal personal processor that process domain and run resolver from remote user script.
-
-```
-pub async fn personal_processor(cid, content_type, content) {
-    // check if text is passed here and it's looks like .moon domain
-    if content_type == "text" and content.ends_with(".moon") {
-            let items = content.split(".").collect::<Vec>();
-            let username = items[0];
-            let ext = items[1];
-            if username.len() <= 14 && ext == "moon" {
-
-                // get citizenship data by username
-                let passport = cyb::get_passport_by_nickname(username).await;
-
-                // get personal particle
-                let particle_cid = passport["extension"]["particle"];
-
-                // log to browser console
-                cyb::log(`Resolve ${username} domain from passport particle '${particle_cid}'`);
-
-                // execute user 'moon_domain_resolver' function from 'soul' script with zero params
-                return cyb::eval_script_from_ipfs(particle_cid, "moon_domain_resolver", []).await;
-        }
-    }
-}
-```
-
-#### Ask Companion
-
-User can extend UI of the particle with custom controls. User can pass meta items as script result and cyb will render as UI extension.
-At the moment we have 2 meta UI items:
-
-- text: `meta_text("title")`
-- link: `meta_link("/@master", "link to user named @master")`
-
-```mermaid
-graph LR
-E(user) -- search input --> C(("ask<br/>Companion")) -- companion payload --> D(meta UI)
-```
-
-```
-pub async fn ask_companion(cid, content_type, content) {
-    // plain text item
-    let links = [meta_text("similar:")];
-
-    // search closest 5 particles using local data from the brain(embedding-search)
-    let similar_results = cyb::search_by_embedding(content, 5).await;
-
-
-    for v in similar_results {
-        // link item
-        links.push(meta_link(`/oracle/ask/${v.cid}`, v.text));
-    }
-
-    return content_result(links)
-}
-```
-
-### Context
-
-One of important thing, that can be used inside scripting is the context.
-Context point to place and obstacles where entrypoint was triggered. Context is stored in `cyb::context` and contains such values:
-
-- params(url params)
-  - path / query / search
-- user(user that executes entrypoint)
-  - address / nickname / passport
-- secrets(key-value list from the cyber app)
-  - key/value storage
-
-```
-
-// nick of user that see this particle(in case of domain resolver)
-let name = cyb::context.user.nickname;
-
-// user particle that contains soul, that can be interracted directly from your soul
-let particle = cyb::context.particle;
-
-// Get list of url parameters (in progress)
-let path = cyb::context.params.path;
-
-//get some secret (in progress)
-let open_ai_api_key = cyb::context.secrets.open_ai_api_key;
-
-```
-
-## Advanced examples
-
-#### Personal processor
-
-```
-// your content for <citizen_name>.moon domain
-pub async fn moon_domain_resolver() {
-    // get nickname of domain resolver at the momemnt
-    let nickname =  cyb::context.user.nickname;
-
-    let rng = rand::WyRand::new();
-    let rand_int = rng.int_range(0, 999999);
-
-    return content_result(`Hello, ${nickname}, your lucky number is ${rand_int} 🎉`);
-
-    // substitute with some CID (ipfs hosted app in this case)
-    // return cid_result("QmcqikiVZJLmum6QRDH7kmLSUuvoPvNiDnCKY4A5nuRw17")
-}
-
-// Extend particle page with custom UI elements
-pub async fn ask_companion(cid, content_type, content) {
-    // plain text item
-    let links = [meta_text("similar:")];
-
-    // search closest 5 particles using local data from the brain
-    let similar_results = cyb::search_by_embedding(content, 5).await;
-
-
-    for v in similar_results {
-        // link item
-        links.push(meta_link(`/oracle/ask/${v.cid}`, v.text));
-    }
-
-    return content_result(links)
-}
-
-// Transform content of the particle
-pub async fn personal_processor(cid, content_type, content) {
-
-    // skip any non-text content
-    if content_type != "text" {
-        return pass()
-    }
-
-    // <citizen_name>.moon domain resolver
-    if content.ends_with(".moon") {
-        let items = content.split(".").collect::<Vec>();
-
-        let username = items[0];
-        let ext = items[1];
-
-        if username.len() <= 14 && ext == "moon" {
-
-            // get passport data by username
-            let passport = cyb::get_passport_by_nickname(username).await;
-
-            // particle - CID of soul script
-            let particle_cid = passport["extension"]["particle"];
-
-            cyb::log(`Resolve ${username} domain from passport particle '${particle_cid}'`);
-
-            // resolve content(script) by cid
-            // evaluate 'moon_domain_resolver' from that
-            let result = cyb::eval_script_from_ipfs(particle_cid, "moon_domain_resolver", []).await;
-
-            return result
-        }
-    }
-
-    // example of content exclusion from the search results
-    let buzz_word = "пиздопроебанное хуеплетство";
-
-    if content.contains(buzz_word) {
-        cyb::log(`Hide ${cid} item because of '${buzz_word}' in the content`);
-        return hide()
-    }
-
-
-    // example of content modification
-    // replaces cyber with cyber❤
-    let highlight_text = "cyber";
-    let highlight_with = "❤";
-
-    if content.contains(highlight_text) {
-        cyb::log(`Update ${cid} content, highlight ${highlight_text}${highlight_with}`);
-        return content_result(content.replace(highlight_text, `${highlight_text}${highlight_with}`))
-    }
-
-    // replace <token_name>@NOW (ex. bitcoin@NOW) with actual price in usdt
-    // using external api call
-    if content.contains("@NOW") {
-        let left_part = content.split("@NOW").next().unwrap();
-        let token_name = left_part.split(" ").rev().next().unwrap();
-        let vs_currency = "usd";
-
-        // external url call
-        let json =  http::get(`https://api.coingecko.com/api/v3/simple/price?ids=${token_name}&vs_currencies=${vs_currency}`).await?.json().await?;
-        return content_result(content.replace(`${token_name}@NOW`, `Current ${token_name} price is ${json[token_name][vs_currency]} ${vs_currency}`))
-    }
-
-    // anything else - pass as is
-    pass()
-}
-```
+see [[rune]] for the language, [[ward]] for permissions, [[prysm]] for the render vocabulary, [[soul]] for identity and grants, [[terminal]] for the live command entrypoint, [[soma]] for the avatar's companion loops.
