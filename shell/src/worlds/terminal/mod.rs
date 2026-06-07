@@ -344,8 +344,37 @@ fn dispatch_rune(state: &mut TerminalNonSendState, expr: String) {
     let _ = tx.send(StreamMsg::Done { error });
 }
 
-/// Parse → lower → interpret a rune expression against a minimal subject, then
-/// decode the result noun into prysm chunks. Returns `Some(msg)` on error.
+/// The terminal's rune `Host`: performs the `emit` act by decoding the chunk
+/// noun and pushing it straight into the stream — so a program emits chunks *as
+/// it runs*, not only at the end. Today emit is granted unconditionally (your
+/// terminal = full trust); the ward will gate it on `~caps`. Other acts stub.
+struct TerminalHost<'a> {
+    tx: &'a std::sync::mpsc::Sender<StreamMsg>,
+    emitted: usize,
+}
+
+impl rune_interp::Host for TerminalHost<'_> {
+    fn perform(
+        &mut self,
+        act: u64,
+        args: &rune_ast::Noun,
+        _caps: &rune_ast::Noun,
+    ) -> Result<rune_ast::Noun, rune_interp::InterpError> {
+        if act == rune_ast::act::EMIT {
+            for c in rune_prysm::noun_to_chunks(args) {
+                self.emitted += 1;
+                let _ = self.tx.send(StreamMsg::Chunk(c));
+            }
+        }
+        // query/link/seal/host: stubbed until the ward + cybergraph land.
+        Ok(rune_ast::Noun::Atom(0))
+    }
+}
+
+/// Parse → lower → interpret a rune expression against a minimal subject,
+/// performing `emit` acts live via `TerminalHost`. After evaluation, any chunks
+/// the result *itself* decodes to (the `col(text(..))` style) are rendered too.
+/// Returns `Some(msg)` on error.
 fn rune_eval_to_chunks(
     expr: &str,
     tx: &std::sync::mpsc::Sender<StreamMsg>,
@@ -359,19 +388,21 @@ fn rune_eval_to_chunks(
         Err(e) => return Some(format!("rune lower error: {}", e.message)),
     };
     let subject = rune_subject::Subject::minimal().to_noun();
-    let result = match rune_interp::eval(&subject, &formula) {
+
+    let mut host = TerminalHost { tx, emitted: 0 };
+    let result = match rune_interp::eval_with_host(&subject, &formula, &mut host) {
         Ok(n) => n,
         Err(e) => return Some(format!("rune eval error: {}", e.message)),
     };
 
-    let chunks = rune_prysm::noun_to_chunks(&result);
-    if chunks.is_empty() {
-        // Non-UI result (e.g. `rune add(2, 3)`) — show the raw noun as text.
+    let final_chunks = rune_prysm::noun_to_chunks(&result);
+    for c in &final_chunks {
+        let _ = tx.send(StreamMsg::Chunk(c.clone()));
+    }
+    // Nothing emitted and nothing returned to render → show the raw noun
+    // (e.g. `rune add(2, 3)` → 5).
+    if host.emitted == 0 && final_chunks.is_empty() {
         let _ = tx.send(StreamMsg::Chunk(Chunk::text(&noun_text(&result))));
-    } else {
-        for c in chunks {
-            let _ = tx.send(StreamMsg::Chunk(c));
-        }
     }
     None
 }
