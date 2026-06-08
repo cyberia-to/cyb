@@ -17,13 +17,13 @@ The question that generates the whole architecture is simple:
 ...
 > what [[algebra]]s does a mind actually need?
 
-See [[cyb/languages]] for the answer — fourteen algebraically irreducible languages that form the minimal complete set for [[superintelligence]].
+See [[languages]] for the answer — fourteen algebraically irreducible languages that form the minimal complete set for [[superintelligence]].
 
 ---
 
 ## Core Insight: Two Kinds of Languages
 
-The fundamental split is not between [[cyb/languages]] — it is between purpose:
+The fundamental split is not between [[languages]] — it is between purpose:
 
 - Execution languages — describe computation in its native [[algebra]]
 - Proving languages — verify that computation was correct
@@ -139,11 +139,11 @@ The conceptualization is the hard part. Most systems never get the conceptualiza
 
 ## The Three-Tier Proving Architecture
 
-The [[cyb/languages]] organize into three tiers by their relationship to [[proof]]. See [[cyb/languages]] for the complete specification of each language.
+The [[languages]] organize into three tiers by their relationship to [[proof]]. See [[languages]] for the complete specification of each language.
 
 ### Execution Tier — twelve languages
 
-All computation happens here. Each language works in its native [[algebra]]. None re-implements what another already does. Twelve execution [[cyb/languages]]: Bt (Bitwise), Rs (Rustic), Arc, Ren (Render), Dif (Differential), Sym (Symplectic), Bel (Belief), Seq (Sequence), Inf (Infer), Wav (Wave), Ten (Tensor), Tok (Token).
+All computation happens here. Each language works in its native [[algebra]]. None re-implements what another already does. Twelve execution [[languages]]: Bt (Bitwise), Rs (Rustic), Arc, Ren (Render), Dif (Differential), Sym (Symplectic), Bel (Belief), Seq (Sequence), Inf (Infer), Wav (Wave), Ten (Tensor), Tok (Token).
 
 Every execution step emits a [[Hemera]] commitment — 4 [[Goldilocks field processor]] elements — that becomes both the [[proof]] input and the [[particle]] identity in the [[cybergraph]].
 
@@ -303,7 +303,7 @@ The proving tier (Tri + [[Hemera]]) aligns with the existing [[zheng]] STARK imp
 
 The [[Hemera]] invariant formalizes how the [[cybergraph]] accumulates verified knowledge: every computation in every [[algebra]] produces a [[particle]] via [[Hemera]], and every composition produces a [[cyberlink]]. The [[cybergraph]] is the accumulation state of all proven computation.
 
-Engineering-ready [[cyb/languages]] (Bt, Rs, Ren, Arc, Seq, Inf, Ten, Wav, Tok) define the implementation roadmap. Research-horizon [[cyb/languages]] (Dif, Sym, Bel) define the long-term research agenda — with Bel required for formalizing the [[tri-kernel]] dynamics and the [[collective focus theorem]] on the [[probability]] simplex.
+Engineering-ready [[languages]] (Bt, Rs, Ren, Arc, Seq, Inf, Ten, Wav, Tok) define the implementation roadmap. Research-horizon [[languages]] (Dif, Sym, Bel) define the long-term research agenda — with Bel required for formalizing the [[tri-kernel]] dynamics and the [[collective focus theorem]] on the [[probability]] simplex.
 
 The [[Goldilocks field processor]] provides hardware acceleration for the four primitives the architecture depends on: FMA, NTT butterfly, Poseidon2 round, and table lookup. [[Goldilocks homomorphic encryption]] parameterizes FHE over the same [[field]], unifying encrypted computation with proving and [[quantum]] simulation under one [[field]] tower.
 
@@ -319,5 +319,5 @@ The architecture implies specific capabilities for [[cyb]] as the interface to t
 
 ---
 
-see [[cyb/languages]] for the fourteen computation languages and their algebraic completeness. see [[cyb/architecture]] for how the proving architecture integrates into the operating system. see [[zheng]] for the STARK implementation. see [[Hemera]] for the commitment scheme. see [[cybergraph]] for the accumulation state.
+see [[languages]] for the fourteen computation languages and their algebraic completeness. see [[cyb/architecture]] for how the proving architecture integrates into the operating system. see [[zheng]] for the STARK implementation. see [[Hemera]] for the commitment scheme. see [[cybergraph]] for the accumulation state.
 y

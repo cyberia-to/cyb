@@ -15,7 +15,7 @@ nine applications that form the essential interface between [[neurons]] and the 
 | [[cyb/sense]] | perception layer — emotion, context, ambient awareness |
 | [[cyb/time]] | temporal interface — log, history, future planning |
 | [[cyb/avatar]] | identity creation and management |
-| [[cyb/studio]] | content creation tools for all [[cyb/languages]] |
+| [[cyb/studio]] | content creation tools for all [[languages]] |
 | [[cyb/oracle]] | ask, search, learn — the query interface |
 | [[cyb/portal]] | onboarding, citizenship, avatar creation |
 | [[cyb/com]] | command palette, keyboard-driven control |
