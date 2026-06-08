@@ -40,12 +40,12 @@ tape       = { path = "../../tape/impl/rust" }
 prysm      = { path = "../../prysm" }
 
 # rune — open-computation language; terminal `rune` command path
-rune-ast     = { path = "../../rune/crates/rune-ast" }
-rune-parse   = { path = "../../rune/crates/rune-parse" }
-rune-lower   = { path = "../../rune/crates/rune-lower" }
-rune-interp  = { path = "../../rune/crates/rune-interp" }
-rune-subject = { path = "../../rune/crates/rune-subject" }
-rune-prysm   = { path = "../../rune/crates/rune-prysm" }
+rune-ast     = { path = "../../rune/rs/ast" }
+rune-parse   = { path = "../../rune/rs/parse" }
+rune-lower   = { path = "../../rune/rs/lower" }
+rune-interp  = { path = "../../rune/rs/interp" }
+rune-subject = { path = "../../rune/rs/subject" }
+rune-prysm   = { path = "../../rune/rs/prysm" }
 
 # Core (all platforms)
 wry = { version = "0.53", features = ["transparent"] }
