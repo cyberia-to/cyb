@@ -3098,6 +3098,11 @@ dependencies = [
  "cyb-nebu",
  "cyber-hemera",
  "cyber-sync",
+ "inf-eval",
+ "inf-parse",
+ "inf-plan",
+ "inf-source",
+ "inf-value",
  "zheng",
 ]
 
@@ -4986,6 +4991,51 @@ dependencies = [
  "unit-prefix",
  "web-time",
 ]
+
+[[package]]
+name = "inf-ast"
+version = "0.1.0"
+
+[[package]]
+name = "inf-eval"
+version = "0.1.0"
+dependencies = [
+ "inf-ast",
+ "inf-source",
+ "inf-value",
+ "regex",
+ "serde_json",
+]
+
+[[package]]
+name = "inf-lex"
+version = "0.1.0"
+
+[[package]]
+name = "inf-parse"
+version = "0.1.0"
+dependencies = [
+ "inf-ast",
+ "inf-lex",
+]
+
+[[package]]
+name = "inf-plan"
+version = "0.1.0"
+dependencies = [
+ "inf-ast",
+]
+
+[[package]]
+name = "inf-source"
+version = "0.1.0"
+dependencies = [
+ "inf-value",
+]
+
+[[package]]
+name = "inf-value"
+version = "0.1.0"
 
 [[package]]
 name = "inflections"
@@ -8281,8 +8331,8 @@ version = "0.1.0"
 name = "rune-lower"
 version = "0.1.0"
 dependencies = [
- "cyber-hemera",
  "rune-ast",
+ "rune-subject",
 ]
 
 [[package]]
@@ -8316,6 +8366,7 @@ dependencies = [
 name = "rune-subject"
 version = "0.1.0"
 dependencies = [
+ "cyber-hemera",
  "rune-ast",
 ]
 

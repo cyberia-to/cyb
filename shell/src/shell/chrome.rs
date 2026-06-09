@@ -266,6 +266,7 @@ fn update_address_bar(
     let uri = match world_state.get() {
         WorldState::Graph    => "cyb://graph",
         WorldState::Terminal => "cyb://terminal",
+        WorldState::Cell     => "cyb://landing",
     };
     for mut text in &mut q {
         **text = uri.to_string();
@@ -387,6 +388,7 @@ pub fn handle_chrome_input(world: &mut World) {
         let target = match cmd.as_str() {
             "graph"    => Some(WorldState::Graph),
             "terminal" => Some(WorldState::Terminal),
+            "landing" | "cell" => Some(WorldState::Cell),
             _          => None,
         };
         if let Some(t) = target {

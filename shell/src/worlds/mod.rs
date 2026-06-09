@@ -1,3 +1,4 @@
+pub mod cell;
 pub mod graph;
 pub mod terminal;
 
@@ -8,6 +9,8 @@ pub enum WorldState {
     #[default]
     Graph,
     Terminal,
+    /// Live-loaded prysm cell (the robot landing and other app pages).
+    Cell,
 }
 
 /// Shell command forwarded from the commander bar to nushell.

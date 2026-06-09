@@ -50,6 +50,7 @@ fn main() {
         .add_plugins(mir::bevy::GraphWorldPlugin)
         .add_plugins(worlds::graph::GraphBridgePlugin)
         .add_plugins(worlds::terminal::TerminalWorldPlugin)
+        .add_plugins(worlds::cell::CellWorldPlugin)
         .add_plugins(agent::AgentPlugin)
         .add_plugins(shell::tray::TrayPlugin)
         .run();
