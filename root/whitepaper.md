@@ -186,28 +186,11 @@ every data type that deserves computation deserves its own language. every data 
 
 a data type deserves its own language when its algebraic laws are so different from other types that forcing it into a foreign language creates constant impedance mismatch. fourteen fundamental types pass this test. each inhabits a universe defined by its characteristic algebraic structure. see [[languages]] for the full completeness argument
 
-#### computation — 14 languages
+#### computation — the languages
 
-| universe | short | long | type | algebra | purpose |
-|----------|-------|------|------|---------|---------|
-| Structure | [[Nox]] | Nox | Tree | Combinators | Composition |
-| Binary | [[Bt]] | Bitwise | Bit | $\mathbb{F}_2$ tower | Circuits |
-| Byte | [[Rs]] | Rustic | Word | Bitwise on $\mathbb{F}_p$ | Systems |
-| Field | [[Tri]] | [[Trident]] | Field | Arithmetic on $\mathbb{F}_p$ | Proofs |
-| Topology | [[Arc]] | Arc | Graph | Adjacency | Knowledge |
-| Geometry | [[Ren]] | Render | Shape | G(p,q,r) | Space |
-| Curvature | [[Dif]] | Differential | Manifold | (M, g) | Meaning |
-| Dynamics | [[Sym]] | Symplectic | Phase | (M, ω), dω = 0 | Physics |
-| Belief | [[Bel]] | Belief | Distribution | g on Δⁿ | Self-model |
-| Causality | [[Seq]] | Sequence | Event | Partial order | Ordering |
-| Inference | [[Inf]] | Infer | Relation | Unification | Reasoning |
-| Continuum | [[Wav]] | Wave | Signal | Convolution | Sensing |
-| Linear | [[Ten]] | Tensor | Tensor | Contraction | Learning |
-| Resource | [[Tok]] | Token | UTXO | Conservation | Economy |
+{{embed [[languages#the languages]]}}
 
-#### the value tower — three atoms
-
-all languages (except Bt) share the [[Goldilocks field]] $\mathbb{F}_p$ substrate with three atom types: `field` (value by content), `word` (value by position), `hash` (value by commitment). three modes of reference that are exhaustive. see [[languages]] for the full value tower specification
+see [[languages]] for the full taxonomy: the completeness argument, algebra coverage, and perception mapping.
 
 #### perception — 9 primitives
 

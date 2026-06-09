@@ -51,28 +51,9 @@ every computation type has a canonical rendering. a tree computed in [[Nox]] nat
 
 every rendering invites a decision. the human responds with typed decision primitives — select, rank, compose, confirm — each with its own algebra, its own temporal mode, and its own relationship to the computation and perception grids.
 
-### 1. Fourteen Computation Languages
+### 1. The Computation Languages
 
-every language has a short name (2-3 letters, used in code) and a long name (used in prose):
-
-```
-Universe          Short  Long           Type        Algebra           Purpose
-──────────────────────────────────────────────────────────────────────────────
-Structure         Nox    Nox            Tree        Combinators       Composition
-Binary            Bt     Bitwise        Bit         𝔽₂ tower          Circuits
-Byte              Rs     Rustic         Word        Bitwise on 𝔽ₚ     Systems
-Field             Tri    Trident        Field       Arithmetic on 𝔽ₚ  Proofs
-Topology          Arc    Arc            Graph       Adjacency         Knowledge
-Geometry          Ren    Render      Shape       G(p,q,r)          Space
-Curvature         Dif    Differential   Manifold    (M, g)            Meaning
-Dynamics          Sym    Symplectic     Phase       (M, ω), dω = 0   Physics
-Belief            Bel    Belief         Distrib.    g on Δⁿ           Self-model
-Causality         Seq    Sequence       Event       Partial order     Ordering
-Inference         Inf    Infer          Relation    Unification       Reasoning
-Continuum         Wav    Wave           Signal      Convolution       Sensing
-Linear            Ten    Tensor         Tensor      Contraction       Learning
-Resource          Tok    Token          UTXO        Conservation      Economy
-```
+every language has a short name (2-3 letters, used in code) and a long name (used in prose). the canonical naming convention — short, long, algebra, lens, domain — is the [[languages]] spec, embedded in §3 below.
 
 a data type deserves its own language when its algebraic laws are so different from other types that forcing it into a foreign language creates constant impedance mismatch. fourteen fundamental types pass this test. each inhabits a universe defined by its characteristic algebraic structure. some universes share a proof system. some share a compiler. none share semantics. see [[languages]] for the full completeness argument and irreducibility proof.
 
@@ -117,28 +98,13 @@ Bt value tower (separate, 𝔽₂)
   sufficient for: Bt only
 ```
 
-### 3. The Fourteen Languages
+### 3. The Languages
 
-each language has its own page with ops tables, use cases, and proof paths:
+each language has its own page with ops tables, use cases, and proof paths. the canonical list lives in the [[languages]] spec:
 
-| # | Universe | Short | Long | Page |
-|---|---|---|---|---|
-| 0 | Structure | Nox | Nox | [[Nox]] |
-| 1 | Binary | Bt | Bitwise | [[Bt]] |
-| 2 | Byte | Rs | Rustic | [[Rs]] |
-| 3 | Field | Tri | Trident | [[Trident]] |
-| 4 | Topology | Arc | Arc | [[Arc]] |
-| 5 | Geometry | Ren | Render | [[Ren]] |
-| 6 | Curvature | Dif | Differential | [[Dif]] |
-| 7 | Dynamics | Sym | Symplectic | [[Sym]] |
-| 8 | Belief | Bel | Belief | [[Bel]] |
-| 9 | Causality | Seq | Sequence | [[Seq]] |
-| 10 | Inference | Inf | Infer | [[Inf]] |
-| 11 | Continuum | Wav | Wave | [[Wav]] |
-| 12 | Linear | Ten | Tensor | [[Ten]] |
-| 13 | Resource | Tok | Token | [[Tok]] |
+{{embed [[languages#the languages]]}}
 
-see [[languages]] for the completeness argument, value tower, algebra coverage, and perception mapping. see [[cyb/multiproof]] for how all fourteen settle under one proving umbrella
+see [[languages]] for the completeness argument, algebra coverage, and perception mapping. see [[cyb/multiproof]] for how all sixteen settle under one proving umbrella
 
 ### 4. Compilation Architecture
 
@@ -265,17 +231,7 @@ fork is how structure grows. join is how consensus forms. the same skeleton wear
 
 ### 8. The Comparison Matrix
 
-| Property | Nox | Bt | Rs | Tri | Arc | Ren| Dif | Sym | Bel | Seq | Inf | Wav | Ten | Tok |
-|---|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
-| Universe | Structure | Binary | Byte | Field | Topology | Geometry | Curvature | Dynamics | Belief | Causality | Inference | Continuum | Linear | Resource |
-| Char | — | 2 | p | p | — | p | — | — | — | — | — | ≈ℝ | ≈ℝ or p | p |
-| Primitive | Cell | Bit | Word | Field | Edge | Multivector | Chart | Phase | Distribution | Event | Relation | Sample | Shape | Token |
-| Reference | structure | wire | location | content | adjacency | grade | curvature | momentum | divergence | succession | entailment | amplitude | index | conservation |
-| Free op | Navigate | AND, XOR | Index | Mul, Add | Link | Geometric prod | Christoffel | Flow | KL div | Order | Unify | Convolve | Matmul | Transfer |
-| Costly op | — | Carry add | Mod div | Bitwise | Spectral | Inverse | Geodesic | Conserve | Fisher | Verify | Fixpoint | FFT | Inverse | Mint |
-| Proof | Inherited | Binius | stark | stark | Delegated | Tri | Research | Research | Research | Delegated | Delegated | Delegated | Delegated | stark |
-| Syntax feel | IR | Circuit | Rust | Custom | Query | GA | Manifold | Hamiltonian | Statistical | Temporal | Datalog | DSP | NumPy | Ledger |
-| Renders as | struct | pixels | text | formula | vector | vector | vector | formula | formula | video | table | sound | component | table |
+the per-language comparison matrix — universe, primitive, reference, free/costly ops, proof path, rendering — is maintained in the [[languages]] spec.
 
 ---
 
