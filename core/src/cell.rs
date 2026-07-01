@@ -90,6 +90,19 @@ impl Cell {
         Ok(id)
     }
 
+    /// Apply a link received from a peer — a wire line `neuron from to` (hex),
+    /// the same format the log holds. Applying it persists it too, so a gossiped
+    /// link lands in this cell's durable graph exactly like a local one.
+    pub fn receive(&mut self, line: &str) -> Option<Particle> {
+        let (neuron, from, to) = parse(line)?;
+        self.link(neuron, from, to).ok()
+    }
+
+    /// The wire line for a link — what this cell would send a peer.
+    pub fn wire(neuron: &NeuronId, from: &Particle, to: &Particle) -> String {
+        format!("{} {} {}", hex(neuron), hex(from), hex(to))
+    }
+
     /// Read the graph with an inf query.
     pub fn query(&self, script: &str) -> Result<QueryOutput, QueryError> {
         self.graph.query(script)
@@ -148,6 +161,17 @@ mod tests {
         let h1 = cell.link(n, [2u8; 32], [4u8; 32]).unwrap();
         assert_ne!(h0, h1, "chained signals differ");
         assert!(cell.has_particle(&[3u8; 32]) && cell.has_particle(&[4u8; 32]));
+    }
+
+    #[test]
+    fn wire_replicates_a_link_across_cells() {
+        let (n, from, to) = ([1u8; 32], [2u8; 32], [3u8; 32]);
+        // cell A applies a link and would emit this wire line:
+        let line = Cell::wire(&n, &from, &to);
+        // cell B receives it over the "wire" and applies it:
+        let mut b = Cell::ephemeral();
+        b.receive(&line).expect("receive applies the link");
+        assert!(b.has_particle(&to), "the linked particle replicated onto B");
     }
 
     #[test]

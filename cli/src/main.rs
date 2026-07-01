@@ -8,7 +8,8 @@
 
 use cyb_core::Cell;
 use inf_value::Value;
-use std::io::{self, BufRead, Write};
+use std::io::{self, BufRead, BufReader, Write};
+use std::net::{TcpListener, TcpStream};
 
 /// A readable particle from a label: its bytes, padded to 32.
 fn pid(label: &str) -> [u8; 32] {
@@ -95,6 +96,52 @@ fn default_path() -> std::path::PathBuf {
     std::path::Path::new(&home).join(".cyb").join("graph.log")
 }
 
+/// Receive links from peers into this cell, forever. Each applied link
+/// persists (it goes through the durable log), so this node's graph grows
+/// from the network exactly as from local links.
+fn listen(cell: &mut Cell, addr: &str) {
+    let listener = match TcpListener::bind(addr) {
+        Ok(l) => l,
+        Err(e) => {
+            eprintln!("bind {addr}: {e}");
+            return;
+        }
+    };
+    println!("cyb listening on {addr} — links from peers land in this cell");
+    for stream in listener.incoming().flatten() {
+        let peer = stream.peer_addr().map(|a| a.to_string()).unwrap_or_default();
+        for line in BufReader::new(stream).lines().map_while(Result::ok) {
+            if line.trim().is_empty() {
+                continue;
+            }
+            match cell.receive(&line) {
+                Some(_) => println!("  ← {peer}  applied a link"),
+                None => println!("  ← {peer}  bad line"),
+            }
+        }
+    }
+}
+
+/// Ship one link to a peer:  send <addr> <a> <b>
+fn send(neuron: [u8; 32], args: &[String]) {
+    let (addr, a, b) = match (args.get(1), args.get(2), args.get(3)) {
+        (Some(addr), Some(a), Some(b)) => (addr, a, b),
+        _ => {
+            eprintln!("usage: send <addr> <a> <b>");
+            return;
+        }
+    };
+    let line = Cell::wire(&neuron, &pid(a), &pid(b));
+    match TcpStream::connect(addr) {
+        Ok(mut s) => {
+            if writeln!(s, "{line}").is_ok() {
+                println!("sent {a} → {b}  to {addr}");
+            }
+        }
+        Err(e) => eprintln!("connect {addr}: {e}"),
+    }
+}
+
 fn main() {
     let neuron = [1u8; 32];
     let path = default_path();
@@ -102,6 +149,17 @@ fn main() {
     let mut cell = Cell::open(&path).unwrap_or_else(|_| Cell::ephemeral());
 
     let args: Vec<String> = std::env::args().skip(1).collect();
+    match args.first().map(String::as_str) {
+        Some("listen") => {
+            listen(&mut cell, args.get(1).map(String::as_str).unwrap_or("127.0.0.1:7700"));
+            return;
+        }
+        Some("send") => {
+            send(neuron, &args);
+            return;
+        }
+        _ => {}
+    }
     if !args.is_empty() {
         exec(&mut cell, neuron, &args.join(" "));
         return;
