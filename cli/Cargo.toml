@@ -1,0 +1,20 @@
+# ---
+# tags: cyb, cli, config
+# crystal-type: source
+# crystal-domain: cyber
+# ---
+# cyb-cli — the terminal face of a cyb. One-shot commands and a REPL, both
+# driving a cyb-core Cell. No bevy, no rendering — just the graph in a prompt.
+[package]
+name = "cyb-cli"
+version = "0.1.0"
+edition = "2024"
+description = "terminal face of a cyb — one-shot + REPL over cyb-core"
+license = "Cyber"
+
+[[bin]]
+name = "cyb-cli"
+path = "src/main.rs"
+
+[dependencies]
+cyb-core = { path = "../core" }

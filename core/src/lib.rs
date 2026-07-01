@@ -12,10 +12,12 @@
 //! `hemera`, `zheng`, `nebu`). Does **not** depend on bevy, wgpu, or
 //! any rendering layer — those plug in above this crate.
 
+pub mod cell;
 pub mod chroma;
 pub mod intent;
 pub mod signal;
 
+pub use cell::Cell;
 pub use chroma::{ChromaId, GridPos, chroma_particle};
 pub use intent::{
     intent_particle,
