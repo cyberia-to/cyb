@@ -30,8 +30,8 @@ fn main() {
     );
 
     let out = cell
-        .query("?[cid, energy] := particles{cid, energy}")
+        .query("?[particle, energy] := particles{particle, energy}")
         .expect("query runs");
-    println!("● query  ?[cid, energy] := particles{{cid, energy}}");
+    println!("● query  ?[particle, energy] := particles{{particle, energy}}");
     println!("  {out:?}");
 }

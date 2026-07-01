@@ -94,7 +94,7 @@ mod tests {
         assert!(cell.has_particle(&to), "target particle materializes after the link");
 
         // the public query path runs over the local graph
-        cell.query("?[cid, energy] := particles{cid, energy}").expect("query runs");
+        cell.query("?[particle, energy] := particles{particle, energy}").expect("query runs");
     }
 
     /// A neuron's signals chain — distinct hashes, both applied.

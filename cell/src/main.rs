@@ -1,11 +1,11 @@
-//! `cell` — drive a live cyb cell from the terminal.
+//! drive a live cyb cell from the terminal.
 //!
 //!   cargo run
-//!   cell› link cat dog
-//!   cell› link dog food
-//!   cell› query
-//!   cell› state
-//!   cell› quit
+//!   cyb› link cat dog
+//!   cyb› link dog food
+//!   cyb› query
+//!   cyb› state
+//!   cyb› quit
 
 use cell::Cell;
 use std::collections::HashMap;
@@ -29,10 +29,10 @@ fn main() {
     let neuron = [1u8; 32];
     let mut labels: HashMap<[u8; 32], String> = HashMap::new();
 
-    println!("cell — a live cyb cell.  commands:  link <a> <b>  |  query [inf]  |  state  |  quit");
+    println!("cyb — a live cell.  commands:  link <a> <b>  |  query [inf]  |  state  |  quit");
     let stdin = io::stdin();
     loop {
-        print!("cell› ");
+        print!("cyb› ");
         io::stdout().flush().ok();
         let mut line = String::new();
         if stdin.lock().read_line(&mut line).unwrap_or(0) == 0 {
@@ -57,7 +57,7 @@ fn main() {
                 }
             }
             "query" => {
-                let q = it.next().unwrap_or("?[cid, energy] := particles{cid, energy}");
+                let q = it.next().unwrap_or("?[particle, energy] := particles{particle, energy}");
                 match cell.query(q) {
                     Ok(out) => {
                         println!("  {:?}", out.columns);
