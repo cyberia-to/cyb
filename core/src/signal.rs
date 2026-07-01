@@ -12,7 +12,7 @@
 
 use std::sync::Mutex;
 
-use cybergraph::{CyberlinkRecord, NeuronId, Particle, Signal};
+use cybergraph::{CyberlinkRecord, NeuronId, Particle, Signal, SELF_NETWORK};
 
 /// Build a single cyberlink record. Local-only signals carry
 /// `neuron = [0; 32]` and `height = 0`; they are filled in when the
@@ -54,6 +54,7 @@ impl SignalBuilder {
     pub fn build(self) -> Signal {
         Signal {
             neuron: self.neuron,
+            network: SELF_NETWORK,
             links: self.links,
             delta_pi: Vec::new(),
             prev: [0u8; 32],
