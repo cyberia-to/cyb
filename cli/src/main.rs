@@ -89,9 +89,17 @@ fn exec(cell: &mut Cell, neuron: [u8; 32], line: &str) -> bool {
     true
 }
 
+/// Where a cyb keeps its graph by default.
+fn default_path() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    std::path::Path::new(&home).join(".cyb").join("graph.log")
+}
+
 fn main() {
-    let mut cell = Cell::new();
     let neuron = [1u8; 32];
+    let path = default_path();
+    // durable by default — the graph survives restart
+    let mut cell = Cell::open(&path).unwrap_or_else(|_| Cell::ephemeral());
 
     let args: Vec<String> = std::env::args().skip(1).collect();
     if !args.is_empty() {
@@ -99,7 +107,7 @@ fn main() {
         return;
     }
 
-    println!("cyb — a live cell.   type `help`.");
+    println!("cyb — a live cell.   {}   type `help`.", path.display());
     let stdin = io::stdin();
     loop {
         print!("cyb› ");
