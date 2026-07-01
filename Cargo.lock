@@ -2909,6 +2909,7 @@ name = "cyb-cli"
 version = "0.1.0"
 dependencies = [
  "cyb-core",
+ "inf-value",
 ]
 
 [[package]]

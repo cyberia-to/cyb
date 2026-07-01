@@ -18,3 +18,4 @@ path = "src/main.rs"
 
 [dependencies]
 cyb-core = { path = "../core" }
+inf-value = { path = "../../inf/rs/value" }
