@@ -90,10 +90,12 @@ fn exec(cell: &mut Cell, neuron: [u8; 32], line: &str) -> bool {
     true
 }
 
-/// Where a cyb keeps its graph by default.
+/// Where a cyb keeps its graph by default. `~/cyb` is visible, not
+/// dotfile-hidden — nothing about a neuron's own graph needs hiding from
+/// its owner.
 fn default_path() -> std::path::PathBuf {
     let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    std::path::Path::new(&home).join(".cyb").join("graph.log")
+    std::path::Path::new(&home).join("cyb").join("graph.log")
 }
 
 /// Receive links from peers into this cell, forever. Each applied link
