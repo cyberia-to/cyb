@@ -594,6 +594,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d86b93f97252c47b41663388e6d155714a9d0c398b99f1005cbc5f978b29f445"
 
 [[package]]
+name = "bech32"
+version = "0.11.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "32637268377fc7b10a8c6d51de3e7fba1ce5dd371a96e342b34e6078db558e7f"
+
+[[package]]
 name = "bevy"
 version = "0.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1896,6 +1902,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "bip32"
+version = "0.5.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "db40d3dfbeab4e031d78c844642fa0caa0b0db11ce1607ac9d2986dff1405c69"
+dependencies = [
+ "bs58",
+ "hmac",
+ "k256",
+ "once_cell",
+ "pbkdf2",
+ "rand_core 0.6.4",
+ "ripemd",
+ "secp256k1",
+ "sha2",
+ "subtle",
+ "zeroize",
+]
+
+[[package]]
 name = "bip39"
 version = "2.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2033,6 +2058,15 @@ checksum = "874bb8112abecc98cbd6d81ea4fa7e94fb9449648c93cc89aa40c81c24d7de03"
 dependencies = [
  "alloc-no-stdlib",
  "alloc-stdlib",
+]
+
+[[package]]
+name = "bs58"
+version = "0.5.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bf88ba1141d185c399bee5288d850d63b8369520c1eafc32a0430b5b6c287bf4"
+dependencies = [
+ "sha2",
 ]
 
 [[package]]
@@ -2905,11 +2939,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f27ae1dd37df86211c42e150270f82743308803d90a6f6e6651cd730d5e1732f"
 
 [[package]]
-name = "cyb-cli"
+name = "cy"
 version = "0.1.0"
 dependencies = [
  "cyb-core",
  "inf-value",
+ "mudra",
 ]
 
 [[package]]
@@ -2917,6 +2952,7 @@ name = "cyb-core"
 version = "0.1.0"
 dependencies = [
  "cybergraph",
+ "foculus",
 ]
 
 [[package]]
@@ -3020,7 +3056,7 @@ dependencies = [
  "alacritty_terminal",
  "android_logger",
  "arboard",
- "bech32",
+ "bech32 0.9.1",
  "bevy",
  "bip39",
  "chrono",
@@ -3083,29 +3119,13 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyber-sync"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "bbg",
- "clap",
- "cyb-nebu",
- "cyber-hemera",
- "rand 0.9.2",
- "serde",
- "serde_json",
- "tape",
- "zheng",
-]
-
-[[package]]
 name = "cybergraph"
 version = "0.1.0"
 dependencies = [
  "bbg",
  "cyb-nebu",
  "cyber-hemera",
- "cyber-sync",
+ "foculus",
  "inf-eval",
  "inf-parse",
  "inf-plan",
@@ -3767,6 +3787,22 @@ name = "fnv"
 version = "1.0.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
+
+[[package]]
+name = "foculus"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bbg",
+ "clap",
+ "cyb-nebu",
+ "cyber-hemera",
+ "rand 0.9.2",
+ "serde",
+ "serde_json",
+ "tape",
+ "zheng",
+]
 
 [[package]]
 name = "foldhash"
@@ -5981,6 +6017,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "mudra"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "bech32 0.11.1",
+ "bip32",
+ "bip39",
+ "cyb-nebu",
+ "cyber-hemera",
+ "ripemd",
+ "sha2",
+]
+
+[[package]]
 name = "mutants"
 version = "0.0.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7288,6 +7338,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "pbkdf2"
+version = "0.12.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f8ed6a7761f76e3b9f92dfb0a60a6a6477c61024b775147ff0973a02653abaf2"
+dependencies = [
+ "digest",
+ "hmac",
+]
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8271,6 +8331,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "ripemd"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "bd124222d17ad93a644ed9d011a40f4fb64aa54275c08cc216524a9ea82fb09f"
+dependencies = [
+ "digest",
+]
+
+[[package]]
 name = "rmp"
 version = "0.8.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -8548,6 +8617,24 @@ dependencies = [
  "pkcs8",
  "subtle",
  "zeroize",
+]
+
+[[package]]
+name = "secp256k1"
+version = "0.27.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25996b82292a7a57ed3508f052cfff8640d38d32018784acd714758b43da9c8f"
+dependencies = [
+ "secp256k1-sys",
+]
+
+[[package]]
+name = "secp256k1-sys"
+version = "0.8.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "4473013577ec77b4ee3668179ef1186df3146e2cf2d927bd200974c6fe60fd99"
+dependencies = [
+ "cc",
 ]
 
 [[package]]

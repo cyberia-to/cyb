@@ -1,29 +1,42 @@
-//! Cell — a running cyb: a local cybergraph plus the per-neuron chain it heads.
+//! Cell — a running cyb: a local cybergraph plus the per-neuron signal chains
+//! it heads.
 //!
-//! Durable by default. A cell persists the links it applies to an append-only
-//! log and replays them on open, so its graph survives restart. Signals are
-//! deterministic, so replaying `(neuron, from, to)` rebuilds identical state —
-//! event sourcing, the links are the source of truth, bbg state is derived.
+//! Durable by default, and event-sourced. Every change is a *signal* — an
+//! atomic bundle of cyberlinks a neuron heads onto its chain. Signals are the
+//! source of truth; the bbg state is derived by replaying them. A cell persists
+//! each applied signal as a **tape frame** (the same wire form the sync layer
+//! gossips) to an append-only log, and replays that log on open, so its graph
+//! survives restart.
+//!
+//! Durability across *time* (replay a log) and across *space* (apply a peer's
+//! batch) are the same mechanism: feed signals to [`Cybergraph::link`], which
+//! dedups them through the per-neuron [`SignalChain`]. Re-applying a signal the
+//! cell already holds is a harmless no-op (the chain rejects it as
+//! equivocation) — so replay and gossip are both idempotent and the grow-only
+//! cyberlink graph converges.
 //!
 //! Use [`Cell::open`] for a durable cell (the default any real cyb uses) and
 //! [`Cell::ephemeral`] for an in-memory one (tests, throwaway runs).
 
-use std::collections::BTreeMap;
 use std::fs::{self, File, OpenOptions};
-use std::io::{BufRead, BufReader, Write};
+use std::io::{Read, Write};
 use std::path::Path;
 
-use cybergraph::{ApiError, Cybergraph, NeuronId, Particle, QueryError, QueryOutput};
+use cybergraph::{
+    ApiError, ChainError, Cybergraph, NeuronId, Particle, QueryError, QueryOutput, Signal,
+};
+use foculus::{decode_signal_frame, decode_signals, encode_signal_frame};
 
 use crate::signal::SignalBuilder;
 
-/// A running cyb: a local [`Cybergraph`] and the signal chain it heads.
+/// A running cyb: a local [`Cybergraph`] and the durable log of the signals it
+/// has applied.
 pub struct Cell {
-    /// The local graph — the dumb processor this cell drives.
+    /// The local graph — the dumb processor this cell drives. Its
+    /// `chains` field *is* the cell's chain bookkeeping; the cell keeps none of
+    /// its own.
     pub graph: Cybergraph,
-    /// Per-neuron chain head: (next step, prev signal hash).
-    heads: BTreeMap<NeuronId, (u64, Particle)>,
-    /// Append-only link log. `None` for an ephemeral cell.
+    /// Append-only log of applied signal frames. `None` for an ephemeral cell.
     log: Option<File>,
 }
 
@@ -31,11 +44,11 @@ impl Cell {
     /// An in-memory cell — forgets everything on drop. For tests and throwaway
     /// runs; a real cyb uses [`Cell::open`].
     pub fn ephemeral() -> Self {
-        Self { graph: Cybergraph::new(), heads: BTreeMap::new(), log: None }
+        Self { graph: Cybergraph::new(), log: None }
     }
 
-    /// A durable cell backed by the link log at `path`. Replays the log to
-    /// rebuild state, then appends new links to it. The graph survives restart.
+    /// A durable cell backed by the signal log at `path`. Replays the log to
+    /// rebuild state, then appends new signals to it. The graph survives restart.
     pub fn open(path: impl AsRef<Path>) -> std::io::Result<Self> {
         let path = path.as_ref();
         if let Some(dir) = path.parent() {
@@ -45,62 +58,118 @@ impl Cell {
         }
 
         let mut cell = Self::ephemeral();
-        if let Ok(f) = File::open(path) {
-            for line in BufReader::new(f).lines() {
-                if let Some((neuron, from, to)) = parse(&line?) {
-                    // replay: deterministic, so rebuilds identical state
-                    let _ = cell.apply(neuron, from, to);
-                }
+        if let Ok(mut f) = File::open(path) {
+            let mut bytes = Vec::new();
+            f.read_to_end(&mut bytes)?;
+            // replay: signals are the source of truth, so this rebuilds
+            // identical state. Apply straight to the graph — the log already
+            // holds these frames, so don't re-log them.
+            for sig in decode_signals(&bytes) {
+                let _ = cell.graph.link(sig);
             }
         }
         cell.log = Some(OpenOptions::new().create(true).append(true).open(path)?);
         Ok(cell)
     }
 
-    /// Build + chain + apply a signal for one cyberlink. No logging.
-    fn apply(
-        &mut self,
-        neuron: NeuronId,
-        from: Particle,
-        to: Particle,
-    ) -> Result<Particle, ApiError> {
-        let mut sig = SignalBuilder::new(neuron).link(from, to, [0u8; 32], 1, 1).build();
-        let (step, prev) = self.heads.get(&neuron).copied().unwrap_or((0, [0u8; 32]));
-        sig.prev = prev;
-        sig.step = step;
+    /// The next `(step, prev)` for `neuron`'s chain — the tip. Derived from the
+    /// graph's [`SignalChain`], so the cell holds no chain state of its own.
+    fn tip(&self, neuron: &NeuronId) -> (u64, Particle) {
+        match self.graph.chains.get(neuron) {
+            Some(chain) if !chain.entries.is_empty() => {
+                let step = chain.entries.len() as u64;
+                let prev = chain.entries[&(step - 1)].hash();
+                (step, prev)
+            }
+            _ => (0, [0u8; 32]),
+        }
+    }
+
+    /// Apply a fully-formed signal to the graph and, on success, persist its
+    /// tape frame. Returns the signal's particle. The single choke point every
+    /// change flows through — local links, replay, and gossip alike.
+    fn commit(&mut self, sig: Signal) -> Result<Particle, ApiError> {
         let id = sig.hash();
+        let frame = encode_signal_frame(&sig);
         self.graph.link(sig)?;
-        self.heads.insert(neuron, (step + 1, id));
+        if let Some(log) = self.log.as_mut() {
+            let _ = log.write_all(&frame).and_then(|_| log.flush());
+        }
         Ok(id)
     }
 
-    /// Assert a cyberlink `from → to` as `neuron`, apply it, and persist it to
-    /// the log (if durable). Returns the signal's particle.
+    /// Assert a cyberlink `from → to` as `neuron`. Builds the signal at this
+    /// neuron's chain tip, applies it, and persists it (if durable). Returns the
+    /// signal's particle.
     pub fn link(
         &mut self,
         neuron: NeuronId,
         from: Particle,
         to: Particle,
     ) -> Result<Particle, ApiError> {
-        let id = self.apply(neuron, from, to)?;
-        if let Some(log) = self.log.as_mut() {
-            let line = format!("{} {} {}\n", hex(&neuron), hex(&from), hex(&to));
-            let _ = log.write_all(line.as_bytes()).and_then(|_| log.flush());
+        let (step, prev) = self.tip(&neuron);
+        let mut sig = SignalBuilder::new(neuron).link(from, to, [0u8; 32], 1, 1).build();
+        sig.step = step;
+        sig.prev = prev;
+        self.commit(sig)
+    }
+
+    /// Apply one signal frame received from a peer — the same tape frame this
+    /// cell would emit. A frame the cell already holds dedups to a no-op via the
+    /// SignalChain, so gossiping a signal lands it in the durable graph exactly
+    /// like a local one. Returns the signal's particle, or `None` if the frame
+    /// was malformed or already held.
+    pub fn receive_frame(&mut self, bytes: &[u8]) -> Option<Particle> {
+        let sig = decode_signal_frame(bytes)?;
+        match self.commit(sig) {
+            Ok(id) => Some(id),
+            // already held (equivocation) — benign, the graph is unchanged
+            Err(ApiError::SyncRejected(ChainError::Equivocation)) => None,
+            Err(_) => None,
         }
-        Ok(id)
     }
 
-    /// Apply a link received from a peer — a wire line `neuron from to` (hex),
-    /// the same format the log holds. Applying it persists it too, so a gossiped
-    /// link lands in this cell's durable graph exactly like a local one.
-    pub fn receive(&mut self, line: &str) -> Option<Particle> {
-        let (neuron, from, to) = parse(line)?;
-        self.link(neuron, from, to).ok()
+    /// Every signal this cell holds, as a concatenated batch of tape frames in
+    /// per-neuron step order — what it would ship a peer for anti-entropy.
+    pub fn snapshot(&self) -> Vec<u8> {
+        let mut out = Vec::new();
+        for chain in self.graph.chains.values() {
+            for sig in chain.entries.values() {
+                out.extend_from_slice(&encode_signal_frame(sig));
+            }
+        }
+        out
     }
 
-    /// The wire line for a link — what this cell would send a peer.
-    pub fn wire(neuron: &NeuronId, from: &Particle, to: &Particle) -> String {
-        format!("{} {} {}", hex(neuron), hex(from), hex(to))
+    /// Absorb a peer's batch of signal frames. Applies each in order; signals
+    /// already held (equivocation) or not-yet-applicable (a gap in the chain)
+    /// are skipped. Returns how many new signals were applied. Both cells
+    /// converge to the union of their signals — eventual consistency for the
+    /// grow-only cyberlink graph.
+    pub fn absorb(&mut self, bytes: &[u8]) -> usize {
+        let mut applied = 0;
+        for sig in decode_signals(bytes) {
+            if self.commit(sig).is_ok() {
+                applied += 1;
+            }
+        }
+        applied
+    }
+
+    /// The signals this cell holds, grouped by neuron and ordered by step — the
+    /// event log, the source of truth from which the graph state is derived.
+    pub fn signals(&self) -> Vec<&Signal> {
+        self.graph.chains.values().flat_map(|chain| chain.entries.values()).collect()
+    }
+
+    /// How many signals the cell has applied across all chains.
+    pub fn len(&self) -> usize {
+        self.graph.chains.values().map(|c| c.entries.len()).sum()
+    }
+
+    /// Whether the cell holds no signals yet.
+    pub fn is_empty(&self) -> bool {
+        self.graph.chains.values().all(|c| c.entries.is_empty())
     }
 
     /// Read the graph with an inf query.
@@ -113,31 +182,37 @@ impl Cell {
         self.graph.bbg.state.particles.len()
     }
 
+    /// The graph's nodes: every particle that appears as a cyberlink endpoint,
+    /// paired with its energy. Derived from the axons (edges), so a pure *source*
+    /// still shows up — energy only flows to a link's target, so a source has no
+    /// energy record of its own, but it is a node nonetheless.
+    ///
+    /// This is the honest node set. The raw `particles` table also holds
+    /// axon-particles (`H(from,to)`, carrying weight not energy); those are edges,
+    /// not nodes, and are reported by [`Cell::axons`].
+    pub fn nodes(&self) -> Vec<(Particle, u64)> {
+        let st = &self.graph.bbg.state;
+        let mut set = std::collections::BTreeSet::new();
+        for (from, to) in st.axon_edges.values() {
+            set.insert(*from);
+            set.insert(*to);
+        }
+        set.into_iter().map(|p| (p, st.particles.get(&p).map_or(0, |r| r.energy))).collect()
+    }
+
+    /// The graph's axons (edges): `(from, to, weight)`, one per linked pair.
+    pub fn axons(&self) -> Vec<(Particle, Particle, u64)> {
+        let st = &self.graph.bbg.state;
+        st.axon_edges
+            .iter()
+            .map(|(aid, (from, to))| (*from, *to, st.particles.get(aid).map_or(0, |r| r.weight)))
+            .collect()
+    }
+
     /// Does a particle exist in this cell's state?
     pub fn has_particle(&self, p: &Particle) -> bool {
         self.graph.bbg.state.particles.contains_key(p)
     }
-}
-
-fn hex(b: &[u8; 32]) -> String {
-    b.iter().map(|x| format!("{x:02x}")).collect()
-}
-
-fn unhex(s: &str) -> Option<[u8; 32]> {
-    if s.len() != 64 {
-        return None;
-    }
-    let mut out = [0u8; 32];
-    for (i, byte) in out.iter_mut().enumerate() {
-        *byte = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()?;
-    }
-    Some(out)
-}
-
-/// Parse one log line: `neuron_hex from_hex to_hex`.
-fn parse(line: &str) -> Option<(NeuronId, Particle, Particle)> {
-    let mut it = line.split_whitespace();
-    Some((unhex(it.next()?)?, unhex(it.next()?)?, unhex(it.next()?)?))
 }
 
 #[cfg(test)]
@@ -164,14 +239,41 @@ mod tests {
     }
 
     #[test]
-    fn wire_replicates_a_link_across_cells() {
+    fn frame_replicates_a_link_across_cells() {
         let (n, from, to) = ([1u8; 32], [2u8; 32], [3u8; 32]);
-        // cell A applies a link and would emit this wire line:
-        let line = Cell::wire(&n, &from, &to);
-        // cell B receives it over the "wire" and applies it:
+        // cell A applies a link; its snapshot is the frame it would emit.
+        let mut a = Cell::ephemeral();
+        a.link(n, from, to).unwrap();
+        let frame = a.snapshot();
+        // cell B receives it over the "wire" and applies it.
         let mut b = Cell::ephemeral();
-        b.receive(&line).expect("receive applies the link");
+        assert_eq!(b.absorb(&frame), 1, "one new signal applied");
         assert!(b.has_particle(&to), "the linked particle replicated onto B");
+    }
+
+    #[test]
+    fn gossip_is_idempotent_and_converges() {
+        // Two cells, two distinct neurons, each with its own links.
+        let (na, nb) = ([0xAAu8; 32], [0xBBu8; 32]);
+        let mut a = Cell::ephemeral();
+        let mut b = Cell::ephemeral();
+        a.link(na, [1u8; 32], [2u8; 32]).unwrap();
+        a.link(na, [1u8; 32], [3u8; 32]).unwrap();
+        b.link(nb, [4u8; 32], [5u8; 32]).unwrap();
+
+        // exchange snapshots both ways
+        let (sa, sb) = (a.snapshot(), b.snapshot());
+        assert_eq!(b.absorb(&sa), 2, "B applies A's two signals");
+        assert_eq!(a.absorb(&sb), 1, "A applies B's one signal");
+
+        // both converge to the union
+        for p in [[2u8; 32], [3u8; 32], [5u8; 32]] {
+            assert!(a.has_particle(&p) && b.has_particle(&p), "converged on {p:?}");
+        }
+
+        // re-applying the same snapshot is a pure no-op — the SignalChain dedups
+        assert_eq!(b.absorb(&sa), 0, "no double-counting on re-gossip");
+        assert_eq!(a.absorb(&sb), 0, "no double-counting on re-gossip");
     }
 
     #[test]

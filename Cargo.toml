@@ -2,7 +2,7 @@
 resolver = "2"
 members = ["core", "shell", "cli"]
 # `cargo run` / `cargo build` at the root default to the GUI (shell → binary `cyb`).
-# The CLI is built/run explicitly: `cargo run -p cyb-cli`.
+# The CLI is built/run explicitly: `cargo run -p cy` (binary `cy`).
 default-members = ["core", "shell"]
 exclude = ["apps"]
 

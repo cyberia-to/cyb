@@ -7,3 +7,5 @@ license = "Cyber"
 
 [dependencies]
 cybergraph = { path = "../../cybergraph" }
+# codec only (chain, frames, tape) — not the iroh/radio transport (`net`)
+foculus = { path = "../../foculus", default-features = false }
