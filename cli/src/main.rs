@@ -259,6 +259,7 @@ const TOOLS: &[(&str, &str)] = &[
     ("cybergraph", "the cyberlink processor — link, seal, chain"),
     ("bbg", "the authenticated state — root, prove, dump"),
     ("inf", "the query engine — datalog over sets"),
+    ("zheng", "the proof system — run, prove, verify"),
     ("eidos", "the proof kernel — CIC type theory"),
     ("tru", "the truth layer — focus, cyberank, valence"),
 ];
