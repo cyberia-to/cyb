@@ -12,8 +12,8 @@
 #   desc  one-line description (keep it short — one role each)
 
 tool = [
-  { name = "hemera",     dir = "hemera",        pkg = "hemera-cli",  desc = "hash" },
-  { name = "mudra",      dir = "mudra",                              desc = "seal — keys & claims" },
+  { name = "hemera",     dir = "hemera",        pkg = "hemera-cli",  desc = "particle identity" },
+  { name = "mudra",      dir = "mudra",                              desc = "neuron identity" },
   { name = "nox",        dir = "nox",           pkg = "nox-cli",     desc = "virtual machine" },
   { name = "rune",       dir = "rune",          pkg = "rune-cli",    desc = "dynamic language" },
   { name = "trident",    dir = "trident",                            desc = "provable language" },
