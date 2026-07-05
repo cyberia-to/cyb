@@ -2945,6 +2945,8 @@ dependencies = [
  "cyb-core",
  "inf-value",
  "mudra",
+ "serde",
+ "toml 0.8.2",
 ]
 
 [[package]]

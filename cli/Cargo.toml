@@ -21,3 +21,6 @@ cyb-core = { path = "../core" }
 inf-value = { path = "../../inf/rs/value" }
 # the legacy-key bridge: verify a migration claim, then record it in the graph
 mudra = { path = "../../mudra" }
+# the tool registry (tools.toml) — the single source of truth for the toolset
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"

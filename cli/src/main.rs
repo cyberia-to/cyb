@@ -47,6 +47,9 @@ fn yellow(s: &str) -> String {
 fn bold(s: &str) -> String {
     paint("1", s)
 }
+fn red(s: &str) -> String {
+    paint("31", s)
+}
 
 /// The rainbow ANSI-Shadow wordmark — printed only on a terminal.
 const LOGO: &str = "\
@@ -164,6 +167,7 @@ fn help() {
         ("pull <path>", "absorb a peer's signal log (file anti-entropy)"),
         ("state", "how many nodes, axons, and signals the cell holds"),
         ("tools", "the cyber toolset (hemera, nox, …) — run any by name"),
+        ("install <t…>", "build tools from the registry onto PATH (--all)"),
         ("help · quit", "this · leave"),
     ];
     let w = rows.iter().map(|(c, _)| c.len()).max().unwrap_or(0);
@@ -249,26 +253,65 @@ fn show_axons(cell: &Cell) {
 }
 
 // ── the cyber toolset ────────────────────────────────────────────────────────
-// cy is the doorway to the stack: any sibling tool's name, typed here, runs it.
+// The registry (tools.toml, embedded) is the single source of truth: `cy tools`
+// lists it, `cy install` builds it, and `cy <name>` dispatches only to it.
 
-const TOOLS: &[(&str, &str)] = &[
-    ("hemera", "the hash — Poseidon2 over Goldilocks"),
-    ("mudra", "the seal — keys, seeds, migration claims"),
-    ("nox", "the VM — reduce nouns, run programs"),
-    ("rune", "the language — lowers to nox"),
-    ("cybergraph", "the cyberlink processor — link, seal, chain"),
-    ("bbg", "the authenticated state — root, prove, dump"),
-    ("inf", "the query engine — datalog over sets"),
-    ("zheng", "the proof system — run, prove, verify"),
-    ("eidos", "the proof kernel — CIC type theory"),
-    ("tru", "the truth layer — focus, cyberank, valence"),
-];
+#[derive(serde::Deserialize)]
+struct Registry {
+    tool: Vec<Tool>,
+}
 
-/// Is `cmd` a binary on `$PATH`?
-fn on_path(cmd: &str) -> bool {
-    std::env::var_os("PATH")
-        .map(|p| std::env::split_paths(&p).any(|dir| dir.join(cmd).exists()))
-        .unwrap_or(false)
+/// One entry in the toolset registry.
+#[derive(serde::Deserialize)]
+struct Tool {
+    /// the command name — and the symlink placed on PATH
+    name: String,
+    /// build directory under `$CYBER_ROOT`
+    dir: String,
+    /// cargo package for `-p` (a single-crate directory omits it)
+    pkg: Option<String>,
+    /// built binary name; defaults to `name` when they match
+    bin: Option<String>,
+    /// one-line description
+    desc: String,
+}
+
+impl Tool {
+    /// The built binary's file name.
+    fn bin(&self) -> &str {
+        self.bin.as_deref().unwrap_or(&self.name)
+    }
+}
+
+/// The registry, embedded at build time and parsed once.
+fn registry() -> &'static [Tool] {
+    static REG: std::sync::OnceLock<Vec<Tool>> = std::sync::OnceLock::new();
+    REG.get_or_init(|| {
+        toml::from_str::<Registry>(include_str!("../tools.toml"))
+            .expect("tools.toml is malformed")
+            .tool
+    })
+}
+
+/// The registered tool of this name, if any. This is the dispatch boundary —
+/// only names in the registry run, so `cy ls` is unknown, not `/bin/ls`.
+fn tool(name: &str) -> Option<&'static Tool> {
+    registry().iter().find(|t| t.name == name)
+}
+
+/// The cyber source root that holds every tool's repo (`$CYBER_ROOT` or `~/cyber`).
+fn cyber_root() -> std::path::PathBuf {
+    if let Some(r) = std::env::var_os("CYBER_ROOT") {
+        return std::path::PathBuf::from(r);
+    }
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    std::path::Path::new(&home).join("cyber")
+}
+
+/// Where installed tools are symlinked (on PATH).
+fn bin_dir() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    std::path::Path::new(&home).join(".cargo").join("bin")
 }
 
 /// Split a command tail into arguments, honoring single and double quotes so a
@@ -302,51 +345,117 @@ fn split_args(s: &str) -> Vec<String> {
 /// cy's own builtin verbs — everything else is dispatched to a sibling tool.
 const BUILTINS: &[&str] = &[
     "id", "whoami", "link", "query", "axons", "edges", "pull", "bind", "log", "state", "tools",
-    "deps", "help", "?", "quit", "exit", "q", "",
+    "deps", "install", "help", "?", "quit", "exit", "q", "",
 ];
 
 fn is_builtin(cmd: &str) -> bool {
     BUILTINS.contains(&cmd)
 }
 
-/// Run a sibling cyber tool with an already-split argument list (one-shot: argv
-/// is passed through verbatim, so quoting is preserved). Returns `false` only
-/// when the command is neither a known tool nor on PATH.
-fn dispatch_argv(cmd: &str, args: &[String]) -> bool {
-    match std::process::Command::new(cmd).args(args).status() {
-        Ok(_) => true,
+/// Run a registered tool with an already-split argument list (one-shot: argv is
+/// passed verbatim, so quoting is preserved). Callers gate on [`tool`] first, so
+/// a `NotFound` here always means "registered but not installed".
+fn dispatch_argv(name: &str, args: &[String]) {
+    match std::process::Command::new(name).args(args).status() {
+        Ok(_) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            if TOOLS.iter().any(|(t, _)| *t == cmd) {
-                println!(
-                    "  {} is a cyber tool, not yet on PATH — {}",
-                    bold(cmd),
-                    green(&format!("sh ~/cyber/scripts/install-bins.sh {cmd}")),
-                );
-                true
-            } else {
-                false
-            }
+            println!("  {} not installed — {}", bold(name), green(&format!("cy install {name}")));
         }
-        Err(e) => {
-            println!("  {}: {cmd}: {e}", paint("31", "error"));
-            true
-        }
+        Err(e) => println!("  {}: {name}: {e}", paint("31", "error")),
     }
 }
 
 /// Dispatch from the REPL, where the quoted tail must be re-split.
-fn dispatch(cmd: &str, rest: &str) -> bool {
-    dispatch_argv(cmd, &split_args(rest))
+fn dispatch(name: &str, rest: &str) {
+    dispatch_argv(name, &split_args(rest));
 }
 
-/// List the cyber toolset and which tools are installed.
+/// List the toolset from the registry, each with its install status.
 fn show_tools() {
-    println!("{}", dim("cyber toolset — type any as `<tool> …`, right here"));
-    for (name, desc) in TOOLS {
-        let (mark, _) = if on_path(name) { (green("●"), true) } else { (dim("○"), false) };
-        println!("  {} {}  {}", mark, bold(&format!("{name:<10}")), dim(desc));
+    println!("{}", dim("the cyber toolset — `cy <name> …` runs one · `cy install --all` builds them"));
+    for t in registry() {
+        let link = bin_dir().join(&t.name);
+        let (mark, note) = if std::fs::metadata(&link).is_ok() {
+            (green("●"), "") // link resolves to a real binary
+        } else if std::fs::symlink_metadata(&link).is_ok() {
+            (yellow("⚠"), " — stale, run `cy install`") // link exists, target gone
+        } else {
+            (dim("○"), "") // not installed
+        };
+        println!("  {} {}  {}{}", mark, bold(&format!("{:<10}", t.name)), dim(&t.desc), dim(note));
     }
-    println!("  {}", dim("○ not installed · sh ~/cyber/scripts/install-bins.sh <tool>"));
+}
+
+/// `cy install [name…|--all]` — build tools from the registry and link them onto
+/// PATH. This is the whole install mechanism; there is no external script.
+fn cmd_install(rest: &str) {
+    let names = split_args(rest);
+    let all = names.is_empty() || names.iter().any(|n| n == "--all" || n == "all");
+    let targets: Vec<&Tool> = if all {
+        registry().iter().collect()
+    } else {
+        names
+            .iter()
+            .filter_map(|n| {
+                tool(n).or_else(|| {
+                    println!("  {}: not a registered tool (see `cy tools`)", red(n));
+                    None
+                })
+            })
+            .collect()
+    };
+    if targets.is_empty() {
+        return;
+    }
+    let root = cyber_root();
+    let _ = std::fs::create_dir_all(bin_dir());
+    let (mut ok, mut fail) = (0u32, 0u32);
+    for t in targets {
+        if install_one(t, &root) {
+            ok += 1;
+        } else {
+            fail += 1;
+        }
+    }
+    let tail = if fail > 0 { red(&format!(", {fail} failed")) } else { String::new() };
+    println!("  {} {ok} installed{tail}", green("✓"));
+}
+
+/// Build one tool in release and symlink it onto PATH. Cargo output streams so
+/// the build is visible. `$CYBER_ROOT/<dir>` is the workspace; the binary lands
+/// at `<dir>/target/release/<bin>`.
+fn install_one(t: &Tool, root: &Path) -> bool {
+    println!("  {} {}", dim("building"), bold(&t.name));
+    let mut cargo = std::process::Command::new("cargo");
+    cargo
+        .arg("build")
+        .arg("--release")
+        .current_dir(root.join(&t.dir))
+        .env("RUSTC_BOOTSTRAP", "1"); // the workspace pulls crates needing nightly features
+    // `pkg` may name several packages (space-separated) — a group like strata
+    // builds its dispatcher and every algebra CLI in one invocation.
+    if let Some(pkg) = &t.pkg {
+        for p in pkg.split_whitespace() {
+            cargo.arg("-p").arg(p);
+        }
+    }
+    if !cargo.status().map(|s| s.success()).unwrap_or(false) {
+        println!("  {} {} — build failed", red("✗"), bold(&t.name));
+        return false;
+    }
+    let target = root.join(&t.dir).join("target/release").join(t.bin());
+    let link = bin_dir().join(&t.name);
+    let _ = std::fs::remove_file(&link);
+    match std::os::unix::fs::symlink(&target, &link) {
+        Ok(()) => {
+            println!("  {} {} {} {}", green("●"), bold(&t.name), dim("→"), dim(&link.display().to_string()));
+            true
+        }
+        Err(e) => {
+            println!("  {}: link {}: {e}", red("error"), t.name);
+            false
+        }
+    }
 }
 
 // ── commands ────────────────────────────────────────────────────────────────
@@ -460,12 +569,15 @@ fn exec(cell: &mut Cell, id: &Id, line: &str) -> bool {
             dim("signals"),
         ),
         "tools" | "deps" => show_tools(),
+        "install" => cmd_install(it.next().unwrap_or("")),
         "help" | "?" => help(),
         "quit" | "exit" | "q" => return false,
         "" => {}
-        // anything else: try to run it as a sibling cyber tool
+        // a registered tool runs; anything else is unknown — cy is not a shell
         other => {
-            if !dispatch(other, it.next().unwrap_or("")) {
+            if tool(other).is_some() {
+                dispatch(other, it.next().unwrap_or(""));
+            } else {
                 println!("  {}: {other}   {}", dim("unknown"), dim("(try: help · tools)"));
             }
         }
@@ -553,7 +665,9 @@ fn main() {
         // the joined line.
         if is_builtin(first) {
             exec(&mut cell, &id, &args.join(" "));
-        } else if !dispatch_argv(first, &args[1..]) {
+        } else if tool(first).is_some() {
+            dispatch_argv(first, &args[1..]);
+        } else {
             println!("  {}: {first}   {}", dim("unknown"), dim("(try: help · tools)"));
         }
         return;
