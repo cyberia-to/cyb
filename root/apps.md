@@ -10,7 +10,7 @@ applications that run on [[cyb/os]]. each is a cell — independently compiled, 
 | [[cyb/portal]] | avatar creation, onboarding, citizenship |
 | [[hub]] | multi-chain connections via [[IBC]] |
 | [[cyb/signer]] | transaction signing, key management |
-| [[sync]] | state synchronization across devices |
+| [[foculus]] | state synchronization across devices |
 | [[cyb/oracle]] | ask, search, learn — the query interface |
 | [[teleport]] | cross-chain asset transfers |
 | [[sphere]] | spatial navigation of the [[cybergraph]] |
