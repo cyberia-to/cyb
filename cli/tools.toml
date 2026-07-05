@@ -20,6 +20,7 @@ tool = [
   { name = "strata",     dir = "strata",        pkg = "strata-cli nebu-cli jali-cli kuro-cli trop-cli genies-cli", bin = "strata", desc = "field algebras" },
   { name = "glia",       dir = "glia",          pkg = "glia-cli import run", bin = "glia", desc = "model runtime" },
   { name = "radio",      dir = "radio",         pkg = "radio-cli",   desc = "transport" },
+  { name = "foculus",    dir = "foculus",                            desc = "consensus" },
   { name = "cybergraph", dir = "cybergraph/cli",                     desc = "cyberlink processor" },
   { name = "bbg",        dir = "bbg/cli",                            desc = "authenticated state" },
   { name = "inf",        dir = "inf/rs",        pkg = "inf-cli",     desc = "query engine" },
