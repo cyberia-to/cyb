@@ -7,27 +7,25 @@
 # Fields per tool:
 #   name  the command
 #   dir   build directory under $CYBER_ROOT (default ~/cyber)
-#   pkg   cargo package for `-p` (omit for a single-crate directory)
+#   pkg   cargo package(s) for `-p` (space-separated; omit for a single crate)
 #   bin   built binary name (default: name) — set when they differ
-#   desc  one-line description
+#   desc  one-line description (keep it short — one role each)
 
 tool = [
-  { name = "hemera",     dir = "hemera",        pkg = "hemera-cli",     desc = "the hash — Poseidon2 over Goldilocks" },
-  { name = "mudra",      dir = "mudra",                                 desc = "the seal — keys, seeds, migration claims" },
-  { name = "nox",        dir = "nox",           pkg = "nox-cli",        desc = "the VM — reduce nouns, run programs" },
-  { name = "rune",       dir = "rune",          pkg = "rune-cli",       desc = "the language — lowers to nox" },
-  { name = "trident",    dir = "trident",                               desc = "the provable language — compiles to nox/Triton" },
-  # a subcommand group: `strata <algebra> …` (nebu · jali · kuro · trop · genies)
-  { name = "strata", dir = "strata", pkg = "strata-cli nebu-cli jali-cli kuro-cli trop-cli genies-cli", bin = "strata", desc = "the algebras — strata nebu · jali · kuro · trop · genies" },
-  # a subcommand group: `glia import` · `glia run`
-  { name = "glia", dir = "glia", pkg = "glia-cli import run", bin = "glia", desc = "the model layer — glia import · glia run" },
-  { name = "radio",      dir = "radio",         pkg = "radio-cli",      desc = "the transport — gossip signals over the net" },
-  { name = "cybergraph", dir = "cybergraph/cli",                        desc = "the cyberlink processor — link, seal, chain" },
-  { name = "bbg",        dir = "bbg/cli",                               desc = "the authenticated state — root, prove, dump" },
-  { name = "inf",        dir = "inf/rs",        pkg = "inf-cli",        desc = "the query engine — datalog over sets" },
-  { name = "zheng",      dir = "zheng",         pkg = "zheng-cli",      desc = "the proof system — run, prove, verify" },
-  { name = "eidos",      dir = "eidos",         pkg = "eidos",          desc = "the proof kernel — CIC type theory" },
-  { name = "tru",        dir = "tru",           pkg = "tru-cli",        desc = "the truth layer — focus, cyberank, valence" },
-  { name = "cyb",        dir = "cyb",           pkg = "cyb-shell",      desc = "the GUI / node (Bevy shell)" },
-  { name = "cy",         dir = "cyb",           pkg = "cy",             desc = "the terminal face (this)" },
+  { name = "hemera",     dir = "hemera",        pkg = "hemera-cli",  desc = "the hash" },
+  { name = "mudra",      dir = "mudra",                              desc = "the seal — keys & claims" },
+  { name = "nox",        dir = "nox",           pkg = "nox-cli",     desc = "the VM" },
+  { name = "rune",       dir = "rune",          pkg = "rune-cli",    desc = "the language → nox" },
+  { name = "trident",    dir = "trident",                            desc = "the provable language" },
+  { name = "strata",     dir = "strata",        pkg = "strata-cli nebu-cli jali-cli kuro-cli trop-cli genies-cli", bin = "strata", desc = "the field algebras" },
+  { name = "glia",       dir = "glia",          pkg = "glia-cli import run", bin = "glia", desc = "the model layer" },
+  { name = "radio",      dir = "radio",         pkg = "radio-cli",   desc = "the transport" },
+  { name = "cybergraph", dir = "cybergraph/cli",                     desc = "the cyberlink processor" },
+  { name = "bbg",        dir = "bbg/cli",                            desc = "the authenticated state" },
+  { name = "inf",        dir = "inf/rs",        pkg = "inf-cli",     desc = "the query engine" },
+  { name = "zheng",      dir = "zheng",         pkg = "zheng-cli",   desc = "the proof system" },
+  { name = "eidos",      dir = "eidos",         pkg = "eidos",       desc = "the proof kernel" },
+  { name = "tru",        dir = "tru",           pkg = "tru-cli",     desc = "the truth layer" },
+  { name = "cyb",        dir = "cyb",           pkg = "cyb-shell",   desc = "the node (GUI)" },
+  { name = "cy",         dir = "cyb",           pkg = "cy",          desc = "the terminal face" },
 ]
