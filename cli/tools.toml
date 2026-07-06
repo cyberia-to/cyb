@@ -29,6 +29,7 @@ tool = [
   { name = "zheng",      dir = "zheng",         pkg = "zheng-cli",   desc = "proof system" },
   { name = "eidos",      dir = "eidos",         pkg = "eidos",       desc = "formal verification" },
   { name = "tru",        dir = "tru",           pkg = "tru-cli",     desc = "truth layer" },
+  { name = "prysm",      dir = "prysm/cli",                          desc = "visual protocol" },
   { name = "cyb",        dir = "cyb",           pkg = "cyb-shell",   desc = "graphical interface" },
   { name = "cy",         dir = "cyb",           pkg = "cy",          desc = "terminal face" },
 ]
