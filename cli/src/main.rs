@@ -272,6 +272,8 @@ struct Tool {
     pkg: Option<String>,
     /// built binary name; defaults to `name` when they match
     bin: Option<String>,
+    /// short name; also resolves and is linked onto PATH (e.g. `cg` → cybergraph)
+    alias: Option<String>,
     /// one-line description
     desc: String,
 }
@@ -296,7 +298,7 @@ fn registry() -> &'static [Tool] {
 /// The registered tool of this name, if any. This is the dispatch boundary —
 /// only names in the registry run, so `cy ls` is unknown, not `/bin/ls`.
 fn tool(name: &str) -> Option<&'static Tool> {
-    registry().iter().find(|t| t.name == name)
+    registry().iter().find(|t| t.name == name || t.alias.as_deref() == Some(name))
 }
 
 /// The cyber source root that holds every tool's repo (`$CYBER_ROOT` or `~/cyber`).
@@ -382,7 +384,8 @@ fn show_tools() {
         } else {
             (dim("○"), "") // not installed
         };
-        println!("  {} {}  {}{}", mark, bold(&format!("{:<10}", t.name)), dim(&t.desc), dim(note));
+        let alias = t.alias.as_deref().map(|a| format!("  {}", dim(&format!("({a})")))).unwrap_or_default();
+        println!("  {} {}  {}{}{}", mark, bold(&format!("{:<10}", t.name)), dim(&t.desc), alias, dim(note));
     }
 }
 
@@ -444,15 +447,30 @@ fn install_one(t: &Tool, root: &Path) -> bool {
         return false;
     }
     let target = root.join(&t.dir).join("target/release").join(t.bin());
-    let link = bin_dir().join(&t.name);
+    // link the name, and its short alias (if any), onto PATH — both point at the
+    // one binary, so `cy neural` / `cy neu` and the standalone commands all work.
+    if !link_bin(&target, &t.name) {
+        return false;
+    }
+    if let Some(alias) = &t.alias {
+        if !link_bin(&target, alias) {
+            return false;
+        }
+    }
+    true
+}
+
+/// Symlink `<bin_dir>/<name>` → `target`, replacing any prior link. Reports the link.
+fn link_bin(target: &Path, name: &str) -> bool {
+    let link = bin_dir().join(name);
     let _ = std::fs::remove_file(&link);
-    match std::os::unix::fs::symlink(&target, &link) {
+    match std::os::unix::fs::symlink(target, &link) {
         Ok(()) => {
-            println!("  {} {} {} {}", green("●"), bold(&t.name), dim("→"), dim(&link.display().to_string()));
+            println!("  {} {} {} {}", green("●"), bold(name), dim("→"), dim(&link.display().to_string()));
             true
         }
         Err(e) => {
-            println!("  {}: link {}: {e}", red("error"), t.name);
+            println!("  {}: link {}: {e}", red("error"), name);
             false
         }
     }

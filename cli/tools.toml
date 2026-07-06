@@ -9,6 +9,7 @@
 #   dir   build directory under $CYBER_ROOT (default ~/cyber)
 #   pkg   cargo package(s) for `-p` (space-separated; omit for a single crate)
 #   bin   built binary name (default: name) — set when they differ
+#   alias short name (optional) — also runs and is linked onto $PATH (e.g. cg → cybergraph)
 #   desc  one-line description (keep it short — one role each)
 
 tool = [
@@ -17,13 +18,13 @@ tool = [
   { name = "nox",        dir = "nox",           pkg = "nox-cli",     desc = "virtual machine" },
   { name = "rune",       dir = "rune",          pkg = "rune-cli",    desc = "dynamic language" },
   { name = "trident",    dir = "trident",                            desc = "provable language" },
-  { name = "neu",        dir = "neural/rs",     pkg = "neu",         desc = "graph language" },
+  { name = "neural",     dir = "neural/rs",     pkg = "neu", bin = "neu", alias = "neu", desc = "graph language" },
   { name = "strata",     dir = "strata",        pkg = "strata-cli nebu-cli jali-cli kuro-cli trop-cli genies-cli", bin = "strata", desc = "field algebras" },
   { name = "glia",       dir = "glia",          pkg = "glia-cli import run", bin = "glia", desc = "model runtime" },
   { name = "radio",      dir = "radio",         pkg = "radio-cli",   desc = "transport" },
   { name = "tape",       dir = "tape/impl/rust",                     desc = "wire framing" },
   { name = "foculus",    dir = "foculus",                            desc = "consensus" },
-  { name = "cybergraph", dir = "cybergraph/cli",                     desc = "cyberlink processor" },
+  { name = "cybergraph", dir = "cybergraph/cli", alias = "cg",       desc = "cyberlink processor" },
   { name = "bbg",        dir = "bbg/cli",                            desc = "authenticated state" },
   { name = "inf",        dir = "inf/rs",        pkg = "inf-cli",     desc = "query engine" },
   { name = "lens",       dir = "lens",          pkg = "lens-cli",    desc = "polynomial commitment" },
