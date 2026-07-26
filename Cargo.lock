@@ -3803,6 +3803,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tape",
+ "tru",
  "zheng",
 ]
 
@@ -9864,6 +9865,18 @@ dependencies = [
  "png 0.17.16",
  "thiserror 2.0.18",
  "windows-sys 0.60.2",
+]
+
+[[package]]
+name = "tru"
+version = "0.1.0"
+dependencies = [
+ "cyb-nebu",
+ "cyber-hemera",
+ "memmap2",
+ "serde",
+ "thiserror 2.0.18",
+ "toml 0.8.2",
 ]
 
 [[package]]

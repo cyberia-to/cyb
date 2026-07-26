@@ -98,20 +98,36 @@ impl Cell {
         Ok(id)
     }
 
-    /// Assert a cyberlink `from → to` as `neuron`. Builds the signal at this
-    /// neuron's chain tip, applies it, and persists it (if durable). Returns the
-    /// signal's particle.
+    /// Cast a sentence: apply an ordered batch of cyberlinks as **one atomic
+    /// signal** on `neuron`'s chain. They land together or not at all — half a
+    /// sentence never exists (the signal is the utterance boundary). Built at the
+    /// chain tip, applied, and persisted (if durable). Returns the signal's
+    /// particle.
+    pub fn cast(
+        &mut self,
+        neuron: NeuronId,
+        links: impl IntoIterator<Item = (Particle, Particle)>,
+    ) -> Result<Particle, ApiError> {
+        let (step, prev) = self.tip(&neuron);
+        let mut builder = SignalBuilder::new(neuron);
+        for (from, to) in links {
+            builder = builder.link(from, to, [0u8; 32], 1, 1);
+        }
+        let mut sig = builder.build();
+        sig.step = step;
+        sig.prev = prev;
+        self.commit(sig)
+    }
+
+    /// Assert a single cyberlink `from → to` as `neuron` — a one-link
+    /// [`Cell::cast`].
     pub fn link(
         &mut self,
         neuron: NeuronId,
         from: Particle,
         to: Particle,
     ) -> Result<Particle, ApiError> {
-        let (step, prev) = self.tip(&neuron);
-        let mut sig = SignalBuilder::new(neuron).link(from, to, [0u8; 32], 1, 1).build();
-        sig.step = step;
-        sig.prev = prev;
-        self.commit(sig)
+        self.cast(neuron, [(from, to)])
     }
 
     /// Apply one signal frame received from a peer — the same tape frame this
