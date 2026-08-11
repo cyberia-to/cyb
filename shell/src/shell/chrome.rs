@@ -1,5 +1,5 @@
-use bevy::prelude::*;
 use bevy::input::keyboard::{Key, KeyboardInput};
+use bevy::prelude::*;
 
 use crate::shell::clipboard::read_clipboard;
 use crate::worlds::WorldState;
@@ -10,28 +10,33 @@ pub const CHROME_BOTTOM_H: f32 = 56.0; // commander 40px + bottom padding 8px + 
 
 #[derive(Resource)]
 pub struct ChromeState {
-    pub focused:        bool,
+    pub focused: bool,
     pub just_submitted: bool, // true for one frame after commander Enter
-    pub text:           String,
-    key_cursor:         bevy::ecs::message::MessageCursor<KeyboardInput>,
+    pub text: String,
+    key_cursor: bevy::ecs::message::MessageCursor<KeyboardInput>,
 }
 
 impl Default for ChromeState {
     fn default() -> Self {
         Self {
-            focused:        false,
+            focused: false,
             just_submitted: false,
-            text:           String::new(),
-            key_cursor:     Default::default(),
+            text: String::new(),
+            key_cursor: Default::default(),
         }
     }
 }
 
-#[derive(Component)] struct ChromeCamera;
-#[derive(Component)] struct AddressBarText;
-#[derive(Component)] pub struct CommanderContainer;
-#[derive(Component)] struct CommanderText;
-#[derive(Component)] struct GraphNavButton;
+#[derive(Component)]
+struct ChromeCamera;
+#[derive(Component)]
+struct AddressBarText;
+#[derive(Component)]
+pub struct CommanderContainer;
+#[derive(Component)]
+struct CommanderText;
+#[derive(Component)]
+struct GraphNavButton;
 
 pub struct ChromePlugin;
 
@@ -40,15 +45,19 @@ impl Plugin for ChromePlugin {
         app.init_resource::<ChromeState>()
             .add_systems(Startup, spawn_chrome)
             .add_systems(OnEnter(WorldState::Terminal), unfocus_chrome)
-            .add_systems(Update, (
-                clear_chrome_submitted,   // must be first
-                handle_commander_click,
-                handle_graph_button,
-                handle_chrome_input,
-                update_address_bar,
-                update_commander_display,
-                sync_commander_focus_style,
-            ).chain());
+            .add_systems(
+                Update,
+                (
+                    clear_chrome_submitted, // must be first
+                    handle_commander_click,
+                    handle_graph_button,
+                    handle_chrome_input,
+                    update_address_bar,
+                    update_commander_display,
+                    sync_commander_focus_style,
+                )
+                    .chain(),
+            );
     }
 }
 
@@ -78,9 +87,9 @@ fn spawn_chrome(mut commands: Commands) {
     commands
         .spawn((
             Node {
-                width:           Val::Percent(100.0),
-                height:          Val::Percent(100.0),
-                flex_direction:  FlexDirection::Column,
+                width: Val::Percent(100.0),
+                height: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
                 justify_content: JustifyContent::SpaceBetween,
                 ..default()
             },
@@ -90,12 +99,12 @@ fn spawn_chrome(mut commands: Commands) {
             // ── Address Bar (top, full width) ───────────────────────────
             root.spawn((
                 Node {
-                    width:           Val::Percent(100.0),
-                    height:          Val::Px(36.0),
-                    flex_direction:  FlexDirection::Row,
-                    align_items:     AlignItems::Center,
+                    width: Val::Percent(100.0),
+                    height: Val::Px(36.0),
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
                     justify_content: JustifyContent::SpaceBetween,
-                    padding:         UiRect::horizontal(Val::Px(16.0)),
+                    padding: UiRect::horizontal(Val::Px(16.0)),
                     ..default()
                 },
                 BackgroundColor(Color::srgba(0.04, 0.04, 0.08, 0.92)),
@@ -104,26 +113,32 @@ fn spawn_chrome(mut commands: Commands) {
                 bar.spawn((
                     AddressBarText,
                     Text::new("cyb://graph"),
-                    TextFont { font_size: 13.0, ..default() },
+                    TextFont {
+                        font_size: 13.0,
+                        ..default()
+                    },
                     TextColor(Color::srgba(0.55, 0.55, 0.70, 1.0)),
                 ));
                 bar.spawn((
                     Text::new("master"),
-                    TextFont { font_size: 13.0, ..default() },
+                    TextFont {
+                        font_size: 13.0,
+                        ..default()
+                    },
                     TextColor(Color::srgba(0.35, 0.35, 0.50, 0.8)),
                 ));
             });
 
             // ── Bottom row: [graph ↗] | [commander 62%] | [⌘K] ─────────
             root.spawn(Node {
-                width:           Val::Percent(100.0),
-                flex_direction:  FlexDirection::Row,
-                align_items:     AlignItems::Center,
-                padding:         UiRect {
-                    left:   Val::Px(16.0),
-                    right:  Val::Px(16.0),
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Row,
+                align_items: AlignItems::Center,
+                padding: UiRect {
+                    left: Val::Px(16.0),
+                    right: Val::Px(16.0),
                     bottom: Val::Px(8.0),
-                    top:    Val::Px(0.0),
+                    top: Val::Px(0.0),
                 },
                 ..default()
             })
@@ -132,10 +147,10 @@ fn spawn_chrome(mut commands: Commands) {
                 row.spawn((
                     GraphNavButton,
                     Node {
-                        flex_grow:      1.0,
+                        flex_grow: 1.0,
                         flex_direction: FlexDirection::Row,
-                        align_items:    AlignItems::Center,
-                        padding:        UiRect::all(Val::Px(6.0)),
+                        align_items: AlignItems::Center,
+                        padding: UiRect::all(Val::Px(6.0)),
                         ..default()
                     },
                     BackgroundColor(Color::NONE),
@@ -144,7 +159,10 @@ fn spawn_chrome(mut commands: Commands) {
                 .with_children(|btn| {
                     btn.spawn((
                         Text::new("↗ mir"),
-                        TextFont { font_size: 13.0, ..default() },
+                        TextFont {
+                            font_size: 13.0,
+                            ..default()
+                        },
                         TextColor(Color::srgba(0.21, 0.84, 0.68, 0.55)),
                     ));
                 });
@@ -153,11 +171,11 @@ fn spawn_chrome(mut commands: Commands) {
                 row.spawn((
                     CommanderContainer,
                     Node {
-                        width:           Val::Percent(62.0),
-                        height:          Val::Px(40.0),
-                        flex_direction:  FlexDirection::Row,
-                        align_items:     AlignItems::Center,
-                        padding:         UiRect::horizontal(Val::Px(14.0)),
+                        width: Val::Percent(62.0),
+                        height: Val::Px(40.0),
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        padding: UiRect::horizontal(Val::Px(14.0)),
                         ..default()
                     },
                     BackgroundColor(Color::srgba(0.05, 0.05, 0.10, 0.94)),
@@ -166,29 +184,38 @@ fn spawn_chrome(mut commands: Commands) {
                 .with_children(|cmd| {
                     cmd.spawn((
                         Text::new("> "),
-                        TextFont { font_size: 14.0, ..default() },
+                        TextFont {
+                            font_size: 14.0,
+                            ..default()
+                        },
                         TextColor(Color::srgb(0.21, 0.84, 0.68)),
                     ));
                     cmd.spawn((
                         CommanderText,
                         Text::new("ask, search, transact..."),
-                        TextFont { font_size: 14.0, ..default() },
+                        TextFont {
+                            font_size: 14.0,
+                            ..default()
+                        },
                         TextColor(Color::srgba(0.30, 0.30, 0.40, 0.55)),
                     ));
                 });
 
                 // Right: shortcut hint
                 row.spawn(Node {
-                    flex_grow:       1.0,
-                    flex_direction:  FlexDirection::Row,
+                    flex_grow: 1.0,
+                    flex_direction: FlexDirection::Row,
                     justify_content: JustifyContent::FlexEnd,
-                    align_items:     AlignItems::Center,
+                    align_items: AlignItems::Center,
                     ..default()
                 })
                 .with_children(|right| {
                     right.spawn((
                         Text::new("⌘K"),
-                        TextFont { font_size: 12.0, ..default() },
+                        TextFont {
+                            font_size: 12.0,
+                            ..default()
+                        },
                         TextColor(Color::srgba(0.35, 0.35, 0.45, 0.55)),
                     ));
                 });
@@ -210,7 +237,10 @@ fn handle_commander_click(
 }
 
 fn handle_graph_button(
-    mut q: Query<(&Interaction, &mut BackgroundColor), (Changed<Interaction>, With<GraphNavButton>)>,
+    mut q: Query<
+        (&Interaction, &mut BackgroundColor),
+        (Changed<Interaction>, With<GraphNavButton>),
+    >,
     current: Res<State<WorldState>>,
     mut next: ResMut<NextState<WorldState>>,
 ) {
@@ -245,9 +275,9 @@ fn sync_commander_focus_style(
         if chrome.focused {
             *bg = BackgroundColor(Color::srgba(0.08, 0.07, 0.16, 0.98));
             commands.entity(entity).insert(Outline {
-                width:  Val::Px(1.0),
+                width: Val::Px(1.0),
                 offset: Val::Px(0.0),
-                color:  Color::srgba(0.96, 0.17, 0.99, 0.65),
+                color: Color::srgba(0.96, 0.17, 0.99, 0.65),
             });
         } else {
             *bg = BackgroundColor(Color::srgba(0.05, 0.05, 0.10, 0.94));
@@ -264,9 +294,10 @@ fn update_address_bar(
         return;
     }
     let uri = match world_state.get() {
-        WorldState::Graph    => "cyb://graph",
+        WorldState::Graph => "cyb://graph",
         WorldState::Terminal => "cyb://terminal",
-        WorldState::Cell     => "cyb://landing",
+        WorldState::Cell => "cyb://landing",
+        WorldState::Sigma => "cyb://sigma",
     };
     for mut text in &mut q {
         **text = uri.to_string();
@@ -386,16 +417,19 @@ pub fn handle_chrome_input(world: &mut World) {
         world.resource_mut::<ChromeState>().just_submitted = true;
 
         let target = match cmd.as_str() {
-            "graph"    => Some(WorldState::Graph),
+            "graph" => Some(WorldState::Graph),
             "terminal" => Some(WorldState::Terminal),
             "landing" | "cell" => Some(WorldState::Cell),
-            _          => None,
+            "sigma" | "money" => Some(WorldState::Sigma),
+            _ => None,
         };
         if let Some(t) = target {
             world.resource_mut::<NextState<WorldState>>().set(t);
         } else if !cmd.is_empty() {
             // Unknown command → forward to nushell in terminal world
-            world.resource_mut::<NextState<WorldState>>().set(WorldState::Terminal);
+            world
+                .resource_mut::<NextState<WorldState>>()
+                .set(WorldState::Terminal);
             if let Some(mut p) = world.get_resource_mut::<crate::worlds::PendingShellCmd>() {
                 p.0 = Some(cmd);
             }

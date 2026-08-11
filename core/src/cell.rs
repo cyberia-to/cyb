@@ -44,7 +44,10 @@ impl Cell {
     /// An in-memory cell — forgets everything on drop. For tests and throwaway
     /// runs; a real cyb uses [`Cell::open`].
     pub fn ephemeral() -> Self {
-        Self { graph: Cybergraph::new(), log: None }
+        Self {
+            graph: Cybergraph::new(),
+            log: None,
+        }
     }
 
     /// A durable cell backed by the signal log at `path`. Replays the log to
@@ -96,6 +99,12 @@ impl Cell {
             let _ = log.write_all(&frame).and_then(|_| log.flush());
         }
         Ok(id)
+    }
+
+    /// Public commit for money / advanced callers that build a full
+    /// [`Signal`] (amounts, multi-payee legs). Same durability as cast.
+    pub fn commit_public(&mut self, sig: Signal) -> Result<Particle, ApiError> {
+        self.commit(sig)
     }
 
     /// Cast a sentence: apply an ordered batch of cyberlinks as **one atomic
@@ -175,7 +184,11 @@ impl Cell {
     /// The signals this cell holds, grouped by neuron and ordered by step — the
     /// event log, the source of truth from which the graph state is derived.
     pub fn signals(&self) -> Vec<&Signal> {
-        self.graph.chains.values().flat_map(|chain| chain.entries.values()).collect()
+        self.graph
+            .chains
+            .values()
+            .flat_map(|chain| chain.entries.values())
+            .collect()
     }
 
     /// How many signals the cell has applied across all chains.
@@ -213,7 +226,9 @@ impl Cell {
             set.insert(*from);
             set.insert(*to);
         }
-        set.into_iter().map(|p| (p, st.particles.get(&p).map_or(0, |r| r.energy))).collect()
+        set.into_iter()
+            .map(|p| (p, st.particles.get(&p).map_or(0, |r| r.energy)))
+            .collect()
     }
 
     /// The graph's axons (edges): `(from, to, weight)`, one per linked pair.
@@ -241,7 +256,8 @@ mod tests {
         let (neuron, from, to) = ([1u8; 32], [2u8; 32], [3u8; 32]);
         cell.link(neuron, from, to).expect("link applies");
         assert!(cell.has_particle(&to), "target particle materializes");
-        cell.query("?[particle, energy] := particles{particle, energy}").expect("query runs");
+        cell.query("?[particle, energy] := particles{particle, energy}")
+            .expect("query runs");
     }
 
     #[test]
@@ -284,7 +300,10 @@ mod tests {
 
         // both converge to the union
         for p in [[2u8; 32], [3u8; 32], [5u8; 32]] {
-            assert!(a.has_particle(&p) && b.has_particle(&p), "converged on {p:?}");
+            assert!(
+                a.has_particle(&p) && b.has_particle(&p),
+                "converged on {p:?}"
+            );
         }
 
         // re-applying the same snapshot is a pure no-op — the SignalChain dedups
@@ -306,7 +325,10 @@ mod tests {
 
         {
             let cell = Cell::open(&path).expect("reopen");
-            assert!(cell.has_particle(&to), "particle survived restart via replay");
+            assert!(
+                cell.has_particle(&to),
+                "particle survived restart via replay"
+            );
         }
 
         let _ = fs::remove_file(&path);

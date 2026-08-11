@@ -1,12 +1,12 @@
 use std::borrow::Cow;
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use std::sync::mpsc;
+use std::sync::{Arc, Mutex};
 
 use bevy::prelude::*;
 use bevy::window::PrimaryWindow;
 use bevy::winit::WINIT_WINDOWS;
-use wry::{http, Rect, WebViewBuilder};
+use wry::{Rect, WebViewBuilder, http};
 
 pub enum WebViewCmd {
     EvalScript(String),
@@ -32,10 +32,10 @@ impl WebViewHandle {
 pub struct CommandEvent(pub String);
 
 struct ShellWebView {
-    webview:    wry::WebView,
-    cmd_rx:     mpsc::Receiver<WebViewCmd>,
-    nav_queue:  Arc<Mutex<Vec<String>>>,
-    cmd_queue:  Arc<Mutex<Vec<String>>>,
+    webview: wry::WebView,
+    cmd_rx: mpsc::Receiver<WebViewCmd>,
+    nav_queue: Arc<Mutex<Vec<String>>>,
+    cmd_queue: Arc<Mutex<Vec<String>>>,
     last_bounds: (u32, u32),
 }
 
@@ -79,8 +79,8 @@ fn create_webview(world: &mut World) {
     let (cmd_tx, cmd_rx) = mpsc::channel::<WebViewCmd>();
     let nav_queue: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
     let cmd_queue: Arc<Mutex<Vec<String>>> = Arc::new(Mutex::new(Vec::new()));
-    let nav_clone  = Arc::clone(&nav_queue);
-    let cmd_clone  = Arc::clone(&cmd_queue);
+    let nav_clone = Arc::clone(&nav_queue);
+    let cmd_clone = Arc::clone(&cmd_queue);
 
     let primary_entity = world
         .query_filtered::<Entity, With<PrimaryWindow>>()
@@ -175,13 +175,19 @@ fn create_webview(world: &mut World) {
     });
 
     if let Some(wv) = maybe_wv {
-        world.insert_non_send_resource(ShellWebView { webview: wv, cmd_rx, nav_queue, cmd_queue, last_bounds: (0, 0) });
+        world.insert_non_send_resource(ShellWebView {
+            webview: wv,
+            cmd_rx,
+            nav_queue,
+            cmd_queue,
+            last_bounds: (0, 0),
+        });
         world.insert_resource(WebViewHandle { cmd_tx });
     }
 }
 
 fn poll_webview(
-    shell:          NonSend<ShellWebView>,
+    shell: NonSend<ShellWebView>,
     mut next_state: ResMut<NextState<crate::worlds::WorldState>>,
 ) {
     while let Ok(cmd) = shell.cmd_rx.try_recv() {
@@ -194,9 +200,9 @@ fn poll_webview(
     if let Ok(mut q) = shell.nav_queue.try_lock() {
         for path in q.drain(..) {
             let target = match path.as_str() {
-                "/brain"     => Some(crate::worlds::WorldState::Graph),
-                "/terminal"  => Some(crate::worlds::WorldState::Terminal),
-                "/interface" => Some(crate::worlds::WorldState::Interface),
+                "/brain" => Some(crate::worlds::WorldState::Graph),
+                "/terminal" => Some(crate::worlds::WorldState::Terminal),
+                "/sigma" | "/money" => Some(crate::worlds::WorldState::Sigma),
                 _ => None,
             };
             if let Some(t) = target {
@@ -226,17 +232,17 @@ fn update_webview_bounds(world: &mut World) {
         let ww = ww.borrow();
         if let Some(win) = ww.get_window(entity) {
             let scale = win.scale_factor();
-            let phys  = win.inner_size();
-            let lw    = (phys.width  as f64 / scale) as u32;
-            let lh    = (phys.height as f64 / scale) as u32;
+            let phys = win.inner_size();
+            let lw = (phys.width as f64 / scale) as u32;
+            let lh = (phys.height as f64 / scale) as u32;
             if (lw, lh) != shell.last_bounds && lw > 0 && lh > 0 {
                 let _ = shell.webview.set_bounds(Rect {
                     position: wry::dpi::LogicalPosition::new(0, 0).into(),
-                    size:     wry::dpi::LogicalSize::new(lw, lh).into(),
+                    size: wry::dpi::LogicalSize::new(lw, lh).into(),
                 });
-                let _ = shell.webview.evaluate_script(
-                    "window.dispatchEvent(new Event('resize'))"
-                );
+                let _ = shell
+                    .webview
+                    .evaluate_script("window.dispatchEvent(new Event('resize'))");
                 shell.last_bounds = (lw, lh);
             }
         }

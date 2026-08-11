@@ -1,5 +1,6 @@
 pub mod cell;
 pub mod graph;
+pub mod sigma;
 pub mod terminal;
 
 use bevy::prelude::*;
@@ -11,6 +12,8 @@ pub enum WorldState {
     Terminal,
     /// Live-loaded prysm cell (the robot landing and other app pages).
     Cell,
+    /// Money: balance, send, events, sense (MoneyWallet).
+    Sigma,
 }
 
 /// Shell command forwarded from the commander bar to nushell.

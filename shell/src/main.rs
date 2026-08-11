@@ -3,8 +3,8 @@ mod shell;
 mod worlds;
 
 use bevy::prelude::*;
-use bevy::render::renderer::{RenderDevice, RenderQueue};
 use bevy::render::RenderApp;
+use bevy::render::renderer::{RenderDevice, RenderQueue};
 
 struct GpuBridgePlugin;
 
@@ -25,21 +25,23 @@ impl Plugin for GpuBridgePlugin {
 
 fn main() {
     App::new()
-        .add_plugins(DefaultPlugins.set(WindowPlugin {
-            primary_window: Some(Window {
-                title: "cyb".into(),
-                resolution: (1280u32, 800u32).into(),
-                ..default()
-            }),
-            ..default()
-        }).set(bevy::render::RenderPlugin {
-            render_creation: bevy::render::settings::RenderCreation::Automatic(
-                bevy::render::settings::WgpuSettings {
+        .add_plugins(
+            DefaultPlugins
+                .set(WindowPlugin {
+                    primary_window: Some(Window {
+                        title: "cyb".into(),
+                        resolution: (1280u32, 800u32).into(),
+                        ..default()
+                    }),
                     ..default()
-                },
-            ),
-            ..default()
-        }))
+                })
+                .set(bevy::render::RenderPlugin {
+                    render_creation: bevy::render::settings::RenderCreation::Automatic(
+                        bevy::render::settings::WgpuSettings { ..default() },
+                    ),
+                    ..default()
+                }),
+        )
         .insert_resource(ClearColor(bevy::color::Color::BLACK))
         .add_plugins(GpuBridgePlugin)
         .add_plugins(prysm::PrysmPlugin)
@@ -51,6 +53,7 @@ fn main() {
         .add_plugins(worlds::graph::GraphBridgePlugin)
         .add_plugins(worlds::terminal::TerminalWorldPlugin)
         .add_plugins(worlds::cell::CellWorldPlugin)
+        .add_plugins(worlds::sigma::SigmaWorldPlugin)
         .add_plugins(agent::AgentPlugin)
         .add_plugins(shell::tray::TrayPlugin)
         .run();

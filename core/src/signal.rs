@@ -57,6 +57,7 @@ impl SignalBuilder {
             network: SELF_NETWORK,
             links: self.links,
             delta_pi: Vec::new(),
+            box_moves: Vec::new(),
             prev: [0u8; 32],
             step: 0,
             height: 0,

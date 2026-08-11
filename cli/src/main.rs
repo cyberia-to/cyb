@@ -11,7 +11,7 @@
 //! its snapshot of tape frames, so pulling a peer is just absorbing that file.
 //! Live transport (radio/QUIC) plugs in above this on the same frames.
 
-use cyb_core::{Cell, Signal};
+use cyb_core::{Cell, MoneyEvent, MoneyWallet, Signal, money_to_sense};
 use inf_value::Value;
 use std::io::{self, BufRead, IsTerminal, Read, Write};
 use std::path::Path;
@@ -68,11 +68,9 @@ fn banner() -> String {
     format!(
         "{LOGO}\n{tag}\n{params}\n",
         tag = paint("37", "    an immortal robot"),
-        params = dim(
-            "\n    Goldilocks field · p = 2^64 - 2^32 + 1\n    \
+        params = dim("\n    Goldilocks field · p = 2^64 - 2^32 + 1\n    \
              cyberlink graph · per-neuron signal chains\n    \
-             event-sourced · never forgets · converges to φ*\n"
-        ),
+             event-sourced · never forgets · converges to φ*\n"),
     )
 }
 
@@ -117,8 +115,10 @@ fn print_table(cols: &[String], rows: &[Vec<Value>]) {
     // rendered cell text, per column, to size the columns
     let ncol = cols.len();
     let mut width: Vec<usize> = cols.iter().map(|c| c.chars().count()).collect();
-    let text: Vec<Vec<String>> =
-        rows.iter().map(|r| r.iter().map(cell_str).collect::<Vec<_>>()).collect();
+    let text: Vec<Vec<String>> = rows
+        .iter()
+        .map(|r| r.iter().map(cell_str).collect::<Vec<_>>())
+        .collect();
     for row in &text {
         for (i, cell) in row.iter().enumerate().take(ncol) {
             width[i] = width[i].max(cell.chars().count());
@@ -161,13 +161,35 @@ fn help() {
         ("id", "this cyb's neuron + pussy address"),
         ("link <a> <b>", "assert a cyberlink a → b"),
         ("bind <claim>", "record a verified mudra migration claim"),
+        ("fund <token> <amt>", "seed balance for tests (genesis)"),
+        ("balance [token]", "show balance (default token CYB)"),
+        ("send <to> <token> <amt>", "pay coins (grade-2 finality)"),
+        (
+            "earn <a> <b> [amt]",
+            "link a→b + settle Shapley reward (clock B)",
+        ),
+        ("events", "drain money events (sigma feed)"),
+        ("sense", "money events as sense NOTIFY"),
+        ("finalize", "advance block height (mature settle rewards)"),
         ("query [inf]", "the graph's nodes (or run a raw inf script)"),
         ("axons", "the graph's edges: from → to, with weight"),
-        ("log", "the signal log — the event history state derives from"),
-        ("pull <path>", "absorb a peer's signal log (file anti-entropy)"),
+        (
+            "log",
+            "the signal log — the event history state derives from",
+        ),
+        (
+            "pull <path>",
+            "absorb a peer's signal log (file anti-entropy)",
+        ),
         ("state", "how many nodes, axons, and signals the cell holds"),
-        ("tools", "the cyber toolset (hemera, nox, …) — run any by name"),
-        ("install <t…>", "build tools from the registry onto PATH (--all)"),
+        (
+            "tools",
+            "the cyber toolset (hemera, nox, …) — run any by name",
+        ),
+        (
+            "install <t…>",
+            "build tools from the registry onto PATH (--all)",
+        ),
         ("help · quit", "this · leave"),
     ];
     let w = rows.iter().map(|(c, _)| c.len()).max().unwrap_or(0);
@@ -179,8 +201,13 @@ fn help() {
     println!(
         "\n  {}\n    {}",
         dim("one-shot"),
-        [green("cy link cat dog"), green("cy bind <claim>"), green("cy axons"), green("cy log")]
-            .join(&sep),
+        [
+            green("cy link cat dog"),
+            green("cy bind <claim>"),
+            green("cy axons"),
+            green("cy log")
+        ]
+        .join(&sep),
     );
 }
 
@@ -213,7 +240,12 @@ fn print_signal(s: &Signal, short_hash: &str) {
         yellow(&s.step.to_string()),
     );
     for l in &s.links {
-        println!("    {} {} {}", cyan(&particle(&l.from)), dim("→"), cyan(&particle(&l.to)));
+        println!(
+            "    {} {} {}",
+            cyan(&particle(&l.from)),
+            dim("→"),
+            cyan(&particle(&l.to))
+        );
     }
 }
 
@@ -226,10 +258,23 @@ fn show_nodes(cell: &Cell) {
         return;
     }
     let labels: Vec<String> = nodes.iter().map(|(p, _)| particle(p)).collect();
-    let w = labels.iter().map(|l| l.chars().count()).max().unwrap_or(0).max(8);
-    println!("  {}  {}", dim(&format!("{:<w$}", "particle")), dim("energy"));
+    let w = labels
+        .iter()
+        .map(|l| l.chars().count())
+        .max()
+        .unwrap_or(0)
+        .max(8);
+    println!(
+        "  {}  {}",
+        dim(&format!("{:<w$}", "particle")),
+        dim("energy")
+    );
     for ((_, e), label) in nodes.iter().zip(&labels) {
-        println!("  {}  {}", cyan(&format!("{label:<w$}")), yellow(&e.to_string()));
+        println!(
+            "  {}  {}",
+            cyan(&format!("{label:<w$}")),
+            yellow(&e.to_string())
+        );
     }
 }
 
@@ -298,7 +343,9 @@ fn registry() -> &'static [Tool] {
 /// The registered tool of this name, if any. This is the dispatch boundary —
 /// only names in the registry run, so `cy ls` is unknown, not `/bin/ls`.
 fn tool(name: &str) -> Option<&'static Tool> {
-    registry().iter().find(|t| t.name == name || t.alias.as_deref() == Some(name))
+    registry()
+        .iter()
+        .find(|t| t.name == name || t.alias.as_deref() == Some(name))
 }
 
 /// The cyber source root that holds every tool's repo (`$CYBER_ROOT` or `~/cyber`).
@@ -347,7 +394,8 @@ fn split_args(s: &str) -> Vec<String> {
 /// cy's own builtin verbs — everything else is dispatched to a sibling tool.
 const BUILTINS: &[&str] = &[
     "id", "whoami", "link", "query", "axons", "edges", "pull", "bind", "log", "state", "tools",
-    "deps", "install", "help", "?", "quit", "exit", "q", "",
+    "deps", "install", "fund", "balance", "send", "earn", "events", "sense", "finalize", "help",
+    "?", "quit", "exit", "q", "",
 ];
 
 fn is_builtin(cmd: &str) -> bool {
@@ -361,7 +409,11 @@ fn dispatch_argv(name: &str, args: &[String]) {
     match std::process::Command::new(name).args(args).status() {
         Ok(_) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
-            println!("  {} not installed — {}", bold(name), green(&format!("cy install {name}")));
+            println!(
+                "  {} not installed — {}",
+                bold(name),
+                green(&format!("cy install {name}"))
+            );
         }
         Err(e) => println!("  {}: {name}: {e}", paint("31", "error")),
     }
@@ -374,7 +426,10 @@ fn dispatch(name: &str, rest: &str) {
 
 /// List the toolset from the registry, each with its install status.
 fn show_tools() {
-    println!("{}", dim("the cyber toolset — `cy <name> …` runs one · `cy install --all` builds them"));
+    println!(
+        "{}",
+        dim("the cyber toolset — `cy <name> …` runs one · `cy install --all` builds them")
+    );
     for t in registry() {
         let link = bin_dir().join(&t.name);
         let (mark, note) = if std::fs::metadata(&link).is_ok() {
@@ -384,8 +439,19 @@ fn show_tools() {
         } else {
             (dim("○"), "") // not installed
         };
-        let alias = t.alias.as_deref().map(|a| format!("  {}", dim(&format!("({a})")))).unwrap_or_default();
-        println!("  {} {}  {}{}{}", mark, bold(&format!("{:<10}", t.name)), dim(&t.desc), alias, dim(note));
+        let alias = t
+            .alias
+            .as_deref()
+            .map(|a| format!("  {}", dim(&format!("({a})"))))
+            .unwrap_or_default();
+        println!(
+            "  {} {}  {}{}{}",
+            mark,
+            bold(&format!("{:<10}", t.name)),
+            dim(&t.desc),
+            alias,
+            dim(note)
+        );
     }
 }
 
@@ -420,7 +486,11 @@ fn cmd_install(rest: &str) {
             fail += 1;
         }
     }
-    let tail = if fail > 0 { red(&format!(", {fail} failed")) } else { String::new() };
+    let tail = if fail > 0 {
+        red(&format!(", {fail} failed"))
+    } else {
+        String::new()
+    };
     println!("  {} {ok} installed{tail}", green("✓"));
 }
 
@@ -466,7 +536,13 @@ fn link_bin(target: &Path, name: &str) -> bool {
     let _ = std::fs::remove_file(&link);
     match std::os::unix::fs::symlink(target, &link) {
         Ok(()) => {
-            println!("  {} {} {} {}", green("●"), bold(name), dim("→"), dim(&link.display().to_string()));
+            println!(
+                "  {} {} {} {}",
+                green("●"),
+                bold(name),
+                dim("→"),
+                dim(&link.display().to_string())
+            );
             true
         }
         Err(e) => {
@@ -486,10 +562,18 @@ fn pull(cell: &mut Cell, peer: &Path) {
             let mut bytes = Vec::new();
             if f.read_to_end(&mut bytes).is_ok() {
                 let n = cell.absorb(&bytes);
-                let tag = if n == 0 { dim("already in sync") } else { green(&format!("+{n} new")) };
+                let tag = if n == 0 {
+                    dim("already in sync")
+                } else {
+                    green(&format!("+{n} new"))
+                };
                 println!("  {} {}  {}", dim("pull"), peer.display(), tag);
             } else {
-                println!("  {}: could not read {}", paint("31", "error"), peer.display());
+                println!(
+                    "  {}: could not read {}",
+                    paint("31", "error"),
+                    peer.display()
+                );
             }
         }
         Err(e) => println!("  {}: {} — {e}", paint("31", "error"), peer.display()),
@@ -526,17 +610,271 @@ fn bind(cell: &mut Cell, claim_str: &str) {
                 cyan(&particle(&c.neuron)),
                 dim(&format!("signal {s}…")),
             );
-            println!("  {}", dim("migration recorded — the neuron now owns its legacy address"));
+            println!(
+                "  {}",
+                dim("migration recorded — the neuron now owns its legacy address")
+            );
         }
         Err(e) => println!("  {}: {e:?}", paint("31", "error")),
     }
 }
 
+fn print_money_event(e: &MoneyEvent) {
+    match e {
+        MoneyEvent::TransferOut {
+            to,
+            amount,
+            token,
+            signal,
+            ..
+        } => println!(
+            "  {} {} {} {}  {}",
+            yellow("out"),
+            cyan(&particle(to)),
+            yellow(&amount.to_string()),
+            dim(&particle(token)),
+            dim(&format!("sig {}", &hex3(signal))),
+        ),
+        MoneyEvent::TransferIn {
+            from,
+            amount,
+            token,
+            signal,
+            ..
+        } => println!(
+            "  {} {} {} {}  {}",
+            green("in"),
+            cyan(&particle(from)),
+            yellow(&amount.to_string()),
+            dim(&particle(token)),
+            dim(&format!("sig {}", &hex3(signal))),
+        ),
+        MoneyEvent::RewardCredited {
+            amount,
+            token,
+            reason,
+            clock,
+            ..
+        } => println!(
+            "  {} {:?} {} {}  {}",
+            green("reward"),
+            clock,
+            yellow(&amount.to_string()),
+            dim(&particle(token)),
+            dim(&format!("reason {}", &hex3(reason))),
+        ),
+        MoneyEvent::Finalized { signal, .. } => {
+            println!(
+                "  {} {}",
+                green("final"),
+                dim(&format!("sig {}", &hex3(signal)))
+            );
+        }
+        MoneyEvent::TipAdvanced { height, grade4, .. } => println!(
+            "  {} h={} grade4={}",
+            dim("tip"),
+            yellow(&height.to_string()),
+            if *grade4 { green("yes") } else { red("no") }
+        ),
+        MoneyEvent::BalanceUpdated {
+            amount,
+            token,
+            tip_height,
+            ..
+        } => println!(
+            "  {} {} {} @h{}",
+            dim("bal"),
+            yellow(&amount.to_string()),
+            dim(&particle(token)),
+            tip_height
+        ),
+        MoneyEvent::FinalityFailed { reason, .. } => {
+            println!("  {} {}", red("fail"), dim(reason));
+        }
+    }
+}
+
 /// Run one command line against the cell. Returns false to stop the REPL.
-fn exec(cell: &mut Cell, id: &Id, line: &str) -> bool {
+fn exec(cell: &mut Cell, wallet: &mut MoneyWallet, id: &Id, line: &str) -> bool {
     let mut it = line.trim().splitn(2, ' ');
     match it.next().unwrap_or("") {
         "id" | "whoami" => show_id(id),
+        "fund" => {
+            let mut ab = it.next().unwrap_or("").split_whitespace();
+            match (ab.next(), ab.next()) {
+                (Some(tok), Some(amt)) => {
+                    let amount: u64 = amt.parse().unwrap_or(0);
+                    wallet.fund_for_test(cell, pid(tok), amount);
+                    println!(
+                        "  {} funded {} {}  tip grade4={}",
+                        green("✓"),
+                        yellow(&amount.to_string()),
+                        cyan(tok),
+                        if wallet.grade4() {
+                            green("yes")
+                        } else {
+                            red("no")
+                        }
+                    );
+                }
+                _ => println!("  {}: fund <token> <amount>", dim("usage")),
+            }
+        }
+        "balance" => {
+            let tok = it
+                .next()
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .unwrap_or("CYB");
+            let token = pid(tok);
+            if !wallet.grade4() {
+                wallet.sync_tip_local(cell);
+            }
+            match wallet.open_balance(cell, &id.neuron, &token) {
+                Ok((amt, _)) => println!(
+                    "  {} {} {}  {}",
+                    dim("balance"),
+                    yellow(&amt.to_string()),
+                    cyan(tok),
+                    dim(&format!("(tip h={})", wallet.tip().height)),
+                ),
+                Err(e) => println!("  {}: {e:?}", paint("31", "error")),
+            }
+        }
+        "send" => {
+            let mut ab = it.next().unwrap_or("").split_whitespace();
+            match (ab.next(), ab.next(), ab.next()) {
+                (Some(to), Some(tok), Some(amt)) => {
+                    let amount: u64 = amt.parse().unwrap_or(0);
+                    if !wallet.grade4() {
+                        wallet.sync_tip_local(cell);
+                    }
+                    match wallet.send(cell, pid(to), pid(tok), amount) {
+                        Ok((sig, ev)) => {
+                            println!(
+                                "  {} {} {} {} → {}  {}",
+                                green("✓"),
+                                yellow(&amount.to_string()),
+                                cyan(tok),
+                                dim("to"),
+                                cyan(to),
+                                dim(&format!(
+                                    "sig {}… final={}",
+                                    &hex3(&sig),
+                                    ev.verify(wallet.tip())
+                                )),
+                            );
+                        }
+                        Err(e) => println!("  {}: {e:?}", paint("31", "error")),
+                    }
+                }
+                _ => println!("  {}: send <to> <token> <amount>", dim("usage")),
+            }
+        }
+        "earn" => {
+            // link a→b with stake + live settle → clock-B reward mint
+            let mut ab = it.next().unwrap_or("").split_whitespace();
+            match (ab.next(), ab.next()) {
+                (Some(a), Some(b)) => {
+                    let stake: u64 = ab.next().and_then(|s| s.parse().ok()).unwrap_or(8000);
+                    if !wallet.grade4() {
+                        wallet.sync_tip_local(cell);
+                    }
+                    // seed a tiny base graph so impulse/settle has structure
+                    if wallet.pending_claims().is_empty() {
+                        use tru::Link;
+                        let base = vec![
+                            Link::stake(pid("x"), pid("y"), 100),
+                            Link::stake(pid("y"), pid("z"), 100),
+                            Link::stake(pid("z"), pid("x"), 100),
+                        ];
+                        wallet.set_reward_base(base);
+                    }
+                    wallet.reward_token = pid("CYB");
+                    wallet.reward_budget = 1000;
+                    wallet.use_live_epoch = true;
+                    wallet.settle_depth = 1;
+                    match wallet.link_and_settle(cell, pid(a), pid(b), stake, 1) {
+                        Ok((sid, rec, minted)) => {
+                            println!(
+                                "  {} {} {} {}  stake={}  {}",
+                                green("✓"),
+                                cyan(a),
+                                dim("→"),
+                                cyan(b),
+                                yellow(&stake.to_string()),
+                                dim(&format!("sig {}…", &hex3(&sid))),
+                            );
+                            println!(
+                                "  {} minted {} CYB  epoch={}  receipt {}…",
+                                green("reward"),
+                                yellow(&minted.to_string()),
+                                yellow(&rec.epoch.to_string()),
+                                dim(&hex3(&rec.receipt_hash)),
+                            );
+                            println!(
+                                "  {} run `finalize` once to mature clock-B (depth={})",
+                                dim("tip"),
+                                wallet.settle_depth
+                            );
+                        }
+                        Err(e) => println!("  {}: {e:?}", paint("31", "error")),
+                    }
+                }
+                _ => println!("  {}: earn <from> <to> [stake]", dim("usage")),
+            }
+        }
+        "events" => {
+            let ev = wallet.drain_events();
+            if ev.is_empty() {
+                println!("  {}", dim("(no money events)"));
+            } else {
+                for e in &ev {
+                    print_money_event(e);
+                }
+            }
+        }
+        "sense" => {
+            let ev = wallet.drain_events();
+            let notes = money_to_sense(id.neuron, &ev);
+            if notes.is_empty() {
+                println!("  {}", dim("(no sense notifications)"));
+            } else {
+                for n in notes {
+                    println!(
+                        "  {} {} {} {}  {}",
+                        green("notify"),
+                        cyan(n.kind),
+                        yellow(&n.amount.to_string()),
+                        dim(&particle(&n.token)),
+                        dim(&format!("reason {}", &hex3(&n.reason))),
+                    );
+                }
+            }
+        }
+        "finalize" => {
+            wallet.finalize_block(cell);
+            let ready = wallet.mature_settles();
+            println!(
+                "  {} block  tip h={} grade4={}",
+                green("✓"),
+                yellow(&wallet.tip().height.to_string()),
+                if wallet.grade4() {
+                    green("yes")
+                } else {
+                    red("no")
+                }
+            );
+            for (tok, amt, reason) in ready {
+                println!(
+                    "  {} settle mature {} {}  {}",
+                    green("reward"),
+                    yellow(&amt.to_string()),
+                    dim(&particle(&tok)),
+                    dim(&format!("reason {}", &hex3(&reason))),
+                );
+            }
+        }
         "link" => {
             let mut ab = it.next().unwrap_or("").split_whitespace();
             match (ab.next(), ab.next()) {
@@ -596,7 +934,11 @@ fn exec(cell: &mut Cell, id: &Id, line: &str) -> bool {
             if tool(other).is_some() {
                 dispatch(other, it.next().unwrap_or(""));
             } else {
-                println!("  {}: {other}   {}", dim("unknown"), dim("(try: help · tools)"));
+                println!(
+                    "  {}: {other}   {}",
+                    dim("unknown"),
+                    dim("(try: help · tools)")
+                );
             }
         }
     }
@@ -644,8 +986,15 @@ fn identity() -> Id {
                 use std::os::unix::fs::PermissionsExt;
                 let _ = std::fs::set_permissions(&file, std::fs::Permissions::from_mode(0o600));
             }
-            eprintln!("  {} new neuron minted · {}", green("✦"), dim(&file.display().to_string()));
-            eprintln!("  {}", dim("back up this mnemonic — it is the only key to this neuron"));
+            eprintln!(
+                "  {} new neuron minted · {}",
+                green("✦"),
+                dim(&file.display().to_string())
+            );
+            eprintln!(
+                "  {}",
+                dim("back up this mnemonic — it is the only key to this neuron")
+            );
             m
         }
     };
@@ -654,7 +1003,11 @@ fn identity() -> Id {
     let pubkey = mudra::cosmos::compressed(key.verifying_key());
     let neuron = mudra::claim::neuron_of(&pubkey);
     let address = mudra::cosmos::address(&pubkey, mudra::cosmos::PUSSY).unwrap_or_default();
-    Id { neuron, pubkey, address }
+    Id {
+        neuron,
+        pubkey,
+        address,
+    }
 }
 
 /// Show who this cyb is.
@@ -670,9 +1023,14 @@ fn main() {
     let path = default_path();
     // durable by default — the graph survives restart
     let mut cell = Cell::open(&path).unwrap_or_else(|_| Cell::ephemeral());
+    let mut wallet = MoneyWallet::new(id.neuron).with_tip_prover();
+    wallet.sync_tip_local(&cell);
 
     let args: Vec<String> = std::env::args().skip(1).collect();
-    if matches!(args.first().map(String::as_str), Some("help" | "--help" | "-h")) {
+    if matches!(
+        args.first().map(String::as_str),
+        Some("help" | "--help" | "-h")
+    ) {
         print!("{}", banner());
         help();
         return;
@@ -682,11 +1040,15 @@ fn main() {
         // A tool invocation keeps argv intact (quoting preserved); builtins take
         // the joined line.
         if is_builtin(first) {
-            exec(&mut cell, &id, &args.join(" "));
+            exec(&mut cell, &mut wallet, &id, &args.join(" "));
         } else if tool(first).is_some() {
             dispatch_argv(first, &args[1..]);
         } else {
-            println!("  {}: {first}   {}", dim("unknown"), dim("(try: help · tools)"));
+            println!(
+                "  {}: {first}   {}",
+                dim("unknown"),
+                dim("(try: help · tools)")
+            );
         }
         return;
     }
@@ -697,7 +1059,11 @@ fn main() {
         "  {} {}   {}",
         dim(&path.display().to_string()),
         dim("·"),
-        dim(&format!("neuron {}… · {} nodes · type `help`", &hex3(&id.neuron), cell.nodes().len())),
+        dim(&format!(
+            "neuron {}… · {} nodes · type `help`",
+            &hex3(&id.neuron),
+            cell.nodes().len()
+        )),
     );
     let prompt = format!("{}{} ", cyan("cyb"), dim("›"));
     let stdin = io::stdin();
@@ -709,7 +1075,7 @@ fn main() {
             println!();
             break;
         }
-        if !exec(&mut cell, &id, &line) {
+        if !exec(&mut cell, &mut wallet, &id, &line) {
             break;
         }
     }

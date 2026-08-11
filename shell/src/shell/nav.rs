@@ -18,6 +18,7 @@ pub fn tab_navigation_system(
             let target = match tab.index {
                 0 => WorldState::Graph,
                 1 => WorldState::Terminal,
+                2 => WorldState::Sigma,
                 _ => continue,
             };
             next_state.set(target);
