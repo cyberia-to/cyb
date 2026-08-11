@@ -35,7 +35,7 @@ Term.renderable_content() → sugarloaf content builder → GPU render
 exclude = ["vendor/rio-backend", "vendor/copa", "vendor/nushell"]
 ```
 
-**`cyb/cyb-shell/Cargo.toml`** — add nu crates as path deps:
+**`cyb/cyb/Cargo.toml`** — add nu crates as path deps:
 ```toml
 nu-protocol = { path = "../vendor/nushell/crates/nu-protocol" }
 nu-engine = { path = "../vendor/nushell/crates/nu-engine" }
@@ -50,7 +50,7 @@ nu-utils = { path = "../vendor/nushell/crates/nu-utils" }
 
 Remove: `libc` (was for PTY fd ops). Keep: `alacritty_terminal`, `sugarloaf`, `bevy`.
 
-Verify: `cargo check -p cyb-shell` compiles.
+Verify: `cargo check -p cyb` compiles.
 
 ### Step 2: New structs (replace PTY-based TerminalState)
 
@@ -164,9 +164,9 @@ Evaluate `$env.PROMPT_COMMAND` and `$env.PROMPT_INDICATOR` closures:
 
 | File | Action |
 |---|---|
-| `cyb/cyb-shell/Cargo.toml` | Add nu-* path deps, remove libc |
+| `cyb/cyb/Cargo.toml` | Add nu-* path deps, remove libc |
 | `cyb/Cargo.toml` | Add vendor/nushell to exclude |
-| `cyb/cyb-shell/src/worlds/terminal.rs` | Full rewrite of setup + keyboard + new eval systems |
+| `cyb/cyb/src/worlds/terminal.rs` | Full rewrite of setup + keyboard + new eval systems |
 | `cyb/Makefile` | Remove nu-build, simplify dmg |
 | `.claude/plans/004-remove-egui-add-ascii-terminal.md` | Delete (obsolete) |
 | `.claude/plans/composed-bubbling-floyd.md` | Delete (obsolete) |
@@ -183,7 +183,7 @@ Evaluate `$env.PROMPT_COMMAND` and `$env.PROMPT_INDICATOR` closures:
 
 ## Verify
 
-1. `cargo check -p cyb-shell` — compiles
+1. `cargo check -p cyb` — compiles
 2. `cd cyb && make dmg` — DMG builds (smaller, no nu binary)
 3. Launch app → Cmd+3 → Terminal:
    - Prompt with ANSI colors visible

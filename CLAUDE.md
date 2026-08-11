@@ -6,7 +6,7 @@ Bevy — корневой runtime. Один бинарник для всех п�
 
 ```
 /                    Rust workspace (Cargo.toml, Makefile)
-├── shell/           Bevy desktop runtime — cyb-shell binary, all worlds
+├── shell/           Bevy desktop runtime — package/bin `cyb`, all worlds
 ├── apps/            Leptos WASM web apps — loaded via WebView in Portal world
 ├── reference/       Спецификация, roadmap
 ├── graph/           Knowledge graph pages
@@ -50,12 +50,12 @@ make apps                          # trunk build --release
 make android                       # full: rust + assets + apk
 
 # Dev:
-make dev                           # cargo run -p cyb-shell
+make dev                           # cargo run -p cyb
 ```
 
 ## Проверка после изменений
 
-- **Shell**: `cargo check -p cyb-shell`
+- **Shell**: `cargo check -p cyb`
 - **Apps**: `cd apps && trunk build --release`
 - **Release**: `make dmg`
 - **Android**: `make android`

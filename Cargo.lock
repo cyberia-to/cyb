@@ -2951,6 +2951,52 @@ dependencies = [
 ]
 
 [[package]]
+name = "cyb"
+version = "0.1.0"
+dependencies = [
+ "alacritty_terminal",
+ "android_logger",
+ "arboard",
+ "bech32 0.9.1",
+ "bevy",
+ "bip39",
+ "chrono",
+ "cyb-core",
+ "futures",
+ "futures-lite",
+ "global-hotkey",
+ "hmac",
+ "k256",
+ "log",
+ "mir",
+ "nu-cli",
+ "nu-cmd-extra",
+ "nu-cmd-lang",
+ "nu-command",
+ "nu-engine",
+ "nu-parser",
+ "nu-protocol",
+ "nu-std",
+ "nu-utils",
+ "prysm",
+ "rune-ast",
+ "rune-interp",
+ "rune-lower",
+ "rune-parse",
+ "rune-prysm",
+ "rune-subject",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sugarloaf",
+ "tao",
+ "tape",
+ "tray-icon",
+ "ureq",
+ "wry",
+]
+
+[[package]]
 name = "cyb-core"
 version = "0.1.0"
 dependencies = [
@@ -3053,52 +3099,6 @@ dependencies = [
  "strata-core",
  "strata-ext",
  "strata-proof",
-]
-
-[[package]]
-name = "cyb-shell"
-version = "0.1.0"
-dependencies = [
- "alacritty_terminal",
- "android_logger",
- "arboard",
- "bech32 0.9.1",
- "bevy",
- "bip39",
- "chrono",
- "cyb-core",
- "futures",
- "futures-lite",
- "global-hotkey",
- "hmac",
- "k256",
- "log",
- "mir",
- "nu-cli",
- "nu-cmd-extra",
- "nu-cmd-lang",
- "nu-command",
- "nu-engine",
- "nu-parser",
- "nu-protocol",
- "nu-std",
- "nu-utils",
- "prysm",
- "rune-ast",
- "rune-interp",
- "rune-lower",
- "rune-parse",
- "rune-prysm",
- "rune-subject",
- "serde",
- "serde_json",
- "sha2",
- "sugarloaf",
- "tao",
- "tape",
- "tray-icon",
- "ureq",
- "wry",
 ]
 
 [[package]]

@@ -1,0 +1,16 @@
+[package]
+name = "cyb"
+version = "0.0.1"
+edition = "2021"
+description = "cyb — immortal robot (cyberia). GUI shell and soft3 cell runtime. https://github.com/cyberia-to/cyb"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cyberia-to/cyb"
+homepage = "https://cyb.ai"
+documentation = "https://github.com/cyberia-to/cyb"
+readme = "README.md"
+keywords = ["cyber", "cyb", "robot", "soft3"]
+categories = ["gui"]
+include = ["src/**/*", "Cargo.toml", "README.md", "LICENSE*"]
+
+[lib]
+path = "src/lib.rs"

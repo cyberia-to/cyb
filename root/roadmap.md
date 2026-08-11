@@ -32,7 +32,7 @@ target state: rust workspace at git root, react in react/ subproject.
 
 rename map:
 ```
-cyb/cyb-shell/    →  bevy/
+cyb/cyb/    →  bevy/
 cyb/cyb-portal/   →  leptos/
 cyb/cyb-services/ →  nu/
 cyb/vendor/       →  vendor/

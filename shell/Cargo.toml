@@ -1,7 +1,14 @@
 [package]
-name = "cyb-shell"
+name = "cyb"
 version = "0.1.0"
 edition = "2024"
+description = "cyb — immortal robot GUI (Bevy shell)"
+license = "Cyber"
+repository = "https://github.com/cyberia-to/cyb"
+homepage = "https://cyb.ai"
+readme = "README.md"
+keywords = ["cyber", "cyb", "bevy", "robot"]
+categories = ["gui", "multimedia"]
 
 [features]
 default = ["desktop"]
@@ -24,7 +31,7 @@ desktop = [
 android = ["dep:tao", "dep:android_logger"]
 
 [lib]
-name = "cyb_shell"
+name = "cyb"
 crate-type = ["cdylib", "lib"]
 path = "src/lib.rs"
 

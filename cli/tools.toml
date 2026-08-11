@@ -33,6 +33,6 @@ tool = [
   { name = "tru",        dir = "tru",           pkg = "tru-cli",     desc = "truth layer" },
   { name = "prysm",      dir = "prysm/cli",                          desc = "visual protocol" },
   { name = "lytics",     dir = "lytics/rs",     pkg = "lytics-ingest", bin = "lytics-ingest", desc = "visitor analytics" },
-  { name = "cyb",        dir = "cyb",           pkg = "cyb-shell",   desc = "graphical interface" },
+  { name = "cyb",        dir = "cyb",           pkg = "cyb",         desc = "graphical interface" },
   { name = "cy",         dir = "cyb",           pkg = "cy",          desc = "terminal face" },
 ]

@@ -2,23 +2,23 @@
 
 # Development: debug build (fastest iteration, no opt)
 dev:
-	cargo run -p cyb-shell
+	cargo run -p cyb
 
 # Fast release-quality dev build (thin-LTO, 8 CUs — ~60s incremental vs 290s fat)
 fast:
-	cargo run --profile release-dev -p cyb-shell
+	cargo run --profile release-dev -p cyb
 
 # Build (debug)
 build:
-	cargo build -p cyb-shell
+	cargo build -p cyb
 
 # Build release (fat-LTO, for DMG)
 release:
-	cargo build --release -p cyb-shell
+	cargo build --release -p cyb
 
 # Run release binary
 run:
-	cargo run --release -p cyb-shell
+	cargo run --release -p cyb
 
 # Check all (fast, no codegen)
 check:
@@ -39,14 +39,14 @@ dmg: release apps
 	rm -rf target/release/cyb.app
 	mkdir -p target/release/cyb.app/Contents/MacOS
 	mkdir -p target/release/cyb.app/Contents/Resources
-	cp target/release/cyb-shell target/release/cyb.app/Contents/MacOS/cyb-shell
+	cp target/release/cyb target/release/cyb.app/Contents/MacOS/cyb
 	cp shell/assets/icon.icns target/release/cyb.app/Contents/Resources/icon.icns
 	@if [ -d "apps/dist" ]; then \
 		cp -r apps/dist target/release/cyb.app/Contents/MacOS/cyb-apps; \
 	fi
 	/usr/libexec/PlistBuddy -c "Add :CFBundleName string cyb" target/release/cyb.app/Contents/Info.plist
 	/usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string cyb" target/release/cyb.app/Contents/Info.plist
-	/usr/libexec/PlistBuddy -c "Add :CFBundleExecutable string cyb-shell" target/release/cyb.app/Contents/Info.plist
+	/usr/libexec/PlistBuddy -c "Add :CFBundleExecutable string cyb" target/release/cyb.app/Contents/Info.plist
 	/usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string ai.cyb.app" target/release/cyb.app/Contents/Info.plist
 	/usr/libexec/PlistBuddy -c "Add :CFBundleVersion string 0.1.0" target/release/cyb.app/Contents/Info.plist
 	/usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 0.1.0" target/release/cyb.app/Contents/Info.plist
@@ -72,16 +72,16 @@ KOTLIN_OUT   = shell/gen/android/app/src/main/kotlin/ai/cyb/app
 android: android-rust android-assets android-apk
 	@echo "APK: shell/gen/android/app/build/outputs/apk/release/app-release-unsigned.apk"
 
-# Cross-compile Rust → libcyb_shell.so
+# Cross-compile Rust → libcyb.so
 android-rust:
 	WRY_ANDROID_PACKAGE=ai.cyb.app \
-	WRY_ANDROID_LIBRARY=cyb_shell \
+	WRY_ANDROID_LIBRARY=cyb \
 	WRY_ANDROID_KOTLIN_FILES_OUT_DIR=$(PWD)/$(KOTLIN_OUT) \
 	CC_aarch64_linux_android=$(NDK_BIN)/aarch64-linux-android$(ANDROID_API)-clang \
 	CXX_aarch64_linux_android=$(NDK_BIN)/aarch64-linux-android$(ANDROID_API)-clang++ \
 	AR_aarch64_linux_android=$(NDK_BIN)/llvm-ar \
 	CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$(NDK_BIN)/aarch64-linux-android$(ANDROID_API)-clang \
-	cargo build --release --target $(ANDROID_TARGET) --lib -p cyb-shell --no-default-features --features android
+	cargo build --release --target $(ANDROID_TARGET) --lib -p cyb --no-default-features --features android
 
 # Copy apps build into Android assets
 android-assets:
@@ -97,6 +97,6 @@ android-assets:
 # Copy .so and assemble APK via Gradle
 android-apk:
 	@mkdir -p shell/gen/android/app/src/main/jniLibs/arm64-v8a
-	cp target/$(ANDROID_TARGET)/release/libcyb_shell.so \
+	cp target/$(ANDROID_TARGET)/release/libcyb.so \
 		shell/gen/android/app/src/main/jniLibs/arm64-v8a/
 	cd shell/gen/android && ./gradlew assembleRelease

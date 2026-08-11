@@ -1,8 +1,8 @@
-# cyb-shell Architecture
+# cyb Architecture
 
 ## Overview
 
-cyb-shell is a native macOS application built on Bevy ECS game engine. It provides four switchable "worlds" — Terminal, Browser, UI, and Game — sharing one window and one GPU pipeline.
+cyb is a native macOS application built on Bevy ECS game engine. It provides four switchable "worlds" — Terminal, Browser, UI, and Game — sharing one window and one GPU pipeline.
 
 ```
                       +-------------------+
@@ -303,7 +303,7 @@ Browser automation via `AgentCommandSender` resource (mpsc channel). Commands: `
 ## File Map
 
 ```
-cyb/cyb-shell/src/
+cyb/cyb/src/
   main.rs              App entry, plugin registration, GpuBridgePlugin
   shell/
     hotkeys.rs         Cmd+1..4 global hotkeys (global_hotkey crate)
@@ -318,7 +318,7 @@ cyb/cyb-shell/src/
     mod.rs             Agent plugin exports
     browser.rs         AgentCommandSender, Navigate/EvalJs/GetUrl commands
 
-cyb/cyb-shell/assets/
+cyb/cyb/assets/
   nu-config/
     env.nu             Nushell environment config (embedded via include_str!)
     config.nu          Nushell config (embedded via include_str!)
@@ -341,7 +341,7 @@ cd cyb && make dmg
 ```
 
 Produces `cyb/target/release/cyb.dmg` — a macOS app bundle with:
-- `cyb-shell` binary (single executable, nushell embedded)
+- `cyb` binary (single executable, nushell embedded)
 - No external nu binary, no config files to copy
 - Nushell config embedded via `include_str!`
 - Optional `web-dist/` resources if present
