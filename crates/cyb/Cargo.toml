@@ -1,0 +1,22 @@
+[package]
+name = "cyb"
+version = "0.1.0"
+edition = "2021"
+description = "cyb — immortal robot runtime (lib) and terminal face (bin: cy). Soft3 product surface."
+license-file = "LICENSE"
+repository = "https://github.com/cyberia-to/cyb"
+homepage = "https://cyb.ai"
+readme = "README.md"
+keywords = ["cyber", "cyb", "soft3", "robot"]
+categories = ["command-line-utilities", "science"]
+
+[lib]
+name = "cyb"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cy"
+path = "src/bin/cy.rs"
+
+# Standalone publish package (not a workspace member).
+[workspace]

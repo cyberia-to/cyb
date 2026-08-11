@@ -3,7 +3,7 @@ resolver = "2"
 members = ["core", "shell", "cli"]
 # GUI package+binary: `cyb` (shell/). CLI: `cargo run -p cy` (binary `cy`).
 default-members = ["core", "shell"]
-exclude = ["apps"]
+exclude = ["apps", "crates/cyb-reserve", "crates/cyb"]
 
 [workspace.dependencies]
 bevy = "0.18.0"
