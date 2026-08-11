@@ -91,7 +91,7 @@ the graph serves as infrastructure for itself:
 | fork choice | $\phi^*$ from graph topology |
 | finality | $\phi^*_i > \tau$, threshold adapts to graph density |
 | incentives | $\Delta\phi^*$ from convergence = reward signal |
-| proof archive | [[stark]] proofs published as particles |
+| proof archive | [[zheng]] proofs published as particles |
 | version control | patches = [[cyberlinks]], repos = subgraphs |
 | file system | `~neuron/path` resolves through cyberlinks |
 | data availability | [[NMT]] per row, erasure-coded, namespace-aware sampling |
@@ -145,7 +145,7 @@ all inter-cell communication uses wait-free data structures. no mutexes, no lock
 
 ## radio — transport layer
 
-[[radio]] is the connectivity layer — a fork of [[iroh]] where every hash runs through [[hemera]] instead of Blake3. one hash function, one address space, zero self-describing overhead. 20× cheaper in [[stark]] proofs.
+[[radio]] is the connectivity layer — a fork of [[iroh]] where every hash runs through [[hemera]] instead of Blake3. one hash function, one address space, zero self-describing overhead. 20× cheaper in [[zheng]] proofs.
 
 | layer | what |
 |-------|------|
@@ -159,7 +159,7 @@ all inter-cell communication uses wait-free data structures. no mutexes, no lock
 
 ### private messaging
 
-[[neurons]] exchange keys non-interactively via CSIDH curves published as [[particles]]. onion routing with [[stark]] proof chains — each hop proves correct forwarding. see [[cyber/communication]]
+[[neurons]] exchange keys non-interactively via CSIDH curves published as [[particles]]. onion routing with [[zheng]] proof chains — each hop proves correct forwarding. see [[cyber/communication]]
 
 ### storage proofs
 
@@ -259,8 +259,8 @@ evaluator IS a nox formula — metacircular interpreter. jets: optimization, not
 
 | what | provable | mechanism |
 |------|----------|-----------|
-| computation (0-15) | yes | STARK trace |
-| call (16) | constrained | witness + STARK |
+| computation (0-15) | yes | zheng trace |
+| call (16) | constrained | witness + zheng |
 | look (17) | yes | Brakedown opening |
 | write (Order output) | yes | polynomial update |
 | [[soma]] decisions | yes | nox formula in trace |

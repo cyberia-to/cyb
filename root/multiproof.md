@@ -32,7 +32,7 @@ Every execution language compiles to a proving language for settlement. The prov
 
 ```
 Execution layer:  compute in native algebra  →  emit [[Hemera]] commitment
-Proving layer:    verify commitment chain     →  emit STARK [[proof]]
+Proving layer:    verify commitment chain     →  emit zheng [[proof]]
 ```
 
 ---
@@ -103,7 +103,7 @@ The deepest structural fact in this architecture: [[quantum]] computation falls 
 
 Measurement — the collapse from [[quantum]] state to classical bit — is the only genuinely non-algebraic step. It exits Tri and lands in Rs (Rustic). The universe computes in F_{p²}, reads out in Z/2.
 
-The same [[field]] that makes STARK [[proof]]s efficient ([[Goldilocks field processor]], with 2³² roots of unity) is the [[field]] over which [[quantum]] gates are unitary. The same NTT butterfly network that accelerates polynomial commitment is the Quantum [[fourier transform]]. The same hardware that proves transactions proves [[quantum]] circuits.
+The same [[field]] that makes [[zheng]] [[proof]]s efficient ([[Goldilocks field processor]], with 2³² roots of unity) is the [[field]] over which [[quantum]] gates are unitary. The same NTT butterfly network that accelerates polynomial commitment is the Quantum [[fourier transform]]. The same hardware that proves transactions proves [[quantum]] circuits.
 
 This is not engineering convenience. It is the discovery that [[proof]], [[quantum]] computation, and cryptography are three views of the same mathematical object — the tower of extensions over a prime [[field]]. The architecture does not unify them. It reveals that they were always unified.
 
@@ -149,13 +149,13 @@ Every execution step emits a [[Hemera]] commitment — 4 [[Goldilocks field proc
 
 ### Proving Tier — one language + one [[hash]]
 
-Tri ([[Trident]]) — [[field]] tower F_{pⁿ} over [[Goldilocks field processor]] (p = 2⁶⁴ − 2³² + 1). Each extension is F_p[x]/(f(x)) where f is irreducible of degree n, chosen by the compiler for the algebraic structure required: n=1 for core STARK arithmetic, n=2 (f = x²+1) for complex amplitudes and [[quantum]] gates, n=3 (f = x³−x+1) for recursive [[proof]] soundness in FRI, higher n as needed. The tower is multiplicative — F_{p⁶} contains both F_{p²} and F_{p³} as subfields, so [[quantum]] and recursive [[proof]]s coexist in a common extension. The single proving language for the entire system. All execution languages compile to Tri for settlement. See [[zheng]] for the STARK implementation architecture.
+Tri ([[Trident]]) — [[field]] tower F_{pⁿ} over [[Goldilocks field processor]] (p = 2⁶⁴ − 2³² + 1). Each extension is F_p[x]/(f(x)) where f is irreducible of degree n, chosen by the compiler for the algebraic structure required: n=1 for core proof arithmetic, n=2 (f = x²+1) for complex amplitudes and [[quantum]] gates, n=3 (f = x³−x+1) for recursive [[proof]] soundness, higher n as needed. The tower is multiplicative — F_{p⁶} contains both F_{p²} and F_{p³} as subfields, so [[quantum]] and recursive [[proof]]s coexist in a common extension. The single proving language for the entire system. All execution languages compile to Tri for settlement. See [[zheng]] for the proof-system architecture.
 
 [[Hemera]] — Poseidon2 sponge over [[Goldilocks field processor]]. The universal commitment scheme. Every computation at every layer, in every [[algebra]], commits via [[Hemera]]. Output: 4 Goldilocks [[field]] elements — natively usable in Tri circuits, zero translation cost.
 
 ### Composition Tier — one meta-language
 
-[[Nox]] — 18 patterns over trees: 16 algebra-polymorphic compute patterns + call (witness injection) + look (state read). Simultaneously the universal pattern set (the 16 compute patterns cover all algebras), the structural IR (all languages compile through it), and the composition tier (orchestrates [[proof]] aggregation). The patterns are field-parametric: the same `add(a,b)` computes modular addition in F_p, extension field addition in F_{p³}, or XOR in F₂. The [[proof]] system is a parameter — [[zheng]] STARK for field-native work, Binius for binary-native work. Domain-specific language operations (matrix multiply, geometric product, FFT, activation functions) are compositions of nox patterns recognized by formula hash and accelerated as jets. See [[nox]] for the pattern specification.
+[[Nox]] — 18 patterns over trees: 16 algebra-polymorphic compute patterns + call (witness injection) + look (state read). Simultaneously the universal pattern set (the 16 compute patterns cover all algebras), the structural IR (all languages compile through it), and the composition tier (orchestrates [[proof]] aggregation). The patterns are field-parametric: the same `add(a,b)` computes modular addition in F_p, extension field addition in F_{p³}, or XOR in F₂. The [[proof]] system is a parameter — [[zheng]] for field-native work, Binius for binary-native work. Domain-specific language operations (matrix multiply, geometric product, FFT, activation functions) are compositions of nox patterns recognized by formula hash and accelerated as jets. See [[nox]] for the pattern specification.
 
 ---
 
@@ -168,7 +168,7 @@ System A (binary prover / Bt):
   computes inference step
   emits:  Hemera(input ∥ output) = C_A   ← 4 F_p elements
 
-System B (Tri / F_p STARK):
+System B (Tri / F_p zheng):
   statement:  "C_A commits a valid binary execution"
   witness:    proof π_A from system A
   verifies:   commitment consistency, not re-execution
@@ -224,7 +224,7 @@ Using [[Hemera]] everywhere eliminates the two-level commitment problem that wou
 │  PROOF  Tri + Hemera                                     │
 │                                                          │
 │  Accumulates commitments from all execution layers       │
-│  Verifies proof chain via STARK                          │
+│  Verifies proof chain via zheng                          │
 │  Quantum sim: Tri + F_{p²} types (native extension)      │
 │  FHE proofs: Wav compiles R_q ops → Tri verifies         │
 └──────────────────────────┬───────────────────────────────┘
@@ -264,7 +264,7 @@ Ren shape             →  Hemera  →  particle in cybergraph
 Dif manifold point    →  Hemera  →  particle in cybergraph
 Sym phase state       →  Hemera  →  particle in cybergraph
 Bel distribution      →  Hemera  →  particle in cybergraph
-Tri STARK proof       →  Hemera  →  particle in cybergraph
+Tri zheng proof       →  Hemera  →  particle in cybergraph
 Inf query + answer    →  Hemera  →  particle in cybergraph
 Arc edge declaration  →  Hemera  →  particle in cybergraph
 Tok ledger transition →  Hemera  →  particle in cybergraph
@@ -285,7 +285,7 @@ The [[cybergraph]] is not a consequence of the architecture — it *is* the accu
 | Wav/FHE noise [[proof]] efficiency | Research | R_q → F_p translation cost is active research area |
 | Wav/FHE PBS scheduling | Engineering | Compiler optimization over noise budget types |
 | Dif — Riemannian [[proof]]s | Research | Continuous manifolds over finite [[field]]s — fundamental open problem |
-| Sym — symplectic [[proof]]s | Research | Hamiltonian structure preservation in STARK circuits |
+| Sym — symplectic [[proof]]s | Research | Hamiltonian structure preservation in [[zheng]] circuits |
 | Bel — information [[geometry]] [[proof]]s | Research | Fisher metric over [[probability]] simplices — needed for [[tri-kernel]] formalization |
 | [[quantum]] measurement (non-determinism) | Design | Separate classical sampling step, not a Tri problem |
 | [[Hemera]] jet in Bt | Design | Deferred claim mechanism, straightforward |
@@ -299,7 +299,7 @@ The [[cybergraph]] is not a consequence of the architecture — it *is* the accu
 
 The multi-proof architecture is the computation layer specification for [[cyber]]. It defines what can be proven and how all computation settles into the [[cybergraph]].
 
-The proving tier (Tri + [[Hemera]]) aligns with the existing [[zheng]] STARK implementation and the [[cyber/proofs]] taxonomy. Every execution language compiles to Tri for settlement, making [[zheng]] the single prover backend for the entire architecture.
+The proving tier (Tri + [[Hemera]]) aligns with the existing [[zheng]] implementation and the [[cyber/proofs]] taxonomy. Every execution language compiles to Tri for settlement, making [[zheng]] the single prover backend for the entire architecture.
 
 The [[Hemera]] invariant formalizes how the [[cybergraph]] accumulates verified knowledge: every computation in every [[algebra]] produces a [[particle]] via [[Hemera]], and every composition produces a [[cyberlink]]. The [[cybergraph]] is the accumulation state of all proven computation.
 
@@ -311,7 +311,7 @@ The [[Goldilocks field processor]] provides hardware acceleration for the four p
 
 The architecture implies specific capabilities for [[cyb]] as the interface to the [[cybergraph]]:
 
-- [[proof]] status visualization — every [[particle]] carries a [[proof]] chain; [[cyb]] should display verification status showing which [[algebra]] produced a given [[particle]] and whether the STARK [[proof]] verifies
+- [[proof]] status visualization — every [[particle]] carries a [[proof]] chain; [[cyb]] should display verification status showing which [[algebra]] produced a given [[particle]] and whether the [[zheng]] [[proof]] verifies
 - Multi-[[algebra]] rendering — Ren compiles Arc [[topology]] + spatial embedding to SVG [[vector]] output; [[cyb]] is the natural renderer for this compilation pipeline
 - Commitment browsing — navigating [[Hemera]] CID space, showing the [[proof]] composition chain from execution layer through Tri settlement to [[cybergraph]] storage
 - [[focus]] [[vector]] display — the Neural/semantic layer emergent from the [[cybergraph]] at scale needs visualization; [[cyb]] renders the [[focus]] distribution φ* and its evolution under [[tri-kernel]] dynamics
@@ -319,5 +319,5 @@ The architecture implies specific capabilities for [[cyb]] as the interface to t
 
 ---
 
-see [[languages]] for the fourteen computation languages and their algebraic completeness. see [[cyb/architecture]] for how the proving architecture integrates into the operating system. see [[zheng]] for the STARK implementation. see [[Hemera]] for the commitment scheme. see [[cybergraph]] for the accumulation state.
+see [[languages]] for the fourteen computation languages and their algebraic completeness. see [[cyb/architecture]] for how the proving architecture integrates into the operating system. see [[zheng]] for the proof implementation. see [[Hemera]] for the commitment scheme. see [[cybergraph]] for the accumulation state.
 y

@@ -148,18 +148,18 @@ see [[languages]] for the completeness argument, algebra coverage, and perceptio
 | Source  | When proof needed                | When proof absent             |
 |---------|----------------------------------|-------------------------------|
 | Bt      | Binius FRI circuit               | always proving                |
-| Rs      | TASM → stark (word→field lift)   | native binary (Nox)           |
-| Tri     | TASM → stark (field native)      | WASM/EVM (Layer 0)            |
+| Rs      | TASM → zheng (word→field lift)   | native binary (Nox)           |
+| Tri     | TASM → zheng (field native)      | WASM/EVM (Layer 0)            |
 | Arc     | decomposes into Tri              | optimized graph engine        |
 | Ren    | geometric product → Tri          | native Clifford engine        |
 | Dif     | research                         | native manifold solver        |
 | Sym     | research                         | native Hamiltonian integrator |
 | Bel     | research                         | native statistical engine     |
-| Seq     | temporal constraints → stark     | scheduler / runtime           |
-| Inf     | derivation trace → stark         | Datalog engine                |
+| Seq     | temporal constraints → zheng     | scheduler / runtime           |
+| Inf     | derivation trace → zheng         | Datalog engine                |
 | Wav     | decomposes into Tri              | native DSP pipeline           |
 | Ten     | decomposes into Tri              | native BLAS / GPU             |
-| Tok     | conservation constraints → stark | native ledger engine          |
+| Tok     | conservation constraints → zheng | native ledger engine          |
 
 see [[cyb/multiproof]] for how all fourteen languages settle under one proving umbrella via [[Hemera]] and Tri.
 
@@ -212,7 +212,7 @@ loop {
   options = compute(state)              // some universe produces alternatives
   display = render(options)             // canonical primitive shows them
   choice  = decide(human_input)         // decision primitive applied
-  proof   = commit(choice, state)       // irreversible, potentially stark-proven
+  proof   = commit(choice, state)       // irreversible, potentially zheng-proven
   state   = update(state, choice, proof)// new tree root
 }
 ```
@@ -252,7 +252,7 @@ see [[cyb/features]] for PureRender, smart contracts, legacy web compatibility, 
 4. [[Arc]] — Graph DSL for [[cybergraph]] programming. Compiles to Trident for proofs, native engine for queries.
 5. [[Seq]] — Temporal logic for consensus rules and scheduling. Three temporal modes built in.
 6. [[Inf]] — Datalog over the cybergraph. Rule-based inference turns explicit links into implicit knowledge.
-7. [[Tok]] — Token conservation language. UTXO constraints compile to stark, native ledger engine for execution.
+7. [[Tok]] — Token conservation language. UTXO constraints compile to [[zheng]], native ledger engine for execution.
 
 ### Phase 3 — Specialization (When needed)
 
