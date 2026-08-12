@@ -1,7 +1,0 @@
-query transactionCount {
-  transaction_aggregate {
-    aggregate {
-      count(columns: hash)
-    }
-  }
-}

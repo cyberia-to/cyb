@@ -1,0 +1,30 @@
+# Standalone crates.io reserve package — not a member of the cyb workspace.
+[workspace]
+
+[package]
+name = "cyb"
+version = "0.0.1"
+edition = "2021"
+description = "cyb — immortal robot (cyberia). GUI shell and soft3 cell runtime. https://github.com/cyberia-to/cyb"
+# Custom monorepo license (not SPDX); crates.io accepts license-file
+license-file = "LICENSE"
+repository = "https://github.com/cyberia-to/cyb"
+homepage = "https://cyb.ai"
+documentation = "https://github.com/cyberia-to/cyb"
+readme = "README.md"
+keywords = ["cyber", "cyb", "robot", "soft3"]
+categories = ["gui"]
+include = [
+    "src/**/*",
+    "Cargo.toml",
+    "README.md",
+    "LICENSE",
+]
+publish = true
+
+[lib]
+name = "cyb"
+path = "src/lib.rs"
+
+[package.metadata.docs.rs]
+all-features = true

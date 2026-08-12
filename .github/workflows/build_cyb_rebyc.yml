@@ -24,10 +24,10 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: deno install
+        run: cd react && deno install
 
       - name: Build cyb rebyc
-        run: deno task build
+        run: cd react && deno task build
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
           CHAIN_ID: 'bostrom'
@@ -37,5 +37,5 @@ jobs:
         with:
           token: ${{ secrets.ACTIONS_DEPLOY_ACCESS_TOKEN }}
           branch: rebyc-build
-          folder: build
+          folder: react/build
           clean: true

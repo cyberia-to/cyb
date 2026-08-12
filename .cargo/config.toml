@@ -1,0 +1,33 @@
+[net]
+git-fetch-with-cli = true
+
+# Performance flags for hardware crypto intrinsics
+# CI-safe: explicit features instead of target-cpu=native
+
+# === Desktop ===
+
+[target.aarch64-apple-darwin]
+rustflags = ["-C", "target-feature=+aes,+sha2"]
+
+[target.x86_64-apple-darwin]
+rustflags = ["-C", "target-feature=+aes,+avx2"]
+
+[target.x86_64-unknown-linux-gnu]
+rustflags = ["-C", "target-feature=+aes,+avx2"]
+
+[target.aarch64-unknown-linux-gnu]
+rustflags = ["-C", "target-feature=+aes,+sha2"]
+
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+aes,+avx2"]
+
+# === Mobile ===
+
+[target.aarch64-linux-android]
+rustflags = ["-C", "target-feature=+aes,+sha2", "-C", "link-arg=-z", "-C", "link-arg=max-page-size=16384"]
+
+[target.aarch64-apple-ios]
+rustflags = ["-C", "target-feature=+aes,+sha2"]
+
+[target.aarch64-apple-ios-sim]
+rustflags = ["-C", "target-feature=+aes,+sha2"]

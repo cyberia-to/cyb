@@ -1,54 +1,26 @@
+# Rust build artifacts
+target/
+shell/target/
+apps/target/
+apps/dist/
+
 # Logs
 logs
 *.log
 npm-debug.log*
 coverage
 
-# Dependency directories
-node_modules
-build
-
-# Optional npm cache directory
-.npm
-
-# Prod Bundle
-*.xml
-*.iml
-
+# IDE
 .idea
-.vscode/*
-!.vscode/settings.json
+.vscode/
 
-.circleci
+# OS
 **/.DS_Store
 
-.yarn
-.yarnrc
-yarn-debug.log*
-yarn-error.log*
-
-storybook-static
-.env
-.env.*.local
-
-# Local Netlify folder
+# Netlify
 .netlify
 
-# WASM build artifacts (installed via uhash-web npm package)
-public/wasm
-
-# Tauri build artifacts
-src-tauri/bin/
-src-tauri/gen/
-src-tauri/target/
-
-
-# Rust build artifacts
-cyb/target/
-cyb/cyb-portal/target/
-cyb/cyb-portal/dist/
-cyb-boot/target/
-
-# Claude Code
-.claude/*
-!.claude/plans/
+# Misc
+*.xml
+*.iml
+storybook-static

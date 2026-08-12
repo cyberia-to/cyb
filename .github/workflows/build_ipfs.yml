@@ -24,10 +24,10 @@ jobs:
           node-version: '22'
 
       - name: Install dependencies
-        run: deno install
+        run: cd react && deno install
 
       - name: Build cyb for IPFS
-        run: deno task build-ipfs
+        run: cd react && deno task build-ipfs
         env:
           NODE_OPTIONS: '--max-old-space-size=8192'
           CHAIN_ID: 'bostrom'
@@ -36,7 +36,7 @@ jobs:
         id: ipfs
         uses: dasein108/ipfs-github-action@v1.1.1
         with:
-          path_to_add: ./build
+          path_to_add: ./react/build
           cluster_host: ${{ secrets.IPFS_CLUSTER_HOST }}
           ipfs_gateway: ${{ vars.IPFS_GATEWAY }}
           cluster_user: ${{ secrets.IPFS_CLUSTER_USER }}

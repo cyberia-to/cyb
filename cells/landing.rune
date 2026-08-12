@@ -1,0 +1,8 @@
+col(
+  anno("// from cyb"),
+  text("The Robot."),
+  text("A digital being that works for you. Thinks while you think. Earns while you sleep. Remembers what you forget. Yours forever."),
+  anno("from $1 · transferable · one-time"),
+  button("Get yours — $1", "checkout"),
+  button("See what's inside", "anatomy")
+)

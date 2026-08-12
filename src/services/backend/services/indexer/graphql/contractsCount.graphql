@@ -1,7 +1,0 @@
-query contractsCount {
-  contracts_aggregate {
-    aggregate {
-      count
-    }
-  }
-}

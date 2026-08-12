@@ -1,0 +1,29 @@
+[package]
+name = "cyb"
+version = "0.2.0"
+edition = "2024"
+description = "cyb — immortal robot runtime (chroma, signals, money) + bin cy"
+license-file = "LICENSE"
+repository = "https://github.com/cyberia-to/cyb"
+homepage = "https://cyb.ai"
+readme = "README.md"
+keywords = ["cyber", "cyb", "soft3", "robot"]
+categories = ["command-line-utilities", "science"]
+
+[lib]
+name = "cyb"
+path = "src/lib.rs"
+
+[[bin]]
+name = "cy"
+path = "src/bin/cy.rs"
+
+[dependencies]
+cybergraph = { version = "0.1" }
+bbg = { version = "0.1" }
+cyber-hemera = { version = "0.3" }
+foculus = { version = "0.1", default-features = false }
+tru = { package = "cyber-tru", version = "0.1" }
+tok = { package = "cyber-tok", version = "0.1" }
+
+[workspace]

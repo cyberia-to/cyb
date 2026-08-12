@@ -1,0 +1,126 @@
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+}
+
+:root {
+    --cyan:     #36d6ae;
+    --pink:     #f62bfd;
+    --text:     #ffffff;
+    --text-dim: #888888;
+}
+
+html, body {
+    height: 100%;
+    background: transparent;
+    color: var(--text);
+    font-family: -apple-system, 'SF Pro Text', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+    pointer-events: none;
+}
+
+/* ── Commander (bottom, centered) ──────────────── */
+
+.commander-bar {
+    position: fixed;
+    bottom: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 62%;
+    max-width: calc(100vw - 200px);
+    z-index: 10;
+    pointer-events: none;
+}
+
+.commander-wrapper {
+    position: relative;
+    background: rgba(0, 0, 0, 0.79);
+    pointer-events: auto;
+}
+
+.commander-input {
+    width: 100%;
+    height: 42px;
+    padding: 0 16px;
+    background: transparent;
+    border: none;
+    color: var(--text);
+    font-size: 20px;
+    text-align: center;
+    outline: none;
+    filter: drop-shadow(0 0 15px rgba(0, 0, 0, 0.5));
+}
+
+.commander-input::placeholder {
+    color: #272343;
+    opacity: 0.5;
+}
+
+/* Gradient trapezoid */
+.commander-gradient {
+    position: absolute;
+    bottom: 2px;
+    left: 0;
+    width: 100%;
+    height: 35px;
+    border-radius: 2px;
+    transform-origin: 50% 100%;
+    transform: perspective(220px) rotateX(50deg);
+    background: linear-gradient(
+        180deg,
+        rgba(246, 43, 253, 0) -3.3%,
+        rgba(246, 43, 253, 0.3) 100%
+    );
+    pointer-events: none;
+    transition: all 0.25s ease;
+}
+
+/* Glowing bottom line */
+.commander-line {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 0px;
+    background-color: white;
+    border-radius: 100px;
+    box-shadow: 0px 0px 0px 0px rgba(246, 43, 253, 0);
+    transition: all 0.25s ease;
+    pointer-events: none;
+}
+
+.commander-wrapper.active .commander-line {
+    height: 1px;
+    box-shadow: 0px 0px 6px 2px rgba(246, 43, 253, 0.65);
+}
+
+/* ── Mode switcher ──────────────────────────────── */
+
+.nav-bottom {
+    position: fixed;
+    bottom: 50px;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    gap: 24px;
+    z-index: 9;
+    pointer-events: none;
+}
+
+.nav-link {
+    pointer-events: auto;
+    color: var(--text-dim);
+    font-size: 13px;
+    text-transform: lowercase;
+    background: none;
+    border: none;
+    cursor: pointer;
+    font-family: inherit;
+    padding: 0;
+}
+
+.nav-link:hover {
+    color: var(--cyan);
+}

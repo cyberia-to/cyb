@@ -1,0 +1,38 @@
+# The cyber toolset — the single source of truth.
+#
+# `cy tools`         lists these with status (● installed · ⚠ stale · ○ missing)
+# `cy install [name…|--all]`  builds each and links it onto $PATH
+# `cy <name> …`      dispatches to a tool (only names listed here run)
+#
+# Fields per tool:
+#   name  the command
+#   dir   build directory under $CYBER_ROOT (default ~/cyber)
+#   pkg   cargo package(s) for `-p` (space-separated; omit for a single crate)
+#   bin   built binary name (default: name) — set when they differ
+#   alias short name (optional) — also runs and is linked onto $PATH (e.g. cg → cybergraph)
+#   desc  one-line description (keep it short — one role each)
+
+tool = [
+  { name = "hemera",     dir = "hemera",        pkg = "hemera-cli",  desc = "particle identity" },
+  { name = "mudra",      dir = "mudra",                              desc = "neuron identity" },
+  { name = "nox",        dir = "nox",           pkg = "nox-cli",     desc = "virtual machine" },
+  { name = "rune",       dir = "rune",          pkg = "rune-cli",    desc = "dynamic language" },
+  { name = "trident",    dir = "trident",                            desc = "provable language" },
+  { name = "neural",     dir = "neural/rs",     pkg = "neu", bin = "neu", alias = "neu", desc = "graph language" },
+  { name = "strata",     dir = "strata",        pkg = "strata-cli nebu-cli jali-cli kuro-cli trop-cli genies-cli", bin = "strata", desc = "field algebras" },
+  { name = "glia",       dir = "glia",          pkg = "glia-cli import run", bin = "glia", desc = "model runtime" },
+  { name = "radio",      dir = "radio",         pkg = "radio-cli",   desc = "transport" },
+  { name = "tape",       dir = "tape/impl/rust",                     desc = "wire framing" },
+  { name = "foculus",    dir = "foculus",                            desc = "consensus" },
+  { name = "cybergraph", dir = "cybergraph/cli", alias = "cg",       desc = "cyberlink processor" },
+  { name = "bbg",        dir = "bbg/cli",                            desc = "authenticated state" },
+  { name = "inf",        dir = "inf/rs",        pkg = "inf-cli",     desc = "query engine" },
+  { name = "lens",       dir = "lens",          pkg = "lens-cli",    desc = "polynomial commitment" },
+  { name = "zheng",      dir = "zheng",         pkg = "zheng-cli",   desc = "proof system" },
+  { name = "eidos",      dir = "eidos",         pkg = "eidos",       desc = "formal verification" },
+  { name = "tru",        dir = "tru",           pkg = "tru-cli",     desc = "truth layer" },
+  { name = "prysm",      dir = "prysm/cli",                          desc = "visual protocol" },
+  { name = "lytics",     dir = "lytics/rs",     pkg = "lytics-ingest", bin = "lytics-ingest", desc = "visitor analytics" },
+  { name = "cyb",        dir = "cyb",           pkg = "cyb",         desc = "graphical interface" },
+  { name = "cy",         dir = "cyb",           pkg = "cy",          desc = "terminal face" },
+]

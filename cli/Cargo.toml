@@ -1,0 +1,28 @@
+# ---
+# tags: cyb, cli, config
+# crystal-type: source
+# crystal-domain: cyber
+# ---
+# cyb-cli — the terminal face of a cyb. One-shot commands and a REPL, both
+# driving a cyb-core Cell. No bevy, no rendering — just the graph in a prompt.
+[package]
+name = "cy"
+version = "0.1.0"
+edition = "2024"
+description = "cy — the terminal face of a cyb (one-shot + REPL over cyb-core)"
+license = "Cyber"
+
+[[bin]]
+name = "cy"
+path = "src/main.rs"
+
+[dependencies]
+cyb-core = { path = "../core" }
+inf-value = { path = "../../inf/rs/value" }
+# the legacy-key bridge: verify a migration claim, then record it in the graph
+mudra = { path = "../../mudra" }
+# reward settle uses tru::Link for base graph
+tru = { path = "../../tru/rs" }
+# the tool registry (tools.toml) — the single source of truth for the toolset
+serde = { version = "1", features = ["derive"] }
+toml = "0.8"

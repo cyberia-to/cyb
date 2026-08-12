@@ -1,8 +1,0 @@
-{
-  "mcpServers": {
-    "bostrom": {
-      "command": "node",
-      "args": ["/Users/michaelborisov/Develop/bostrom-mcp/dist/index.js"]
-    }
-  }
-}

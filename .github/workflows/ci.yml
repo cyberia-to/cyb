@@ -1,0 +1,397 @@
+name: CI
+
+on:
+  push:
+    branches: [master, dev, feat/*]
+  pull_request:
+    branches: [master]
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  # ── Step 1: Detect what changed ─────────────────────────────
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      react: ${{ steps.filter.outputs.react }}
+      bevy: ${{ steps.filter.outputs.bevy }}
+      leptos: ${{ steps.filter.outputs.leptos }}
+      nu: ${{ steps.filter.outputs.nu }}
+      vendor: ${{ steps.filter.outputs.vendor }}
+      cargo: ${{ steps.filter.outputs.cargo }}
+      ci: ${{ steps.filter.outputs.ci }}
+      any_rust: ${{ steps.rust.outputs.changed }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            react:
+              - 'react/**'
+            bevy:
+              - 'bevy/**'
+            leptos:
+              - 'leptos/**'
+            nu:
+              - 'nu/**'
+            vendor:
+              - 'vendor/**'
+            cargo:
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - '.cargo/**'
+            ci:
+              - '.github/workflows/**'
+      - id: rust
+        run: |
+          if [[ "${{ steps.filter.outputs.bevy }}" == "true" || \
+                "${{ steps.filter.outputs.nu }}" == "true" || \
+                "${{ steps.filter.outputs.vendor }}" == "true" || \
+                "${{ steps.filter.outputs.cargo }}" == "true" || \
+                "${{ steps.filter.outputs.ci }}" == "true" ]]; then
+            echo "changed=true" >> $GITHUB_OUTPUT
+          else
+            echo "changed=false" >> $GITHUB_OUTPUT
+          fi
+
+  # ── Step 2: Build React web app ─────────────────────────────
+  build-web:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.react == 'true' || needs.detect-changes.outputs.ci == 'true' || github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Cache node_modules
+        uses: actions/cache@v4
+        with:
+          path: react/node_modules
+          key: node-${{ hashFiles('react/package-lock.json', 'react/deno.json') }}
+
+      - name: Install dependencies
+        run: cd react && deno install
+
+      - name: Build
+        run: cd react && deno task build
+        env:
+          NODE_OPTIONS: '--max-old-space-size=8192'
+          CHAIN_ID: 'bostrom'
+          COMMIT_SHA: ${{ github.sha }}
+          BRANCH: ${{ github.ref_name }}
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cyb-web
+          path: react/build/
+          retention-days: 7
+
+  # ── Step 3: Build Leptos WASM ───────────────────────────────
+  build-leptos:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.leptos == 'true' || needs.detect-changes.outputs.ci == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: wasm32-unknown-unknown
+          rustflags: ""
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            leptos/target
+          key: leptos-${{ hashFiles('leptos/Cargo.lock') }}
+
+      - name: Install trunk
+        run: cargo install trunk --locked || true
+
+      - name: Build
+        run: cd leptos && trunk build --release
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cyb-portal
+          path: leptos/dist/
+          retention-days: 7
+
+  # ── Step 4: Build desktop (macOS, Linux, Windows) ───────────
+  build-desktop:
+    needs: [detect-changes, build-web, build-leptos]
+    if: |
+      always() &&
+      (needs.detect-changes.outputs.any_rust == 'true' || needs.detect-changes.outputs.ci == 'true')
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-latest
+            target: aarch64-apple-darwin
+            artifact: cyb-macos-arm64
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+            artifact: cyb-linux-x86_64
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+            artifact: cyb-windows-x86_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup SSH for private deps
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.UHASH_DEPLOY_KEY }}
+
+      - name: Configure git to use SSH for GitHub
+        run: git config --global url."git@github.com:".insteadOf "https://github.com/"
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: ${{ matrix.target }}
+          rustflags: ""
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: desktop-${{ matrix.target }}-${{ hashFiles('Cargo.lock') }}
+
+      # Linux system deps for Bevy
+      - name: Install Linux deps
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev libasound2-dev libudev-dev libxkbcommon-dev \
+            libwayland-dev libfontconfig-dev pkg-config \
+            libxi-dev libxcursor-dev libxrandr-dev libxinerama-dev \
+            libatk1.0-dev libgtk-3-dev \
+            libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev \
+            libsoup-3.0-dev libssl-dev
+
+      - name: Build release
+        run: cargo build --release -p cyb-shell -p cyb-services
+
+      # Download web + portal artifacts for packaging
+      - uses: actions/download-artifact@v4
+        with:
+          name: cyb-web
+          path: react/build/
+        continue-on-error: true
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cyb-portal
+          path: leptos/dist/
+        continue-on-error: true
+
+      # ── macOS: .app bundle + DMG ──
+      - name: Package macOS
+        if: runner.os == 'macOS'
+        run: |
+          rm -rf target/release/cyb.app
+          mkdir -p target/release/cyb.app/Contents/{MacOS,Resources}
+          cp target/release/cyb-shell target/release/cyb.app/Contents/MacOS/cyb-shell
+          cp bevy/assets/icon.icns target/release/cyb.app/Contents/Resources/icon.icns
+          [ -d leptos/dist ] && cp -r leptos/dist target/release/cyb.app/Contents/MacOS/cyb-portal || true
+          [ -d react/build ] && cp -r react/build target/release/cyb.app/Contents/MacOS/cyb-web || true
+          /usr/libexec/PlistBuddy -c "Add :CFBundleName string cyb" target/release/cyb.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string cyb" target/release/cyb.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleExecutable string cyb-shell" target/release/cyb.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string ai.cyb.app" target/release/cyb.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleVersion string 0.1.0" target/release/cyb.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 0.1.0" target/release/cyb.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundlePackageType string APPL" target/release/cyb.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 13.0" target/release/cyb.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :NSHighResolutionCapable bool true" target/release/cyb.app/Contents/Info.plist
+          /usr/libexec/PlistBuddy -c "Add :CFBundleIconFile string icon" target/release/cyb.app/Contents/Info.plist
+          hdiutil create -volname "cyb" -srcfolder target/release/cyb.app -ov -format UDZO target/release/cyb.dmg
+
+      - name: Upload macOS artifact
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: target/release/cyb.dmg
+          retention-days: 30
+
+      # ── Linux: tar.gz ──
+      - name: Package Linux
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p dist/cyb
+          cp target/release/cyb-shell dist/cyb/
+          cp target/release/cyb-services dist/cyb/ || true
+          [ -d react/build ] && cp -r react/build dist/cyb/cyb-web || true
+          [ -d leptos/dist ] && cp -r leptos/dist dist/cyb/cyb-portal || true
+          tar -czf cyb-linux-x86_64.tar.gz -C dist cyb
+
+      - name: Upload Linux artifact
+        if: runner.os == 'Linux'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: cyb-linux-x86_64.tar.gz
+          retention-days: 30
+
+      # ── Windows: zip ──
+      - name: Package Windows
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist/cyb
+          Copy-Item target/release/cyb-shell.exe dist/cyb/
+          Copy-Item target/release/cyb-services.exe dist/cyb/ -ErrorAction SilentlyContinue
+          if (Test-Path react/build) { Copy-Item -Recurse react/build dist/cyb/cyb-web }
+          if (Test-Path leptos/dist) { Copy-Item -Recurse leptos/dist dist/cyb/cyb-portal }
+          Compress-Archive -Path dist/cyb -DestinationPath cyb-windows-x86_64.zip
+
+      - name: Upload Windows artifact
+        if: runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: cyb-windows-x86_64.zip
+          retention-days: 30
+
+  # ── Step 5: Build Android APK ───────────────────────────────
+  build-android:
+    needs: [detect-changes, build-web]
+    if: |
+      always() &&
+      (needs.detect-changes.outputs.any_rust == 'true' || needs.detect-changes.outputs.react == 'true' || needs.detect-changes.outputs.ci == 'true')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Setup SSH for private deps
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.UHASH_DEPLOY_KEY }}
+
+      - name: Configure git to use SSH for GitHub
+        run: git config --global url."git@github.com:".insteadOf "https://github.com/"
+
+      - uses: actions-rust-lang/setup-rust-toolchain@v1
+        with:
+          toolchain: stable
+          target: aarch64-linux-android
+          rustflags: ""
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install NDK
+        run: sdkmanager "ndk;27.0.12077973"
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: android-${{ hashFiles('Cargo.lock') }}
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cyb-web
+          path: react/build/
+        continue-on-error: true
+
+      - name: Build Android
+        env:
+          ANDROID_HOME: ${{ env.ANDROID_SDK_ROOT }}
+          ANDROID_NDK_HOME: ${{ env.ANDROID_SDK_ROOT }}/ndk/27.0.12077973
+        run: |
+          NDK_BIN=$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/linux-x86_64/bin
+
+          # Cross-compile Rust
+          WRY_ANDROID_PACKAGE=ai.cyb.app \
+          WRY_ANDROID_LIBRARY=cyb_shell \
+          WRY_ANDROID_KOTLIN_FILES_OUT_DIR=$PWD/bevy/gen/android/app/src/main/kotlin/ai/cyb/app \
+          CC_aarch64_linux_android=$NDK_BIN/aarch64-linux-android24-clang \
+          CXX_aarch64_linux_android=$NDK_BIN/aarch64-linux-android24-clang++ \
+          AR_aarch64_linux_android=$NDK_BIN/llvm-ar \
+          CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$NDK_BIN/aarch64-linux-android24-clang \
+          cargo build --release --target aarch64-linux-android --lib -p cyb-shell --no-default-features --features android
+
+          # Copy assets
+          make android-assets
+
+          # Copy .so and build APK
+          mkdir -p bevy/gen/android/app/src/main/jniLibs/arm64-v8a
+          cp target/aarch64-linux-android/release/libcyb_shell.so bevy/gen/android/app/src/main/jniLibs/arm64-v8a/
+          cd bevy/gen/android && ./gradlew assembleRelease
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cyb-android
+          path: bevy/gen/android/app/build/outputs/apk/release/app-release-unsigned.apk
+          retention-days: 30
+
+  # ── Step 6: Deploy (master only) ────────────────────────────
+  deploy:
+    needs: [build-web, build-desktop, build-android]
+    if: always() && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: cyb-web
+          path: web-dist/
+        continue-on-error: true
+
+      # Deploy to GitHub Pages
+      - name: Deploy to GitHub Pages
+        if: hashFiles('web-dist/index.html') != ''
+        uses: JamesIves/github-pages-deploy-action@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: build
+          folder: web-dist
+          clean: true
+
+      # Collect all artifacts for release
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts/
+        continue-on-error: true
+
+      - name: List artifacts
+        run: find artifacts/ -type f | head -20

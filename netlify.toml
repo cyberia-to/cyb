@@ -1,6 +1,7 @@
 [build]
+  base = "react"
   command = "deno install && deno task build"
-  publish = "build"
+  publish = "react/build"
 
 [build.environment]
   NODE_VERSION = "20"
