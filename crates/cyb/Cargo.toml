@@ -1,6 +1,6 @@
 [package]
 name = "cyb"
-version = "0.2.0"
+version = "0.2.1"
 edition = "2024"
 description = "cyb — immortal robot runtime (chroma, signals, money) + bin cy"
 license-file = "LICENSE"
@@ -19,11 +19,11 @@ name = "cy"
 path = "src/bin/cy.rs"
 
 [dependencies]
-cybergraph = { version = "0.1" }
-bbg = { version = "0.1" }
+cybergraph = { version = "0.1.1" }
+bbg = { version = "0.1.1" }
 cyber-hemera = { version = "0.3" }
-foculus = { version = "0.1", default-features = false }
-tru = { package = "cyber-tru", version = "0.1" }
-tok = { package = "cyber-tok", version = "0.1" }
+foculus = { version = "0.1.1", default-features = false }
+tru = { package = "cyber-tru", version = "0.1.1" }
+tok = { package = "cyber-tok", version = "0.1.1" }
 
 [workspace]
