@@ -603,9 +603,14 @@
         <div class="platform">
           <div class="platform-os">macOS</div>
           <div class="platform-title">Apple <span class="accent">Silicon</span></div>
-          <div class="platform-desc">Native Bevy runtime — graph, terminal and live cells in one app. Drag to Applications and launch.</div>
-          <a class="platform-cta" href="https://github.com/cyberia-to/cyb/releases/latest/download/cyb.dmg">Download .dmg</a>
-          <div class="platform-note">macOS 14+ · arm64</div>
+          <div class="platform-desc">Native Bevy runtime — graph, terminal and live cells in one app. Install from the terminal — the dev preview is not notarized yet, and this way macOS opens it without the "damaged file" complaint:</div>
+          <div class="install-line" style="max-width:100%; margin-bottom:1.25rem; font-size:0.75rem;">
+            <span class="prompt">$</span>
+            <code id="mac-install">curl -fsSL https://cyb.ai/install.sh | sh</code>
+            <button class="copy-btn" onclick="navigator.clipboard.writeText('curl -fsSL https://cyb.ai/install.sh | sh');this.textContent='copied';setTimeout(()=>this.textContent='copy',1200)">copy</button>
+          </div>
+          <a class="platform-cta ghost" href="https://github.com/cyberia-to/cyb/releases/latest/download/cyb.dmg">.dmg</a>
+          <div class="platform-note">macOS 14+ · arm64 · dmg needs <code style="color:#666">xattr -cr /Applications/cyb.app</code> after install</div>
         </div>
         <div class="platform">
           <div class="platform-os">Linux</div>
