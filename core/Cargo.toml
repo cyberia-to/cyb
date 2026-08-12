@@ -12,6 +12,6 @@ cyber-hemera = { path = "../../hemera/rs" }
 # codec only (chain, frames, tape) — not the iroh/radio transport (`net`)
 foculus = { path = "../../foculus", default-features = false }
 # rewards path: Link / Context for settle_epoch from wallet helpers
-tru = { path = "../../tru/rs" }
+tru = { package = "cyber-tru", path = "../../tru/rs" }
 # PLUMB conservation mint ledger
-tok = { path = "../../tok/rs" }
+tok = { package = "cyber-tok", path = "../../tok/rs" }

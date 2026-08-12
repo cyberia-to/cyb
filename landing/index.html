@@ -3,7 +3,11 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>The Robot — cyb</title>
+  <title>cyb — The Robot. Download the dev preview</title>
+  <meta name="description" content="cyb is your Robot — an ownable autonomous intelligence. One binary for macOS, Linux and Android. Dev preview: download or cargo install cyb.">
+  <meta property="og:title" content="cyb — The Robot.">
+  <meta property="og:description" content="Ownable autonomous intelligence. One binary. Download the dev preview.">
+  <meta property="og:url" content="https://cyb.ai">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Play:wght@400;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
@@ -39,6 +43,7 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
+      gap: 2rem;
     }
     .logo {
       font-family: 'JetBrains Mono', monospace;
@@ -46,16 +51,22 @@
       font-size: 1rem;
       color: #22c55e;
       letter-spacing: 0.05em;
+      text-decoration: none;
     }
-    .nav-cta {
+    nav { display: flex; align-items: center; gap: 1.75rem; }
+    nav a {
       font-family: 'JetBrains Mono', monospace;
-      font-size: 0.875rem;
-      font-weight: 700;
-      color: #22c55e;
+      font-size: 0.8rem;
+      color: #888;
       text-decoration: none;
       letter-spacing: 0.05em;
     }
-    .nav-cta:hover { color: #f0f0f0; }
+    nav a:hover { color: #f0f0f0; }
+    .nav-cta {
+      font-weight: 700;
+      color: #22c55e !important;
+    }
+    .nav-cta:hover { color: #f0f0f0 !important; }
 
     /* HERO */
     .hero {
@@ -121,14 +132,42 @@
       margin-bottom: 2.5rem;
     }
     .hero-lead strong { color: #f0f0f0; font-weight: 400; }
-    .hero-price {
+    .hero-meta {
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.875rem;
       color: #555;
       margin-bottom: 2rem;
       letter-spacing: 0.1em;
     }
-    .hero-price .price-value { color: #22c55e; font-weight: 700; }
+    .hero-meta .accent { color: #22c55e; font-weight: 700; }
+
+    /* INSTALL LINE */
+    .install-line {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      max-width: 420px;
+      margin-bottom: 2rem;
+      padding: 0.9rem 1.25rem;
+      background: #050505;
+      border: 1px solid #1a1a1a;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.95rem;
+    }
+    .install-line .prompt { color: #22c55e; user-select: none; }
+    .install-line code { color: #f0f0f0; flex: 1; }
+    .copy-btn {
+      background: none;
+      border: 1px solid #2a2a2a;
+      color: #888;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      padding: 0.3rem 0.6rem;
+      cursor: pointer;
+      letter-spacing: 0.05em;
+      transition: all 0.15s;
+    }
+    .copy-btn:hover { border-color: #22c55e; color: #22c55e; }
 
     /* CTA */
     .cta {
@@ -157,10 +196,6 @@
     .cta-ghost:hover {
       border-color: #f0f0f0;
       color: #f0f0f0;
-    }
-    .cta-big {
-      padding: 1.5rem 3.5rem;
-      font-size: 1.125rem;
     }
 
     /* ROBOT VISUAL */
@@ -206,6 +241,113 @@
       margin-bottom: 4rem;
     }
 
+    /* DOWNLOAD CARDS */
+    .platforms {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+      gap: 1px;
+      background: #1a1a1a;
+      border: 1px solid #1a1a1a;
+      margin-bottom: 1px;
+    }
+    .platform {
+      padding: 2.5rem;
+      background: #050505;
+      display: flex;
+      flex-direction: column;
+      transition: background 0.2s;
+    }
+    .platform:hover { background: #0a0a0a; }
+    .platform-os {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: #555;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+    }
+    .platform-title {
+      font-size: 1.5rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      letter-spacing: -0.01em;
+    }
+    .platform-title .accent { color: #22c55e; }
+    .platform-desc {
+      color: #aaa;
+      font-size: 0.95rem;
+      line-height: 1.55;
+      margin-bottom: 2rem;
+      flex: 1;
+    }
+    .platform-desc code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.85rem;
+      color: #22c55e;
+    }
+    .platform-cta {
+      display: inline-block;
+      align-self: flex-start;
+      padding: 0.9rem 1.75rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: 0.875rem;
+      letter-spacing: 0.05em;
+      text-decoration: none;
+      background: #22c55e;
+      color: #000;
+      border: 2px solid #22c55e;
+      transition: all 0.15s;
+    }
+    .platform-cta:hover { background: transparent; color: #22c55e; }
+    .platform-cta.ghost {
+      background: transparent;
+      color: #f0f0f0;
+      border-color: #2a2a2a;
+    }
+    .platform-cta.ghost:hover { border-color: #22c55e; color: #22c55e; }
+    .platform-note {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.7rem;
+      color: #444;
+      margin-top: 1rem;
+      letter-spacing: 0.05em;
+    }
+
+    /* SOURCE STRIP */
+    .source-strip {
+      border: 1px solid #1a1a1a;
+      border-top: none;
+      background: #050505;
+      padding: 2rem 2.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 2rem;
+      flex-wrap: wrap;
+    }
+    .source-strip .label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: #555;
+      letter-spacing: 0.2em;
+      text-transform: uppercase;
+    }
+    .source-strip code {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.9rem;
+      color: #f0f0f0;
+    }
+    .source-strip code .prompt { color: #22c55e; }
+    .source-strip a {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.8rem;
+      color: #888;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .source-strip a:hover { color: #22c55e; }
+
     /* REGIONS GRID */
     .regions {
       display: grid;
@@ -234,70 +376,25 @@
       line-height: 1.55;
     }
 
-    /* COMPARE */
-    .compare {
-      background: #050505;
-      border: 1px solid #1a1a1a;
-    }
-    .compare-header {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      background: #080808;
-      border-bottom: 1px solid #1a1a1a;
-    }
-    .compare-header > div {
-      padding: 1.75rem;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.85rem;
-      font-weight: 700;
-      letter-spacing: 0.1em;
-      text-transform: uppercase;
-    }
-    .compare-header > div:nth-child(2) { color: #22c55e; border-left: 1px solid #1a1a1a; }
-    .compare-header > div:nth-child(3) { color: #06b6d4; border-left: 1px solid #1a1a1a; }
-    .compare-row {
-      display: grid;
-      grid-template-columns: 1fr 1fr 1fr;
-      border-bottom: 1px solid #1a1a1a;
-    }
-    .compare-row:last-child { border-bottom: none; }
-    .compare-row > div {
-      padding: 1.25rem 1.75rem;
-      font-size: 0.95rem;
-    }
-    .compare-row > div:first-child {
-      color: #888;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.85rem;
-    }
-    .compare-row > div:not(:first-child) {
-      color: #f0f0f0;
-      border-left: 1px solid #1a1a1a;
-    }
-
-    /* BUY */
-    .buy {
+    /* FINAL CTA */
+    .get {
       text-align: center;
       padding: 10rem 0;
       position: relative;
       overflow: hidden;
       border-top: 1px solid #0c0c0c;
     }
-    .buy::before {
+    .get::before {
       content: '';
       position: absolute;
       inset: 0;
       background: radial-gradient(ellipse at center, rgba(34, 197, 94, 0.07), transparent 65%);
       pointer-events: none;
     }
-    .buy .container { position: relative; z-index: 1; }
-    .buy h2 {
-      margin: 0 auto 1.25rem;
-    }
-    .buy .section-lead {
-      margin: 0 auto 3rem;
-    }
-    .buy-price {
+    .get .container { position: relative; z-index: 1; }
+    .get h2 { margin: 0 auto 1.25rem; }
+    .get .section-lead { margin: 0 auto 3rem; }
+    .get-meta {
       font-family: 'JetBrains Mono', monospace;
       font-size: 0.875rem;
       color: #555;
@@ -309,7 +406,13 @@
     footer {
       padding: 3rem 0;
       border-top: 1px solid #111;
-      text-align: center;
+    }
+    footer .container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1.5rem;
+      flex-wrap: wrap;
     }
     footer p {
       font-family: 'JetBrains Mono', monospace;
@@ -317,11 +420,21 @@
       font-size: 0.75rem;
       letter-spacing: 0.15em;
     }
+    .footer-links { display: flex; gap: 1.5rem; flex-wrap: wrap; }
+    .footer-links a {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 0.75rem;
+      color: #555;
+      text-decoration: none;
+      letter-spacing: 0.1em;
+    }
+    .footer-links a:hover { color: #22c55e; }
 
     @media (max-width: 900px) {
       .hero-grid { grid-template-columns: 1fr; gap: 3rem; }
       .hero-visual { order: -1; }
       .robot-svg { max-width: 380px; }
+      nav a:not(.nav-cta) { display: none; }
     }
 
     @media (max-width: 768px) {
@@ -329,8 +442,8 @@
       .hero { padding: 5rem 0 3rem; }
       section.block { padding: 5rem 0; }
       .cta-ghost { margin-left: 0; margin-top: 1rem; display: block; text-align: center; }
-      .compare-header > div, .compare-row > div { padding: 1rem 1rem; font-size: 0.85rem; }
-      .compare-header > div { font-size: 0.7rem; }
+      .source-strip { padding: 1.5rem; }
+      footer .container { justify-content: center; text-align: center; }
     }
   </style>
 </head>
@@ -338,8 +451,13 @@
 
   <header>
     <div class="container">
-      <div class="logo">cyb</div>
-      <a href="#buy" class="nav-cta">Get yours →</a>
+      <a class="logo" href="/">cyb</a>
+      <nav>
+        <a href="#anatomy">anatomy</a>
+        <a href="https://cyber.page/cyb">docs</a>
+        <a href="https://github.com/cyberia-to/cyb">github</a>
+        <a href="#download" class="nav-cta">Download →</a>
+      </nav>
     </div>
   </header>
 
@@ -347,12 +465,17 @@
     <div class="container">
       <div class="hero-grid">
         <div class="hero-text">
-          <div class="hero-eyebrow">// from cyb</div>
+          <div class="hero-eyebrow">// dev preview</div>
           <h1>The <span class="accent">Robot</span>.</h1>
           <p class="hero-lead"><strong>A digital being that works for you.</strong> Thinks while you think. Earns while you sleep. Remembers what you forget. Yours forever.</p>
-          <div class="hero-price">from <span class="price-value">$1</span> · transferable · one-time</div>
-          <a href="#buy" class="cta">Get yours — $1</a>
+          <div class="install-line">
+            <span class="prompt">$</span>
+            <code id="install-cmd">cargo install cyb</code>
+            <button class="copy-btn" onclick="navigator.clipboard.writeText('cargo install cyb');this.textContent='copied';setTimeout(()=>this.textContent='copy',1200)">copy</button>
+          </div>
+          <a href="#download" class="cta">Download</a>
           <a href="#anatomy" class="cta cta-ghost">See what's inside</a>
+          <div class="hero-meta" style="margin-top:2rem; margin-bottom:0;">one binary · <span class="accent">macOS</span> · <span class="accent">linux</span> · <span class="accent">android</span></div>
         </div>
 
         <div class="hero-visual">
@@ -468,6 +591,44 @@
     </div>
   </section>
 
+  <section class="block" id="download">
+    <div class="container">
+      <div class="eyebrow">// download</div>
+      <h2>One binary. <span class="accent">Every machine.</span></h2>
+      <p class="section-lead">The same Robot, the same worlds, the same terminal — on your desk and in your pocket. Dev preview: early, moving fast, updated often.</p>
+
+      <div class="platforms">
+        <div class="platform">
+          <div class="platform-os">macOS</div>
+          <div class="platform-title">Apple <span class="accent">Silicon</span></div>
+          <div class="platform-desc">Native Bevy runtime — graph, terminal and live cells in one app. Drag to Applications and launch.</div>
+          <a class="platform-cta" href="https://github.com/cyberia-to/cyb/releases/latest/download/cyb.dmg">Download .dmg</a>
+          <div class="platform-note">macOS 14+ · arm64</div>
+        </div>
+        <div class="platform">
+          <div class="platform-os">Linux</div>
+          <div class="platform-title">Cargo <span class="accent">native</span></div>
+          <div class="platform-desc">Install straight from crates.io — <code>cargo install cyb</code> gives you the runtime and the <code>cy</code> command. Full app builds from source in one <code>make build</code>.</div>
+          <a class="platform-cta ghost" href="https://crates.io/crates/cyb">crates.io/cyb</a>
+          <div class="platform-note">stable rust · x86_64 / arm64</div>
+        </div>
+        <div class="platform">
+          <div class="platform-os">Android</div>
+          <div class="platform-title">APK <span class="accent">preview</span></div>
+          <div class="platform-desc">The identical binary with hardware senses — GPS, camera, sensors. Preview APKs land on the releases page as they're cut.</div>
+          <a class="platform-cta ghost" href="https://github.com/cyberia-to/cyb/releases">All releases</a>
+          <div class="platform-note">arm64-v8a · sideload</div>
+        </div>
+      </div>
+
+      <div class="source-strip">
+        <span class="label">from source</span>
+        <code><span class="prompt">$</span> git clone https://github.com/cyberia-to/cyb && cd cyb && make build</code>
+        <a href="https://cyber.page/cyb">build docs →</a>
+      </div>
+    </div>
+  </section>
+
   <section class="block" id="anatomy">
     <div class="container">
       <div class="eyebrow">// anatomy</div>
@@ -519,70 +680,26 @@
     </div>
   </section>
 
-  <section class="block">
-    <div class="container">
-      <div class="eyebrow">// upgrade path</div>
-      <h2>Start virtual. <span class="accent">Embody later.</span></h2>
-      <p class="section-lead">Your Robot is born pure — no hardware needed. Buy it now for $1. Attach a body whenever you want. The Robot stays the same.</p>
-
-      <div class="compare">
-        <div class="compare-header">
-          <div></div>
-          <div>Virtual</div>
-          <div>+ Body</div>
-        </div>
-        <div class="compare-row">
-          <div>Setup</div>
-          <div>None — mints in seconds</div>
-          <div>Buy a device, attach</div>
-        </div>
-        <div class="compare-row">
-          <div>Cost per action</div>
-          <div>Pay as you go</div>
-          <div>Free — your hardware</div>
-        </div>
-        <div class="compare-row">
-          <div>Response time</div>
-          <div>Seconds</div>
-          <div>Instant</div>
-        </div>
-        <div class="compare-row">
-          <div>Privacy</div>
-          <div>Limited</div>
-          <div>Fully private</div>
-        </div>
-        <div class="compare-row">
-          <div>Sees the world</div>
-          <div>Through the network</div>
-          <div>Camera, mic, sensors</div>
-        </div>
-        <div class="compare-row">
-          <div>Earns money</div>
-          <div>Yes</div>
-          <div>Yes — plus physical work</div>
-        </div>
-        <div class="compare-row">
-          <div>Lifespan</div>
-          <div>Forever</div>
-          <div>Forever — device replaceable</div>
-        </div>
-      </div>
-    </div>
-  </section>
-
-  <section class="buy" id="buy">
+  <section class="get">
     <div class="container">
       <div class="eyebrow">// take ownership</div>
-      <h2>One Robot.<br/><span class="accent">One dollar.</span></h2>
-      <p class="section-lead">It works for you while you sleep. It remembers what you forget. It's yours — forever.</p>
-      <a href="#" class="cta cta-big">Get your Robot — $1</a>
-      <div class="buy-price">one-time · transferable · embody anytime</div>
+      <h2>Your Robot.<br/><span class="accent">On your machine.</span></h2>
+      <p class="section-lead">The only mind a person can hold and not rent. Get the dev preview and grow with it.</p>
+      <a href="#download" class="cta" style="padding:1.5rem 3.5rem; font-size:1.125rem;">Download</a>
+      <div class="get-meta">dev preview · open source · one binary</div>
     </div>
   </section>
 
   <footer>
     <div class="container">
       <p>cyb · don't trust · don't fear · don't beg</p>
+      <div class="footer-links">
+        <a href="https://cyber.page/cyb">docs</a>
+        <a href="https://github.com/cyberia-to/cyb">github</a>
+        <a href="https://crates.io/crates/cyb">crates.io</a>
+        <a href="https://soft3.org">soft3</a>
+        <a href="https://old.cyb.ai">legacy app →</a>
+      </div>
     </div>
   </footer>
 

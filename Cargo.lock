@@ -580,10 +580,10 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 name = "bbg"
 version = "0.1.0"
 dependencies = [
+ "cyb-lens",
  "cyb-nebu",
  "cyber-hemera",
- "cyber-lens",
- "nox",
+ "cyber-nox",
  "zheng",
 ]
 
@@ -2943,11 +2943,11 @@ name = "cy"
 version = "0.1.0"
 dependencies = [
  "cyb-core",
+ "cyber-tru",
  "inf-value",
  "mudra",
  "serde",
  "toml 0.8.2",
- "tru",
 ]
 
 [[package]]
@@ -2962,6 +2962,7 @@ dependencies = [
  "bip39",
  "chrono",
  "cyb-core",
+ "cyber-tape",
  "futures",
  "futures-lite",
  "global-hotkey",
@@ -2990,7 +2991,6 @@ dependencies = [
  "sha2",
  "sugarloaf",
  "tao",
- "tape",
  "tray-icon",
  "ureq",
  "wry",
@@ -3002,10 +3002,10 @@ version = "0.1.0"
 dependencies = [
  "bbg",
  "cyber-hemera",
+ "cyber-tok",
+ "cyber-tru",
  "cybergraph",
  "foculus",
- "tok",
- "tru",
 ]
 
 [[package]]
@@ -3032,6 +3032,18 @@ dependencies = [
  "strata-core",
  "strata-ext",
  "strata-proof",
+]
+
+[[package]]
+name = "cyb-lens"
+version = "0.1.0"
+dependencies = [
+ "cyb-lens-assayer",
+ "cyb-lens-binius",
+ "cyb-lens-brakedown",
+ "cyb-lens-core",
+ "cyb-lens-ikat",
+ "cyb-lens-porphyry",
 ]
 
 [[package]]
@@ -3113,15 +3125,40 @@ name = "cyber-hemera"
 version = "0.3.0"
 
 [[package]]
-name = "cyber-lens"
+name = "cyber-nox"
 version = "0.1.0"
 dependencies = [
- "cyb-lens-assayer",
- "cyb-lens-binius",
  "cyb-lens-brakedown",
  "cyb-lens-core",
- "cyb-lens-ikat",
- "cyb-lens-porphyry",
+ "cyb-nebu",
+ "cyber-hemera",
+]
+
+[[package]]
+name = "cyber-tape"
+version = "0.1.0"
+dependencies = [
+ "bytes",
+]
+
+[[package]]
+name = "cyber-tok"
+version = "0.1.0"
+dependencies = [
+ "cyber-hemera",
+ "cyber-tru",
+]
+
+[[package]]
+name = "cyber-tru"
+version = "0.1.0"
+dependencies = [
+ "cyb-nebu",
+ "cyber-hemera",
+ "memmap2",
+ "serde",
+ "thiserror 2.0.18",
+ "toml 0.8.2",
 ]
 
 [[package]]
@@ -3801,15 +3838,15 @@ dependencies = [
  "anyhow",
  "bbg",
  "clap",
+ "cyb-lens",
  "cyb-nebu",
  "cyber-hemera",
- "cyber-lens",
+ "cyber-tape",
+ "cyber-tok",
+ "cyber-tru",
  "rand 0.9.2",
  "serde",
  "serde_json",
- "tape",
- "tok",
- "tru",
  "zheng",
 ]
 
@@ -6248,16 +6285,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "nox"
-version = "0.1.0"
-dependencies = [
- "cyb-lens-brakedown",
- "cyb-lens-core",
- "cyb-nebu",
- "cyber-hemera",
-]
-
-[[package]]
 name = "ntapi"
 version = "0.4.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -7940,7 +7967,7 @@ dependencies = [
  "bevy",
  "crossbeam-channel",
  "cyb-core",
- "tape",
+ "cyber-tape",
 ]
 
 [[package]]
@@ -8444,8 +8471,8 @@ dependencies = [
 name = "rune-prysm"
 version = "0.1.0"
 dependencies = [
+ "cyber-tape",
  "rune-ast",
- "tape",
 ]
 
 [[package]]
@@ -9441,13 +9468,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tape"
-version = "0.1.0"
-dependencies = [
- "bytes",
-]
-
-[[package]]
 name = "target-lexicon"
 version = "0.12.16"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9673,14 +9693,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "tok"
-version = "0.1.0"
-dependencies = [
- "cyber-hemera",
- "tru",
-]
-
-[[package]]
 name = "toml"
 version = "0.8.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -9879,18 +9891,6 @@ dependencies = [
  "png 0.17.16",
  "thiserror 2.0.18",
  "windows-sys 0.60.2",
-]
-
-[[package]]
-name = "tru"
-version = "0.1.0"
-dependencies = [
- "cyb-nebu",
- "cyber-hemera",
- "memmap2",
- "serde",
- "thiserror 2.0.18",
- "toml 0.8.2",
 ]
 
 [[package]]
@@ -12123,10 +12123,10 @@ dependencies = [
 name = "zheng"
 version = "0.1.0"
 dependencies = [
+ "cyb-lens",
  "cyb-nebu",
  "cyber-hemera",
- "cyber-lens",
- "nox",
+ "cyber-nox",
 ]
 
 [[package]]

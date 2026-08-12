@@ -43,7 +43,7 @@ required-features = ["desktop"]
 [dependencies]
 # cyb workspace crates
 cyb-core   = { path = "../core" }
-tape       = { path = "../../tape/impl/rust" }
+tape       = { package = "cyber-tape", path = "../../tape/impl/rust" }
 prysm      = { path = "../../prysm" }
 
 # rune — open-computation language; terminal `rune` command path
