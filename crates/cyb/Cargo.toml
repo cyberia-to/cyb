@@ -1,8 +1,8 @@
 [package]
 name = "cyb"
-version = "0.1.0"
-edition = "2021"
-description = "cyb — immortal robot runtime (lib) and terminal face (bin: cy). Soft3 product surface."
+version = "0.2.0"
+edition = "2024"
+description = "cyb — immortal robot runtime (chroma, signals, money) + bin cy"
 license-file = "LICENSE"
 repository = "https://github.com/cyberia-to/cyb"
 homepage = "https://cyb.ai"
@@ -18,5 +18,12 @@ path = "src/lib.rs"
 name = "cy"
 path = "src/bin/cy.rs"
 
-# Standalone publish package (not a workspace member).
+[dependencies]
+cybergraph = { version = "0.1" }
+bbg = { version = "0.1" }
+cyber-hemera = { version = "0.3" }
+foculus = { version = "0.1", default-features = false }
+tru = { package = "cyber-tru", version = "0.1" }
+tok = { package = "cyber-tok", version = "0.1" }
+
 [workspace]
