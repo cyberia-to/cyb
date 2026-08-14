@@ -1,4 +1,4 @@
-//! Terminal face of cyb. Default network: space-pussy.
+//! Terminal face of cyb. Default network: spacepussy-test.
 
 fn main() {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -16,13 +16,13 @@ fn main() {
             println!("  rpc  {}", n.rpc());
             println!("  lcd  {}", n.lcd());
             if n == cyb::network::Network::DEFAULT {
-                println!("  (product default)");
+                println!("  (product default — soft3 chaosnet)");
             }
         }
         "help" | "-h" | "--help" => print_help(),
         _ if args.is_empty() => print_help(),
         other => {
-            eprintln!("unknown `{other}` — try `cy help` or `soft3 sync`");
+            eprintln!("unknown `{other}` — try `cy help` or `cyber sync`");
             print_help();
             std::process::exit(2);
         }
@@ -34,15 +34,14 @@ fn print_help() {
     println!("cy {} — terminal face of cyb", env!("CARGO_PKG_VERSION"));
     println!();
     println!("default network: {} ({})", n.chain_id(), n.rpc());
+    println!("  soft3 chaosnet — not cosmos space-pussy on cybernode");
     println!();
-    println!("  cy network [space-pussy|bostrom]");
+    println!("  cy network [spacepussy-test]");
     println!("  cy version");
     println!();
-    println!("sync / status of the default network:");
-    println!("  soft3 sync                 # probes space-pussy RPC");
-    println!("  soft3 sync --network bostrom");
+    println!("product probe:");
+    println!("  cyber sync                 # true-cyber → spacepussy-test");
     println!();
-    println!("  cargo install soft3");
-    println!("  cargo install cyb");
+    println!("  cargo install true-cyber");
     println!("  docs https://cyber.page/install");
 }

@@ -8,7 +8,7 @@
 //! - the [`SignalBus`] queue plus helpers to assemble Signals from
 //!   individual cyberlinks
 //! - money loop (balance / send / receive / settle / pay proofs)
-//! - default network endpoints ([`network`]) — **space-pussy** after install
+//! - default network endpoints ([`network`]) — **spacepussy-test** after install
 //!
 //! Depends on `cybergraph` (which transitively brings in `bbg`,
 //! `hemera`, `zheng`, `nebu`). Does **not** depend on bevy, wgpu, or

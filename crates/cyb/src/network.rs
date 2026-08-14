@@ -1,40 +1,37 @@
-//! Default chain endpoints for cyb products.
-//! Space Pussy is the install default for sync / smoke tests.
+//! Product network endpoints for cyb.
+//! Default: spacepussy-test (soft3 chaosnet) — not cosmos space-pussy on cybernode.
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Network {
-    SpacePussy,
-    Bostrom,
+    /// soft3 product chaosnet.
+    SpacePussyTest,
 }
 
 impl Network {
-    pub const DEFAULT: Network = Network::SpacePussy;
+    pub const DEFAULT: Network = Network::SpacePussyTest;
 
     pub fn chain_id(self) -> &'static str {
         match self {
-            Self::SpacePussy => "space-pussy",
-            Self::Bostrom => "bostrom",
+            Self::SpacePussyTest => "spacepussy-test",
         }
     }
 
     pub fn rpc(self) -> &'static str {
         match self {
-            Self::SpacePussy => "https://rpc.space-pussy.cybernode.ai",
-            Self::Bostrom => "https://rpc.bostrom.cybernode.ai",
+            Self::SpacePussyTest => "http://127.0.0.1:7780",
         }
     }
 
     pub fn lcd(self) -> &'static str {
         match self {
-            Self::SpacePussy => "https://lcd.space-pussy.cybernode.ai",
-            Self::Bostrom => "https://lcd.bostrom.cybernode.ai",
+            Self::SpacePussyTest => "http://127.0.0.1:7781",
         }
     }
 
     pub fn parse(s: &str) -> Option<Self> {
         match s.trim().to_ascii_lowercase().as_str() {
-            "space-pussy" | "spacepussy" | "pussy" | "sp" => Some(Self::SpacePussy),
-            "bostrom" | "boot" => Some(Self::Bostrom),
+            "spacepussy-test" | "space-pussy-test" | "sptest" | "soft3-test" | "soft3" | "test"
+            | "default" => Some(Self::SpacePussyTest),
             _ => None,
         }
     }
