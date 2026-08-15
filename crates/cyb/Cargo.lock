@@ -69,14 +69,14 @@ checksum = "330a5ed07fa54e4702c9d6c4174f74427fc0ef6e214bbd677ae50a5099946470"
 
 [[package]]
 name = "bbg"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f614d79cb380f35b38fad09fe7bf82dd0385062a536fb92292c305d7776b0b6b"
+checksum = "91d87f642f87354d58db84eeff0678118cd83e05a236f1f72e217952d15dc9b1"
 dependencies = [
  "cyb-lens",
- "cyb-nebu",
  "cyber-hemera",
  "cyber-nox",
+ "strata-nebu",
  "zheng",
 ]
 
@@ -140,7 +140,7 @@ checksum = "1d07550c9036bf2ae0c684c4297d503f838287c83c53686d05370d0e139ae570"
 
 [[package]]
 name = "cyb"
-version = "0.2.0"
+version = "0.2.1"
 dependencies = [
  "bbg",
  "cyber-hemera",
@@ -151,42 +151,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyb-genies"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "de003457416b6e5d39dba32bd8f77238dfa17d5e2a33dd473494b7c5585ddf12"
-dependencies = [
- "strata-core",
- "strata-ext",
- "strata-proof",
-]
-
-[[package]]
-name = "cyb-jali"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "607a1d2e1f9021c084dc70e897ebdc80d835977bc6eefcb5cd254cd401ec0da5"
-dependencies = [
- "cyb-nebu",
- "strata-core",
-]
-
-[[package]]
-name = "cyb-kuro"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "276fd9aee4a269fa57966d549328a920c61e3c5db466fbc519f02a16c106219d"
-dependencies = [
- "strata-core",
- "strata-ext",
- "strata-proof",
-]
-
-[[package]]
 name = "cyb-lens"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "dd5d4dfb70a77f40d9545c3d51e9b264e36c55bcca7b5113fe95eb354cc2359f"
+checksum = "264809a1b311dd406ce0aed0523f026e908b93d104b6468dfdad787f8bcab546"
 dependencies = [
  "cyb-lens-assayer",
  "cyb-lens-binius",
@@ -198,92 +166,71 @@ dependencies = [
 
 [[package]]
 name = "cyb-lens-assayer"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "71d64e9797b7d07b6140c1e22fd03004102daf84b4ac0206b0c84db112ff9660"
+checksum = "336ee36ce7b8a828182394e38f174c17b39c960dd72550420cae1b48632fe49e"
 dependencies = [
  "cyb-lens-brakedown",
  "cyb-lens-core",
- "cyb-nebu",
- "cyb-trop",
+ "strata-nebu",
+ "strata-trop",
 ]
 
 [[package]]
 name = "cyb-lens-binius"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d729ff5dfcf43a701c4de9c1c4461baacb64d17b5cb4e8aa88ecc4869dcd4628"
+checksum = "dac54a3bc286c50bb1c82d4ab3164d70a56a9747444e336d2e74399bb70037d3"
 dependencies = [
- "cyb-kuro",
  "cyb-lens-core",
  "cyber-hemera",
+ "strata-kuro",
 ]
 
 [[package]]
 name = "cyb-lens-brakedown"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "17586f6f6cc869e420ab79f854650bfde73362781924e55113a12ca367fafbef"
+checksum = "3419c32fedd2cdd80dee0a38f05605cf1beee7283004c8ae603c2a6e2ce6bc60"
 dependencies = [
  "cyb-lens-core",
- "cyb-nebu",
  "cyber-hemera",
+ "strata-nebu",
 ]
 
 [[package]]
 name = "cyb-lens-core"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1c3f6add3136293e1a9405efe244d3db5281902a2ad80e3ce2d7a5b5f2d922c3"
+checksum = "203c59f20743010153feab804a4af5acae207e9a31b6176114b238ed197b9dfb"
 dependencies = [
- "cyb-nebu",
  "cyber-hemera",
  "strata-core",
+ "strata-nebu",
  "strata-proof",
 ]
 
 [[package]]
 name = "cyb-lens-ikat"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f3b19a7d6287bb5ed1c6e9550c4339bf6236d52e21e8b48812f1ff43c0bf12f9"
+checksum = "eb685c71c11fe2367d0b1636433d852066d8039d10c20c9daea169ccfc270ef1"
 dependencies = [
- "cyb-jali",
  "cyb-lens-brakedown",
  "cyb-lens-core",
- "cyb-nebu",
+ "strata-jali",
+ "strata-nebu",
 ]
 
 [[package]]
 name = "cyb-lens-porphyry"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a90959197a982d0f4a12180a9f354765a995bf2aff8631b815e80bf42a4e34a1"
+checksum = "94dac6c6aae6d6c0bbeccc35807e1c3f73e29380b0874e1864efa06bfcb6dcbf"
 dependencies = [
- "cyb-genies",
  "cyb-lens-core",
  "cyber-hemera",
-]
-
-[[package]]
-name = "cyb-nebu"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f175ebf2788690eee991820099069b16b43d6da87fc3ee7be657011cb06fd474"
-dependencies = [
- "strata-compute",
- "strata-core",
- "strata-ext",
- "strata-proof",
-]
-
-[[package]]
-name = "cyb-trop"
-version = "0.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0dfa5c4bf060ef09676ac7d44e0549d3e9a486c1939e49638eb628b09e8ecc4a"
-dependencies = [
- "strata-core",
+ "strata-genies",
 ]
 
 [[package]]
@@ -294,14 +241,14 @@ checksum = "fac57c1455f6e3ea05f886dbd94d46ea3dc261ecd1d45cc01e983d0f6caf8cb8"
 
 [[package]]
 name = "cyber-nox"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3aebd05a20d507d8acd321d7281278a61d07131a958fb40293be5ac40318ec77"
+checksum = "9cabce84b645fd210218205beec09386f094051ebc3b2c856cf57f324cbb4f40"
 dependencies = [
  "cyb-lens-brakedown",
  "cyb-lens-core",
- "cyb-nebu",
  "cyber-hemera",
+ "strata-nebu",
 ]
 
 [[package]]
@@ -315,9 +262,9 @@ dependencies = [
 
 [[package]]
 name = "cyber-tok"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "1d1cde47abd6a0b4cdfbb519cfc16ad28c3011700992051f09506d028aca418c"
+checksum = "e8bec5200547e90f9d73bafed0b802fc04c3844d4c33f42685e03c4363e4f0f1"
 dependencies = [
  "cyber-hemera",
  "cyber-tru",
@@ -325,26 +272,25 @@ dependencies = [
 
 [[package]]
 name = "cyber-tru"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b13097488e33b638d1edf6e4204c0b17f47af172485c48252efae844b5ac1ea9"
+checksum = "2099dfa76d4ff1c31f30fa665d6f2620b031a3577ac36925bdad2b476032938b"
 dependencies = [
- "cyb-nebu",
  "cyber-hemera",
  "memmap2",
  "serde",
+ "strata-nebu",
  "thiserror",
  "toml",
 ]
 
 [[package]]
 name = "cybergraph"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "24630b8771453838f8173a11aaf6775034e0c7214add74c4dc537cd0cab08756"
+checksum = "063bdbbfab501a80473f35467c3ebbe11f8ea9ebbc69088ba88f474ca749ffe9"
 dependencies = [
  "bbg",
- "cyb-nebu",
  "cyber-hemera",
  "foculus",
  "inf-eval",
@@ -352,6 +298,7 @@ dependencies = [
  "inf-plan",
  "inf-source",
  "inf-value",
+ "strata-nebu",
  "zheng",
 ]
 
@@ -363,15 +310,14 @@ checksum = "877a4ace8713b0bcf2a4e7eec82529c029f1d0619886d18145fea96c3ffe5c0f"
 
 [[package]]
 name = "foculus"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "87e6a563ab7f3d9423c5ce0e93e0bf0d48ac3372169f3228ff9b134370812c19"
+checksum = "d8328675bc566ff091c6164e2fb8f8b3642c640903116f5def60c5587fdfba91"
 dependencies = [
  "anyhow",
  "bbg",
  "clap",
  "cyb-lens",
- "cyb-nebu",
  "cyber-hemera",
  "cyber-tape",
  "cyber-tok",
@@ -379,6 +325,7 @@ dependencies = [
  "rand",
  "serde",
  "serde_json",
+ "strata-nebu",
  "zheng",
 ]
 
@@ -682,10 +629,63 @@ dependencies = [
 ]
 
 [[package]]
+name = "strata-genies"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5449069eae034a5fe3ecc1ee220442072e1b5949e2993af6420f5a222b0eaa36"
+dependencies = [
+ "strata-core",
+ "strata-ext",
+ "strata-proof",
+]
+
+[[package]]
+name = "strata-jali"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cfd7d6fd536266ff058f55cd21801faee54b48cb22cec70696a16bd083b5e495"
+dependencies = [
+ "strata-core",
+ "strata-nebu",
+]
+
+[[package]]
+name = "strata-kuro"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e1c9f6022f963a205e6892ffa1136ffae7efa22f18e92f3b85a5e81f9bc973dd"
+dependencies = [
+ "strata-core",
+ "strata-ext",
+ "strata-proof",
+]
+
+[[package]]
+name = "strata-nebu"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f0026780625110c457f568eb407099eb0612a5484dc50a765adac2b2b66f62f"
+dependencies = [
+ "strata-compute",
+ "strata-core",
+ "strata-ext",
+ "strata-proof",
+]
+
+[[package]]
 name = "strata-proof"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "76a6a73314f271ae56d4d27574c3489e801870cd70cf8c40db37415d511e90e8"
+dependencies = [
+ "strata-core",
+]
+
+[[package]]
+name = "strata-trop"
+version = "0.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e16c1e90e552f986a4b3e60260ac4444428e272b4d698fc83b17e9776d2f6c1a"
 dependencies = [
  "strata-core",
 ]
@@ -852,14 +852,14 @@ dependencies = [
 
 [[package]]
 name = "zheng"
-version = "0.1.0"
+version = "0.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0f51091c0edf8a4eeddebac8ff64b70ed7ff79261fc646e537b1077a616cf0f7"
+checksum = "fcaf60519606bdf71aa8d591cc70a4bb3cee14b99dc66659694f96a515708ff5"
 dependencies = [
  "cyb-lens",
- "cyb-nebu",
  "cyber-hemera",
  "cyber-nox",
+ "strata-nebu",
 ]
 
 [[package]]
