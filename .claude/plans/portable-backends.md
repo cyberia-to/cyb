@@ -85,7 +85,17 @@ ever matches it on Apple, that is a measurement to bring to the user, not a lice
 **Deliverable:** `cargo build --target aarch64-linux-android -p mir` succeeds.
 **Verification:** conformance report byte-identical between `apple` and `cpu` backends on macOS.
 
-### P2 — Bevy on Android, one codebase (~2–3 sessions)
+### P2 — Bevy on Android, one codebase (~2–3 sessions) — DONE 2026-08-26 (emulator-verified)
+
+Landed as cyb e943eacc + c2e8968c, mir a0e17a1. All four worlds verified by touch on the API 34
+arm64 emulator: terminal prompts (nushell cross-compiled untouched), sigma trades, the landing
+renders from a baked-in cell, mir runs the CPU epoch with paint pending P3. World tabs in the
+bottom chrome are the touch navigation. Gotchas that cost time, recorded for the next pass:
+libc++_shared.so must ship in jniLibs (bevy's android_shared_stdcxx); android-activity 0.6.0
+pairs with games-activity 2.0.2 but 0.6.1 with 4.4.0 — a mismatch dies at JNI registration
+(onTouchEventNative); GameActivity is an AppCompatActivity and refuses a non-AppCompat theme.
+Physical-device run pending USB debugging on the Pixel.
+
 
 - Undo the stopgap: mir returns to unconditional deps in `shell/Cargo.toml`; `arboard` gets a
   cfg-gated no-op on Android rather than being cut.
