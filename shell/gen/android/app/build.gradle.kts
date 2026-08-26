@@ -53,6 +53,9 @@ android {
 }
 
 dependencies {
-    implementation("androidx.appcompat:appcompat:1.6.1")
-    implementation("androidx.webkit:webkit:1.8.0")
+    // GameActivity — the Java half of android-activity 0.6 (bevy_winit's
+    // default Android backend). Version pairs with the crate's vendored csrc.
+    // GameActivity 4.x extends AppCompatActivity, hence appcompat.
+    implementation("androidx.games:games-activity:4.4.0")
+    implementation("androidx.appcompat:appcompat:1.7.0")
 }

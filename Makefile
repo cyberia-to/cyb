@@ -83,22 +83,17 @@ ANDROID_API  ?= 24
 NDK_HOST     ?= $(shell ls $(NDK_HOME)/toolchains/llvm/prebuilt/ 2>/dev/null | head -1)
 NDK_BIN      ?= $(NDK_HOME)/toolchains/llvm/prebuilt/$(NDK_HOST)/bin
 
-KOTLIN_OUT   = shell/gen/android/app/src/main/kotlin/ai/cyb/app
-
 # Full Android build: compile Rust → copy assets → assemble APK
-android: android-rust android-assets android-apk
+android: android-rust android-apk
 	@echo "APK: shell/gen/android/app/build/outputs/apk/release/app-release-unsigned.apk"
 
 # Cross-compile Rust → libcyb.so
 android-rust:
-	WRY_ANDROID_PACKAGE=ai.cyb.app \
-	WRY_ANDROID_LIBRARY=cyb \
-	WRY_ANDROID_KOTLIN_FILES_OUT_DIR=$(PWD)/$(KOTLIN_OUT) \
 	CC_aarch64_linux_android=$(NDK_BIN)/aarch64-linux-android$(ANDROID_API)-clang \
 	CXX_aarch64_linux_android=$(NDK_BIN)/aarch64-linux-android$(ANDROID_API)-clang++ \
 	AR_aarch64_linux_android=$(NDK_BIN)/llvm-ar \
 	CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$(NDK_BIN)/aarch64-linux-android$(ANDROID_API)-clang \
-	$(CARGO) build --release --target $(ANDROID_TARGET) --lib -p cyb --no-default-features --features android
+	$(CARGO) build --release --target $(ANDROID_TARGET) --lib -p cyb
 
 # Copy apps build into Android assets
 android-assets:
@@ -122,7 +117,7 @@ android-apk: android-jnilibs
 	cd shell/gen/android && ANDROID_HOME=$(ANDROID_HOME) JAVA_HOME=$(JAVA_HOME) ./gradlew assembleRelease
 
 # Debug APK — Gradle signs it with the local debug key, so a device accepts it
-android-debug: android-rust android-assets android-jnilibs
+android-debug: android-rust android-jnilibs
 	cd shell/gen/android && ANDROID_HOME=$(ANDROID_HOME) JAVA_HOME=$(JAVA_HOME) ./gradlew assembleDebug
 
 # Source to running app on a plugged-in phone, one command
