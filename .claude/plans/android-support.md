@@ -1,5 +1,12 @@
 # Android: Bevy-native implementation plan
 
+## Prerequisite
+
+Phase 1 below cannot start until mir stops depending on honeycrisp unconditionally — `unimem`
+links IOSurface and CoreFoundation, so mir does not compile for Android at all. See
+`portable-backends.md` P1. Paths in this file predate the `bevy/` → `shell/` rename and are
+corrected below.
+
 ## Principle
 
 Android cyb = desktop cyb. One codebase, one binary, same Bevy app, same worlds, same terminal,
@@ -13,19 +20,19 @@ Replace the current `tao + wry` Android stub with Bevy's native Android backend.
 
 ### 1.1 Cargo changes
 
-`bevy/Cargo.toml`:
+`shell/Cargo.toml`:
 - Add `android-activity` as optional dep (Bevy's Android backend requires it)
 - Android feature activates: `bevy/android`, `android-activity`, all nu-* deps (same as desktop
   minus `nu-cli`)
 - Remove `dep:tao` and `dep:android_logger` from android feature — Bevy handles the event loop
   and logging
 
-`bevy/Cargo.toml` workspace root:
+`shell/Cargo.toml` workspace root:
 - Add `android-activity` to workspace deps
 
 ### 1.2 Entry point
 
-`bevy/src/lib.rs` — replace current `pub mod android` stub with:
+`shell/src/lib.rs` — replace current `pub mod android` stub with:
 
 ```rust
 #[cfg(target_os = "android")]
@@ -44,21 +51,21 @@ The `DefaultPlugins` with `bevy_winit` already handles the Android window lifecy
 
 ### 1.3 AndroidManifest.xml
 
-`bevy/gen/android/AndroidManifest.xml`:
+`shell/gen/android/app/src/main/AndroidManifest.xml`:
 - Change activity class from `WryActivity` to `com.google.androidgamesdk.GameActivity`
   (android-activity's GameActivity backend, which Bevy uses by default)
 - Add required permissions for later phases: `ACCESS_FINE_LOCATION`, `CAMERA`, `INTERNET`
 
 ### 1.4 Delete android/mod.rs
 
-`bevy/src/android/` directory and `lib.rs` reference to it are removed entirely. The tao/wry
+`shell/src/android/` directory and `lib.rs` reference to it are removed entirely. The tao/wry
 Android entry point is gone.
 
 ### 1.5 Gradle
 
-`bevy/gen/android/app/build.gradle`:
+`shell/gen/android/app/build.gradle.kts`:
 - Add `android-games-sdk` dependency for GameActivity
-- Update CMakeLists / jniLibs to load `libcyb_shell.so` (already there, no change)
+- Update CMakeLists / jniLibs to load `libcyb.so` (already there, no change)
 
 ### Verification
 
@@ -68,12 +75,12 @@ Android entry point is gone.
 
 ## Phase 2 — Terminal world on Android
 
-`worlds/terminal.rs` runs **unchanged**. sugarloaf uses wgpu → Android Vulkan/GLES. alacritty_terminal
+`worlds/terminal/mod.rs` runs **unchanged**. sugarloaf uses wgpu → Android Vulkan/GLES. alacritty_terminal
 is pure Rust. nushell is pure Rust.
 
 ### 2.1 Android environment init
 
-`bevy/assets/nu-config/android.nu` — new file, sourced after `env.nu` on Android only:
+`shell/assets/nu-config/android.nu` — new file, sourced after `env.nu` on Android only:
 
 ```nushell
 # Android-specific environment setup
@@ -144,7 +151,7 @@ as an `InProcessPlugin` to avoid the process-spawn overhead on mobile.
 
 ### Registration
 
-`terminal.rs` → `init_nushell_engine()`:
+`terminal/mod.rs` → `init_nushell_engine()`:
 
 ```rust
 #[cfg(target_os = "android")]
@@ -169,13 +176,13 @@ android clipboard get    # → "text from clipboard"
 
 | File | Change |
 |---|---|
-| `bevy/Cargo.toml` | android feature: swap tao/wry for bevy/android + nu-* deps |
-| `bevy/src/lib.rs` | replace `pub mod android` with `android_main` fn |
-| `bevy/src/android/` | delete entirely |
-| `bevy/gen/android/AndroidManifest.xml` | GameActivity, add permissions |
-| `bevy/gen/android/app/build.gradle` | GameActivity dep |
-| `bevy/assets/nu-config/android.nu` | new: Android PATH/HOME setup |
-| `bevy/src/worlds/terminal.rs` | add Android HOME init (cfg-gated, ~5 lines) |
+| `shell/Cargo.toml` | android feature: swap tao/wry for bevy/android + nu-* deps |
+| `shell/src/lib.rs` | replace `pub mod android` with `android_main` fn |
+| `shell/src/android/` | delete entirely |
+| `shell/gen/android/app/src/main/AndroidManifest.xml` | GameActivity, add permissions |
+| `shell/gen/android/app/build.gradle.kts` | GameActivity dep |
+| `shell/assets/nu-config/android.nu` | new: Android PATH/HOME setup |
+| `shell/src/worlds/terminal/mod.rs` | add Android HOME init (cfg-gated, ~5 lines) |
 | `cyb/nu_plugin_android/` | new crate |
 | `cyb/Cargo.toml` | add nu_plugin_android to workspace |
 | `cyb/CLAUDE.md` | one binary rule (done) |
@@ -184,9 +191,12 @@ android clipboard get    # → "text from clipboard"
 
 ## Effort estimate
 
-| Phase | Effort |
+| Phase | Sessions |
 |---|---|
-| Phase 1 — Bevy entry point | 2 days |
-| Phase 2 — Terminal on Android | 1 day |
-| Phase 3 — nu_plugin_android | 4–5 days |
-| **Total** | **7–8 days** |
+| Phase 1 — Bevy entry point | 2–3 |
+| Phase 2 — Terminal on Android | 1 |
+| Phase 3 — nu_plugin_android | 4–5 |
+| **Total** | **7–9** |
+
+Excludes the prerequisite — `portable-backends.md` P1 costs 1–2 sessions before any of this
+compiles.
