@@ -578,10 +578,10 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 
 [[package]]
 name = "bbg"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
- "cyb-lens",
  "cyber-hemera",
+ "cyber-lens",
  "cyber-nox",
  "strata-nebu",
  "zheng",
@@ -2943,9 +2943,9 @@ name = "cy"
 version = "0.1.0"
 dependencies = [
  "cyb-core",
+ "cyber-mudra",
  "cyber-tru",
  "inf-value",
- "mudra",
  "serde",
  "toml 0.8.2",
 ]
@@ -3009,47 +3009,51 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyb-lens"
-version = "0.1.1"
+name = "cyber-hemera"
+version = "0.3.0"
+
+[[package]]
+name = "cyber-lens"
+version = "0.1.2"
 dependencies = [
- "cyb-lens-assayer",
- "cyb-lens-binius",
- "cyb-lens-brakedown",
- "cyb-lens-core",
- "cyb-lens-ikat",
- "cyb-lens-porphyry",
+ "cyber-lens-assayer",
+ "cyber-lens-binius",
+ "cyber-lens-brakedown",
+ "cyber-lens-core",
+ "cyber-lens-ikat",
+ "cyber-lens-porphyry",
 ]
 
 [[package]]
-name = "cyb-lens-assayer"
+name = "cyber-lens-assayer"
 version = "0.1.1"
 dependencies = [
- "cyb-lens-brakedown",
- "cyb-lens-core",
+ "cyber-lens-brakedown",
+ "cyber-lens-core",
  "strata-nebu",
  "strata-trop",
 ]
 
 [[package]]
-name = "cyb-lens-binius"
+name = "cyber-lens-binius"
 version = "0.1.1"
 dependencies = [
- "cyb-lens-core",
  "cyber-hemera",
+ "cyber-lens-core",
  "strata-kuro",
 ]
 
 [[package]]
-name = "cyb-lens-brakedown"
+name = "cyber-lens-brakedown"
 version = "0.1.1"
 dependencies = [
- "cyb-lens-core",
  "cyber-hemera",
+ "cyber-lens-core",
  "strata-nebu",
 ]
 
 [[package]]
-name = "cyb-lens-core"
+name = "cyber-lens-core"
 version = "0.1.1"
 dependencies = [
  "cyber-hemera",
@@ -3059,35 +3063,45 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyb-lens-ikat"
+name = "cyber-lens-ikat"
 version = "0.1.1"
 dependencies = [
- "cyb-lens-brakedown",
- "cyb-lens-core",
+ "cyber-lens-brakedown",
+ "cyber-lens-core",
  "strata-jali",
  "strata-nebu",
 ]
 
 [[package]]
-name = "cyb-lens-porphyry"
+name = "cyber-lens-porphyry"
 version = "0.1.1"
 dependencies = [
- "cyb-lens-core",
  "cyber-hemera",
+ "cyber-lens-core",
  "strata-genies",
 ]
 
 [[package]]
-name = "cyber-hemera"
-version = "0.3.0"
+name = "cyber-mudra"
+version = "0.1.0"
+dependencies = [
+ "base64",
+ "bech32 0.11.1",
+ "bip32",
+ "bip39",
+ "cyber-hemera",
+ "k256",
+ "ripemd",
+ "sha2",
+]
 
 [[package]]
 name = "cyber-nox"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
- "cyb-lens-brakedown",
- "cyb-lens-core",
  "cyber-hemera",
+ "cyber-lens-brakedown",
+ "cyber-lens-core",
  "strata-nebu",
 ]
 
@@ -3790,13 +3804,13 @@ checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
 name = "foculus"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
  "anyhow",
  "bbg",
  "clap",
- "cyb-lens",
  "cyber-hemera",
+ "cyber-lens",
  "cyber-tape",
  "cyber-tok",
  "cyber-tru",
@@ -6017,20 +6031,6 @@ dependencies = [
  "png 0.17.16",
  "thiserror 2.0.18",
  "windows-sys 0.60.2",
-]
-
-[[package]]
-name = "mudra"
-version = "0.1.0"
-dependencies = [
- "base64",
- "bech32 0.11.1",
- "bip32",
- "bip39",
- "cyber-hemera",
- "k256",
- "ripemd",
- "sha2",
 ]
 
 [[package]]
@@ -12121,10 +12121,10 @@ dependencies = [
 
 [[package]]
 name = "zheng"
-version = "0.1.1"
+version = "0.1.2"
 dependencies = [
- "cyb-lens",
  "cyber-hemera",
+ "cyber-lens",
  "cyber-nox",
  "strata-nebu",
 ]
