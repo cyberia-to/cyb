@@ -111,7 +111,19 @@ equivalent, `make android-log` clean of panics.
 This is the phase that answers "билдить под андроид из одной кодовой базы". Everything after it
 is speed.
 
-### P3 — wgpu backend (~3–4 sessions)
+### P3 — wgpu backend (~3–4 sessions) — CORE DONE 2026-08-26 (emulator-verified)
+
+Landed as mir a66e0d4 + 3567347 + 849b25c. The non-Apple arm of `crate::gpu` implements the
+aruminium surface over wgpu 27 (same major as Bevy — one copy in the binary); five kernels run
+in WGSL — bvh_cull, gaussian_splat, edge_line_rasterize, sphere_impostor, tinf_background —
+and the graph world paints on the Android emulator over Vulkan. Readback rides a staging copy
+(zero-copy is P4); push constants become per-launch uniform buffers. Runtime gotcha that cost a
+crash: every pass calls Gpu::open(), on Metal that is the one system device — the wgpu arm must
+be a process-global singleton or buffers cross devices and wgpu-core panics. Still open from
+this phase: t1/edge-tube kernels (unreferenced by the frame loop today), macOS `--features
+portable` selection for the timing comparison, SHADER_INT64 decision (no current kernel touches
+Goldilocks).
+
 
 - `mir::backend::WgpuBackend` implementing `RenderBackend`. wgpu 27.0.1 is already in the tree
   via Bevy; `evy/forks/naga` is its shader compiler. No new dependency weight.

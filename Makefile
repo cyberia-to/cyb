@@ -75,7 +75,9 @@ dmg: release apps
 # ── Android ──────────────────────────────────────────────────
 ANDROID_HOME ?= $(HOME)/Library/Android/sdk
 JAVA_HOME    ?= $(shell /usr/libexec/java_home -v 17 2>/dev/null || echo /opt/homebrew/opt/openjdk@17)
-ADB          ?= $(ANDROID_HOME)/platform-tools/adb
+# With both an emulator and a phone attached, pick one: make android-run ADB_SERIAL=<id>
+ADB_SERIAL   ?=
+ADB          ?= $(ANDROID_HOME)/platform-tools/adb $(if $(ADB_SERIAL),-s $(ADB_SERIAL))
 NDK_VERSION  ?= $(shell ls $(ANDROID_HOME)/ndk 2>/dev/null | sort -V | tail -1)
 NDK_HOME     ?= $(ANDROID_HOME)/ndk/$(NDK_VERSION)
 ANDROID_TARGET ?= aarch64-linux-android
