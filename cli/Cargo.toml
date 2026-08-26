@@ -20,7 +20,7 @@ path = "src/main.rs"
 cyb-core = { path = "../core" }
 inf-value = { path = "../../inf/rs/value" }
 # the legacy-key bridge: verify a migration claim, then record it in the graph
-mudra = { path = "../../mudra" }
+mudra = { package = "cyber-mudra", path = "../../mudra" }
 # reward settle uses tru::Link for base graph
 tru = { package = "cyber-tru", path = "../../tru/rs" }
 # the tool registry (tools.toml) — the single source of truth for the toolset
