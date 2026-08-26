@@ -1,6 +1,8 @@
 use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::prelude::*;
 
+use prysm::theme;
+
 use crate::shell::clipboard::read_clipboard;
 use crate::worlds::WorldState;
 
@@ -105,9 +107,11 @@ fn spawn_chrome(mut commands: Commands) {
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::SpaceBetween,
                     padding: UiRect::horizontal(Val::Px(16.0)),
+                    border: UiRect::bottom(Val::Px(1.0)),
                     ..default()
                 },
-                BackgroundColor(Color::srgba(0.04, 0.04, 0.08, 0.92)),
+                BackgroundColor(theme::DARK_BASE),
+                BorderColor::all(theme::BORDER),
             ))
             .with_children(|bar| {
                 bar.spawn((
@@ -176,9 +180,11 @@ fn spawn_chrome(mut commands: Commands) {
                         flex_direction: FlexDirection::Row,
                         align_items: AlignItems::Center,
                         padding: UiRect::horizontal(Val::Px(14.0)),
+                        border: UiRect::all(Val::Px(1.0)),
                         ..default()
                     },
-                    BackgroundColor(Color::srgba(0.05, 0.05, 0.10, 0.94)),
+                    BackgroundColor(theme::DARK_BASE),
+                    BorderColor::all(theme::BORDER),
                     Interaction::default(),
                 ))
                 .with_children(|cmd| {
@@ -263,24 +269,23 @@ fn handle_graph_button(
 
 // ── Focus style sync ────────────────────────────────────────────────────────
 
+/// The commander's fill is black in both states — focus reads on the outline.
 fn sync_commander_focus_style(
     chrome: Res<ChromeState>,
-    mut q: Query<(Entity, &mut BackgroundColor), With<CommanderContainer>>,
+    q: Query<Entity, With<CommanderContainer>>,
     mut commands: Commands,
 ) {
     if !chrome.is_changed() {
         return;
     }
-    for (entity, mut bg) in &mut q {
+    for entity in &q {
         if chrome.focused {
-            *bg = BackgroundColor(Color::srgba(0.08, 0.07, 0.16, 0.98));
             commands.entity(entity).insert(Outline {
                 width: Val::Px(1.0),
                 offset: Val::Px(0.0),
                 color: Color::srgba(0.96, 0.17, 0.99, 0.65),
             });
         } else {
-            *bg = BackgroundColor(Color::srgba(0.05, 0.05, 0.10, 0.94));
             commands.entity(entity).remove::<Outline>();
         }
     }

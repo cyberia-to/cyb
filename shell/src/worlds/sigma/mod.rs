@@ -5,6 +5,7 @@
 
 use bevy::prelude::*;
 use cyb_core::{Cell, MoneyEvent, MoneyWallet, money_to_sense};
+use prysm::theme;
 
 use super::WorldState;
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H};
@@ -100,7 +101,7 @@ fn setup_sigma(mut commands: Commands, state: Res<SigmaState>) {
                 padding: UiRect::all(Val::Px(16.0)),
                 ..default()
             },
-            BackgroundColor(Color::srgb(0.06, 0.07, 0.09)),
+            BackgroundColor(theme::DARK_BASE),
         ))
         .with_children(|root| {
             root.spawn((
@@ -148,9 +149,11 @@ fn setup_sigma(mut commands: Commands, state: Res<SigmaState>) {
                         Button,
                         Node {
                             padding: UiRect::axes(Val::Px(14.0), Val::Px(8.0)),
+                            border: UiRect::all(Val::Px(1.0)),
                             ..default()
                         },
-                        BackgroundColor(Color::srgb(0.12, 0.16, 0.14)),
+                        BackgroundColor(theme::DARK_BASE),
+                        BorderColor::all(theme::BORDER),
                     ))
                     .with_children(|b| {
                         b.spawn((

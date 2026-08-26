@@ -724,9 +724,11 @@ fn spawn_terminal_ui(
             flex_direction: FlexDirection::Row,
             padding: UiRect::axes(Val::Px(G), Val::Px(G * 0.5)),
             column_gap: Val::Px(4.0),
+            border: UiRect::top(Val::Px(1.0)),
             ..default()
         },
-        BackgroundColor(Color::srgba(0.0, 0.0, 0.0, 0.5)),
+        BackgroundColor(theme::DARK_BASE),
+        BorderColor::all(theme::BORDER),
         ChildOf(root),
     )).id();
 
