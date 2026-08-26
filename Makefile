@@ -106,10 +106,14 @@ android-assets:
 		echo "WARNING: apps/dist not found, run 'make apps' first"; \
 	fi
 
-# Stage the cross-compiled library where Gradle expects it
+# Stage the cross-compiled library where Gradle expects it. Stripped: the
+# full .so stays in target/ for symbolising panics; the APK carries ~1/3.
 android-jnilibs:
 	@mkdir -p shell/gen/android/app/src/main/jniLibs/arm64-v8a
-	cp target/$(ANDROID_TARGET)/release/libcyb.so \
+	$(NDK_BIN)/llvm-strip --strip-debug \
+		-o shell/gen/android/app/src/main/jniLibs/arm64-v8a/libcyb.so \
+		target/$(ANDROID_TARGET)/release/libcyb.so
+	cp $(NDK_BIN)/../sysroot/usr/lib/aarch64-linux-android/libc++_shared.so \
 		shell/gen/android/app/src/main/jniLibs/arm64-v8a/
 
 # Release APK — unsigned, for distribution. `adb install` rejects it.

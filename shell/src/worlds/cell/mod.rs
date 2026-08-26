@@ -54,20 +54,35 @@ impl rune_interp::Host for CellHost {
 
 // ── cell loading + rendering ──────────────────────────────────────────────────
 
+/// Cells baked into the binary at build time — the source of last resort.
+///
+/// The dev path below reads the repo file so an edit shows on the next enter;
+/// an installed app (macOS bundle, Android APK) has no repo, and before this
+/// fallback Cmd+3 on any machine but the dev Mac rendered a load error. The
+/// radio-backed `name → hash` resolver (cells.md P4) replaces this table.
+const BUILTIN_CELLS: &[(&str, &str)] = &[("landing", include_str!("../../../../cells/landing.rune"))];
+
 /// Resolve `cell://<name>` to its rune source.
 ///
-/// P1: a local file under `cyb/cells/<name>.rune`. Newlines are neutralised to
-/// spaces — the classic rune register parses a call on one logical line, so a
-/// multi-line, readable cell collapses to a parseable expression. (String
-/// literals hold no raw newlines, so this never alters content.) The `name→file`
-/// and `name→hash` resolvers (P2/P4) slot in behind this same seam.
+/// P1: a local file under `cyb/cells/<name>.rune`, falling back to the copy
+/// baked in at build time. Newlines are neutralised to spaces — the classic
+/// rune register parses a call on one logical line, so a multi-line, readable
+/// cell collapses to a parseable expression. (String literals hold no raw
+/// newlines, so this never alters content.) The `name→file` and `name→hash`
+/// resolvers (P2/P4) slot in behind this same seam.
 fn load_cell(name: &str) -> Result<String, String> {
     let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../cells")
         .join(format!("{name}.rune"));
     std::fs::read_to_string(&path)
+        .or_else(|e| {
+            BUILTIN_CELLS
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, src)| (*src).to_string())
+                .ok_or_else(|| format!("load_cell({name}): {e}"))
+        })
         .map(|s| s.replace(['\n', '\r'], " "))
-        .map_err(|e| format!("load_cell({name}): {e}"))
 }
 
 /// Parse → lower → interpret a cell source; decode the result to renderable chunks.

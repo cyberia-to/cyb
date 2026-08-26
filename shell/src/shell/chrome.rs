@@ -37,8 +37,10 @@ struct AddressBarText;
 pub struct CommanderContainer;
 #[derive(Component)]
 struct CommanderText;
+/// A tap-target for one world — the touch counterpart of Cmd+1..4, and the
+/// only world navigation Android has until gestures land.
 #[derive(Component)]
-struct GraphNavButton;
+struct WorldNavButton(WorldState);
 
 pub struct ChromePlugin;
 
@@ -52,7 +54,7 @@ impl Plugin for ChromePlugin {
                 (
                     clear_chrome_submitted, // must be first
                     handle_commander_click,
-                    handle_graph_button,
+                    handle_world_buttons,
                     handle_chrome_input,
                     update_address_bar,
                     update_commander_display,
@@ -147,28 +149,41 @@ fn spawn_chrome(mut commands: Commands) {
                 ..default()
             })
             .with_children(|row| {
-                // Left: graph navigation link
-                row.spawn((
-                    GraphNavButton,
-                    Node {
-                        flex_grow: 1.0,
-                        flex_direction: FlexDirection::Row,
-                        align_items: AlignItems::Center,
-                        padding: UiRect::all(Val::Px(6.0)),
-                        ..default()
-                    },
-                    BackgroundColor(Color::NONE),
-                    Interaction::default(),
-                ))
-                .with_children(|btn| {
-                    btn.spawn((
-                        Text::new("↗ mir"),
-                        TextFont {
-                            font_size: 13.0,
-                            ..default()
-                        },
-                        TextColor(Color::srgba(0.21, 0.84, 0.68, 0.55)),
-                    ));
+                // Left: the world tabs
+                row.spawn(Node {
+                    flex_grow: 1.0,
+                    flex_direction: FlexDirection::Row,
+                    align_items: AlignItems::Center,
+                    column_gap: Val::Px(2.0),
+                    ..default()
+                })
+                .with_children(|tabs| {
+                    for (label, world) in [
+                        ("mir", WorldState::Graph),
+                        ("term", WorldState::Terminal),
+                        ("cell", WorldState::Cell),
+                        ("sigma", WorldState::Sigma),
+                    ] {
+                        tabs.spawn((
+                            WorldNavButton(world),
+                            Node {
+                                padding: UiRect::axes(Val::Px(10.0), Val::Px(8.0)),
+                                ..default()
+                            },
+                            BackgroundColor(Color::NONE),
+                            Interaction::default(),
+                        ))
+                        .with_children(|btn| {
+                            btn.spawn((
+                                Text::new(label),
+                                TextFont {
+                                    font_size: 13.0,
+                                    ..default()
+                                },
+                                TextColor(Color::srgba(0.21, 0.84, 0.68, 0.55)),
+                            ));
+                        });
+                    }
                 });
 
                 // Center: commander input — 62% width
@@ -242,19 +257,19 @@ fn handle_commander_click(
     }
 }
 
-fn handle_graph_button(
+fn handle_world_buttons(
     mut q: Query<
-        (&Interaction, &mut BackgroundColor),
-        (Changed<Interaction>, With<GraphNavButton>),
+        (&Interaction, &WorldNavButton, &mut BackgroundColor),
+        Changed<Interaction>,
     >,
     current: Res<State<WorldState>>,
     mut next: ResMut<NextState<WorldState>>,
 ) {
-    for (interaction, mut bg) in &mut q {
+    for (interaction, button, mut bg) in &mut q {
         match interaction {
             Interaction::Pressed => {
-                if *current.get() != WorldState::Graph {
-                    next.set(WorldState::Graph);
+                if *current.get() != button.0 {
+                    next.set(button.0);
                 }
             }
             Interaction::Hovered => {
