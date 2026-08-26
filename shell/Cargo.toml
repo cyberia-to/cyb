@@ -14,6 +14,8 @@ categories = ["gui", "multimedia"]
 default = ["desktop"]
 desktop = [
     "dep:bevy",
+    "dep:mir",
+    "dep:arboard",
     "dep:global-hotkey",
     "dep:alacritty_terminal",
     "dep:sugarloaf",
@@ -56,14 +58,19 @@ rune-prysm   = { path = "../../rune/rs/prysm" }
 
 # Core (all platforms)
 wry = { version = "0.53", features = ["transparent"] }
-arboard = "3"
+# Desktop-only: arboard has no Android backend (its `platform` module is
+# empty there, so every item it re-exports goes missing).
+arboard = { version = "3", optional = true }
 futures = "0.3"
 futures-lite = "2"
 serde = { workspace = true }
 serde_json = { workspace = true }
 log = "0.4"
 chrono = "0.4"
-mir = { path = "../../mir", features = ["bevy-plugin"] }
+# Desktop-only: mir's compute path is honeycrisp (aruminium/acpu/unimem),
+# which links IOSurface and CoreFoundation — Apple targets only. Keeping it
+# unconditional made every Android build drag unimem in and fail to link.
+mir = { path = "../../mir", features = ["bevy-plugin"], optional = true }
 bip39 = { workspace = true, features = ["rand"] }
 ureq = { workspace = true }
 hmac = "0.12"
