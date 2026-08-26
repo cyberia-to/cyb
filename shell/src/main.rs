@@ -33,6 +33,11 @@ fn main() {
                         resolution: (1280u32, 800u32).into(),
                         ..default()
                     }),
+                    // The robot outlives its window: closing hides, the tray
+                    // brings it back, only tray → Quit ends the process.
+                    // See `shell/window.rs`.
+                    close_when_requested: false,
+                    exit_condition: bevy::window::ExitCondition::DontExit,
                     ..default()
                 })
                 .set(bevy::render::RenderPlugin {
@@ -49,6 +54,7 @@ fn main() {
         .add_plugins(shell::chrome::ChromePlugin)
         .add_plugins(shell::hotkeys::HotkeysPlugin)
         .add_plugins(shell::nav::NavPlugin)
+        .add_plugins(shell::window::WindowLifecyclePlugin)
         .add_plugins(mir::bevy::GraphWorldPlugin)
         .add_plugins(worlds::graph::GraphBridgePlugin)
         .add_plugins(worlds::terminal::TerminalWorldPlugin)

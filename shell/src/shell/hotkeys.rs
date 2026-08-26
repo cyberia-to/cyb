@@ -1,3 +1,4 @@
+use crate::shell::window::ShowWindow;
 use crate::worlds::WorldState;
 use bevy::prelude::*;
 use global_hotkey::{
@@ -49,6 +50,7 @@ fn poll_hotkey_events(
     hotkeys: NonSend<HotkeyManagerRes>,
     current_state: Res<State<WorldState>>,
     mut next_state: ResMut<NextState<WorldState>>,
+    mut show: MessageWriter<ShowWindow>,
 ) {
     while let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
         let target = if event.id == hotkeys.graph_id {
@@ -63,6 +65,9 @@ fn poll_hotkey_events(
             continue;
         };
 
+        // The hotkeys are global: they fire with cyb in the background, and
+        // reaching for a world is a request to look at it.
+        show.write(ShowWindow);
         if *current_state.get() != target {
             info!("Hotkey → {:?}", target);
             next_state.set(target);
