@@ -36,9 +36,6 @@ const NU_CONFIG_SOURCE: &str = include_str!("../../../assets/nu-config/config.nu
 pub struct TerminalWorldPlugin;
 
 #[derive(Component)]
-struct TerminalMarker;
-
-#[derive(Component)]
 struct PromptLabel;
 
 #[derive(Component)]
@@ -144,7 +141,8 @@ struct TerminalNonSendState {
     ctrlc_flag: Arc<AtomicBool>,
     key_cursor: bevy::ecs::message::MessageCursor<KeyboardInput>,
     wheel_cursor: bevy::ecs::message::MessageCursor<MouseWheel>,
-    // UI entity IDs (persisted across world switches)
+    // UI entity IDs (the tree is built once and hidden between visits)
+    root_entity: Entity,
     scrollback_entity: Entity,
     scroll_area_entity: Entity,
     prompt_entity: Entity,
@@ -618,17 +616,10 @@ fn process_keyboard_input(world: &mut World) {
 // ── Setup ─────────────────────────────────────────────────────────────────────
 
 fn setup_terminal(world: &mut World) {
-    // If state persists, re-attach scrollback to a new root and show
-    if world.get_non_send_resource::<TerminalNonSendState>().is_some() {
-        let (scrollback_entity, prompt_entity, input_entity) = {
-            let state = world.get_non_send_resource::<TerminalNonSendState>().unwrap();
-            (state.scrollback_entity, state.prompt_entity, state.input_entity)
-        };
-        let scroll_area_entity = spawn_terminal_ui(world, scrollback_entity, prompt_entity, input_entity);
-        {
-            let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
-            state.scroll_area_entity = scroll_area_entity;
-        }
+    // Already built on an earlier visit — unhide the same tree.
+    if let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() {
+        let root_entity = state.root_entity;
+        set_terminal_visible(world, root_entity, true);
         update_prompt(world);
         update_input_display(world);
         info!("Terminal resumed");
@@ -667,7 +658,8 @@ fn setup_terminal(world: &mut World) {
     )).id();
 
     // Build the UI tree
-    let scroll_area_entity = spawn_terminal_ui(world, scrollback_entity, prompt_entity, input_entity);
+    let (root_entity, scroll_area_entity) =
+        spawn_terminal_ui(world, scrollback_entity, prompt_entity, input_entity);
 
     world.insert_non_send_resource(TerminalNonSendState {
         nu_engine: Some(nu_engine),
@@ -678,6 +670,7 @@ fn setup_terminal(world: &mut World) {
         key_cursor: Default::default(),
         wheel_cursor: Default::default(),
         ctrlc_flag,
+        root_entity,
         scrollback_entity,
         scroll_area_entity,
         prompt_entity,
@@ -693,10 +686,9 @@ fn spawn_terminal_ui(
     scrollback_entity: Entity,
     prompt_entity: Entity,
     input_entity: Entity,
-) -> Entity {
+) -> (Entity, Entity) {
     // Root container: full screen, column flex, padding for chrome bars
     let root = world.spawn((
-        TerminalMarker,
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(CHROME_TOP_H),
@@ -712,7 +704,6 @@ fn spawn_terminal_ui(
 
     // Scrollback area (flex-grow, scrolled via ScrollPosition)
     let scroll_area = world.spawn((
-        TerminalMarker,
         Node {
             flex_grow: 1.0,
             flex_direction: FlexDirection::Column,
@@ -729,7 +720,6 @@ fn spawn_terminal_ui(
 
     // Prompt row (fixed height at bottom)
     let prompt_row = world.spawn((
-        TerminalMarker,
         Node {
             flex_direction: FlexDirection::Row,
             padding: UiRect::axes(Val::Px(G), Val::Px(G * 0.5)),
@@ -744,7 +734,7 @@ fn spawn_terminal_ui(
     world.entity_mut(prompt_entity).insert(ChildOf(prompt_row));
     world.entity_mut(input_entity).insert(ChildOf(prompt_row));
 
-    scroll_area
+    (root, scroll_area)
 }
 
 // ── Scroll ────────────────────────────────────────────────────────────────────
@@ -809,24 +799,23 @@ fn terminal_update(world: &mut World) {
 
 // ── Teardown ──────────────────────────────────────────────────────────────────
 
+/// Leaving the terminal hides its tree; it is never torn down.
+///
+/// The tree used to be despawned here while scrollback/prompt/input were
+/// detached to survive — which left those three in `bevy_ui`'s taffy tree
+/// pointing at nodes the despawn had just removed. The next layout pass then
+/// panicked with `invalid SlotMap key used` and took the whole process down.
+/// Hiding costs nothing (`Display::None` is skipped by layout) and keeps every
+/// entity, and its taffy node, valid.
 fn destroy_terminal(world: &mut World) {
-    // Detach scrollback/prompt/input from their parents (so they survive despawn)
-    let (scrollback_entity, prompt_entity, input_entity) = {
-        let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() else { return };
-        (state.scrollback_entity, state.prompt_entity, state.input_entity)
-    };
-    world.entity_mut(scrollback_entity).remove::<ChildOf>();
-    world.entity_mut(prompt_entity).remove::<ChildOf>();
-    world.entity_mut(input_entity).remove::<ChildOf>();
-
-    // Despawn TerminalMarker entities (root + scroll area + prompt row)
-    let entities: Vec<Entity> = world
-        .query_filtered::<Entity, With<TerminalMarker>>()
-        .iter(world)
-        .collect();
-    for e in entities {
-        world.despawn(e);
-    }
-
+    let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() else { return };
+    let root_entity = state.root_entity;
+    set_terminal_visible(world, root_entity, false);
     info!("Terminal paused (state persisted)");
+}
+
+fn set_terminal_visible(world: &mut World, root: Entity, visible: bool) {
+    if let Some(mut node) = world.get_mut::<Node>(root) {
+        node.display = if visible { Display::Flex } else { Display::None };
+    }
 }
