@@ -1,4 +1,12 @@
-.PHONY: dev fast build run clean check apps dmg android android-rust android-assets android-apk
+.PHONY: dev fast build run clean check apps dmg android android-rust android-assets \
+        android-jnilibs android-apk android-debug android-run android-log
+
+# Homebrew ships its own cargo and rustc and they sit ahead of rustup on PATH
+# here. Homebrew's rustc has no cross targets, so an Android build under it
+# dies with "can't find crate for `core`". Put rustup first for every recipe.
+export PATH := $(HOME)/.cargo/bin:$(PATH)
+
+RUSTUP_RUSTC ?= $(HOME)/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc
 
 # Development: debug build (fastest iteration, no opt)
 dev:
@@ -27,8 +35,6 @@ check:
 # Clean build artifacts
 clean:
 	cargo clean
-
-RUSTUP_RUSTC := $(HOME)/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc
 
 # Build Leptos WASM apps
 apps:
@@ -59,6 +65,8 @@ dmg: release apps
 
 # ── Android ──────────────────────────────────────────────────
 ANDROID_HOME ?= $(HOME)/Library/Android/sdk
+JAVA_HOME    ?= $(shell /usr/libexec/java_home -v 17 2>/dev/null || echo /opt/homebrew/opt/openjdk@17)
+ADB          ?= $(ANDROID_HOME)/platform-tools/adb
 NDK_VERSION  ?= $(shell ls $(ANDROID_HOME)/ndk 2>/dev/null | sort -V | tail -1)
 NDK_HOME     ?= $(ANDROID_HOME)/ndk/$(NDK_VERSION)
 ANDROID_TARGET ?= aarch64-linux-android
@@ -94,9 +102,26 @@ android-assets:
 		echo "WARNING: apps/dist not found, run 'make apps' first"; \
 	fi
 
-# Copy .so and assemble APK via Gradle
-android-apk:
+# Stage the cross-compiled library where Gradle expects it
+android-jnilibs:
 	@mkdir -p shell/gen/android/app/src/main/jniLibs/arm64-v8a
 	cp target/$(ANDROID_TARGET)/release/libcyb.so \
 		shell/gen/android/app/src/main/jniLibs/arm64-v8a/
-	cd shell/gen/android && ./gradlew assembleRelease
+
+# Release APK — unsigned, for distribution. `adb install` rejects it.
+android-apk: android-jnilibs
+	cd shell/gen/android && ANDROID_HOME=$(ANDROID_HOME) JAVA_HOME=$(JAVA_HOME) ./gradlew assembleRelease
+
+# Debug APK — Gradle signs it with the local debug key, so a device accepts it
+android-debug: android-rust android-assets android-jnilibs
+	cd shell/gen/android && ANDROID_HOME=$(ANDROID_HOME) JAVA_HOME=$(JAVA_HOME) ./gradlew assembleDebug
+
+# Source to running app on a plugged-in phone, one command
+android-run: android-debug
+	$(ADB) install -r shell/gen/android/app/build/outputs/apk/debug/app-debug.apk
+	$(ADB) shell am start -n ai.cyb.app/.MainActivity
+	@echo "logs: make android-log"
+
+# Live Rust logs from the device — panics land here and nowhere else
+android-log:
+	$(ADB) logcat -s cyb:V RustStdoutStderr:V
