@@ -1,40 +1,49 @@
 .PHONY: dev fast build run clean check apps dmg android android-rust android-assets \
         android-jnilibs android-apk android-debug android-run android-log
 
-# Homebrew ships its own cargo and rustc and they sit ahead of rustup on PATH
-# here. Homebrew's rustc has no cross targets, so an Android build under it
-# dies with "can't find crate for `core`". Put rustup first for every recipe.
-export PATH := $(HOME)/.cargo/bin:$(PATH)
+# Resolve the toolchain by absolute path instead of trusting PATH. Homebrew
+# ships its own cargo and rustc, and a `rustc` picked up from PATH here can be
+# Homebrew's even when `cargo` is rustup's — mixing the two poisons target/
+# with artifacts each rejects ("found crate compiled by an incompatible
+# version of rustc"), and Homebrew's rustc has no cross targets at all, so an
+# Android build under it dies with "can't find crate for `core`".
+RUSTUP_RUSTC ?= $(shell $(HOME)/.cargo/bin/rustup which rustc 2>/dev/null)
+RUSTUP_BIN   := $(dir $(RUSTUP_RUSTC))
+CARGO        ?= $(RUSTUP_BIN)cargo
+export RUSTC := $(RUSTUP_RUSTC)
 
-RUSTUP_RUSTC ?= $(HOME)/.rustup/toolchains/stable-aarch64-apple-darwin/bin/rustc
+# Fail loudly rather than building half the workspace with the wrong compiler.
+ifeq ($(RUSTUP_RUSTC),)
+$(error cannot resolve the rustup toolchain — is rustup installed?)
+endif
 
 # Development: debug build (fastest iteration, no opt)
 dev:
-	cargo run -p cyb
+	$(CARGO) run -p cyb
 
 # Fast release-quality dev build (thin-LTO, 8 CUs — ~60s incremental vs 290s fat)
 fast:
-	cargo run --profile release-dev -p cyb
+	$(CARGO) run --profile release-dev -p cyb
 
 # Build (debug)
 build:
-	cargo build -p cyb
+	$(CARGO) build -p cyb
 
 # Build release (fat-LTO, for DMG)
 release:
-	cargo build --release -p cyb
+	$(CARGO) build --release -p cyb
 
 # Run release binary
 run:
-	cargo run --release -p cyb
+	$(CARGO) run --release -p cyb
 
 # Check all (fast, no codegen)
 check:
-	cargo check --workspace
+	$(CARGO) check --workspace
 
 # Clean build artifacts
 clean:
-	cargo clean
+	$(CARGO) clean
 
 # Build Leptos WASM apps
 apps:
@@ -89,7 +98,7 @@ android-rust:
 	CXX_aarch64_linux_android=$(NDK_BIN)/aarch64-linux-android$(ANDROID_API)-clang++ \
 	AR_aarch64_linux_android=$(NDK_BIN)/llvm-ar \
 	CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER=$(NDK_BIN)/aarch64-linux-android$(ANDROID_API)-clang \
-	cargo build --release --target $(ANDROID_TARGET) --lib -p cyb --no-default-features --features android
+	$(CARGO) build --release --target $(ANDROID_TARGET) --lib -p cyb --no-default-features --features android
 
 # Copy apps build into Android assets
 android-assets:
