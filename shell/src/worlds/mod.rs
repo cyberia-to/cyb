@@ -1,17 +1,19 @@
-pub mod cell;
+pub mod robot;
 pub mod graph;
 pub mod sigma;
-pub mod terminal;
+pub mod com;
 
 use bevy::prelude::*;
 
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum WorldState {
+    /// The cybergraph itself, rendered by mir.
     #[default]
     Graph,
-    Terminal,
-    /// Live-loaded prysm cell (the robot landing and other app pages).
-    Cell,
+    /// The commander's own world: nushell, rune, the prompt.
+    Com,
+    /// The robot: live-loaded prysm cells (its landing and other pages).
+    Robot,
     /// Money: balance, send, events, sense (MoneyWallet).
     Sigma,
 }

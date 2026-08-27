@@ -66,7 +66,7 @@ impl Plugin for ChromePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ChromeState>()
             .add_systems(Startup, spawn_chrome)
-            .add_systems(OnEnter(WorldState::Terminal), unfocus_chrome)
+            .add_systems(OnEnter(WorldState::Com), unfocus_chrome)
             .add_systems(
                 Update,
                 (
@@ -258,9 +258,9 @@ fn spawn_chrome(mut commands: Commands) {
                     ))
                     .with_children(|tabs| {
                         for (label, world) in [
-                            ("mir", WorldState::Graph),
-                            ("term", WorldState::Terminal),
-                            ("cell", WorldState::Cell),
+                            ("graph", WorldState::Graph),
+                            ("com", WorldState::Com),
+                            ("robot", WorldState::Robot),
                             ("sigma", WorldState::Sigma),
                         ] {
                             tabs.spawn((
@@ -415,8 +415,8 @@ fn update_address_bar(
     }
     let uri = match world_state.get() {
         WorldState::Graph => "cyb://graph",
-        WorldState::Terminal => "cyb://terminal",
-        WorldState::Cell => "cyb://landing",
+        WorldState::Com => "cyb://com",
+        WorldState::Robot => "cyb://robot",
         WorldState::Sigma => "cyb://sigma",
     };
     for mut text in &mut q {
@@ -548,9 +548,9 @@ pub fn handle_chrome_input(world: &mut World) {
         world.resource_mut::<ChromeState>().just_submitted = true;
 
         let target = match cmd.as_str() {
-            "graph" => Some(WorldState::Graph),
-            "terminal" => Some(WorldState::Terminal),
-            "landing" | "cell" => Some(WorldState::Cell),
+            "graph" | "mir" => Some(WorldState::Graph),
+            "com" | "terminal" => Some(WorldState::Com),
+            "robot" | "cell" | "landing" => Some(WorldState::Robot),
             "sigma" | "money" => Some(WorldState::Sigma),
             _ => None,
         };
@@ -560,7 +560,7 @@ pub fn handle_chrome_input(world: &mut World) {
             // Unknown command → forward to nushell in terminal world
             world
                 .resource_mut::<NextState<WorldState>>()
-                .set(WorldState::Terminal);
+                .set(WorldState::Com);
             if let Some(mut p) = world.get_resource_mut::<crate::worlds::PendingShellCmd>() {
                 p.0 = Some(cmd);
             }

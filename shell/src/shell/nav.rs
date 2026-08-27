@@ -17,7 +17,7 @@ pub fn tab_navigation_system(
         if *interaction == Interaction::Pressed {
             let target = match tab.index {
                 0 => WorldState::Graph,
-                1 => WorldState::Terminal,
+                1 => WorldState::Com,
                 2 => WorldState::Sigma,
                 _ => continue,
             };

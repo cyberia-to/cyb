@@ -11,8 +11,8 @@ pub struct HotkeysPlugin;
 struct HotkeyManagerRes {
     _manager: GlobalHotKeyManager,
     graph_id: u32,
-    terminal_id: u32,
-    cell_id: u32,
+    com_id: u32,
+    robot_id: u32,
     sigma_id: u32,
 }
 
@@ -28,20 +28,20 @@ fn register_hotkeys(world: &mut World) {
 
     let mods = Modifiers::SUPER;
     let hk_graph = HotKey::new(Some(mods), Code::Digit1);
-    let hk_terminal = HotKey::new(Some(mods), Code::Digit2);
-    let hk_cell = HotKey::new(Some(mods), Code::Digit3);
+    let hk_com = HotKey::new(Some(mods), Code::Digit2);
+    let hk_robot = HotKey::new(Some(mods), Code::Digit3);
     let hk_sigma = HotKey::new(Some(mods), Code::Digit4);
 
     manager.register(hk_graph).expect("register Cmd+1");
-    manager.register(hk_terminal).expect("register Cmd+2");
-    manager.register(hk_cell).expect("register Cmd+3");
+    manager.register(hk_com).expect("register Cmd+2");
+    manager.register(hk_robot).expect("register Cmd+3");
     manager.register(hk_sigma).expect("register Cmd+4");
 
     world.insert_non_send_resource(HotkeyManagerRes {
         _manager: manager,
         graph_id: hk_graph.id(),
-        terminal_id: hk_terminal.id(),
-        cell_id: hk_cell.id(),
+        com_id: hk_com.id(),
+        robot_id: hk_robot.id(),
         sigma_id: hk_sigma.id(),
     });
 }
@@ -55,10 +55,10 @@ fn poll_hotkey_events(
     while let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
         let target = if event.id == hotkeys.graph_id {
             WorldState::Graph
-        } else if event.id == hotkeys.terminal_id {
-            WorldState::Terminal
-        } else if event.id == hotkeys.cell_id {
-            WorldState::Cell
+        } else if event.id == hotkeys.com_id {
+            WorldState::Com
+        } else if event.id == hotkeys.robot_id {
+            WorldState::Robot
         } else if event.id == hotkeys.sigma_id {
             WorldState::Sigma
         } else {

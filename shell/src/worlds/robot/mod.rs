@@ -1,4 +1,4 @@
-//! Cell world — live-loaded application pages.
+//! Robot world — the robot's own pages, live-loaded as prysm cells.
 //!
 //! A *cell* is one app screen authored in `rune`, decoded by `prysm`, rendered
 //! as native Bevy entities. The binary is a frozen shell; the app is the set of
@@ -21,16 +21,16 @@ use crate::shell::chrome::{CHROME_TOP_H, CHROME_BOTTOM_H};
 const G: f32 = theme::G;
 const CONTENT_RATIO: f32 = 0.62;
 
-pub struct CellWorldPlugin;
+pub struct RobotWorldPlugin;
 
 /// Root of the rendered page. Despawned (recursively) on world exit.
 #[derive(Component)]
 struct CellMarker;
 
-impl Plugin for CellWorldPlugin {
+impl Plugin for RobotWorldPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(WorldState::Cell), setup_cell)
-            .add_systems(OnExit(WorldState::Cell), destroy_cell);
+        app.add_systems(OnEnter(WorldState::Robot), setup_cell)
+            .add_systems(OnExit(WorldState::Robot), destroy_cell);
     }
 }
 
@@ -138,7 +138,7 @@ fn setup_cell(mut commands: Commands) {
             for c in &chunks {
                 dispatch(&mut commands, page, c);
             }
-            info!("Cell 'landing' rendered ({} elements)", chunks.len());
+            info!("Robot cell 'landing' rendered ({} elements)", chunks.len());
         }
         Err(e) => {
             dispatch(&mut commands, page, &Chunk::error(&e));

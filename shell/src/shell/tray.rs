@@ -11,8 +11,8 @@ struct TrayState {
     _tray:       tray_icon::TrayIcon,
     show_id:     String,
     graph_id:    String,
-    terminal_id: String,
-    cell_id:     String,
+    com_id: String,
+    robot_id:     String,
     sigma_id:    String,
     quit_id:     String,
 }
@@ -29,23 +29,23 @@ fn create_tray(world: &mut World) {
 
     let item_show     = MenuItem::new("Show cyb", true, None);
     let item_graph    = MenuItem::new("Graph (Cmd+1)", true, None);
-    let item_terminal = MenuItem::new("Terminal (Cmd+2)", true, None);
-    let item_cell     = MenuItem::new("Landing (Cmd+3)", true, None);
+    let item_com = MenuItem::new("Com (Cmd+2)", true, None);
+    let item_robot     = MenuItem::new("Robot (Cmd+3)", true, None);
     let item_sigma    = MenuItem::new("Sigma (Cmd+4)", true, None);
     let item_quit     = MenuItem::new("Quit cyb", true, None);
 
     let show_id     = item_show.id().as_ref().to_string();
     let graph_id    = item_graph.id().as_ref().to_string();
-    let terminal_id = item_terminal.id().as_ref().to_string();
-    let cell_id     = item_cell.id().as_ref().to_string();
+    let com_id = item_com.id().as_ref().to_string();
+    let robot_id     = item_robot.id().as_ref().to_string();
     let sigma_id    = item_sigma.id().as_ref().to_string();
     let quit_id     = item_quit.id().as_ref().to_string();
 
     let _ = menu.append(&item_show);
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&item_graph);
-    let _ = menu.append(&item_terminal);
-    let _ = menu.append(&item_cell);
+    let _ = menu.append(&item_com);
+    let _ = menu.append(&item_robot);
     let _ = menu.append(&item_sigma);
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&item_quit);
@@ -67,8 +67,8 @@ fn create_tray(world: &mut World) {
         _tray: tray,
         show_id,
         graph_id,
-        terminal_id,
-        cell_id,
+        com_id,
+        robot_id,
         sigma_id,
         quit_id,
     });
@@ -156,10 +156,10 @@ fn poll_tray_events(
 
         let target = if id == tray.graph_id {
             WorldState::Graph
-        } else if id == tray.terminal_id {
-            WorldState::Terminal
-        } else if id == tray.cell_id {
-            WorldState::Cell
+        } else if id == tray.com_id {
+            WorldState::Com
+        } else if id == tray.robot_id {
+            WorldState::Robot
         } else if id == tray.sigma_id {
             WorldState::Sigma
         } else {

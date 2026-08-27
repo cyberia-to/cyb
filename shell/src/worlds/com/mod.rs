@@ -33,7 +33,7 @@ const NU_CONFIG_SOURCE: &str = include_str!("../../../assets/nu-config/config.nu
 
 // ── Plugin ────────────────────────────────────────────────────────────────────
 
-pub struct TerminalWorldPlugin;
+pub struct ComWorldPlugin;
 
 #[derive(Component)]
 struct PromptLabel;
@@ -41,13 +41,13 @@ struct PromptLabel;
 #[derive(Component)]
 struct LineBufferDisplay;
 
-impl Plugin for TerminalWorldPlugin {
+impl Plugin for ComWorldPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(WorldState::Terminal), setup_terminal)
-            .add_systems(OnExit(WorldState::Terminal), destroy_terminal)
+        app.add_systems(OnEnter(WorldState::Com), setup_terminal)
+            .add_systems(OnExit(WorldState::Com), destroy_terminal)
             .add_systems(
                 Update,
-                terminal_update.run_if(in_state(WorldState::Terminal)),
+                terminal_update.run_if(in_state(WorldState::Com)),
             );
     }
 }
@@ -622,7 +622,7 @@ fn setup_terminal(world: &mut World) {
         set_terminal_visible(world, root_entity, true);
         update_prompt(world);
         update_input_display(world);
-        info!("Terminal resumed");
+        info!("Com resumed");
         return;
     }
 
@@ -678,7 +678,7 @@ fn setup_terminal(world: &mut World) {
         scroll_offset: 0.0,
     });
 
-    info!("Terminal world initialized");
+    info!("Com world initialized");
 }
 
 fn spawn_terminal_ui(
@@ -801,7 +801,7 @@ fn terminal_update(world: &mut World) {
 
 // ── Teardown ──────────────────────────────────────────────────────────────────
 
-/// Leaving the terminal hides its tree; it is never torn down.
+/// Leaving com hides its tree; it is never torn down.
 ///
 /// The tree used to be despawned here while scrollback/prompt/input were
 /// detached to survive — which left those three in `bevy_ui`'s taffy tree
@@ -813,7 +813,7 @@ fn destroy_terminal(world: &mut World) {
     let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() else { return };
     let root_entity = state.root_entity;
     set_terminal_visible(world, root_entity, false);
-    info!("Terminal paused (state persisted)");
+    info!("Com paused (state persisted)");
 }
 
 fn set_terminal_visible(world: &mut World, root: Entity, visible: bool) {
