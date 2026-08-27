@@ -89,8 +89,32 @@ fn track_safe_area(mut safe: ResMut<SafeArea>, windows: Query<&Window>) {
 fn track_safe_area(_safe: ResMut<SafeArea>, _windows: Query<&Window>) {}
 
 #[cfg(target_os = "android")]
-fn drive_soft_input(mut input: ResMut<SoftInput>) {
+fn drive_soft_input(mut input: ResMut<SoftInput>, mut hz_set: Local<bool>) {
     let Some(app) = bevy::android::ANDROID_APP.get() else { return };
+
+    // Ask the compositor for the panel's fast mode once the surface exists.
+    // Without this the adaptive display idles at 60 Hz and vsync caps the
+    // app there no matter how cheap the frame is. Resolved via dlsym: the
+    // symbol lives in libnativewindow.so (API 30+), which the API-24 link
+    // sysroot does not carry.
+    if !*hz_set {
+        if let Some(window) = app.native_window() {
+            unsafe {
+                let lib = libc::dlopen(c"libnativewindow.so".as_ptr(), libc::RTLD_NOW);
+                let sym = if lib.is_null() { std::ptr::null_mut() }
+                          else { libc::dlsym(lib, c"ANativeWindow_setFrameRate".as_ptr()) };
+                if sym.is_null() {
+                    warn!("platform: ANativeWindow_setFrameRate unavailable");
+                } else {
+                    let set_rate: extern "C" fn(*mut core::ffi::c_void, f32, i8) -> i32 =
+                        std::mem::transmute(sym);
+                    let rc = set_rate(window.ptr().as_ptr().cast(), 120.0, 0);
+                    info!("platform: requested 120 Hz (rc {rc})");
+                }
+            }
+            *hz_set = true;
+        }
+    }
 
     if input.wanted != input.shown {
         if input.wanted {

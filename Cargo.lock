@@ -2749,6 +2749,7 @@ dependencies = [
  "cyb-core",
  "cyber-tape",
  "global-hotkey",
+ "libc",
  "mir",
  "nu-cli",
  "nu-cmd-extra",
