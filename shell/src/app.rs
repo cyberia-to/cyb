@@ -57,6 +57,38 @@ impl Plugin for GpuBridgePlugin {
 pub fn build_app() -> App {
     let mut app = App::new();
 
+    // Vulkan platforms: ask the device for VK_EXT_external_memory_host when
+    // the adapter has it. mir's unimem wrap imports pinned blocks through it
+    // — the GPU reads the block's own pages, nothing is copied. The callback
+    // runs at device creation; mir checks enabled_device_extensions() at
+    // wrap time, so a driver without the extension just means the copy path.
+    #[cfg(any(target_os = "android", target_os = "linux"))]
+    {
+        use bevy::render::renderer::raw_vulkan_init::RawVulkanInitSettings;
+        let mut raw = RawVulkanInitSettings::default();
+        // SAFETY: adds an extension only when the physical device lists it;
+        // removes nothing, changes nothing else.
+        unsafe {
+            raw.add_create_device_callback(|args, adapter, _features| {
+                let ext = ash::ext::external_memory_host::NAME;
+                let supported = adapter
+                    .shared_instance()
+                    .raw_instance()
+                    .enumerate_device_extension_properties(adapter.raw_physical_device())
+                    .map(|props| {
+                        props.iter().any(|p| {
+                            p.extension_name_as_c_str().is_ok_and(|n| n == ext)
+                        })
+                    })
+                    .unwrap_or(false);
+                if supported && !args.extensions.contains(&ext) {
+                    args.extensions.push(ext);
+                }
+            });
+        }
+        app.insert_resource(raw);
+    }
+
     #[allow(unused_mut)]
     let mut window_plugin = WindowPlugin {
         primary_window: Some(Window {

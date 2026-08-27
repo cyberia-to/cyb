@@ -50,6 +50,15 @@ nu-cli      = { path = "../../nu/crates/nu-cli" }
 nu-std      = { path = "../../nu/crates/nu-std" }
 nu-utils    = { path = "../../nu/crates/nu-utils" }
 
+# Vulkan platforms: raw device-extension callback (see app.rs) speaks ash —
+# the same one wgpu-hal builds against.
+[target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
+ash = "0.38"
+# Adds the raw-vulkan-init hooks only where Vulkan exists; with resolver v2
+# this feature never reaches the macOS build (where bevy_render's module
+# would fail against a Metal-only wgpu).
+bevy = { workspace = true, features = ["raw_vulkan_init"] }
+
 # Desktop-only surfaces: global hotkeys, the tray, the pasteboard.
 [target.'cfg(not(target_os = "android"))'.dependencies]
 global-hotkey = "0.7.0"
