@@ -52,6 +52,11 @@ nu-utils    = { path = "../../nu/crates/nu-utils" }
 
 # Vulkan platforms: raw device-extension callback (see app.rs) speaks ash —
 # the same one wgpu-hal builds against.
+[target.'cfg(target_os = "android")'.dependencies]
+# The soft keyboard speaks GameTextInput; bevy re-exports the same crate it
+# drives the activity with, so the versions cannot drift.
+android-activity = "0.6.1"
+
 [target.'cfg(any(target_os = "android", target_os = "linux"))'.dependencies]
 ash = "0.38"
 # Adds the raw-vulkan-init hooks only where Vulkan exists; with resolver v2

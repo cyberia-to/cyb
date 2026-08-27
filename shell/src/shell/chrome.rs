@@ -4,6 +4,7 @@ use bevy::prelude::*;
 use prysm::theme;
 
 use crate::shell::clipboard::read_clipboard;
+use crate::shell::platform::{SafeArea, SoftInput};
 use crate::worlds::WorldState;
 
 /// Logical-pixel heights of the persistent chrome bars (address bar top, commander bottom).
@@ -18,6 +19,9 @@ pub const CHROME_BOTTOM_H: f32 = COMMANDER_H + 6.0 + TABS_H;
 #[derive(Resource)]
 pub struct ChromeState {
     pub focused: bool,
+    /// Set when something other than the keyboard decided the line is done —
+    /// the soft keyboard's "go", which arrives as text rather than a key.
+    pub submit_now: bool,
     pub just_submitted: bool, // true for one frame after commander Enter
     pub text: String,
     key_cursor: bevy::ecs::message::MessageCursor<KeyboardInput>,
@@ -27,12 +31,19 @@ impl Default for ChromeState {
     fn default() -> Self {
         Self {
             focused: false,
+            submit_now: false,
             just_submitted: false,
             text: String::new(),
             key_cursor: Default::default(),
         }
     }
 }
+
+/// The two chrome bars, so the safe-area system can pad them.
+#[derive(Component)]
+struct ChromeTopBar;
+#[derive(Component)]
+struct ChromeBottomBar;
 
 #[derive(Component)]
 struct ChromeCamera;
@@ -42,6 +53,8 @@ struct AddressBarText;
 pub struct CommanderContainer;
 #[derive(Component)]
 struct CommanderText;
+#[derive(Component)]
+struct CommanderSubmit;
 /// A tap-target for one world — the touch counterpart of Cmd+1..4, and the
 /// only world navigation Android has until gestures land.
 #[derive(Component)]
@@ -59,11 +72,14 @@ impl Plugin for ChromePlugin {
                 (
                     clear_chrome_submitted, // must be first
                     handle_commander_click,
+                    handle_commander_submit,
                     handle_world_buttons,
                     handle_chrome_input,
                     update_address_bar,
                     update_commander_display,
                     sync_commander_focus_style,
+                    apply_safe_area,
+                    request_soft_input,
                 )
                     .chain(),
             );
@@ -107,6 +123,7 @@ fn spawn_chrome(mut commands: Commands) {
         .with_children(|root| {
             // ── Address Bar (top, full width) ───────────────────────────
             root.spawn((
+                ChromeTopBar,
                 Node {
                     width: Val::Percent(100.0),
                     height: Val::Px(36.0),
@@ -142,11 +159,14 @@ fn spawn_chrome(mut commands: Commands) {
 
             // ── Bottom chrome: commander above, world tabs on the very
             // bottom edge — the row a thumb reaches without moving the hand.
-            root.spawn(Node {
-                width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                ..default()
-            })
+            root.spawn((
+                ChromeBottomBar,
+                Node {
+                    width: Val::Percent(100.0),
+                    flex_direction: FlexDirection::Column,
+                    ..default()
+                },
+            ))
             .with_children(|bottom| {
                 // Upper row: commander, full width beside the shortcut hint.
                 bottom
@@ -193,11 +213,31 @@ fn spawn_chrome(mut commands: Commands) {
                             ));
                         });
 
+                        // Submit. On desktop Enter does this and the glyph is
+                        // a hint; on Android the soft keyboard's "go" never
+                        // reaches the app — GameTextInput consumes it — so
+                        // this button is the only way to commit a line.
                         row.spawn((
-                            Text::new("\u{2318}K"),
-                            TextFont { font_size: 12.0, ..default() },
-                            TextColor(Color::srgba(0.35, 0.35, 0.45, 0.55)),
-                        ));
+                            CommanderSubmit,
+                            Node {
+                                width: Val::Px(COMMANDER_H),
+                                height: Val::Px(COMMANDER_H),
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                border: UiRect::all(Val::Px(1.0)),
+                                ..default()
+                            },
+                            BackgroundColor(theme::DARK_BASE),
+                            BorderColor::all(theme::BORDER),
+                            Interaction::default(),
+                        ))
+                        .with_children(|b| {
+                            b.spawn((
+                                Text::new("\u{25B8}"),
+                                TextFont { font_size: 18.0, ..default() },
+                                TextColor(Color::srgb(0.21, 0.84, 0.68)),
+                            ));
+                        });
                     });
 
                 // Lower row: the world tabs, spread across the full width so
@@ -262,6 +302,17 @@ fn handle_commander_click(
     }
 }
 
+fn handle_commander_submit(
+    q: Query<&Interaction, (Changed<Interaction>, With<CommanderSubmit>)>,
+    mut chrome: ResMut<ChromeState>,
+) {
+    for interaction in &q {
+        if *interaction == Interaction::Pressed && !chrome.text.trim().is_empty() {
+            chrome.submit_now = true;
+        }
+    }
+}
+
 fn handle_world_buttons(
     mut q: Query<
         (&Interaction, &WorldNavButton, &mut BackgroundColor),
@@ -307,6 +358,50 @@ fn sync_commander_focus_style(
             });
         } else {
             commands.entity(entity).remove::<Outline>();
+        }
+    }
+}
+
+/// Grow the bars by whatever the system reserves, so the tab strip clears the
+/// gesture pill and the address bar clears the status bar.
+fn apply_safe_area(
+    safe: Res<SafeArea>,
+    mut top: Query<&mut Node, (With<ChromeTopBar>, Without<ChromeBottomBar>)>,
+    mut bottom: Query<&mut Node, (With<ChromeBottomBar>, Without<ChromeTopBar>)>,
+) {
+    // No is_changed() gate: SafeArea is written by another plugin, and if
+    // that write landed after this system in the same frame the change would
+    // be missed for good. Assigning an equal Val is free.
+    for mut node in &mut top {
+        node.height = Val::Px(CHROME_TOP_H + safe.top);
+        node.padding.top = Val::Px(safe.top);
+    }
+    for mut node in &mut bottom {
+        node.padding.bottom = Val::Px(safe.bottom);
+    }
+}
+
+/// The commander is the only text surface in the chrome: focus it and the soft
+/// keyboard comes up, leave it and the keyboard goes away.
+fn request_soft_input(mut chrome: ResMut<ChromeState>, mut input: ResMut<SoftInput>) {
+    if input.wanted != chrome.focused {
+        input.wanted = chrome.focused;
+    }
+    // On Android the soft keyboard's text arrives through GameTextInput, not
+    // as key events, so the IME buffer is the commander's line while focused.
+    // Enter still comes through as a key event and `handle_chrome_input`
+    // submits from `chrome.text` — which is why this mirrors rather than
+    // appends.
+    #[cfg(target_os = "android")]
+    if chrome.focused && chrome.text != input.text {
+        // The IME marks "go" with a newline. Everything before it is the
+        // line; seeing one is Enter, since the key event itself is consumed
+        // by GameTextInput and never reaches Bevy.
+        if let Some(line) = input.text.split('\n').next().filter(|_| input.text.contains('\n')) {
+            chrome.text = line.to_string();
+            chrome.submit_now = true;
+        } else {
+            chrome.text = input.text.clone();
         }
     }
 }
@@ -402,6 +497,17 @@ pub fn handle_chrome_input(world: &mut World) {
     world.resource_mut::<ChromeState>().key_cursor = cursor;
 
     let mut pending_cmd: Option<String> = None;
+
+    // A submit that arrived as text rather than as a key press.
+    {
+        let mut chrome = world.resource_mut::<ChromeState>();
+        if chrome.submit_now {
+            chrome.submit_now = false;
+            pending_cmd = Some(chrome.text.trim().to_string());
+            chrome.text.clear();
+            chrome.focused = false;
+        }
+    }
 
     {
         let mut chrome = world.resource_mut::<ChromeState>();

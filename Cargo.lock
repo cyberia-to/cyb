@@ -2741,6 +2741,7 @@ dependencies = [
 name = "cyb"
 version = "0.1.0"
 dependencies = [
+ "android-activity",
  "arboard",
  "ash",
  "bevy",

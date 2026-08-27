@@ -132,6 +132,7 @@ pub fn build_app() -> App {
     .add_plugins(prysm::PrysmPlugin)
     .add_plugins(worlds::WorldsPlugin)
     .add_plugins(shell::chrome::ChromePlugin)
+    .add_plugins(shell::platform::PlatformPlugin)
     .add_plugins(shell::nav::NavPlugin)
     .add_plugins(mir::bevy::GraphWorldPlugin)
     .add_plugins(worlds::graph::GraphBridgePlugin)

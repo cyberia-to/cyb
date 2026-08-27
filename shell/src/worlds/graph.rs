@@ -7,6 +7,7 @@ use mir::bevy::world::GraphWorldState;
 
 use super::WorldState;
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H};
+use crate::shell::platform::SafeArea;
 
 pub struct GraphBridgePlugin;
 
@@ -25,11 +26,16 @@ fn insert_graph_config(mut commands: Commands) {
 
 /// Tell mir which screen bands the chrome owns, so a thumb on the tab strip
 /// or in the commander never reaches the camera.
-fn sync_camera_inset(cam: Option<ResMut<GraphCamera>>) {
+fn sync_camera_inset(cam: Option<ResMut<GraphCamera>>, safe: Res<SafeArea>) {
     // Optional: mir only inserts the camera once the graph world runs, and
     // this system ticks from the first frame.
     let Some(mut cam) = cam else { return };
-    let inset = [CHROME_TOP_H, CHROME_BOTTOM_H, 0.0, 0.0];
+    let inset = [
+        CHROME_TOP_H + safe.top,
+        CHROME_BOTTOM_H + safe.bottom,
+        0.0,
+        0.0,
+    ];
     if cam.input_inset != inset {
         cam.input_inset = inset;
     }
