@@ -119,5 +119,62 @@ for side in (16, 32, 128, 256, 512):
                        check=True, stdout=subprocess.DEVNULL)
 
 subprocess.run(['iconutil', '-c', 'icns', iconset, '-o', ICNS], check=True)
-shutil.rmtree(build, ignore_errors=True)
 print(f'wrote {ICNS}', file=sys.stderr)
+
+# ── Android adaptive icon ────────────────────────────────────────────────────
+# A launcher icon is 108dp with the outer 25% reserved for the launcher's own
+# mask and parallax: only the centre 72dp is guaranteed visible. Shipping a
+# pre-masked square (what cyb did) makes every launcher shrink it again and
+# leaves its own background showing at the corners — the small icon on a
+# not-quite-black tile. An adaptive icon hands over the two layers instead:
+# solid black background, the eye alone on the foreground inside the safe zone.
+RES = os.path.join(ROOT, 'shell/gen/android/app/src/main/res')
+SAFE = 0.62          # eye width as a fraction of the 108dp canvas
+DENSITIES = {'mdpi': 108, 'hdpi': 162, 'xhdpi': 216, 'xxhdpi': 324, 'xxxhdpi': 432}
+
+fg = bytearray(N * N * 4)
+inv_fg = 1.0 / SAFE
+for y in range(N):
+    for x in range(N):
+        r, g, b, a = sample((x - CX) * inv_fg + sw / 2.0, (y - CY) * inv_fg + sh / 2.0)
+        o = (y * N + x) * 4
+        af = a / 255.0
+        dst_px = (int(round(r * af)), int(round(g * af)), int(round(b * af)), a)
+        fg[o:o + 4] = bytes(dst_px)
+
+fg_master = os.path.join(build, 'ic_launcher_foreground.png')
+write_png(fg_master, N, N, fg)
+
+for density, px in DENSITIES.items():
+    out_dir = os.path.join(RES, f'mipmap-{density}')
+    os.makedirs(out_dir, exist_ok=True)
+    subprocess.run(['sips', '-Z', str(px), fg_master,
+                    '--out', os.path.join(out_dir, 'ic_launcher_foreground.png')],
+                   check=True, stdout=subprocess.DEVNULL)
+    # Legacy square for API < 26: the pre-masked squircle still applies there.
+    subprocess.run(['sips', '-Z', str(px), master,
+                    '--out', os.path.join(out_dir, 'ic_launcher.png')],
+                   check=True, stdout=subprocess.DEVNULL)
+
+anydpi = os.path.join(RES, 'mipmap-anydpi-v26')
+os.makedirs(anydpi, exist_ok=True)
+for name in ('ic_launcher', 'ic_launcher_round'):
+    with open(os.path.join(anydpi, f'{name}.xml'), 'w') as f:
+        f.write('<?xml version="1.0" encoding="utf-8"?>\n'
+                '<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">\n'
+                '    <background android:drawable="@color/icon_background" />\n'
+                '    <foreground android:drawable="@mipmap/ic_launcher_foreground" />\n'
+                '    <monochrome android:drawable="@mipmap/ic_launcher_foreground" />\n'
+                '</adaptive-icon>\n')
+
+values = os.path.join(RES, 'values')
+os.makedirs(values, exist_ok=True)
+with open(os.path.join(values, 'colors.xml'), 'w') as f:
+    f.write('<?xml version="1.0" encoding="utf-8"?>\n'
+            '<resources>\n'
+            '    <!-- One black, the same one every cyb surface uses. -->\n'
+            '    <color name="icon_background">#FF000000</color>\n'
+            '</resources>\n')
+
+shutil.rmtree(build, ignore_errors=True)
+print(f'wrote adaptive icon layers under {RES}', file=sys.stderr)

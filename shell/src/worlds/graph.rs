@@ -2,17 +2,18 @@ use std::sync::Arc;
 use bevy::prelude::*;
 
 use mir::graph::{Csr, ParticleIndex, Cyberlink};
-use mir::bevy::resources::GraphWorldConfig;
+use mir::bevy::resources::{GraphCamera, GraphWorldConfig};
 use mir::bevy::world::GraphWorldState;
 
 use super::WorldState;
+use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H};
 
 pub struct GraphBridgePlugin;
 
 impl Plugin for GraphBridgePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, insert_graph_config)
-            .add_systems(Update, sync_graph_state);
+            .add_systems(Update, (sync_graph_state, sync_camera_inset));
     }
 }
 
@@ -20,6 +21,18 @@ fn insert_graph_config(mut commands: Commands) {
     commands.insert_resource(GraphWorldConfig {
         graph: Arc::new(build_synthetic_csr()),
     });
+}
+
+/// Tell mir which screen bands the chrome owns, so a thumb on the tab strip
+/// or in the commander never reaches the camera.
+fn sync_camera_inset(cam: Option<ResMut<GraphCamera>>) {
+    // Optional: mir only inserts the camera once the graph world runs, and
+    // this system ticks from the first frame.
+    let Some(mut cam) = cam else { return };
+    let inset = [CHROME_TOP_H, CHROME_BOTTOM_H, 0.0, 0.0];
+    if cam.input_inset != inset {
+        cam.input_inset = inset;
+    }
 }
 
 fn sync_graph_state(

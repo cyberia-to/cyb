@@ -8,7 +8,12 @@ use crate::worlds::WorldState;
 
 /// Logical-pixel heights of the persistent chrome bars (address bar top, commander bottom).
 pub const CHROME_TOP_H: f32 = 36.0;
-pub const CHROME_BOTTOM_H: f32 = 56.0; // commander 40px + bottom padding 8px + safe 8px
+/// Commander field height.
+const COMMANDER_H: f32 = 40.0;
+/// World-tab strip height — a thumb target, not a text link.
+const TABS_H: f32 = 48.0;
+/// Both bottom rows plus the gap between them.
+pub const CHROME_BOTTOM_H: f32 = COMMANDER_H + 6.0 + TABS_H;
 
 #[derive(Resource)]
 pub struct ChromeState {
@@ -135,111 +140,111 @@ fn spawn_chrome(mut commands: Commands) {
                 ));
             });
 
-            // ── Bottom row: [graph ↗] | [commander 62%] | [⌘K] ─────────
+            // ── Bottom chrome: commander above, world tabs on the very
+            // bottom edge — the row a thumb reaches without moving the hand.
             root.spawn(Node {
                 width: Val::Percent(100.0),
-                flex_direction: FlexDirection::Row,
-                align_items: AlignItems::Center,
-                padding: UiRect {
-                    left: Val::Px(16.0),
-                    right: Val::Px(16.0),
-                    bottom: Val::Px(8.0),
-                    top: Val::Px(0.0),
-                },
+                flex_direction: FlexDirection::Column,
                 ..default()
             })
-            .with_children(|row| {
-                // Left: the world tabs
-                row.spawn(Node {
-                    flex_grow: 1.0,
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(2.0),
-                    ..default()
-                })
-                .with_children(|tabs| {
-                    for (label, world) in [
-                        ("mir", WorldState::Graph),
-                        ("term", WorldState::Terminal),
-                        ("cell", WorldState::Cell),
-                        ("sigma", WorldState::Sigma),
-                    ] {
-                        tabs.spawn((
-                            WorldNavButton(world),
-                            Node {
-                                padding: UiRect::axes(Val::Px(10.0), Val::Px(8.0)),
-                                ..default()
-                            },
-                            BackgroundColor(Color::NONE),
-                            Interaction::default(),
-                        ))
-                        .with_children(|btn| {
-                            btn.spawn((
-                                Text::new(label),
-                                TextFont {
-                                    font_size: 13.0,
-                                    ..default()
-                                },
-                                TextColor(Color::srgba(0.21, 0.84, 0.68, 0.55)),
-                            ));
-                        });
-                    }
-                });
-
-                // Center: commander input — 62% width
-                row.spawn((
-                    CommanderContainer,
-                    Node {
-                        width: Val::Percent(62.0),
-                        height: Val::Px(40.0),
+            .with_children(|bottom| {
+                // Upper row: commander, full width beside the shortcut hint.
+                bottom
+                    .spawn(Node {
+                        width: Val::Percent(100.0),
                         flex_direction: FlexDirection::Row,
                         align_items: AlignItems::Center,
-                        padding: UiRect::horizontal(Val::Px(14.0)),
-                        border: UiRect::all(Val::Px(1.0)),
+                        column_gap: Val::Px(10.0),
+                        padding: UiRect {
+                            left: Val::Px(16.0),
+                            right: Val::Px(16.0),
+                            top: Val::Px(0.0),
+                            bottom: Val::Px(6.0),
+                        },
                         ..default()
-                    },
-                    BackgroundColor(theme::DARK_BASE),
-                    BorderColor::all(theme::BORDER),
-                    Interaction::default(),
-                ))
-                .with_children(|cmd| {
-                    cmd.spawn((
-                        Text::new("> "),
-                        TextFont {
-                            font_size: 14.0,
-                            ..default()
-                        },
-                        TextColor(Color::srgb(0.21, 0.84, 0.68)),
-                    ));
-                    cmd.spawn((
-                        CommanderText,
-                        Text::new("ask, search, transact..."),
-                        TextFont {
-                            font_size: 14.0,
-                            ..default()
-                        },
-                        TextColor(Color::srgba(0.30, 0.30, 0.40, 0.55)),
-                    ));
-                });
+                    })
+                    .with_children(|row| {
+                        row.spawn((
+                            CommanderContainer,
+                            Node {
+                                flex_grow: 1.0,
+                                height: Val::Px(COMMANDER_H),
+                                flex_direction: FlexDirection::Row,
+                                align_items: AlignItems::Center,
+                                padding: UiRect::horizontal(Val::Px(14.0)),
+                                border: UiRect::all(Val::Px(1.0)),
+                                ..default()
+                            },
+                            BackgroundColor(theme::DARK_BASE),
+                            BorderColor::all(theme::BORDER),
+                            Interaction::default(),
+                        ))
+                        .with_children(|cmd| {
+                            cmd.spawn((
+                                Text::new("> "),
+                                TextFont { font_size: 14.0, ..default() },
+                                TextColor(Color::srgb(0.21, 0.84, 0.68)),
+                            ));
+                            cmd.spawn((
+                                CommanderText,
+                                Text::new("ask, search, transact..."),
+                                TextFont { font_size: 14.0, ..default() },
+                                TextColor(Color::srgba(0.30, 0.30, 0.40, 0.55)),
+                            ));
+                        });
 
-                // Right: shortcut hint
-                row.spawn(Node {
-                    flex_grow: 1.0,
-                    flex_direction: FlexDirection::Row,
-                    justify_content: JustifyContent::FlexEnd,
-                    align_items: AlignItems::Center,
-                    ..default()
-                })
-                .with_children(|right| {
-                    right.spawn((
-                        Text::new("⌘K"),
-                        TextFont {
-                            font_size: 12.0,
+                        row.spawn((
+                            Text::new("\u{2318}K"),
+                            TextFont { font_size: 12.0, ..default() },
+                            TextColor(Color::srgba(0.35, 0.35, 0.45, 0.55)),
+                        ));
+                    });
+
+                // Lower row: the world tabs, spread across the full width so
+                // each is a thumb-sized target.
+                bottom
+                    .spawn((
+                        Node {
+                            width: Val::Percent(100.0),
+                            height: Val::Px(TABS_H),
+                            flex_direction: FlexDirection::Row,
+                            align_items: AlignItems::Center,
+                            justify_content: JustifyContent::SpaceEvenly,
+                            border: UiRect::top(Val::Px(1.0)),
                             ..default()
                         },
-                        TextColor(Color::srgba(0.35, 0.35, 0.45, 0.55)),
-                    ));
-                });
+                        BackgroundColor(theme::DARK_BASE),
+                        BorderColor::all(theme::BORDER),
+                    ))
+                    .with_children(|tabs| {
+                        for (label, world) in [
+                            ("mir", WorldState::Graph),
+                            ("term", WorldState::Terminal),
+                            ("cell", WorldState::Cell),
+                            ("sigma", WorldState::Sigma),
+                        ] {
+                            tabs.spawn((
+                                WorldNavButton(world),
+                                Node {
+                                    flex_grow: 1.0,
+                                    height: Val::Percent(100.0),
+                                    flex_direction: FlexDirection::Row,
+                                    align_items: AlignItems::Center,
+                                    justify_content: JustifyContent::Center,
+                                    ..default()
+                                },
+                                BackgroundColor(Color::NONE),
+                                Interaction::default(),
+                            ))
+                            .with_children(|btn| {
+                                btn.spawn((
+                                    Text::new(label),
+                                    TextFont { font_size: 14.0, ..default() },
+                                    TextColor(Color::srgba(0.21, 0.84, 0.68, 0.55)),
+                                ));
+                            });
+                        }
+                    });
             });
         });
 }
