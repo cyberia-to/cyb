@@ -45,6 +45,13 @@ struct ChromeTopBar;
 #[derive(Component)]
 struct ChromeBottomBar;
 
+/// A world's root node. The chrome owns the screen bands the bars cover —
+/// tag a world root with this and its top/bottom track the bars' true
+/// heights (chrome + system safe area), so world content never sits under
+/// the panels no matter the device insets.
+#[derive(Component)]
+pub struct ContentRoot;
+
 #[derive(Component)]
 struct ChromeCamera;
 #[derive(Component)]
@@ -166,6 +173,9 @@ fn spawn_chrome(mut commands: Commands) {
                     flex_direction: FlexDirection::Column,
                     ..default()
                 },
+                // Opaque: whatever a world draws slides under this bar, never
+                // through it.
+                BackgroundColor(theme::DARK_BASE),
             ))
             .with_children(|bottom| {
                 // Upper row: commander, full width beside the shortcut hint.
@@ -193,6 +203,7 @@ fn spawn_chrome(mut commands: Commands) {
                                 align_items: AlignItems::Center,
                                 padding: UiRect::horizontal(Val::Px(14.0)),
                                 border: UiRect::all(Val::Px(1.0)),
+                                border_radius: BorderRadius::all(Val::Px(COMMANDER_H / 2.0)),
                                 ..default()
                             },
                             BackgroundColor(theme::DARK_BASE),
@@ -224,17 +235,16 @@ fn spawn_chrome(mut commands: Commands) {
                                 height: Val::Px(COMMANDER_H),
                                 align_items: AlignItems::Center,
                                 justify_content: JustifyContent::Center,
-                                border: UiRect::all(Val::Px(1.0)),
+                                border_radius: BorderRadius::all(Val::Px(COMMANDER_H / 2.0)),
                                 ..default()
                             },
-                            BackgroundColor(theme::DARK_BASE),
-                            BorderColor::all(theme::BORDER),
+                            BackgroundColor(Color::srgba(0.21, 0.84, 0.68, 0.14)),
                             Interaction::default(),
                         ))
                         .with_children(|b| {
                             b.spawn((
-                                Text::new("\u{25B8}"),
-                                TextFont { font_size: 18.0, ..default() },
+                                Text::new(">"),
+                                TextFont { font_size: 17.0, ..default() },
                                 TextColor(Color::srgb(0.21, 0.84, 0.68)),
                             ));
                         });
@@ -366,8 +376,9 @@ fn sync_commander_focus_style(
 /// gesture pill and the address bar clears the status bar.
 fn apply_safe_area(
     safe: Res<SafeArea>,
-    mut top: Query<&mut Node, (With<ChromeTopBar>, Without<ChromeBottomBar>)>,
-    mut bottom: Query<&mut Node, (With<ChromeBottomBar>, Without<ChromeTopBar>)>,
+    mut top: Query<&mut Node, (With<ChromeTopBar>, Without<ChromeBottomBar>, Without<ContentRoot>)>,
+    mut bottom: Query<&mut Node, (With<ChromeBottomBar>, Without<ChromeTopBar>, Without<ContentRoot>)>,
+    mut content: Query<&mut Node, (With<ContentRoot>, Without<ChromeTopBar>, Without<ChromeBottomBar>)>,
 ) {
     // No is_changed() gate: SafeArea is written by another plugin, and if
     // that write landed after this system in the same frame the change would
@@ -378,6 +389,12 @@ fn apply_safe_area(
     }
     for mut node in &mut bottom {
         node.padding.bottom = Val::Px(safe.bottom);
+    }
+    // World roots live exactly between the bars — insets included, so
+    // content never sits under either panel on any device.
+    for mut node in &mut content {
+        node.top = Val::Px(CHROME_TOP_H + safe.top);
+        node.bottom = Val::Px(CHROME_BOTTOM_H + safe.bottom);
     }
 }
 

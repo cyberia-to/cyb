@@ -103,6 +103,7 @@ fn setup_cell(mut commands: Commands) {
     let root = commands
         .spawn((
             CellMarker,
+            crate::shell::chrome::ContentRoot,
             Node {
                 position_type: PositionType::Absolute,
                 top: Val::Px(CHROME_TOP_H),

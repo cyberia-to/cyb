@@ -90,6 +90,7 @@ fn setup_sigma(mut commands: Commands, state: Res<SigmaState>) {
     commands
         .spawn((
             SigmaRoot,
+            crate::shell::chrome::ContentRoot,
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(16.0),

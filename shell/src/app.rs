@@ -105,6 +105,9 @@ pub fn build_app() -> App {
         primary_window: Some(Window {
             title: "cyb".into(),
             resolution: (1280u32, 800u32).into(),
+            // Uncapped: mailbox where the platform has it, immediate else.
+            // The graph is the frame cost and it pays per pixel, not per hz.
+            present_mode: bevy::window::PresentMode::AutoNoVsync,
             ..default()
         }),
         ..default()

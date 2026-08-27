@@ -23,7 +23,7 @@ use tape::Chunk;
 use prysm::{StreamScrollback, dispatch, theme};
 
 use super::WorldState;
-use crate::shell::chrome::{CHROME_TOP_H, CHROME_BOTTOM_H};
+use crate::shell::chrome::{ContentRoot, CHROME_TOP_H, CHROME_BOTTOM_H};
 
 const CONTENT_RATIO: f32 = 0.62;
 const G: f32 = theme::G;
@@ -219,10 +219,10 @@ fn prompt_text(_engine: &NuShellEngine) -> String {
         .unwrap_or_else(|_| "~".to_string());
     if let Ok(home) = std::env::var("HOME") {
         if cwd.starts_with(&home) {
-            return format!("~{} ▸ ", &cwd[home.len()..]);
+            return format!("~{} > ", &cwd[home.len()..]);
         }
     }
-    format!("{} ▸ ", cwd)
+    format!("{} > ", cwd)
 }
 
 // ── Eval thread ───────────────────────────────────────────────────────────────
@@ -491,7 +491,7 @@ fn update_prompt(world: &mut World) {
     let (prompt_entity, prompt_str) = {
         let state = world.get_non_send_resource::<TerminalNonSendState>().unwrap();
         let engine = state.nu_engine.as_ref();
-        let text = engine.map(prompt_text).unwrap_or_else(|| "▸ ".to_string());
+        let text = engine.map(prompt_text).unwrap_or_else(|| "> ".to_string());
         (state.prompt_entity, text)
     };
     if let Some(mut t) = world.get_mut::<Text>(prompt_entity) {
@@ -502,7 +502,7 @@ fn update_prompt(world: &mut World) {
 fn update_input_display(world: &mut World) {
     let (input_entity, display) = {
         let state = world.get_non_send_resource::<TerminalNonSendState>().unwrap();
-        let text = format!("{}█", state.line_buffer.buffer);
+        let text = format!("{}_", state.line_buffer.buffer);
         (state.input_entity, text)
     };
     if let Some(mut t) = world.get_mut::<Text>(input_entity) {
@@ -591,7 +591,7 @@ fn process_keyboard_input(world: &mut World) {
         ));
         // Clear input display
         if let Some(mut t) = world.get_mut::<Text>(input_entity) {
-            **t = "█".to_string();
+            **t = "_".to_string();
         }
 
         // Dispatch eval
@@ -652,7 +652,7 @@ fn setup_terminal(world: &mut World) {
     )).id();
     let input_entity = world.spawn((
         LineBufferDisplay,
-        Text::new("█".to_string()),
+        Text::new("_".to_string()),
         TextFont { font_size: theme::BODY, ..default() },
         TextColor(theme::TEXT_PRIMARY),
     )).id();
@@ -687,8 +687,10 @@ fn spawn_terminal_ui(
     prompt_entity: Entity,
     input_entity: Entity,
 ) -> (Entity, Entity) {
-    // Root container: full screen, column flex, padding for chrome bars
+    // Root container: the band between the chrome bars (ContentRoot keeps
+    // top/bottom tracking the bars' true heights, safe areas included).
     let root = world.spawn((
+        ContentRoot,
         Node {
             position_type: PositionType::Absolute,
             top: Val::Px(CHROME_TOP_H),
