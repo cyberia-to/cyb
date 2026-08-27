@@ -68,6 +68,9 @@ struct TerminalNonSendState {
     scrollback_entity: Entity,
     scroll_area_entity: Entity,
     scroll_offset: f32,
+    /// Follow the tail: new output scrolls into view until the reader
+    /// scrolls up, and resumes when they scroll back down to the end.
+    stick_to_bottom: bool,
 }
 
 // ── Nushell init ──────────────────────────────────────────────────────────────
@@ -208,7 +211,7 @@ fn dispatch_eval(state: &mut TerminalNonSendState, input: String) {
     };
 
     state.eval_in_progress = true;
-    state.scroll_offset = 100_000.0; // auto-scroll to bottom on new command
+    state.stick_to_bottom = true;
     let (tx, rx) = std::sync::mpsc::channel::<StreamMsg>();
     let (engine_tx, engine_rx) = std::sync::mpsc::channel::<NuShellEngine>();
     state.eval_rx = Some(rx);
@@ -248,7 +251,7 @@ fn dispatch_rune(state: &mut TerminalNonSendState, expr: String) {
         return;
     };
     state.eval_in_progress = true;
-    state.scroll_offset = 100_000.0;
+    state.stick_to_bottom = true;
     let (tx, rx) = std::sync::mpsc::channel::<StreamMsg>();
     let (engine_tx, engine_rx) = std::sync::mpsc::channel::<NuShellEngine>();
     state.eval_rx = Some(rx);
@@ -374,7 +377,7 @@ fn poll_eval_results(world: &mut World) {
         state.engine_rx = None;
         state.eval_in_progress = false;
         state.ctrlc_flag.store(false, Ordering::Relaxed);
-        state.scroll_offset = 100_000.0; // auto-scroll to bottom after command finishes
+        state.stick_to_bottom = true;
         (true, eng)
     } else {
         (false, None)
@@ -418,6 +421,7 @@ fn run_pending_command(world: &mut World) {
         .get_resource_mut::<crate::worlds::PendingShellCmd>()
         .and_then(|mut p| p.0.take());
     let Some(cmd) = pending else { return };
+    debug!("com: pending {cmd:?}");
     if cmd.trim().is_empty() {
         return;
     }
@@ -427,6 +431,7 @@ fn run_pending_command(world: &mut World) {
         (state.scrollback_entity, state.eval_in_progress)
     };
     if busy {
+        warn!("com: dropped {cmd:?} — eval in progress");
         return;
     }
 
@@ -481,11 +486,18 @@ fn setup_terminal(world: &mut World) {
     // Create persistent entities (not children of root yet — will be attached below)
     let scrollback_entity = world.spawn((
         StreamScrollback::default(),
+        // Top-aligned and free to grow. Bottom-aligning it (flex-end plus a
+        // full-height minimum) pushed overflow off the top of the clip, where
+        // no scroll position can reach it — which is why long output only
+        // ever showed its first screen.
         Node {
             flex_direction: FlexDirection::Column,
             width: Val::Percent(100.0),
-            min_height: Val::Percent(100.0),
-            justify_content: JustifyContent::FlexEnd,
+            // A flex child shrinks to its container by default, so the
+            // scrollback was squeezed to exactly the viewport: it never
+            // overflowed, max_scroll stayed zero, and the tail was
+            // unreachable. It must keep its content height.
+            flex_shrink: 0.0,
             row_gap: Val::Px(1.0),
             ..default()
         },
@@ -504,6 +516,7 @@ fn setup_terminal(world: &mut World) {
         scrollback_entity,
         scroll_area_entity,
         scroll_offset: 0.0,
+        stick_to_bottom: true,
     });
 
     info!("Com world initialized");
@@ -532,7 +545,10 @@ fn spawn_terminal_ui(world: &mut World, scrollback_entity: Entity) -> (Entity, E
         Node {
             flex_grow: 1.0,
             flex_direction: FlexDirection::Column,
-            overflow: Overflow::clip_y(),
+            // Scroll, not clip: bevy_ui ignores ScrollPosition unless an axis
+            // is actually declared scrollable, so a clipping node stays fixed
+            // at the top however the position is set.
+            overflow: Overflow::scroll_y(),
             padding: UiRect::all(Val::Px(G)),
             ..default()
         },
@@ -549,8 +565,9 @@ fn spawn_terminal_ui(world: &mut World, scrollback_entity: Entity) -> (Entity, E
 // ── Scroll ────────────────────────────────────────────────────────────────────
 
 fn process_scroll(world: &mut World) {
-    // Read mouse wheel events using the Messages API (same as KeyboardInput)
-    let delta_y: f32 = {
+    // Wheel where there is one, finger where there is not: a phone sends no
+    // MouseWheel at all, which is why com could not be scrolled by hand.
+    let wheel: f32 = {
         let mut cursor = {
             let Some(state_ref) = world.get_non_send_resource::<TerminalNonSendState>() else { return };
             state_ref.wheel_cursor.clone()
@@ -559,9 +576,18 @@ fn process_scroll(world: &mut World) {
         let dy: f32 = cursor.read(messages).map(|e| -e.y).sum();
         let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
         state.wheel_cursor = cursor;
-        dy
+        dy * 40.0
     };
 
+    // A single finger dragging up sends the text up: content follows the
+    // finger, so the offset moves against it.
+    let drag: f32 = {
+        let touches = world.resource::<bevy::input::touch::Touches>();
+        let live: Vec<&bevy::input::touch::Touch> = touches.iter().collect();
+        if live.len() == 1 { -live[0].delta().y } else { 0.0 }
+    };
+
+    let delta_y = wheel + drag;
     if delta_y == 0.0 { return; }
 
     // Get content / viewport heights for clamping
@@ -576,19 +602,36 @@ fn process_scroll(world: &mut World) {
 
     let max_scroll = (scrollback_h - area_h).max(0.0);
     let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
-    state.scroll_offset = (state.scroll_offset + delta_y * 40.0).clamp(0.0, max_scroll);
+    state.scroll_offset = (state.scroll_offset + delta_y).clamp(0.0, max_scroll);
+    // Reaching the end re-arms the follow; leaving it hands control back.
+    state.stick_to_bottom = state.scroll_offset >= max_scroll - 1.0;
 }
 
 fn apply_scroll_offset(world: &mut World) {
-    let (offset, scroll_area_entity, scrollback_entity) = {
+    let (offset, stick, scroll_area_entity, scrollback_entity) = {
         let state = world.get_non_send_resource::<TerminalNonSendState>().unwrap();
-        (state.scroll_offset, state.scroll_area_entity, state.scrollback_entity)
+        (state.scroll_offset, state.stick_to_bottom, state.scroll_area_entity, state.scrollback_entity)
     };
     let sb_h = world.get::<ComputedNode>(scrollback_entity).map(|cn| cn.size().y).unwrap_or(0.0);
     let sa_h = world.get::<ComputedNode>(scroll_area_entity).map(|cn| cn.size().y).unwrap_or(0.0);
     let max_scroll = (sb_h - sa_h).max(0.0);
+
+    // Layout runs after this, so max_scroll is one frame behind the newest
+    // line; following the tail every frame catches up as the output streams.
+    {
+        static LAST: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+        let c = sb_h as u32;
+        if LAST.swap(c, std::sync::atomic::Ordering::Relaxed) != c {
+            debug!("com: content {sb_h:.0} view {sa_h:.0} max_scroll {max_scroll:.0} stick {stick}");
+        }
+    }
+    let target = if stick { max_scroll } else { offset.clamp(0.0, max_scroll) };
+    {
+        let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
+        state.scroll_offset = target;
+    }
     if let Some(mut sp) = world.get_mut::<ScrollPosition>(scroll_area_entity) {
-        sp.y = offset.clamp(0.0, max_scroll);
+        sp.y = target;
     }
 }
 
