@@ -5237,6 +5237,7 @@ dependencies = [
  "acpu",
  "aruminium",
  "bevy",
+ "log",
  "memmap2",
  "pollster",
  "serde",

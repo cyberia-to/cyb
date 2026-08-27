@@ -25,8 +25,32 @@ impl Plugin for GpuBridgePlugin {
             let queue = render_app.world().resource::<RenderQueue>().clone();
             (device, queue)
         };
+        // Off Apple, mir's device facade shares Bevy's wgpu device instead of
+        // opening a second one: two VkDevices in one process hang the PowerVR
+        // driver on the Pixel 10 (intermittently, mid-dispatch) where MoltenVK
+        // tolerated it. One device, one queue, no cross-device races.
+        #[cfg(not(target_vendor = "apple"))]
+        mir::gpu::install_shared(device.wgpu_device().clone(), (***queue).clone());
+
         app.insert_resource(device);
         app.insert_resource(queue);
+
+        // Android: switch bevy's GPU mesh preprocessing off. cyb's scene is
+        // UI + mir's own compute — there are no 3D meshes to preprocess — and
+        // the occlusion-culling variant of mesh_preprocess.wgsl samples a
+        // depth pyramid from a compute shader, which the PowerVR driver on
+        // the Pixel 10 (Tensor G5) aborts on: `spvcompiler: Unhandled
+        // sampler flag combo` → SIGABRT at pipeline compile. This plugin's
+        // finish runs after bevy_render's, so the override wins.
+        #[cfg(target_os = "android")]
+        {
+            use bevy::render::batching::gpu_preprocessing::{
+                GpuPreprocessingMode, GpuPreprocessingSupport,
+            };
+            app.sub_app_mut(RenderApp).insert_resource(GpuPreprocessingSupport {
+                max_supported_mode: GpuPreprocessingMode::None,
+            });
+        }
     }
 }
 
