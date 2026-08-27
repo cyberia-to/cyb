@@ -145,7 +145,27 @@ Goldilocks).
 **Verification:** all three dimensions agree; record wgpu-vs-honeycrisp timings on macOS in
 `mir/.claude/other/` — that number decides whether P5 is ever worth doing.
 
-### P4 — `unimem::Block` gets an Android backend (~2–3 sessions)
+### P4 — `unimem::Block` gets an Android backend (~2–3 sessions) — PLUMBING DONE 2026-08-27
+
+Landed as unimem c6035bf, mir 9c29745, cyb 75cc1beb. What shipped differs from the sketch below
+in one place: the import rides `VK_EXT_external_memory_host` (host-pointer import of the block's
+own mmap) rather than fd-import — wgpu-hal never enables the fd extensions for buffers we need,
+but bevy 0.18's raw_vulkan_init device callback lets cyb push the host extension at device
+creation without forking anything. Layers, each with a live fallback:
+
+- unimem is portable: block/{apple,memfd}, same API, fd() + alloc_size() on the memfd side,
+  16 KB-rounded allocations.
+- facade direct-map: MAPPABLE_PRIMARY_BUFFERS detected on the shared bevy device (already on
+  for integrated GPUs) → storage buffers map directly, staging copies gone. Emulator-verified:
+  'gpu: direct-map on'.
+- Gpu::wrap(&Block): ash host-pointer import → hal Buffer::from_raw → the GPU reads the mmap's
+  pages; copy fallback otherwise. install_shared self-test logs
+  'unimem wrap verified (zero-copy import | copy fallback)' every boot.
+
+Emulator: verified via copy fallback (gfxstream lacks the extension). AWAITING PIXEL: PowerVR
+should expose it — the probe line in logcat is the answer. Then: adopt wrap in upload_epoch and
+measure. Original sketch kept for reference:
+
 
 Split the Apple-specific 240 lines behind one trait, leave the other 370 alone:
 
