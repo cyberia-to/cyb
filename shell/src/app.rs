@@ -70,19 +70,30 @@ pub fn build_app() -> App {
         // removes nothing, changes nothing else.
         unsafe {
             raw.add_create_device_callback(|args, adapter, _features| {
-                let ext = ash::ext::external_memory_host::NAME;
-                let supported = adapter
+                // Every handle type mir can import from, in the order it
+                // tries them. AHardwareBuffer is Android's IOSurface and
+                // needs queue_family_foreign alongside; host-pointer import
+                // is the desktop-Vulkan route. wgpu-hal already enables the
+                // fd/dma-buf pair, so those are not listed here.
+                const WANTED: &[&std::ffi::CStr] = &[
+                    ash::android::external_memory_android_hardware_buffer::NAME,
+                    ash::ext::queue_family_foreign::NAME,
+                    ash::ext::external_memory_host::NAME,
+                ];
+                let Ok(props) = adapter
                     .shared_instance()
                     .raw_instance()
                     .enumerate_device_extension_properties(adapter.raw_physical_device())
-                    .map(|props| {
-                        props.iter().any(|p| {
-                            p.extension_name_as_c_str().is_ok_and(|n| n == ext)
-                        })
-                    })
-                    .unwrap_or(false);
-                if supported && !args.extensions.contains(&ext) {
-                    args.extensions.push(ext);
+                else {
+                    return;
+                };
+                for ext in WANTED {
+                    let supported = props.iter().any(|p| {
+                        p.extension_name_as_c_str().is_ok_and(|n| n == *ext)
+                    });
+                    if supported && !args.extensions.contains(ext) {
+                        args.extensions.push(ext);
+                    }
                 }
             });
         }
