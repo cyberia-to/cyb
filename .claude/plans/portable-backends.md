@@ -94,7 +94,6 @@ bottom chrome are the touch navigation. Gotchas that cost time, recorded for the
 libc++_shared.so must ship in jniLibs (bevy's android_shared_stdcxx); android-activity 0.6.0
 pairs with games-activity 2.0.2 but 0.6.1 with 4.4.0 — a mismatch dies at JNI registration
 (onTouchEventNative); GameActivity is an AppCompatActivity and refuses a non-AppCompat theme.
-Physical-device run pending USB debugging on the Pixel.
 
 
 - Undo the stopgap: mir returns to unconditional deps in `shell/Cargo.toml`; `arboard` gets a
@@ -111,12 +110,17 @@ equivalent, `make android-log` clean of panics.
 This is the phase that answers "билдить под андроид из одной кодовой базы". Everything after it
 is speed.
 
-### P3 — wgpu backend (~3–4 sessions) — CORE DONE 2026-08-26 (emulator-verified)
+### P3 — wgpu backend (~3–4 sessions) — DONE 2026-08-27, verified on the Pixel 10 Pro XL
 
 Landed as mir a66e0d4 + 3567347 + 849b25c. The non-Apple arm of `crate::gpu` implements the
 aruminium surface over wgpu 27 (same major as Bevy — one copy in the binary); five kernels run
 in WGSL — bvh_cull, gaussian_splat, edge_line_rasterize, sphere_impostor, tinf_background —
-and the graph world paints on the Android emulator over Vulkan. Readback rides a staging copy
+and the graph world paints over Vulkan on the emulator AND the physical Pixel 10 Pro XL
+(PowerVR DXT-48). Three PowerVR-only failures found on device and fixed (mir 705bf24, cyb
+18b78007): bevy's GPU mesh preprocessing off on Android (spvcompiler aborts on its occlusion
+variant), one shared VkDevice via install_shared (a second device hangs the driver), and
+readback as a try_recv+poll loop (a single poll(Wait) can miss the map callback and the render
+thread is parked in the pipelined rendezvous — recv deadlocks). Readback rides a staging copy
 (zero-copy is P4); push constants become per-launch uniform buffers. Runtime gotcha that cost a
 crash: every pass calls Gpu::open(), on Metal that is the one system device — the wgpu arm must
 be a process-global singleton or buffers cross devices and wgpu-core panics. Still open from
