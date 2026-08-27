@@ -162,9 +162,23 @@ creation without forking anything. Layers, each with a live fallback:
   pages; copy fallback otherwise. install_shared self-test logs
   'unimem wrap verified (zero-copy import | copy fallback)' every boot.
 
-Emulator: verified via copy fallback (gfxstream lacks the extension). AWAITING PIXEL: PowerVR
-should expose it — the probe line in logcat is the answer. Then: adopt wrap in upload_epoch and
-measure. Original sketch kept for reference:
+ZERO-COPY VERIFIED ON HARDWARE 2026-08-27 (unimem cd89f04, mir 2ce8031, cyb 136b3d36):
+`gpu: unimem wrap verified (zero-copy import)` on the Pixel 10 Pro XL. Getting there corrected
+the design twice, both times because the device said so:
+
+- PowerVR has NO `VK_EXT_external_memory_host` — a plain mmap cannot reach that GPU. It does
+  expose `VK_ANDROID_external_memory_android_hardware_buffer`, so unimem's Android block is an
+  AHardwareBuffer (BLOB, CPU-locked for life) — the platform's actual IOSurface — and
+  `import_host` tries AHB first, host-pointer second, copy last.
+- `Buffer::from_raw` leaves the *memory* to the caller but wgpu still destroys the `VkBuffer`.
+  Freeing both is a double-free; PowerVR answers with SIGSEGV in `vkDestroyBuffer`.
+
+The driver inventory is logged at boot (supported vs enabled external-memory extensions) — the
+one diagnostic that turns "it copies" into a decision. Emulator still uses the copy path
+(gfxstream exposes neither), which is the fallback doing its job.
+
+Remaining: adopt `wrap` in `upload_epoch` so the frame path itself is copy-free, then measure.
+Original sketch kept for reference:
 
 
 Split the Apple-specific 240 lines behind one trait, leave the other 370 alone:
