@@ -39,6 +39,11 @@ impl Default for ChromeState {
     }
 }
 
+/// The shell prompt com publishes — cwd and all. The commander wears it, so
+/// the one input in cyb reads as com's prompt line wherever it is drawn.
+#[derive(Resource, Default)]
+pub struct ComPrompt(pub String);
+
 /// The two chrome bars, so the safe-area system can pad them.
 #[derive(Component)]
 struct ChromeTopBar;
@@ -59,6 +64,8 @@ struct AddressBarText;
 #[derive(Component)]
 pub struct CommanderContainer;
 #[derive(Component)]
+struct CommanderPrompt;
+#[derive(Component)]
 struct CommanderText;
 #[derive(Component)]
 struct CommanderSubmit;
@@ -72,6 +79,7 @@ pub struct ChromePlugin;
 impl Plugin for ChromePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<ChromeState>()
+            .init_resource::<ComPrompt>()
             .add_systems(Startup, spawn_chrome)
             .add_systems(OnEnter(WorldState::Com), unfocus_chrome)
             .add_systems(
@@ -87,6 +95,7 @@ impl Plugin for ChromePlugin {
                     sync_commander_focus_style,
                     apply_safe_area,
                     request_soft_input,
+                    sync_commander_prompt,
                 )
                     .chain(),
             );
@@ -212,9 +221,10 @@ fn spawn_chrome(mut commands: Commands) {
                         ))
                         .with_children(|cmd| {
                             cmd.spawn((
+                                CommanderPrompt,
                                 Text::new("> "),
                                 TextFont { font_size: 14.0, ..default() },
-                                TextColor(Color::srgb(0.21, 0.84, 0.68)),
+                                TextColor(theme::ACID_BLUE),
                             ));
                             cmd.spawn((
                                 CommanderText,
@@ -400,6 +410,7 @@ fn apply_safe_area(
 
 /// The commander is the only text surface in the chrome: focus it and the soft
 /// keyboard comes up, leave it and the keyboard goes away.
+#[cfg_attr(not(target_os = "android"), allow(unused_mut))]
 fn request_soft_input(mut chrome: ResMut<ChromeState>, mut input: ResMut<SoftInput>) {
     if input.wanted != chrome.focused {
         input.wanted = chrome.focused;
@@ -419,6 +430,23 @@ fn request_soft_input(mut chrome: ResMut<ChromeState>, mut input: ResMut<SoftInp
             chrome.submit_now = true;
         } else {
             chrome.text = input.text.clone();
+        }
+    }
+}
+
+/// The commander shows com's prompt. Before com has ever run there is no
+/// shell to ask, so the plain marker stands in.
+fn sync_commander_prompt(
+    prompt: Res<ComPrompt>,
+    mut q: Query<&mut Text, With<CommanderPrompt>>,
+) {
+    if !prompt.is_changed() {
+        return;
+    }
+    let shown = if prompt.0.is_empty() { "> ".to_string() } else { prompt.0.clone() };
+    for mut text in &mut q {
+        if **text != shown {
+            **text = shown.clone();
         }
     }
 }
@@ -574,7 +602,8 @@ pub fn handle_chrome_input(world: &mut World) {
         if let Some(t) = target {
             world.resource_mut::<NextState<WorldState>>().set(t);
         } else if !cmd.is_empty() {
-            // Unknown command → forward to nushell in terminal world
+            // Anything that is not a world name is a shell line: com runs it
+            // and holds the history, so submitting from any world lands there.
             world
                 .resource_mut::<NextState<WorldState>>()
                 .set(WorldState::Com);

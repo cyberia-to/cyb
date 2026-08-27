@@ -5,7 +5,6 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use bevy::ecs::system::SystemState;
-use bevy::input::keyboard::{Key, KeyboardInput};
 use bevy::input::mouse::MouseWheel;
 use bevy::prelude::*;
 
@@ -35,12 +34,6 @@ const NU_CONFIG_SOURCE: &str = include_str!("../../../assets/nu-config/config.nu
 
 pub struct ComWorldPlugin;
 
-#[derive(Component)]
-struct PromptLabel;
-
-#[derive(Component)]
-struct LineBufferDisplay;
-
 impl Plugin for ComWorldPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(WorldState::Com), setup_terminal)
@@ -61,92 +54,19 @@ struct NuShellEngine {
 
 // ── Line buffer ───────────────────────────────────────────────────────────────
 
-struct LineBuffer {
-    buffer: String,
-    cursor_pos: usize,
-    history: Vec<String>,
-    history_index: Option<usize>,
-}
-
-impl LineBuffer {
-    fn new() -> Self {
-        Self { buffer: String::new(), cursor_pos: 0, history: Vec::new(), history_index: None }
-    }
-
-    fn insert_char(&mut self, ch: char) {
-        self.buffer.insert(self.cursor_pos, ch);
-        self.cursor_pos += ch.len_utf8();
-    }
-
-    fn backspace(&mut self) -> bool {
-        if self.cursor_pos > 0 {
-            let prev = self.buffer[..self.cursor_pos]
-                .chars().last().map(|c| c.len_utf8()).unwrap_or(0);
-            self.cursor_pos -= prev;
-            self.buffer.remove(self.cursor_pos);
-            true
-        } else {
-            false
-        }
-    }
-
-    fn take_line(&mut self) -> String {
-        let line = self.buffer.clone();
-        if !line.trim().is_empty() { self.history.push(line.clone()); }
-        self.buffer.clear();
-        self.cursor_pos = 0;
-        self.history_index = None;
-        line
-    }
-
-    fn history_up(&mut self) -> bool {
-        if self.history.is_empty() { return false; }
-        let idx = match self.history_index {
-            None => self.history.len() - 1,
-            Some(0) => return false,
-            Some(i) => i - 1,
-        };
-        self.history_index = Some(idx);
-        self.buffer = self.history[idx].clone();
-        self.cursor_pos = self.buffer.len();
-        true
-    }
-
-    fn history_down(&mut self) -> bool {
-        let idx = match self.history_index {
-            None => return false,
-            Some(i) => i + 1,
-        };
-        if idx >= self.history.len() {
-            self.history_index = None;
-            self.buffer.clear();
-            self.cursor_pos = 0;
-            return true;
-        }
-        self.history_index = Some(idx);
-        self.buffer = self.history[idx].clone();
-        self.cursor_pos = self.buffer.len();
-        true
-    }
-}
-
 // ── NonSend state ─────────────────────────────────────────────────────────────
 
 struct TerminalNonSendState {
     nu_engine: Option<NuShellEngine>,
-    line_buffer: LineBuffer,
     eval_rx: Option<std::sync::mpsc::Receiver<StreamMsg>>,
     engine_rx: Option<std::sync::mpsc::Receiver<NuShellEngine>>,
     eval_in_progress: bool,
     ctrlc_flag: Arc<AtomicBool>,
-    key_cursor: bevy::ecs::message::MessageCursor<KeyboardInput>,
     wheel_cursor: bevy::ecs::message::MessageCursor<MouseWheel>,
     // UI entity IDs (the tree is built once and hidden between visits)
     root_entity: Entity,
     scrollback_entity: Entity,
     scroll_area_entity: Entity,
-    prompt_entity: Entity,
-    input_entity: Entity,
     scroll_offset: f32,
 }
 
@@ -483,132 +403,60 @@ fn poll_eval_results(world: &mut World) {
         let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
         wire_ctrlc_signal(&mut engine, state.ctrlc_flag.clone());
         state.nu_engine = Some(engine);
-        update_prompt(world);
+        publish_prompt(world);
     }
 }
 
-fn update_prompt(world: &mut World) {
-    let (prompt_entity, prompt_str) = {
-        let state = world.get_non_send_resource::<TerminalNonSendState>().unwrap();
-        let engine = state.nu_engine.as_ref();
-        let text = engine.map(prompt_text).unwrap_or_else(|| "> ".to_string());
-        (state.prompt_entity, text)
-    };
-    if let Some(mut t) = world.get_mut::<Text>(prompt_entity) {
-        **t = prompt_str;
-    }
-}
-
-fn update_input_display(world: &mut World) {
-    let (input_entity, display) = {
-        let state = world.get_non_send_resource::<TerminalNonSendState>().unwrap();
-        let text = format!("{}_", state.line_buffer.buffer);
-        (state.input_entity, text)
-    };
-    if let Some(mut t) = world.get_mut::<Text>(input_entity) {
-        **t = display;
-    }
-}
-
-// ── Keyboard input ────────────────────────────────────────────────────────────
-
-fn process_keyboard_input(world: &mut World) {
-    let events: Vec<KeyboardInput> = {
-        let mut cursor = {
-            let Some(state_ref) = world.get_non_send_resource::<TerminalNonSendState>() else { return };
-            state_ref.key_cursor.clone()
-        };
-        let messages = world.resource::<bevy::ecs::message::Messages<KeyboardInput>>();
-        let evts: Vec<KeyboardInput> = cursor.read(messages).cloned().collect();
-        // Store cursor back
-        let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
-        state.key_cursor = cursor;
-        evts
-    };
-
-    let mut dispatch: Option<String> = None;
-    let mut changed = false;
-
-    {
-        let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
-        for ev in &events {
-            if !ev.state.is_pressed() { continue; }
-            if state.eval_in_progress { continue; }
-
-            match (&ev.logical_key, &ev.text) {
-                (Key::Enter, _) => {
-                    let line = state.line_buffer.take_line();
-                    if !line.is_empty() {
-                        dispatch = Some(line.clone());
-
-                        // Echo the command as a text chunk — we'll spawn it after releasing borrow
-                    }
-                    changed = true;
-                }
-                (Key::Backspace, _) => {
-                    changed = state.line_buffer.backspace();
-                }
-                (Key::ArrowUp, _) => {
-                    changed = state.line_buffer.history_up();
-                }
-                (Key::ArrowDown, _) => {
-                    changed = state.line_buffer.history_down();
-                }
-                (Key::Character(c), _) if c == "c" && ev.state.is_pressed() => {
-                    // Ctrl+C
-                    if ev.state.is_pressed() {
-                        state.ctrlc_flag.store(true, Ordering::Relaxed);
-                    }
-                    changed = true;
-                }
-                (_, Some(text)) => {
-                    for ch in text.chars() {
-                        if !ch.is_ascii_control() {
-                            state.line_buffer.insert_char(ch);
-                            changed = true;
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }
-    }
-
-    // Spawn echo chunk for the command
-    if let Some(ref cmd) = dispatch {
-        let (scrollback_entity, input_entity) = {
-            let state = world.get_non_send_resource::<TerminalNonSendState>().unwrap();
-            (state.scrollback_entity, state.input_entity)
-        };
-        // Echo command text
-        let echo = format!("> {}", cmd);
-        world.spawn((
-            Text::new(echo),
-            TextFont { font_size: theme::BODY, ..default() },
-            TextColor(theme::TEXT_DIM),
-            Node { margin: UiRect::vertical(Val::Px(2.0)), ..default() },
-            ChildOf(scrollback_entity),
-        ));
-        // Clear input display
-        if let Some(mut t) = world.get_mut::<Text>(input_entity) {
-            **t = "_".to_string();
-        }
-
-        // Dispatch eval
-        let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
-        dispatch_eval(state, cmd.clone());
-    } else if changed {
-        update_input_display(world);
-    }
-
-    // Handle commander forwarded commands
+/// Run what the commander sent.
+///
+/// com has no input of its own: the chrome commander is the one line in cyb,
+/// on every screen, and this world is where its history lives. A submitted
+/// line arrives as `PendingShellCmd`, gets echoed into the scrollback, and
+/// runs — the same path whichever world it was typed from.
+fn run_pending_command(world: &mut World) {
     let pending = world
         .get_resource_mut::<crate::worlds::PendingShellCmd>()
         .and_then(|mut p| p.0.take());
-    if let Some(cmd) = pending {
-        let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
-        if !state.eval_in_progress {
-            dispatch_eval(state, cmd);
+    let Some(cmd) = pending else { return };
+    if cmd.trim().is_empty() {
+        return;
+    }
+
+    let (scrollback_entity, busy) = {
+        let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() else { return };
+        (state.scrollback_entity, state.eval_in_progress)
+    };
+    if busy {
+        return;
+    }
+
+    let prompt = {
+        let state = world.get_non_send_resource::<TerminalNonSendState>().unwrap();
+        state.nu_engine.as_ref().map(prompt_text).unwrap_or_default()
+    };
+    world.spawn((
+        Text::new(format!("{prompt}{cmd}")),
+        TextFont { font_size: theme::BODY, ..default() },
+        TextColor(theme::TEXT_DIM),
+        Node { margin: UiRect::vertical(Val::Px(2.0)), ..default() },
+        ChildOf(scrollback_entity),
+    ));
+
+    let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
+    dispatch_eval(state, cmd);
+}
+
+/// Publish the shell's prompt so the commander can wear it. The commander is
+/// com's prompt line wherever it is drawn.
+fn publish_prompt(world: &mut World) {
+    let prompt = {
+        let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() else { return };
+        state.nu_engine.as_ref().map(prompt_text)
+    };
+    let Some(prompt) = prompt else { return };
+    if let Some(mut res) = world.get_resource_mut::<crate::shell::chrome::ComPrompt>() {
+        if res.0 != prompt {
+            res.0 = prompt;
         }
     }
 }
@@ -620,8 +468,7 @@ fn setup_terminal(world: &mut World) {
     if let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() {
         let root_entity = state.root_entity;
         set_terminal_visible(world, root_entity, true);
-        update_prompt(world);
-        update_input_display(world);
+        publish_prompt(world);
         info!("Com resumed");
         return;
     }
@@ -643,50 +490,26 @@ fn setup_terminal(world: &mut World) {
             ..default()
         },
     )).id();
-    let prompt_text_init = prompt_text(&nu_engine);
-    let prompt_entity = world.spawn((
-        PromptLabel,
-        Text::new(prompt_text_init),
-        TextFont { font_size: theme::BODY, ..default() },
-        TextColor(theme::ACID_BLUE),
-    )).id();
-    let input_entity = world.spawn((
-        LineBufferDisplay,
-        Text::new("_".to_string()),
-        TextFont { font_size: theme::BODY, ..default() },
-        TextColor(theme::TEXT_PRIMARY),
-    )).id();
-
     // Build the UI tree
-    let (root_entity, scroll_area_entity) =
-        spawn_terminal_ui(world, scrollback_entity, prompt_entity, input_entity);
+    let (root_entity, scroll_area_entity) = spawn_terminal_ui(world, scrollback_entity);
 
     world.insert_non_send_resource(TerminalNonSendState {
         nu_engine: Some(nu_engine),
-        line_buffer: LineBuffer::new(),
         eval_rx: None,
         engine_rx: None,
         eval_in_progress: false,
-        key_cursor: Default::default(),
         wheel_cursor: Default::default(),
         ctrlc_flag,
         root_entity,
         scrollback_entity,
         scroll_area_entity,
-        prompt_entity,
-        input_entity,
         scroll_offset: 0.0,
     });
 
     info!("Com world initialized");
 }
 
-fn spawn_terminal_ui(
-    world: &mut World,
-    scrollback_entity: Entity,
-    prompt_entity: Entity,
-    input_entity: Entity,
-) -> (Entity, Entity) {
+fn spawn_terminal_ui(world: &mut World, scrollback_entity: Entity) -> (Entity, Entity) {
     // Root container: the band between the chrome bars (ContentRoot keeps
     // top/bottom tracking the bars' true heights, safe areas included).
     let root = world.spawn((
@@ -719,24 +542,6 @@ fn spawn_terminal_ui(
 
     // Attach scrollback entity into scroll area
     world.entity_mut(scrollback_entity).insert(ChildOf(scroll_area));
-
-    // Prompt row (fixed height at bottom)
-    let prompt_row = world.spawn((
-        Node {
-            flex_direction: FlexDirection::Row,
-            padding: UiRect::axes(Val::Px(G), Val::Px(G * 0.5)),
-            column_gap: Val::Px(4.0),
-            border: UiRect::top(Val::Px(1.0)),
-            ..default()
-        },
-        BackgroundColor(theme::DARK_BASE),
-        BorderColor::all(theme::BORDER),
-        ChildOf(root),
-    )).id();
-
-    // Attach prompt and input entities into the prompt row
-    world.entity_mut(prompt_entity).insert(ChildOf(prompt_row));
-    world.entity_mut(input_entity).insert(ChildOf(prompt_row));
 
     (root, scroll_area)
 }
@@ -795,7 +600,8 @@ fn terminal_update(world: &mut World) {
         return;
     }
 
-    process_keyboard_input(world);
+    run_pending_command(world);
+    publish_prompt(world);
     poll_eval_results(world);
     process_scroll(world);
     apply_scroll_offset(world);
