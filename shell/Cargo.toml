@@ -70,3 +70,8 @@ bevy = { workspace = true, features = ["raw_vulkan_init"] }
 global-hotkey = "0.7.0"
 tray-icon = "0.21"
 arboard = "3"
+
+# The local mind. Desktop-only until the phone carries weights: the model
+# runtime is heavy and pulls its own GPU stack.
+[target.'cfg(target_os = "macos")'.dependencies]
+soma-kernel = { path = "../../soma/kernel" }

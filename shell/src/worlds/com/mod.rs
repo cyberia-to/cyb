@@ -441,6 +441,15 @@ fn run_pending_command(world: &mut World) {
         return;
     }
 
+    // A question outranks a command: `? ...` and `ask ...` go to soma, and
+    // the exchange comes back through the inbox as a conversation. Everything
+    // else is nushell, exactly as before.
+    if let Some(q) = crate::worlds::soma_bridge::parse_ask(&cmd) {
+        let q = q.to_string();
+        crate::worlds::soma_bridge::ask(world, &q);
+        return;
+    }
+
     let (scrollback_entity, busy) = {
         let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() else { return };
         (state.scrollback_entity, state.eval_in_progress)

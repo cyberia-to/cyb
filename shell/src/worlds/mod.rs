@@ -2,6 +2,7 @@ pub mod robot;
 pub mod graph;
 pub mod sigma;
 pub mod com;
+pub mod soma_bridge;
 
 use bevy::prelude::*;
 
@@ -84,6 +85,54 @@ impl Notice {
     }
 }
 
+/// The one durable cybergraph this cyb runs on — `~/cyb/graph.log`, opened
+/// once and shared by every world that reads or writes it.
+///
+/// sigma casts money signals into it, soma links questions to answers, brain
+/// renders it. Give each of those its own `Cell::open` and each holds its own
+/// in-memory replay of the same log: appends still interleave safely, but no
+/// copy sees another's writes until restart, and "the graph" quietly becomes
+/// three graphs. One cell, one lock, one truth.
+#[derive(Resource, Clone)]
+pub struct SharedCell {
+    pub cell: std::sync::Arc<std::sync::Mutex<cyb_core::Cell>>,
+    /// Bumped on every write; cheap for readers to watch instead of diffing.
+    pub version: std::sync::Arc<std::sync::atomic::AtomicU64>,
+}
+
+impl SharedCell {
+    fn open_default() -> Self {
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+        let path = std::path::Path::new(&home).join("cyb").join("graph.log");
+        let cell = cyb_core::Cell::open(&path).unwrap_or_else(|_| cyb_core::Cell::ephemeral());
+        Self {
+            cell: std::sync::Arc::new(std::sync::Mutex::new(cell)),
+            version: std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0)),
+        }
+    }
+
+    pub fn bump(&self) {
+        self.version.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    pub fn version(&self) -> u64 {
+        self.version.load(std::sync::atomic::Ordering::Relaxed)
+    }
+}
+
+/// The per-device neuron every world signs as — sigma's money, soma's
+/// knowledge, one chain. Derived, not stored; the mnemonic identity stack
+/// replaces this when it lands.
+pub fn local_neuron() -> [u8; 32] {
+    let host = std::env::var("USER").unwrap_or_else(|_| "cyb".into());
+    let mut p = [0u8; 32];
+    let bytes = host.as_bytes();
+    let n = bytes.len().min(32);
+    p[..n].copy_from_slice(&bytes[..n]);
+    p[31] = 0x53; // 'S' tag
+    p
+}
+
 pub struct WorldsPlugin;
 
 impl Plugin for WorldsPlugin {
@@ -91,6 +140,7 @@ impl Plugin for WorldsPlugin {
         app.init_state::<WorldState>()
             .init_resource::<PendingShellCmd>()
             .init_resource::<ComInbox>()
-            .init_resource::<Notice>();
+            .init_resource::<Notice>()
+            .insert_resource(SharedCell::open_default());
     }
 }

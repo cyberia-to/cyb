@@ -4,10 +4,10 @@
 //! [`MoneyWallet`]. Hotkey: Cmd+4 · address `cyb://sigma`.
 
 use bevy::prelude::*;
-use cyb_core::{Cell, MoneyEvent, MoneyWallet, money_to_sense};
+use cyb_core::{MoneyEvent, MoneyWallet, money_to_sense};
 use prysm::theme;
 
-use super::{ComInbox, Notice, Speaker, WorldState};
+use super::{ComInbox, Notice, SharedCell, Speaker, WorldState};
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H};
 
 pub struct SigmaWorldPlugin;
@@ -29,10 +29,10 @@ enum SigmaBtn {
     Refresh,
 }
 
-/// Live money state for the sigma world.
+/// Live money state for the sigma world. The graph itself lives in
+/// [`SharedCell`]; sigma keeps only the wallet that signs into it.
 #[derive(Resource)]
 pub struct SigmaState {
-    cell: Cell,
     wallet: MoneyWallet,
     token: [u8; 32],
     peer: [u8; 32],
@@ -42,11 +42,12 @@ pub struct SigmaState {
     status: String,
 }
 
-impl Default for SigmaState {
-    fn default() -> Self {
-        let neuron = neuron_from_identity();
-        let path = default_graph_path();
-        let mut cell = Cell::open(&path).unwrap_or_else(|_| Cell::ephemeral());
+impl SigmaState {
+    /// Built against the shared cell rather than `Default`, because the tip
+    /// and balance are read out of the same graph everyone else writes.
+    fn new(shared: &SharedCell) -> Self {
+        let neuron = super::local_neuron();
+        let cell = shared.cell.lock().expect("shared cell poisoned");
         let mut wallet = MoneyWallet::new(neuron).with_tip_prover();
         wallet.sync_tip_local(&cell);
         let token = label_particle("CYB");
@@ -55,7 +56,6 @@ impl Default for SigmaState {
         let tip_h = wallet.tip().height;
         let grade4 = wallet.grade4();
         Self {
-            cell,
             wallet,
             token,
             peer,
@@ -69,7 +69,9 @@ impl Default for SigmaState {
 
 impl Plugin for SigmaWorldPlugin {
     fn build(&self, app: &mut App) {
-        app.init_resource::<SigmaState>()
+        app.add_systems(PreStartup, |mut commands: Commands, shared: Res<SharedCell>| {
+            commands.insert_resource(SigmaState::new(&shared));
+        })
             .add_systems(OnEnter(WorldState::Sigma), setup_sigma)
             .add_systems(OnExit(WorldState::Sigma), destroy_sigma)
             .add_systems(
@@ -185,6 +187,7 @@ fn destroy_sigma(mut commands: Commands, q: Query<Entity, With<SigmaRoot>>) {
 fn handle_sigma_buttons(
     mut interactions: Query<(&Interaction, &SigmaBtn), Changed<Interaction>>,
     mut state: ResMut<SigmaState>,
+    shared: Res<SharedCell>,
     mut inbox: ResMut<ComInbox>,
     mut notice: ResMut<Notice>,
 ) {
@@ -206,9 +209,10 @@ fn handle_sigma_buttons(
         };
         inbox.say(Speaker::User, intent);
 
-        // Split-borrow wallet + cell (two distinct fields).
         let mut said: Vec<String> = Vec::new();
-        let SigmaState { cell, wallet, .. } = &mut *state;
+        let wallet = &mut state.wallet;
+        let mut cell_guard = shared.cell.lock().expect("shared cell poisoned");
+        let cell = &mut *cell_guard;
         match btn {
             SigmaBtn::Fund => {
                 wallet.fund_for_test(cell, token, 100);
@@ -247,10 +251,12 @@ fn handle_sigma_buttons(
         if let Some(first) = said.first() {
             notice.show(first.clone());
         }
+        drop(cell_guard);
+        shared.bump();
         for line in said {
             inbox.say(Speaker::System, line);
         }
-        refresh_numbers(&mut state);
+        refresh_numbers(&mut state, &shared);
     }
 }
 
@@ -297,9 +303,10 @@ fn refresh_sigma_labels(
     }
 }
 
-fn refresh_numbers(state: &mut SigmaState) {
+fn refresh_numbers(state: &mut SigmaState, shared: &SharedCell) {
     let n = state.wallet.neuron;
-    state.balance = state.wallet.balance(&state.cell, &n, &state.token);
+    let cell = shared.cell.lock().expect("shared cell poisoned");
+    state.balance = state.wallet.balance(&cell, &n, &state.token);
     state.tip_h = state.wallet.tip().height;
     state.grade4 = state.wallet.grade4();
 }
@@ -341,20 +348,4 @@ fn hex3(b: &[u8]) -> String {
         .collect()
 }
 
-fn default_graph_path() -> std::path::PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    std::path::Path::new(&home).join("cyb").join("graph.log")
-}
 
-/// Best-effort neuron from same mnemonic path as `cy` identity.
-fn neuron_from_identity() -> [u8; 32] {
-    // Stable per-device demo neuron when mnemonic stack is heavy in GUI path.
-    // CLI identity remains authoritative; sigma opens shared graph by path.
-    let host = std::env::var("USER").unwrap_or_else(|_| "cyb".into());
-    let mut p = [0u8; 32];
-    let bytes = host.as_bytes();
-    let n = bytes.len().min(32);
-    p[..n].copy_from_slice(&bytes[..n]);
-    p[31] = 0x53; // 'S' tag sigma demo
-    p
-}

@@ -5,7 +5,7 @@ use mir::graph::{Csr, ParticleIndex, Cyberlink};
 use mir::bevy::resources::{GraphCamera, GraphWorldConfig};
 use mir::bevy::world::GraphWorldState;
 
-use super::WorldState;
+use super::{SharedCell, WorldState};
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H};
 use crate::shell::platform::SafeArea;
 
@@ -14,14 +14,50 @@ pub struct GraphBridgePlugin;
 impl Plugin for GraphBridgePlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(Startup, insert_graph_config)
+            // Refresh on entering brain, so links cast since the last visit —
+            // sigma's money, soma's answers — are in the picture. mir reads
+            // the config in its own OnEnter, which the state sync below
+            // triggers a frame after this one runs.
+            .add_systems(OnEnter(WorldState::Graph), insert_graph_config)
             .add_systems(Update, (sync_graph_state, sync_camera_inset));
     }
 }
 
-fn insert_graph_config(mut commands: Commands) {
-    commands.insert_resource(GraphWorldConfig {
-        graph: Arc::new(build_synthetic_csr()),
-    });
+/// Rebuild mir's graph from the cell. The cybergraph is the graph brain is
+/// *for*; the synthetic constellation only stands in while the cell is still
+/// empty, so a fresh cyb has something to orbit.
+fn insert_graph_config(mut commands: Commands, shared: Res<SharedCell>) {
+    let axons = shared.cell.lock().expect("shared cell poisoned").axons();
+    let csr = if axons.is_empty() {
+        build_synthetic_csr()
+    } else {
+        build_cell_csr(&axons)
+    };
+    info!(
+        "brain: graph from {} ({} axons)",
+        if axons.is_empty() { "synthetic demo" } else { "cybergraph" },
+        axons.len()
+    );
+    commands.insert_resource(GraphWorldConfig { graph: Arc::new(csr) });
+}
+
+/// Cell axons → mir's CSR. Weight becomes amount, so a link the graph holds
+/// strongly pulls harder in the layout.
+fn build_cell_csr(axons: &[([u8; 32], [u8; 32], u64)]) -> Csr {
+    let links: Vec<Cyberlink> = axons
+        .iter()
+        .map(|&(from, to, weight)| Cyberlink {
+            neuron: [0u8; 32],
+            from,
+            to,
+            token: 0,
+            amount: weight.max(1) as u128,
+            valence: 1,
+            block: 1,
+        })
+        .collect();
+    let vocab = ParticleIndex::build(links.iter().copied());
+    Csr::build(links.into_iter(), &vocab)
 }
 
 /// Tell mir which screen bands the chrome owns, so a thumb on the tab strip
