@@ -19,7 +19,6 @@ use super::WorldState;
 use crate::shell::chrome::{CHROME_TOP_H, CHROME_BOTTOM_H};
 
 const G: f32 = theme::G;
-const CONTENT_RATIO: f32 = 0.62;
 
 pub struct RobotWorldPlugin;
 
@@ -121,8 +120,8 @@ fn setup_cell(mut commands: Commands) {
     let page = commands
         .spawn((
             Node {
-                width: Val::Percent(CONTENT_RATIO * 100.0),
-                max_width: Val::Px(720.0),
+                width: Val::Percent(100.0),
+                max_width: Val::Px(theme::MEASURE),
                 flex_direction: FlexDirection::Column,
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::FlexStart,

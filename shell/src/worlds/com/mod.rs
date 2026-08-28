@@ -24,7 +24,6 @@ use prysm::{StreamScrollback, dispatch, theme};
 use super::WorldState;
 use crate::shell::chrome::{ContentRoot, CHROME_TOP_H, CHROME_BOTTOM_H};
 
-const CONTENT_RATIO: f32 = 0.62;
 const G: f32 = theme::G;
 
 const NU_ENV_SOURCE: &str = include_str!("../../../assets/nu-config/env.nu");
@@ -531,9 +530,12 @@ fn spawn_terminal_ui(world: &mut World, scrollback_entity: Entity) -> (Entity, E
             position_type: PositionType::Absolute,
             top: Val::Px(CHROME_TOP_H),
             bottom: Val::Px(CHROME_BOTTOM_H),
-            left: Val::Percent((1.0 - CONTENT_RATIO) / 2.0 * 100.0),
-            width: Val::Percent(CONTENT_RATIO * 100.0),
+            left: Val::Px(0.0),
+            right: Val::Px(0.0),
             flex_direction: FlexDirection::Column,
+            // The root takes the whole viewport and the column inside it
+            // carries the measure, so a narrow screen keeps every pixel.
+            align_items: AlignItems::Center,
             overflow: Overflow::clip_y(),
             ..default()
         },
@@ -544,6 +546,8 @@ fn spawn_terminal_ui(world: &mut World, scrollback_entity: Entity) -> (Entity, E
     let scroll_area = world.spawn((
         Node {
             flex_grow: 1.0,
+            width: Val::Percent(100.0),
+            max_width: Val::Px(theme::MEASURE),
             flex_direction: FlexDirection::Column,
             // Scroll, not clip: bevy_ui ignores ScrollPosition unless an axis
             // is actually declared scrollable, so a clipping node stays fixed
