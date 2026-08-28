@@ -5,10 +5,12 @@ use prysm::theme;
 
 use crate::shell::clipboard::read_clipboard;
 use crate::shell::platform::{SafeArea, SoftInput};
-use crate::worlds::WorldState;
+use crate::worlds::{Notice, WorldState};
 
 /// Logical-pixel heights of the persistent chrome bars (address bar top, commander bottom).
 pub const CHROME_TOP_H: f32 = 36.0;
+/// Height of the notice band that sits just under the address bar.
+const NOTICE_H: f32 = 26.0;
 /// Commander field height.
 const COMMANDER_H: f32 = 40.0;
 /// World-tab strip height — a thumb target, not a text link.
@@ -94,6 +96,7 @@ impl Plugin for ChromePlugin {
                     update_commander_display,
                     sync_commander_focus_style,
                     apply_safe_area,
+                    show_notice,
                     request_soft_input,
                     sync_commander_prompt,
                 )
@@ -137,6 +140,42 @@ fn spawn_chrome(mut commands: Commands) {
             UiTargetCamera(cam),
         ))
         .with_children(|root| {
+            // ── Notice band ────────────────────────────────────────────
+            //
+            // Absolutely positioned so it costs the worlds no room: it is
+            // there for a few seconds and then it is not, and nothing below
+            // should move when it comes and goes.
+            root.spawn((
+                NoticeBand,
+                Node {
+                    position_type: PositionType::Absolute,
+                    left: Val::Px(0.0),
+                    right: Val::Px(0.0),
+                    top: Val::Px(CHROME_TOP_H),
+                    height: Val::Px(NOTICE_H),
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    padding: UiRect::horizontal(Val::Px(16.0)),
+                    // One row, and never wider than the screen: a notice that
+                    // runs off both edges says less than no notice at all.
+                    overflow: Overflow::clip(),
+                    display: Display::None,
+                    ..default()
+                },
+                // Global, not local: the world roots are separate top-level
+                // nodes with opaque backgrounds that start at exactly this
+                // line, and a local z only orders against siblings.
+                GlobalZIndex(10),
+            ))
+            .with_children(|band| {
+                band.spawn((
+                    NoticeText,
+                    Text::new(""),
+                    TextFont { font_size: 13.0, ..default() },
+                    TextColor(theme::ACID_GREEN),
+                ));
+            });
+
             // ── Address Bar (top, full width) ───────────────────────────
             root.spawn((
                 ChromeTopBar,
@@ -405,6 +444,42 @@ fn apply_safe_area(
     for mut node in &mut content {
         node.top = Val::Px(CHROME_TOP_H + safe.top);
         node.bottom = Val::Px(CHROME_BOTTOM_H + safe.bottom);
+    }
+}
+
+#[derive(Component)]
+struct NoticeBand;
+
+#[derive(Component)]
+struct NoticeText;
+
+/// Show the current [`Notice`] under the address bar, then let it expire.
+///
+/// It follows the safe area like everything else in the chrome: the address
+/// bar grows by the status-bar inset, and the band sits under whatever height
+/// that leaves.
+fn show_notice(
+    time:      Res<Time>,
+    safe:      Res<SafeArea>,
+    mut notice: ResMut<Notice>,
+    mut band:  Query<&mut Node, With<NoticeBand>>,
+    mut text:  Query<&mut Text, With<NoticeText>>,
+) {
+    if notice.ttl > 0.0 {
+        notice.ttl = (notice.ttl - time.delta_secs()).max(0.0);
+    }
+    let showing = notice.ttl > 0.0;
+
+    for mut node in &mut band {
+        node.top = Val::Px(CHROME_TOP_H + safe.top);
+        node.display = if showing { Display::Flex } else { Display::None };
+    }
+    if showing {
+        for mut t in &mut text {
+            if t.0 != notice.text {
+                **t = notice.text.clone();
+            }
+        }
     }
 }
 

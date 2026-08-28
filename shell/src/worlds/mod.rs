@@ -49,12 +49,48 @@ impl ComInbox {
     }
 }
 
+/// A short line announcing that something finished, shown under the address
+/// bar and then forgotten.
+///
+/// The record of what happened lives in com. This is the other half of that
+/// split: you should not have to be looking at com, or at the world you acted
+/// in, to learn that the thing you asked for is done.
+#[derive(Resource, Default)]
+pub struct Notice {
+    pub text: String,
+    /// Seconds left before it fades. Zero means nothing is showing.
+    pub ttl: f32,
+}
+
+impl Notice {
+    /// How long a notice stays up. Long enough to read a short sentence,
+    /// short enough that it is gone before it becomes furniture.
+    pub const LIFETIME: f32 = 3.5;
+
+    /// A notice is one line on one row. Anything longer is a log entry, and
+    /// com already has those — so it is cut here rather than allowed to run
+    /// off both edges of the band.
+    const MAX_CHARS: usize = 64;
+
+    pub fn show(&mut self, text: impl Into<String>) {
+        let text = text.into();
+        self.text = if text.chars().count() > Self::MAX_CHARS {
+            let head: String = text.chars().take(Self::MAX_CHARS - 3).collect();
+            format!("{head}...")
+        } else {
+            text
+        };
+        self.ttl = Self::LIFETIME;
+    }
+}
+
 pub struct WorldsPlugin;
 
 impl Plugin for WorldsPlugin {
     fn build(&self, app: &mut App) {
         app.init_state::<WorldState>()
             .init_resource::<PendingShellCmd>()
-            .init_resource::<ComInbox>();
+            .init_resource::<ComInbox>()
+            .init_resource::<Notice>();
     }
 }

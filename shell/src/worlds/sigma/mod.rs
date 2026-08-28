@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use cyb_core::{Cell, MoneyEvent, MoneyWallet, money_to_sense};
 use prysm::theme;
 
-use super::{ComInbox, Speaker, WorldState};
+use super::{ComInbox, Notice, Speaker, WorldState};
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H};
 
 pub struct SigmaWorldPlugin;
@@ -17,9 +17,6 @@ struct SigmaRoot;
 
 #[derive(Component)]
 struct SigmaBalanceLabel;
-
-#[derive(Component)]
-struct SigmaEventsLabel;
 
 #[derive(Component)]
 struct SigmaStatusLabel;
@@ -42,7 +39,6 @@ pub struct SigmaState {
     balance: u64,
     tip_h: u64,
     grade4: bool,
-    log: Vec<String>,
     status: String,
 }
 
@@ -66,7 +62,6 @@ impl Default for SigmaState {
             balance,
             tip_h,
             grade4,
-            log: vec!["sigma ready: fund / send / finalize".into()],
             status: format!("neuron {}", hex3(&neuron)),
         }
     }
@@ -173,23 +168,11 @@ fn setup_sigma(mut commands: Commands, state: Res<SigmaState>) {
                 }
             });
 
-            root.spawn((
-                Text::new("events / sense"),
-                TextFont {
-                    font_size: 14.0,
-                    ..default()
-                },
-                TextColor(Color::srgb(0.5, 0.55, 0.6)),
-            ));
-            root.spawn((
-                SigmaEventsLabel,
-                Text::new(state.log.join("\n")),
-                TextFont {
-                    font_size: 13.0,
-                    ..default()
-                },
-                TextColor(Color::srgb(0.8, 0.85, 0.9)),
-            ));
+            // No event list here. Everything this page does is said in com,
+            // where it can be scrolled back through; repeating the last twelve
+            // lines beside the buttons was two records and one of them always
+            // stale. What is left on the page is the state — balance, tip —
+            // and what just happened arrives as a notice under the address bar.
         });
 }
 
@@ -203,6 +186,7 @@ fn handle_sigma_buttons(
     mut interactions: Query<(&Interaction, &SigmaBtn), Changed<Interaction>>,
     mut state: ResMut<SigmaState>,
     mut inbox: ResMut<ComInbox>,
+    mut notice: ResMut<Notice>,
 ) {
     for (interaction, btn) in &mut interactions {
         if *interaction != Interaction::Pressed {
@@ -257,11 +241,15 @@ fn handle_sigma_buttons(
             }
         }
 
-        for line in &said {
-            inbox.say(Speaker::System, line.clone());
+        // The first line is the summary of what happened; the rest is the
+        // detail. The summary is what surfaces as a notice, so you learn the
+        // transfer went through without leaving the page you are on.
+        if let Some(first) = said.first() {
+            notice.show(first.clone());
         }
-        state.log.extend(said);
-        trim_log(&mut state.log);
+        for line in said {
+            inbox.say(Speaker::System, line);
+        }
         refresh_numbers(&mut state);
     }
 }
@@ -282,38 +270,15 @@ fn drain_sense_parts(wallet: &mut MoneyWallet, log: &mut Vec<String>) {
     }
 }
 
-fn trim_log(log: &mut Vec<String>) {
-    if log.len() > 40 {
-        let drop = log.len() - 40;
-        log.drain(0..drop);
-    }
-}
-
 fn refresh_sigma_labels(
     state: Res<SigmaState>,
     mut bal: Query<
         &mut Text,
-        (
-            With<SigmaBalanceLabel>,
-            Without<SigmaEventsLabel>,
-            Without<SigmaStatusLabel>,
-        ),
-    >,
-    mut events: Query<
-        &mut Text,
-        (
-            With<SigmaEventsLabel>,
-            Without<SigmaBalanceLabel>,
-            Without<SigmaStatusLabel>,
-        ),
+        (With<SigmaBalanceLabel>, Without<SigmaStatusLabel>),
     >,
     mut status: Query<
         &mut Text,
-        (
-            With<SigmaStatusLabel>,
-            Without<SigmaBalanceLabel>,
-            Without<SigmaEventsLabel>,
-        ),
+        (With<SigmaStatusLabel>, Without<SigmaBalanceLabel>),
     >,
 ) {
     if !state.is_changed() {
@@ -321,14 +286,6 @@ fn refresh_sigma_labels(
     }
     if let Ok(mut t) = bal.single_mut() {
         *t = Text::new(balance_text(&state));
-    }
-    if let Ok(mut t) = events.single_mut() {
-        let tail: Vec<_> = state.log.iter().rev().take(12).cloned().collect();
-        let mut lines: Vec<_> = tail.into_iter().rev().collect();
-        if lines.is_empty() {
-            lines.push("(no events)".into());
-        }
-        *t = Text::new(lines.join("\n"));
     }
     if let Ok(mut t) = status.single_mut() {
         *t = Text::new(format!(

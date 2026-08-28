@@ -21,7 +21,7 @@ use nu_std::load_standard_library;
 use tape::Chunk;
 use prysm::{StreamScrollback, dispatch, theme};
 
-use super::{ComInbox, Speaker, WorldState};
+use super::{ComInbox, Notice, Speaker, WorldState};
 use crate::shell::chrome::{ContentRoot, CHROME_TOP_H, CHROME_BOTTOM_H};
 
 const G: f32 = theme::G;
@@ -74,6 +74,9 @@ struct TerminalNonSendState {
     /// Follow the tail: new output scrolls into view until the reader
     /// scrolls up, and resumes when they scroll back down to the end.
     stick_to_bottom: bool,
+    /// The command currently running, so its completion can be announced by
+    /// name from wherever you happen to be looking.
+    last_cmd: String,
 }
 
 // ── Nushell init ──────────────────────────────────────────────────────────────
@@ -387,8 +390,17 @@ fn poll_eval_results(world: &mut World) {
     };
 
     // Add status chunk at end-of-command
+    let finished = engine_back.then(|| state.last_cmd.clone());
     if engine_back {
         chunks.push(Chunk::status(0));
+    }
+
+    // Say so under the address bar. The output itself stays here in com; this
+    // is only the fact that it is over, for whoever is looking elsewhere.
+    if let Some(cmd) = finished {
+        if !cmd.is_empty() {
+            world.resource_mut::<Notice>().show(format!("done: {cmd}"));
+        }
     }
 
     // Dispatch all chunks to Bevy widgets via the typed molecule match
@@ -451,6 +463,7 @@ fn run_pending_command(world: &mut World) {
     ));
 
     let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
+    state.last_cmd = cmd.clone();
     dispatch_eval(state, cmd);
 }
 
@@ -568,6 +581,7 @@ fn setup_terminal(world: &mut World) {
         scroll_area_entity,
         scroll_offset: 0.0,
         stick_to_bottom: true,
+        last_cmd: String::new(),
     });
 
     info!("Com world initialized");
