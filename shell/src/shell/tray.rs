@@ -28,7 +28,7 @@ fn create_tray(world: &mut World) {
     let menu = Menu::new();
 
     let item_show     = MenuItem::new("Show cyb", true, None);
-    let item_graph    = MenuItem::new("Graph (Cmd+1)", true, None);
+    let item_graph    = MenuItem::new("Brain (Cmd+1)", true, None);
     let item_com = MenuItem::new("Com (Cmd+2)", true, None);
     let item_robot     = MenuItem::new("Robot (Cmd+3)", true, None);
     let item_sigma    = MenuItem::new("Sigma (Cmd+4)", true, None);

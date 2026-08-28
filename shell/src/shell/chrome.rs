@@ -156,7 +156,7 @@ fn spawn_chrome(mut commands: Commands) {
             .with_children(|bar| {
                 bar.spawn((
                     AddressBarText,
-                    Text::new("cyb://graph"),
+                    Text::new("cyb://brain"),
                     TextFont {
                         font_size: 13.0,
                         ..default()
@@ -278,7 +278,7 @@ fn spawn_chrome(mut commands: Commands) {
                     ))
                     .with_children(|tabs| {
                         for (label, world) in [
-                            ("graph", WorldState::Graph),
+                            ("brain", WorldState::Graph),
                             ("com", WorldState::Com),
                             ("robot", WorldState::Robot),
                             ("sigma", WorldState::Sigma),
@@ -459,7 +459,7 @@ fn update_address_bar(
         return;
     }
     let uri = match world_state.get() {
-        WorldState::Graph => "cyb://graph",
+        WorldState::Graph => "cyb://brain",
         WorldState::Com => "cyb://com",
         WorldState::Robot => "cyb://robot",
         WorldState::Sigma => "cyb://sigma",
@@ -593,7 +593,9 @@ pub fn handle_chrome_input(world: &mut World) {
         world.resource_mut::<ChromeState>().just_submitted = true;
 
         let target = match cmd.as_str() {
-            "graph" | "mir" => Some(WorldState::Graph),
+            // The surface is the brain; "graph" and "mir" are what it
+            // was called before, and both still land here.
+            "brain" | "graph" | "mir" => Some(WorldState::Graph),
             "com" | "terminal" => Some(WorldState::Com),
             "robot" | "cell" | "landing" => Some(WorldState::Robot),
             "sigma" | "money" => Some(WorldState::Sigma),
