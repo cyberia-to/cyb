@@ -7,7 +7,7 @@ use bevy::prelude::*;
 use cyb_core::{Cell, MoneyEvent, MoneyWallet, money_to_sense};
 use prysm::theme;
 
-use super::WorldState;
+use super::{ComInbox, Speaker, WorldState};
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H};
 
 pub struct SigmaWorldPlugin;
@@ -66,8 +66,8 @@ impl Default for SigmaState {
             balance,
             tip_h,
             grade4,
-            log: vec!["sigma ready · fund / send / finalize".into()],
-            status: format!("neuron {}…", hex3(&neuron)),
+            log: vec!["sigma ready: fund / send / finalize".into()],
+            status: format!("neuron {}", hex3(&neuron)),
         }
     }
 }
@@ -100,13 +100,17 @@ fn setup_sigma(mut commands: Commands, state: Res<SigmaState>) {
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(12.0),
                 padding: UiRect::all(Val::Px(16.0)),
+                // The root's bottom edge is the chrome's top edge, so clipping
+                // here is what makes the page pass under the bars instead of
+                // drawing over them.
+                overflow: Overflow::clip(),
                 ..default()
             },
             BackgroundColor(theme::DARK_BASE),
         ))
         .with_children(|root| {
             root.spawn((
-                Text::new("sigma · money"),
+                Text::new("sigma / money"),
                 TextFont {
                     font_size: 22.0,
                     ..default()
@@ -141,7 +145,7 @@ fn setup_sigma(mut commands: Commands, state: Res<SigmaState>) {
             .with_children(|row| {
                 for (label, btn) in [
                     ("fund +100", SigmaBtn::Fund),
-                    ("send 10 → bob", SigmaBtn::Send),
+                    ("send 10 -> bob", SigmaBtn::Send),
                     ("finalize", SigmaBtn::Finalize),
                     ("refresh", SigmaBtn::Refresh),
                 ] {
@@ -170,7 +174,7 @@ fn setup_sigma(mut commands: Commands, state: Res<SigmaState>) {
             });
 
             root.spawn((
-                Text::new("events · sense"),
+                Text::new("events / sense"),
                 TextFont {
                     font_size: 14.0,
                     ..default()
@@ -198,6 +202,7 @@ fn destroy_sigma(mut commands: Commands, q: Query<Entity, With<SigmaRoot>>) {
 fn handle_sigma_buttons(
     mut interactions: Query<(&Interaction, &SigmaBtn), Changed<Interaction>>,
     mut state: ResMut<SigmaState>,
+    mut inbox: ResMut<ComInbox>,
 ) {
     for (interaction, btn) in &mut interactions {
         if *interaction != Interaction::Pressed {
@@ -205,15 +210,26 @@ fn handle_sigma_buttons(
         }
         let peer = state.peer;
         let token = state.token;
+
+        // What the press meant, in the words someone would use for it. This is
+        // the left-hand side of the record in com; everything the wallet says
+        // back lands on the right.
+        let intent = match btn {
+            SigmaBtn::Fund     => "fund 100 CYB".to_string(),
+            SigmaBtn::Send     => "send 10 CYB to bob".to_string(),
+            SigmaBtn::Finalize => "finalize the block".to_string(),
+            SigmaBtn::Refresh  => "refresh the tip".to_string(),
+        };
+        inbox.say(Speaker::User, intent);
+
         // Split-borrow wallet + cell (two distinct fields).
-        let SigmaState {
-            cell, wallet, log, ..
-        } = &mut *state;
+        let mut said: Vec<String> = Vec::new();
+        let SigmaState { cell, wallet, .. } = &mut *state;
         match btn {
             SigmaBtn::Fund => {
                 wallet.fund_for_test(cell, token, 100);
-                log.push("funded +100 CYB".into());
-                drain_sense_parts(wallet, log);
+                said.push("funded +100 CYB".into());
+                drain_sense_parts(wallet, &mut said);
             }
             SigmaBtn::Send => {
                 if !wallet.grade4() {
@@ -222,10 +238,10 @@ fn handle_sigma_buttons(
                 match wallet.send(cell, peer, token, 10) {
                     Ok((sig, ev)) => {
                         let ok = ev.verify(wallet.tip());
-                        log.push(format!("sent 10 → bob  sig {}… final={ok}", hex3(&sig)));
-                        drain_sense_parts(wallet, log);
+                        said.push(format!("sent 10 -> bob  sig {} final={ok}", hex3(&sig)));
+                        drain_sense_parts(wallet, &mut said);
                     }
-                    Err(e) => log.push(format!("send failed: {e:?}")),
+                    Err(e) => said.push(format!("send failed: {e:?}")),
                 }
             }
             SigmaBtn::Finalize => {
@@ -233,16 +249,18 @@ fn handle_sigma_buttons(
                 let ready = wallet.mature_settles();
                 let h = wallet.tip().height;
                 let g4 = wallet.grade4();
-                log.push(format!(
-                    "finalize h={h} grade4={g4} matured={}",
-                    ready.len()
-                ));
+                said.push(format!("finalize h={h} grade4={g4} matured={}", ready.len()));
             }
             SigmaBtn::Refresh => {
                 wallet.sync_tip_local(cell);
-                log.push("refreshed tip".into());
+                said.push("refreshed tip".into());
             }
         }
+
+        for line in &said {
+            inbox.say(Speaker::System, line.clone());
+        }
+        state.log.extend(said);
         trim_log(&mut state.log);
         refresh_numbers(&mut state);
     }
@@ -314,7 +332,7 @@ fn refresh_sigma_labels(
     }
     if let Ok(mut t) = status.single_mut() {
         *t = Text::new(format!(
-            "{} · tip h={} grade4={}",
+            "{} / tip h={} grade4={}",
             state.status,
             state.tip_h,
             if state.grade4 { "yes" } else { "no" }
@@ -332,10 +350,10 @@ fn refresh_numbers(state: &mut SigmaState) {
 fn format_event(e: &MoneyEvent) -> String {
     match e {
         MoneyEvent::TransferOut { amount, to, .. } => {
-            format!("out {amount} → {}", hex3(to))
+            format!("out {amount} -> {}", hex3(to))
         }
         MoneyEvent::TransferIn { amount, from, .. } => {
-            format!("in {amount} ← {}", hex3(from))
+            format!("in {amount} <- {}", hex3(from))
         }
         MoneyEvent::RewardCredited { amount, clock, .. } => format!("reward {:?} {amount}", clock),
         MoneyEvent::Finalized { signal, .. } => format!("final {}", hex3(signal)),

@@ -21,7 +21,7 @@ use nu_std::load_standard_library;
 use tape::Chunk;
 use prysm::{StreamScrollback, dispatch, theme};
 
-use super::WorldState;
+use super::{ComInbox, Speaker, WorldState};
 use crate::shell::chrome::{ContentRoot, CHROME_TOP_H, CHROME_BOTTOM_H};
 
 const G: f32 = theme::G;
@@ -37,6 +37,10 @@ impl Plugin for ComWorldPlugin {
     fn build(&self, app: &mut App) {
         app.add_systems(OnEnter(WorldState::Com), setup_terminal)
             .add_systems(OnExit(WorldState::Com), destroy_terminal)
+            // Not gated on being in com: the other worlds write here while you
+            // are looking at them, and the record has to be waiting when you
+            // arrive. com's tree is hidden between visits, never torn down.
+            .add_systems(Update, drain_com_inbox)
             .add_systems(
                 Update,
                 terminal_update.run_if(in_state(WorldState::Com)),
@@ -448,6 +452,54 @@ fn run_pending_command(world: &mut World) {
 
     let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
     dispatch_eval(state, cmd);
+}
+
+/// Write what the other worlds have said into the scrollback.
+///
+/// Side carries the speaker: what you asked for on the left, what came back on
+/// the right. Nothing else distinguishes them, which is the point — a wall of
+/// events with no shape to it is what the sigma page had, and nobody reads it.
+fn drain_com_inbox(world: &mut World) {
+    let lines = {
+        let Some(mut inbox) = world.get_resource_mut::<ComInbox>() else { return };
+        if inbox.0.is_empty() { return }
+        std::mem::take(&mut inbox.0)
+    };
+
+    // com may not have been opened yet, in which case there is nowhere to put
+    // these. Hold them rather than drop them.
+    let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() else {
+        world.resource_mut::<ComInbox>().0 = lines;
+        return;
+    };
+    let scrollback = state.scrollback_entity;
+
+    for (who, text) in lines {
+        let (justify, colour) = match who {
+            Speaker::User   => (JustifyContent::FlexStart, theme::TEXT_PRIMARY),
+            Speaker::System => (JustifyContent::FlexEnd,   theme::ACID_GREEN),
+        };
+        let row = world.spawn((
+            Node {
+                width: Val::Percent(100.0),
+                justify_content: justify,
+                margin: UiRect::vertical(Val::Px(2.0)),
+                ..default()
+            },
+            ChildOf(scrollback),
+        )).id();
+        world.spawn((
+            Text::new(text),
+            TextFont { font_size: theme::BODY, ..default() },
+            TextColor(colour),
+            ChildOf(row),
+        ));
+    }
+
+    // A line arriving is news; follow it.
+    if let Some(state) = world.get_non_send_resource_mut::<TerminalNonSendState>() {
+        state.into_inner().stick_to_bottom = true;
+    }
 }
 
 /// Publish the shell's prompt so the commander can wear it. The commander is
