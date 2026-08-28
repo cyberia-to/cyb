@@ -646,15 +646,15 @@ fn process_scroll(world: &mut World) {
     let delta_y = wheel + drag;
     if delta_y == 0.0 { return; }
 
-    // Get content / viewport heights for clamping
-    let (scrollback_h, area_h) = {
-        let state = world.get_non_send_resource::<TerminalNonSendState>().unwrap();
-        let sb_h = world.get::<ComputedNode>(state.scrollback_entity)
-            .map(|cn| cn.size().y).unwrap_or(0.0);
-        let sa_h = world.get::<ComputedNode>(state.scroll_area_entity)
-            .map(|cn| cn.size().y).unwrap_or(0.0);
-        (sb_h, sa_h)
-    };
+    // Heights in the same units the scroll position is written in.
+    //
+    // ComputedNode measures in physical pixels; bevy_ui reads ScrollPosition as
+    // *logical* ones and multiplies by the scale factor before clamping to the
+    // physical overflow. Mixing the two silently pins the view: a logical
+    // offset near a physical maximum comes back multiplied past it and clamps
+    // to the end, every frame, however far the finger travelled. Touch and
+    // wheel deltas are logical already, so logical is what everything here is.
+    let (scrollback_h, area_h) = scroll_extent(world);
 
     let max_scroll = (scrollback_h - area_h).max(0.0);
     let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
@@ -663,13 +663,27 @@ fn process_scroll(world: &mut World) {
     state.stick_to_bottom = state.scroll_offset >= max_scroll - 1.0;
 }
 
-fn apply_scroll_offset(world: &mut World) {
-    let (offset, stick, scroll_area_entity, scrollback_entity) = {
-        let state = world.get_non_send_resource::<TerminalNonSendState>().unwrap();
-        (state.scroll_offset, state.stick_to_bottom, state.scroll_area_entity, state.scrollback_entity)
+/// Content and viewport heights of the scrollback, in logical pixels.
+fn scroll_extent(world: &mut World) -> (f32, f32) {
+    let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() else {
+        return (0.0, 0.0);
     };
-    let sb_h = world.get::<ComputedNode>(scrollback_entity).map(|cn| cn.size().y).unwrap_or(0.0);
-    let sa_h = world.get::<ComputedNode>(scroll_area_entity).map(|cn| cn.size().y).unwrap_or(0.0);
+    let (sb, sa) = (state.scrollback_entity, state.scroll_area_entity);
+    let logical = |e: Entity| -> f32 {
+        world
+            .get::<ComputedNode>(e)
+            .map(|cn| cn.size().y * cn.inverse_scale_factor())
+            .unwrap_or(0.0)
+    };
+    (logical(sb), logical(sa))
+}
+
+fn apply_scroll_offset(world: &mut World) {
+    let (offset, stick, scroll_area_entity) = {
+        let state = world.get_non_send_resource::<TerminalNonSendState>().unwrap();
+        (state.scroll_offset, state.stick_to_bottom, state.scroll_area_entity)
+    };
+    let (sb_h, sa_h) = scroll_extent(world);
     let max_scroll = (sb_h - sa_h).max(0.0);
 
     // Layout runs after this, so max_scroll is one frame behind the newest
