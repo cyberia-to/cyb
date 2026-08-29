@@ -145,6 +145,29 @@ pub fn build_app() -> App {
     .add_plugins(worlds::sigma::SigmaWorldPlugin)
     .add_plugins(agent::AgentPlugin);
 
+    // `CYB_SHOT=/path.png` (with optional `CYB_SHOT_AT=secs`, default 8)
+    // saves one frame of the app's own framebuffer — UI included — and is how
+    // a build proves what it looks like without anyone photographing a
+    // screen. The app's framebuffer shows the app alone, which is the point.
+    #[cfg(not(target_os = "android"))]
+    if let Ok(path) = std::env::var("CYB_SHOT") {
+        let at: f32 = std::env::var("CYB_SHOT_AT").ok().and_then(|s| s.parse().ok()).unwrap_or(8.0);
+        app.add_systems(
+            bevy::prelude::Update,
+            move |mut commands: bevy::prelude::Commands,
+                  time: bevy::prelude::Res<bevy::prelude::Time>,
+                  mut done: bevy::prelude::Local<bool>| {
+                if *done || time.elapsed_secs() < at {
+                    return;
+                }
+                *done = true;
+                use bevy::render::view::screenshot::{save_to_disk, Screenshot};
+                commands.spawn(Screenshot::primary_window()).observe(save_to_disk(path.clone()));
+                bevy::log::info!("shot: saving to {path}");
+            },
+        );
+    }
+
     #[cfg(not(target_os = "android"))]
     app.add_plugins(shell::hotkeys::HotkeysPlugin)
         .add_plugins(shell::window::WindowLifecyclePlugin)

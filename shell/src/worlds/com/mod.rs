@@ -441,11 +441,19 @@ fn run_pending_command(world: &mut World) {
         return;
     }
 
-    // A question outranks a command: `? ...` and `ask ...` go to soma, and
-    // the exchange comes back through the inbox as a conversation. Everything
-    // else is nushell, exactly as before.
-    if let Some(q) = crate::worlds::soma_bridge::parse_ask(&cmd) {
-        let q = q.to_string();
+    // A question outranks a command: `? ...` and `ask ...` go to soma
+    // explicitly, and a line whose first word is nothing this shell can run
+    // goes there too. Typing `privet` into a box whose placeholder says
+    // "ask, search, transact" should get an answer, not
+    // `External command failed` in a red bar.
+    let to_soma = crate::worlds::soma_bridge::parse_ask(&cmd)
+        .map(str::to_string)
+        .or_else(|| {
+            let state = world.get_non_send_resource::<TerminalNonSendState>()?;
+            let engine = state.nu_engine.as_ref()?;
+            (!resolves_in_shell(&engine.engine_state, &cmd)).then(|| cmd.clone())
+        });
+    if let Some(q) = to_soma {
         crate::worlds::soma_bridge::ask(world, &q);
         return;
     }
@@ -522,6 +530,41 @@ fn drain_com_inbox(world: &mut World) {
     if let Some(state) = world.get_non_send_resource_mut::<TerminalNonSendState>() {
         state.into_inner().stick_to_bottom = true;
     }
+}
+
+/// Would nushell recognise this line's head word as something it can run?
+///
+/// Declared commands (builtins, aliases, custom defs) count, and so do
+/// executables on PATH or by explicit path. Expression-looking lines —
+/// digits, operators, variables, subexpressions — count as shell too, so
+/// `1 + 2` and `$env.HOME | print` stay maths and pipes. What is left over —
+/// a bare word the shell has never heard of — is somebody talking, and
+/// talking is soma's job.
+fn resolves_in_shell(engine_state: &EngineState, line: &str) -> bool {
+    let Some(head) = line.split_whitespace().next() else { return true };
+
+    // Expressions and syntax that only make sense in the shell.
+    let first = head.chars().next().unwrap_or(' ');
+    if first.is_ascii_digit() || "$([{\"'-.~/^".contains(first) {
+        return true;
+    }
+    // Multi-word command heads (`str join`, `into int`) resolve as the first
+    // two words; a declared name wins at any length.
+    let two: String = line.split_whitespace().take(2).collect::<Vec<_>>().join(" ");
+    if engine_state.find_decl(two.as_bytes(), &[]).is_some()
+        || engine_state.find_decl(head.as_bytes(), &[]).is_some()
+    {
+        return true;
+    }
+    // A real binary on PATH.
+    if let Ok(path) = std::env::var("PATH") {
+        for dir in path.split(':') {
+            if !dir.is_empty() && std::path::Path::new(dir).join(head).is_file() {
+                return true;
+            }
+        }
+    }
+    false
 }
 
 /// Publish the shell's prompt so the commander can wear it. The commander is

@@ -137,6 +137,18 @@ pub struct WorldsPlugin;
 
 impl Plugin for WorldsPlugin {
     fn build(&self, app: &mut App) {
+        // `CYB_WORLD=brain|com|robot|sigma` boots straight into a world —
+        // for scripted runs and self-shots; people use the tabs.
+        let initial = match std::env::var("CYB_WORLD").as_deref() {
+            Ok("brain") | Ok("graph") => Some(WorldState::Graph),
+            Ok("com") => Some(WorldState::Com),
+            Ok("robot") => Some(WorldState::Robot),
+            Ok("sigma") => Some(WorldState::Sigma),
+            _ => None,
+        };
+        if let Some(w) = initial {
+            app.insert_state(w);
+        }
         app.init_state::<WorldState>()
             .init_resource::<PendingShellCmd>()
             .init_resource::<ComInbox>()
