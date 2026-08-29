@@ -4,7 +4,7 @@
 //! The flow, end to end:
 //!
 //! ```text
-//! "? why is the sky blue"          typed anywhere the commander is
+//! "why is the sky blue"            typed anywhere the commander is
 //!        │
 //!        ▼
 //! ComInbox (User, left)            the question enters the record
@@ -12,18 +12,28 @@
 //!        ▼
 //! soma-kernel thread               glia runs the model, locally
 //!        │
-//!        ▼
-//! ComInbox (System, right)         the answer enters the record
+//!        ▼  token by token
+//! ComInbox stream (right)          the answer arrives as it is written
 //!        │
 //!        ▼
-//! SharedCell::cast                 soma → question → answer, one signal
+//! SharedCell::cast                 the exchange becomes graph, one signal
 //! ```
 //!
-//! The cast is the point of the exercise. An answer that only scrolls by is
-//! chat; an answer that lands as `particle(question) → particle(answer)` on
-//! the local neuron's chain is knowledge the graph now holds — brain renders
-//! it, sync will gossip it, and the same question asked of a different mind
-//! can link a competing answer beside it.
+//! What one exchange casts:
+//!
+//! ```text
+//! previous answer ──► question     the conversation is a chain, not islands
+//!        (or soma ──► question     when this opens a new thread)
+//! question ──► answer              the exchange itself
+//! answer ──► concept, ...          the words that recur in it
+//! ```
+//!
+//! The concepts are the weave. `particle("cybergraph")` is the same 32 bytes
+//! whichever exchange mentions it, so two conversations that touch the same
+//! idea are connected *through* it — the new knowledge attaches to the graph
+//! that is already there, instead of hanging off the anchor in a private
+//! star. The thread link makes a session readable as a path; the anchor
+//! marks only where threads begin.
 //!
 //! Desktop-only for now: the model runtime is heavy and the phone carries no
 //! weights yet. The `ask` prefix still exists on Android — it answers
@@ -31,7 +41,7 @@
 
 use bevy::prelude::*;
 
-use super::{local_neuron, ComInbox, Notice, SharedCell, Speaker};
+use super::{local_neuron, ComInbox, ComSay, Notice, SharedCell, Speaker};
 
 pub struct SomaBridgePlugin;
 
@@ -40,9 +50,17 @@ pub struct SomaBridgePlugin;
 #[derive(Resource, Default)]
 pub struct SomaPending(pub Vec<String>);
 
+/// Where this session's conversation currently ends: the particle of the
+/// last answer. The next question links from here, which is what makes a
+/// session a chain the graph can be walked along. In-memory on purpose — a
+/// new session is a new thread, hanging off the anchor.
+#[derive(Resource, Default)]
+pub struct SomaThread(pub Option<[u8; 32]>);
+
 impl Plugin for SomaBridgePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SomaPending>();
+        app.init_resource::<SomaThread>();
         #[cfg(target_os = "macos")]
         {
             app.insert_non_send_resource(soma_kernel::Soma::spawn(
@@ -52,11 +70,19 @@ impl Plugin for SomaBridgePlugin {
             // `SOMA_ASK="..."` asks the moment the app is up — the whole
             // pipeline (wake, think, answer, cast) exercised without a hand
             // on the keyboard. A smoke test that doubles as a demo.
-            if let Ok(q) = std::env::var("SOMA_ASK") {
-                if !q.trim().is_empty() {
+            if let Ok(qs) = std::env::var("SOMA_ASK") {
+                let questions: Vec<String> = qs
+                    .split(";;")
+                    .map(str::trim)
+                    .filter(|q| !q.is_empty())
+                    .map(str::to_string)
+                    .collect();
+                if !questions.is_empty() {
                     app.add_systems(PostStartup, move |world: &mut World| {
-                        let q = q.clone();
-                        ask(world, &q);
+                        // soma answers serially, so these form one thread.
+                        for q in &questions {
+                            ask(world, q);
+                        }
                     });
                 }
             }
@@ -88,7 +114,7 @@ pub fn parse_ask(line: &str) -> Option<&str> {
 pub fn ask(world: &mut World, question: &str) {
     world
         .resource_mut::<ComInbox>()
-        .say(Speaker::User, format!("? {question}"));
+        .say(Speaker::User, question.to_string());
 
     #[cfg(target_os = "macos")]
     {
@@ -114,6 +140,7 @@ fn poll_soma(
     soma: NonSend<soma_kernel::Soma>,
     shared: Res<SharedCell>,
     mut pending: ResMut<SomaPending>,
+    mut thread: ResMut<SomaThread>,
     mut inbox: ResMut<ComInbox>,
     mut notice: ResMut<Notice>,
 ) {
@@ -122,31 +149,45 @@ fn poll_soma(
     while let Some(ev) = soma.poll() {
         match ev {
             soma_kernel::SomaEvent::Waking => notice.show("soma: waking (loading model)..."),
-            soma_kernel::SomaEvent::Thinking => notice.show("soma: thinking..."),
+            soma_kernel::SomaEvent::Thinking => {
+                inbox.0.push(ComSay::StreamStart);
+                notice.show("soma: thinking...");
+            }
+            soma_kernel::SomaEvent::Delta(d) => {
+                inbox.0.push(ComSay::StreamDelta(d));
+            }
             soma_kernel::SomaEvent::Answer {
                 question,
                 answer,
+                concepts,
                 tokens,
                 tok_per_s,
             } => {
-                inbox.say(Speaker::System, answer.clone());
+                // The streamed text was raw generation; the final form is the
+                // cleaned answer, and it replaces the stream in place.
+                inbox.0.push(ComSay::StreamEnd(answer.clone()));
 
-                // The exchange becomes graph. One atomic signal:
-                //   soma → question   (reachable from the well-known anchor)
-                //   question → answer (the knowledge itself)
+                // The exchange becomes graph — see the module doc for the
+                // shape. One atomic signal: thread, exchange, weave.
                 let q = soma_kernel::particle_of(&question);
                 let a = soma_kernel::particle_of(&answer);
-                let anchor = soma_kernel::soma_anchor();
+                let from = thread.0.unwrap_or_else(soma_kernel::soma_anchor);
+                let mut links = vec![(from, q), (q, a)];
+                for c in &concepts {
+                    links.push((a, soma_kernel::particle_of(c)));
+                }
+                let n_links = links.len();
                 let neuron = local_neuron();
                 let cast = {
                     let mut cell = shared.cell.lock().expect("shared cell poisoned");
-                    cell.cast(neuron, [(anchor, q), (q, a)])
+                    cell.cast(neuron, links)
                 };
                 match cast {
                     Ok(_) => {
                         shared.bump();
+                        thread.0 = Some(a);
                         notice.show(format!(
-                            "soma: answered ({tokens} tok, {tok_per_s:.0} tok/s) — linked"
+                            "soma: answered ({tokens} tok, {tok_per_s:.0} tok/s) — {n_links} links"
                         ));
                     }
                     Err(e) => {

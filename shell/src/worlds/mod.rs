@@ -37,16 +37,30 @@ pub enum Speaker {
     System,
 }
 
+/// One thing said into com's record.
+#[derive(Debug, Clone)]
+pub enum ComSay {
+    /// A whole line, attributed.
+    Line(Speaker, String),
+    /// A reply is about to arrive in pieces; open a row for it.
+    StreamStart,
+    /// The next piece of the open reply.
+    StreamDelta(String),
+    /// The reply is complete. The final text replaces whatever streamed in,
+    /// because the stream is raw generation and the final form is cleaned.
+    StreamEnd(String),
+}
+
 /// Lines waiting to be written into com's scrollback from another world.
 ///
 /// A queue rather than a single slot: one press of `send` produces an intent
 /// and then several events, and they must all arrive, in order.
 #[derive(Resource, Default)]
-pub struct ComInbox(pub Vec<(Speaker, String)>);
+pub struct ComInbox(pub Vec<ComSay>);
 
 impl ComInbox {
     pub fn say(&mut self, who: Speaker, line: impl Into<String>) {
-        self.0.push((who, line.into()));
+        self.0.push(ComSay::Line(who, line.into()));
     }
 }
 

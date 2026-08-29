@@ -21,7 +21,7 @@ use nu_std::load_standard_library;
 use tape::Chunk;
 use prysm::{StreamScrollback, dispatch, theme};
 
-use super::{ComInbox, Notice, Speaker, WorldState};
+use super::{ComInbox, ComSay, Notice, Speaker, WorldState};
 use crate::shell::chrome::{ContentRoot, CHROME_TOP_H, CHROME_BOTTOM_H};
 
 const G: f32 = theme::G;
@@ -77,6 +77,8 @@ struct TerminalNonSendState {
     /// The command currently running, so its completion can be announced by
     /// name from wherever you happen to be looking.
     last_cmd: String,
+    /// The text entity of a reply currently streaming in, if one is open.
+    stream_row: Option<Entity>,
 }
 
 // ── Nushell init ──────────────────────────────────────────────────────────────
@@ -504,7 +506,7 @@ fn drain_com_inbox(world: &mut World) {
     };
     let scrollback = state.scrollback_entity;
 
-    for (who, text) in lines {
+    let spawn_row = |world: &mut World, who: Speaker, text: String| -> Entity {
         let (justify, colour) = match who {
             Speaker::User   => (JustifyContent::FlexStart, theme::TEXT_PRIMARY),
             Speaker::System => (JustifyContent::FlexEnd,   theme::ACID_GREEN),
@@ -523,7 +525,51 @@ fn drain_com_inbox(world: &mut World) {
             TextFont { font_size: theme::BODY, ..default() },
             TextColor(colour),
             ChildOf(row),
-        ));
+        )).id()
+    };
+
+    for say in lines {
+        match say {
+            ComSay::Line(who, text) => {
+                spawn_row(world, who, text);
+            }
+            // A streamed reply is one system row whose text grows as the
+            // model writes. The row exists from the first instant, so the
+            // reply visibly *starts* — the difference between a mind at work
+            // and a frozen app.
+            ComSay::StreamStart => {
+                let entity = spawn_row(world, Speaker::System, String::new());
+                let state = world
+                    .get_non_send_resource_mut::<TerminalNonSendState>()
+                    .unwrap()
+                    .into_inner();
+                state.stream_row = entity.into();
+            }
+            ComSay::StreamDelta(delta) => {
+                let row = world
+                    .get_non_send_resource::<TerminalNonSendState>()
+                    .and_then(|s| s.stream_row);
+                match row.and_then(|e| world.get_mut::<Text>(e)) {
+                    Some(mut text) => text.0.push_str(&delta),
+                    // A delta with no open row (com opened mid-answer):
+                    // better a plain line than a lost piece.
+                    None => {
+                        spawn_row(world, Speaker::System, delta);
+                    }
+                }
+            }
+            ComSay::StreamEnd(fin) => {
+                let row = world
+                    .get_non_send_resource_mut::<TerminalNonSendState>()
+                    .unwrap()
+                    .into_inner()
+                    .stream_row
+                    .take();
+                if let Some(mut text) = row.and_then(|e| world.get_mut::<Text>(e)) {
+                    text.0 = fin;
+                }
+            }
+        }
     }
 
     // A line arriving is news; follow it.
@@ -634,6 +680,7 @@ fn setup_terminal(world: &mut World) {
         scroll_offset: 0.0,
         stick_to_bottom: true,
         last_cmd: String::new(),
+        stream_row: None,
     });
 
     info!("Com world initialized");
