@@ -60,7 +60,47 @@ pub struct ComInbox(pub Vec<ComSay>);
 
 impl ComInbox {
     pub fn say(&mut self, who: Speaker, line: impl Into<String>) {
-        self.0.push(ComSay::Line(who, line.into()));
+        let line = line.into();
+        persist_com_line(
+            match who {
+                Speaker::User => "user",
+                Speaker::System => "system",
+            },
+            &line,
+        );
+        self.0.push(ComSay::Line(who, line));
+    }
+
+    /// Close an open stream with its final text. The deltas were display;
+    /// this is the line of record, so this is what persists.
+    pub fn finish_stream(&mut self, text: impl Into<String>) {
+        let text = text.into();
+        persist_com_line("system", &text);
+        self.0.push(ComSay::StreamEnd(text));
+    }
+}
+
+/// Where com's record lives across restarts. Same shape as every other
+/// durable thing in cyb: append-only lines, replayed on open.
+pub fn com_transcript_path() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    std::path::Path::new(&home).join("cyb").join("com.jsonl")
+}
+
+/// Append one line to the transcript. Best-effort by design: a failure to
+/// persist must never take the conversation down with it.
+pub fn persist_com_line(kind: &str, text: &str) {
+    let path = com_transcript_path();
+    if let Some(dir) = path.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let escaped = text
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n");
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+        use std::io::Write as _;
+        let _ = writeln!(f, "{{\"kind\":\"{kind}\",\"text\":\"{escaped}\"}}");
     }
 }
 

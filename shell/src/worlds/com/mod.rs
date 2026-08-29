@@ -480,6 +480,10 @@ fn run_pending_command(world: &mut World) {
         Node { margin: UiRect::vertical(Val::Px(2.0)), ..default() },
         ChildOf(scrollback_entity),
     ));
+    // The line of record: what was asked of the shell, prompt and all.
+    // Output stays session-local — it is re-runnable — but the asking is
+    // part of the story com tells after a restart.
+    crate::worlds::persist_com_line("cmd", &format!("{prompt}{cmd}"));
 
     let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
     state.last_cmd = cmd.clone();
@@ -506,39 +510,17 @@ fn drain_com_inbox(world: &mut World) {
     };
     let scrollback = state.scrollback_entity;
 
-    let spawn_row = |world: &mut World, who: Speaker, text: String| -> Entity {
-        let (justify, colour) = match who {
-            Speaker::User   => (JustifyContent::FlexStart, theme::TEXT_PRIMARY),
-            Speaker::System => (JustifyContent::FlexEnd,   theme::ACID_GREEN),
-        };
-        let row = world.spawn((
-            Node {
-                width: Val::Percent(100.0),
-                justify_content: justify,
-                margin: UiRect::vertical(Val::Px(2.0)),
-                ..default()
-            },
-            ChildOf(scrollback),
-        )).id();
-        world.spawn((
-            Text::new(text),
-            TextFont { font_size: theme::BODY, ..default() },
-            TextColor(colour),
-            ChildOf(row),
-        )).id()
-    };
-
     for say in lines {
         match say {
             ComSay::Line(who, text) => {
-                spawn_row(world, who, text);
+                spawn_said_row(world, scrollback, who, text);
             }
             // A streamed reply is one system row whose text grows as the
             // model writes. The row exists from the first instant, so the
             // reply visibly *starts* — the difference between a mind at work
             // and a frozen app.
             ComSay::StreamStart => {
-                let entity = spawn_row(world, Speaker::System, String::new());
+                let entity = spawn_said_row(world, scrollback, Speaker::System, String::new());
                 let state = world
                     .get_non_send_resource_mut::<TerminalNonSendState>()
                     .unwrap()
@@ -554,7 +536,7 @@ fn drain_com_inbox(world: &mut World) {
                     // A delta with no open row (com opened mid-answer):
                     // better a plain line than a lost piece.
                     None => {
-                        spawn_row(world, Speaker::System, delta);
+                        spawn_said_row(world, scrollback, Speaker::System, delta);
                     }
                 }
             }
@@ -666,6 +648,7 @@ fn setup_terminal(world: &mut World) {
     )).id();
     // Build the UI tree
     let (root_entity, scroll_area_entity) = spawn_terminal_ui(world, scrollback_entity);
+    replay_transcript(world, scrollback_entity);
 
     world.insert_non_send_resource(TerminalNonSendState {
         nu_engine: Some(nu_engine),
@@ -729,6 +712,103 @@ fn spawn_terminal_ui(world: &mut World, scrollback_entity: Entity) -> (Entity, E
     world.entity_mut(scrollback_entity).insert(ChildOf(scroll_area));
 
     (root, scroll_area)
+}
+
+/// Restarting cyb must not cost the record: com replays its transcript into
+/// the scrollback before the session's first line, so the history is simply
+/// *there*, the way it is in anything that deserves to be called a log.
+///
+/// Only the most recent lines are replayed — the file is the full archive,
+/// the screen is the recent past.
+const REPLAY_LINES: usize = 300;
+
+fn replay_transcript(world: &mut World, scrollback: Entity) {
+    let path = crate::worlds::com_transcript_path();
+    let Ok(body) = std::fs::read_to_string(&path) else { return };
+    let lines: Vec<&str> = body.lines().collect();
+    let start = lines.len().saturating_sub(REPLAY_LINES);
+    let mut replayed = 0usize;
+
+    for line in &lines[start..] {
+        let Some(kind) = json_field(line, "kind") else { continue };
+        let Some(text) = json_field(line, "text") else { continue };
+        match kind.as_str() {
+            "cmd" => {
+                world.spawn((
+                    Text::new(text),
+                    TextFont { font_size: theme::BODY, ..default() },
+                    TextColor(theme::TEXT_DIM),
+                    Node { margin: UiRect::vertical(Val::Px(2.0)), ..default() },
+                    ChildOf(scrollback),
+                ));
+            }
+            "user" => { spawn_said_row(world, scrollback, Speaker::User, text); }
+            "system" => { spawn_said_row(world, scrollback, Speaker::System, text); }
+            _ => continue,
+        }
+        replayed += 1;
+    }
+
+    if replayed > 0 {
+        // A quiet seam between then and now.
+        world.spawn((
+            Node {
+                width: Val::Percent(100.0),
+                height: Val::Px(1.0),
+                margin: UiRect::vertical(Val::Px(theme::G)),
+                ..default()
+            },
+            BackgroundColor(theme::BORDER),
+            ChildOf(scrollback),
+        ));
+        info!("com: replayed {replayed} lines of transcript");
+    }
+}
+
+/// One attributed row in the record: yours on the left, the machine's on the
+/// right. The single place this layout is decided, for live lines and
+/// replayed ones alike.
+fn spawn_said_row(world: &mut World, scrollback: Entity, who: Speaker, text: String) -> Entity {
+    let (justify, colour) = match who {
+        Speaker::User   => (JustifyContent::FlexStart, theme::TEXT_PRIMARY),
+        Speaker::System => (JustifyContent::FlexEnd,   theme::ACID_GREEN),
+    };
+    let row = world.spawn((
+        Node {
+            width: Val::Percent(100.0),
+            justify_content: justify,
+            margin: UiRect::vertical(Val::Px(2.0)),
+            ..default()
+        },
+        ChildOf(scrollback),
+    )).id();
+    world.spawn((
+        Text::new(text),
+        TextFont { font_size: theme::BODY, ..default() },
+        TextColor(colour),
+        ChildOf(row),
+    )).id()
+}
+
+/// Pull one string field out of a hand-written JSON line — the mirror of the
+/// writer in worlds::persist_com_line, and of soma's sidecar.
+fn json_field(line: &str, name: &str) -> Option<String> {
+    let key = format!("\"{name}\":\"");
+    let start = line.find(&key)? + key.len();
+    let mut out = String::new();
+    let mut chars = line[start..].chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '\\' => match chars.next() {
+                Some('n') => out.push('\n'),
+                Some(other) => out.push(other),
+                None => return None,
+            },
+            '"' => return Some(out),
+            _ => out.push(c),
+        }
+    }
+    None
 }
 
 // ── Scroll ────────────────────────────────────────────────────────────────────

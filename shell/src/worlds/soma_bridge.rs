@@ -165,7 +165,7 @@ fn poll_soma(
             } => {
                 // The streamed text was raw generation; the final form is the
                 // cleaned answer, and it replaces the stream in place.
-                inbox.0.push(ComSay::StreamEnd(answer.clone()));
+                inbox.finish_stream(answer.clone());
 
                 // The exchange becomes graph — see the module doc for the
                 // shape. One atomic signal: thread, exchange, weave.
