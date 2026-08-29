@@ -77,7 +77,7 @@ pub struct FetchState {
 /// throughput is nowhere near a single constant over weight — small models
 /// pay fixed overheads, large ones fall off the fast path. Order-of-
 /// magnitude honesty, not a benchmark.
-const SPEED_ANCHORS: &[(f32, f32)] = &[(0.43, 122.0), (2.2, 56.0), (15.7, 1.5)];
+const SPEED_ANCHORS: &[(f32, f32)] = &[(0.43, 230.0), (2.2, 57.0), (15.7, 1.5)];
 
 fn est_tok_per_s(bytes: u64) -> f32 {
     let gb = (bytes as f32 / 1e9).max(0.05);
