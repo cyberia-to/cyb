@@ -76,3 +76,4 @@ arboard = "3"
 # runtime is heavy and pulls its own GPU stack.
 [target.'cfg(target_os = "macos")'.dependencies]
 soma-kernel = { path = "../../soma/kernel" }
+glia-import = { package = "import", path = "../../glia/import" }
