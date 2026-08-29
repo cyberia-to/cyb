@@ -110,7 +110,7 @@ fn shorten(text: &str) -> String {
     s
 }
 
-/// sigma names particles by padding ASCII with zeros ("CYB", "bob"); those
+/// sigma names particles by padding ASCII with zeros ("PUSSY", "bob"); those
 /// hashes *are* their labels, no sidecar needed.
 fn decode_ascii_particle(hash: &[u8; 32]) -> Option<String> {
     let end = hash.iter().position(|&b| b == 0)?;

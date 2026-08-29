@@ -50,7 +50,9 @@ impl SigmaState {
         let cell = shared.cell.lock().expect("shared cell poisoned");
         let mut wallet = MoneyWallet::new(neuron).with_tip_prover();
         wallet.sync_tip_local(&cell);
-        let token = label_particle("CYB");
+        // PUSSY, not CYB: the nearest chain this cyb will actually join —
+        // small state, no financial stakes, halted with its snapshot in hand.
+        let token = label_particle("PUSSY");
         let peer = label_particle("bob");
         let balance = wallet.balance(&cell, &neuron, &token);
         let tip_h = wallet.tip().height;
@@ -202,8 +204,8 @@ fn handle_sigma_buttons(
         // the left-hand side of the record in com; everything the wallet says
         // back lands on the right.
         let intent = match btn {
-            SigmaBtn::Fund     => "fund 100 CYB".to_string(),
-            SigmaBtn::Send     => "send 10 CYB to bob".to_string(),
+            SigmaBtn::Fund     => "fund 100 PUSSY".to_string(),
+            SigmaBtn::Send     => "send 10 PUSSY to bob".to_string(),
             SigmaBtn::Finalize => "finalize the block".to_string(),
             SigmaBtn::Refresh  => "refresh the tip".to_string(),
         };
@@ -216,7 +218,7 @@ fn handle_sigma_buttons(
         match btn {
             SigmaBtn::Fund => {
                 wallet.fund_for_test(cell, token, 100);
-                said.push("funded +100 CYB".into());
+                said.push("funded +100 PUSSY".into());
                 drain_sense_parts(wallet, &mut said);
             }
             SigmaBtn::Send => {
@@ -330,7 +332,7 @@ fn format_event(e: &MoneyEvent) -> String {
 }
 
 fn balance_text(state: &SigmaState) -> String {
-    format!("{} CYB", state.balance)
+    format!("{} PUSSY", state.balance)
 }
 
 fn label_particle(label: &str) -> [u8; 32] {
