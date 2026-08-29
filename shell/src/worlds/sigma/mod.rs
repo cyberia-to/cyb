@@ -71,9 +71,14 @@ impl SigmaState {
 
 impl Plugin for SigmaWorldPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(PreStartup, |mut commands: Commands, shared: Res<SharedCell>| {
-            commands.insert_resource(SigmaState::new(&shared));
-        })
+        // Built here, not in a Startup system: `CYB_WORLD=sigma` makes this
+        // the boot world, and insert_state applies the initial transition
+        // during plugin build — OnEnter runs before any Startup schedule, so
+        // the state must already exist. WorldsPlugin registered SharedCell
+        // just before this plugin.
+        let shared = app.world().resource::<SharedCell>().clone();
+        app.insert_resource(SigmaState::new(&shared));
+        app
             .add_systems(OnEnter(WorldState::Sigma), setup_sigma)
             .add_systems(OnExit(WorldState::Sigma), destroy_sigma)
             .add_systems(
