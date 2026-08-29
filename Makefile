@@ -78,11 +78,12 @@ JAVA_HOME    ?= $(shell /usr/libexec/java_home -v 17 2>/dev/null || echo /opt/ho
 # With both an emulator and a phone attached, pick one: make android-run ADB_SERIAL=<id>
 ADB_SERIAL   ?=
 ADB          ?= $(ANDROID_HOME)/platform-tools/adb $(if $(ADB_SERIAL),-s $(ADB_SERIAL))
-NDK_VERSION  ?= $(shell ls $(ANDROID_HOME)/ndk 2>/dev/null | sort -V | tail -1)
-NDK_HOME     ?= $(ANDROID_HOME)/ndk/$(NDK_VERSION)
+# Discover NDK via find — never `ls` (colorized aliases inject ANSI into paths).
+NDK_HOME     ?= $(shell find "$(ANDROID_HOME)/ndk" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | sort -V | tail -1)
+NDK_VERSION  ?= $(notdir $(NDK_HOME))
 ANDROID_TARGET ?= aarch64-linux-android
 ANDROID_API  ?= 24
-NDK_HOST     ?= $(shell ls $(NDK_HOME)/toolchains/llvm/prebuilt/ 2>/dev/null | head -1)
+NDK_HOST     ?= $(shell find "$(NDK_HOME)/toolchains/llvm/prebuilt" -mindepth 1 -maxdepth 1 -type d 2>/dev/null | head -1 | xargs -I{} basename {})
 NDK_BIN      ?= $(NDK_HOME)/toolchains/llvm/prebuilt/$(NDK_HOST)/bin
 
 # Full Android build: compile Rust → copy assets → assemble APK
