@@ -22,6 +22,7 @@ path = "src/main.rs"
 [dependencies]
 # cyb workspace crates
 cyb-core   = { path = "../core" }
+hemera     = { package = "cyber-hemera", version = "0.3", path = "../../hemera/rs" }
 tape       = { package = "cyber-tape", path = "../../tape/impl/rust" }
 prysm      = { path = "../../prysm" }
 

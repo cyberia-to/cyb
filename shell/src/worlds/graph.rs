@@ -87,7 +87,7 @@ const LABEL_CHARS: usize = 40;
 
 impl BrainIndex {
     fn from_vocab(vocab: &ParticleIndex) -> Self {
-        let sidecar = load_particle_texts();
+        let sidecar = super::content::load();
         let labels = vocab
             .anchor()
             .iter()
@@ -121,57 +121,6 @@ fn decode_ascii_particle(hash: &[u8; 32]) -> Option<String> {
     head.iter()
         .all(|&b| b.is_ascii_graphic() || b == b' ')
         .then(|| String::from_utf8_lossy(head).into_owned())
-}
-
-/// The sidecar soma writes: one JSON object per line, particle hex → text.
-/// Parsed by hand for the same reason it is written by hand — three escapes
-/// and two fields do not earn a dependency.
-fn load_particle_texts() -> std::collections::HashMap<[u8; 32], String> {
-    let mut map = std::collections::HashMap::new();
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    let path = std::path::Path::new(&home).join("cyb").join("particles.jsonl");
-    let Ok(body) = std::fs::read_to_string(path) else { return map };
-    for line in body.lines() {
-        let Some(hex) = field(line, "particle") else { continue };
-        let Some(text) = field(line, "text") else { continue };
-        if hex.len() != 64 { continue }
-        let mut hash = [0u8; 32];
-        let ok = (0..32).all(|i| {
-            u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16)
-                .map(|b| hash[i] = b)
-                .is_ok()
-        });
-        if ok {
-            map.insert(hash, unescape(&text));
-        }
-    }
-    map
-}
-
-fn field(line: &str, name: &str) -> Option<String> {
-    let key = format!("\"{name}\":\"");
-    let start = line.find(&key)? + key.len();
-    let rest = &line[start..];
-    // The value ends at the first unescaped quote.
-    let mut out = String::new();
-    let mut chars = rest.chars();
-    while let Some(c) = chars.next() {
-        match c {
-            '\\' => {
-                out.push(c);
-                if let Some(n) = chars.next() {
-                    out.push(n);
-                }
-            }
-            '"' => return Some(out),
-            _ => out.push(c),
-        }
-    }
-    None
-}
-
-fn unescape(s: &str) -> String {
-    s.replace("\\n", "\n").replace("\\\"", "\"").replace("\\\\", "\\")
 }
 
 #[derive(Component)]

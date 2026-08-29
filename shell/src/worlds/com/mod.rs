@@ -41,6 +41,15 @@ impl Plugin for ComWorldPlugin {
             // are looking at them, and the record has to be waiting when you
             // arrive. com's tree is hidden between visits, never torn down.
             .add_systems(Update, drain_com_inbox)
+            // `CYB_RUN="..."` submits one line through the same path typing
+            // does — commander, routing, echo, cast — for scripted runs.
+            .add_systems(PostStartup, |mut pending: ResMut<crate::worlds::PendingShellCmd>| {
+                if let Ok(cmd) = std::env::var("CYB_RUN") {
+                    if !cmd.trim().is_empty() {
+                        pending.0 = Some(cmd);
+                    }
+                }
+            })
             .add_systems(
                 Update,
                 terminal_update.run_if(in_state(WorldState::Com)),
@@ -480,10 +489,23 @@ fn run_pending_command(world: &mut World) {
         Node { margin: UiRect::vertical(Val::Px(2.0)), ..default() },
         ChildOf(scrollback_entity),
     ));
-    // The line of record: what was asked of the shell, prompt and all.
-    // Output stays session-local — it is re-runnable — but the asking is
-    // part of the story com tells after a restart.
-    crate::worlds::persist_com_line("cmd", &format!("{prompt}{cmd}"));
+    // The line of record: what was typed is a particle on your chain, hung
+    // off com's anchor — the cybergraph *is* the history, there is no
+    // second log. Output stays session-local; it is re-runnable, and the
+    // asking is the part worth keeping.
+    {
+        use crate::worlds::content;
+        content::remember(&cmd);
+        let shared = world.resource::<crate::worlds::SharedCell>().clone();
+        let cast = {
+            let mut cell = shared.cell.lock().expect("shared cell poisoned");
+            cell.cast(crate::worlds::local_neuron(), [(content::com_anchor(), content::particle_of(&cmd))])
+        };
+        match cast {
+            Ok(_) => shared.bump(),
+            Err(e) => warn!("com: history cast failed: {e:?}"),
+        }
+    }
 
     let state = world.get_non_send_resource_mut::<TerminalNonSendState>().unwrap().into_inner();
     state.last_cmd = cmd.clone();
@@ -648,7 +670,7 @@ fn setup_terminal(world: &mut World) {
     )).id();
     // Build the UI tree
     let (root_entity, scroll_area_entity) = spawn_terminal_ui(world, scrollback_entity);
-    replay_transcript(world, scrollback_entity);
+    replay_from_graph(world, scrollback_entity);
 
     world.insert_non_send_resource(TerminalNonSendState {
         nu_engine: Some(nu_engine),
@@ -714,55 +736,91 @@ fn spawn_terminal_ui(world: &mut World, scrollback_entity: Entity) -> (Entity, E
     (root, scroll_area)
 }
 
-/// Restarting cyb must not cost the record: com replays its transcript into
-/// the scrollback before the session's first line, so the history is simply
-/// *there*, the way it is in anything that deserves to be called a log.
+/// Restarting cyb must not cost the record — and the record is the
+/// cybergraph, not a journal beside it. The local neuron's signal chain
+/// already holds, in order, everything this cyb did: commands cast off com's
+/// anchor, soma exchanges cast as question → answer. Walking the chain and
+/// looking the particles up in the content store *is* the history. One
+/// truth; com renders it.
 ///
-/// Only the most recent lines are replayed — the file is the full archive,
+/// Only the most recent signals are replayed — the chain is the archive,
 /// the screen is the recent past.
-const REPLAY_LINES: usize = 300;
+const REPLAY_SIGNALS: usize = 300;
 
-fn replay_transcript(world: &mut World, scrollback: Entity) {
-    let path = crate::worlds::com_transcript_path();
-    let Ok(body) = std::fs::read_to_string(&path) else { return };
-    let lines: Vec<&str> = body.lines().collect();
-    let start = lines.len().saturating_sub(REPLAY_LINES);
-    let mut replayed = 0usize;
+fn replay_from_graph(world: &mut World, scrollback: Entity) {
+    use crate::worlds::content;
 
-    for line in &lines[start..] {
-        let Some(kind) = json_field(line, "kind") else { continue };
-        let Some(text) = json_field(line, "text") else { continue };
-        match kind.as_str() {
-            "cmd" => {
+    let shared = world.resource::<crate::worlds::SharedCell>().clone();
+    let texts = content::load();
+    let com_anchor = content::com_anchor();
+
+    // Collect renderable rows first: the cell lock must not be held while
+    // spawning UI, and classification needs no world access.
+    enum Row {
+        Cmd(String),
+        Said(Speaker, String),
+    }
+    let mut rows: Vec<Row> = Vec::new();
+    {
+        let cell = shared.cell.lock().expect("shared cell poisoned");
+        let Some(chain) = cell.graph.chains.get(&crate::worlds::local_neuron()) else {
+            return;
+        };
+        let skip = chain.entries.len().saturating_sub(REPLAY_SIGNALS);
+        for (_, sig) in chain.entries.iter().skip(skip) {
+            let links = &sig.links;
+            // A command: one link off com's anchor.
+            if links.len() == 1 && links[0].from == com_anchor {
+                if let Some(text) = texts.get(&links[0].to) {
+                    rows.push(Row::Cmd(text.clone()));
+                }
+                continue;
+            }
+            // A soma exchange: thread → question, question → answer, weave.
+            if links.len() >= 2 && links[1].from == links[0].to {
+                if let (Some(q), Some(a)) = (texts.get(&links[0].to), texts.get(&links[1].to)) {
+                    rows.push(Row::Said(Speaker::User, q.clone()));
+                    rows.push(Row::Said(Speaker::System, a.clone()));
+                }
+                continue;
+            }
+            // Anything else on the chain — money and whatever comes after —
+            // is graph, not conversation; brain shows it.
+        }
+    }
+
+    if rows.is_empty() {
+        return;
+    }
+    let n = rows.len();
+    for row in rows {
+        match row {
+            Row::Cmd(text) => {
                 world.spawn((
-                    Text::new(text),
+                    Text::new(format!("> {text}")),
                     TextFont { font_size: theme::BODY, ..default() },
                     TextColor(theme::TEXT_DIM),
                     Node { margin: UiRect::vertical(Val::Px(2.0)), ..default() },
                     ChildOf(scrollback),
                 ));
             }
-            "user" => { spawn_said_row(world, scrollback, Speaker::User, text); }
-            "system" => { spawn_said_row(world, scrollback, Speaker::System, text); }
-            _ => continue,
+            Row::Said(who, text) => {
+                spawn_said_row(world, scrollback, who, text);
+            }
         }
-        replayed += 1;
     }
-
-    if replayed > 0 {
-        // A quiet seam between then and now.
-        world.spawn((
-            Node {
-                width: Val::Percent(100.0),
-                height: Val::Px(1.0),
-                margin: UiRect::vertical(Val::Px(theme::G)),
-                ..default()
-            },
-            BackgroundColor(theme::BORDER),
-            ChildOf(scrollback),
-        ));
-        info!("com: replayed {replayed} lines of transcript");
-    }
+    // A quiet seam between then and now.
+    world.spawn((
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Px(1.0),
+            margin: UiRect::vertical(Val::Px(theme::G)),
+            ..default()
+        },
+        BackgroundColor(theme::BORDER),
+        ChildOf(scrollback),
+    ));
+    info!("com: replayed {n} rows from the cybergraph");
 }
 
 /// One attributed row in the record: yours on the left, the machine's on the
@@ -788,27 +846,6 @@ fn spawn_said_row(world: &mut World, scrollback: Entity, who: Speaker, text: Str
         TextColor(colour),
         ChildOf(row),
     )).id()
-}
-
-/// Pull one string field out of a hand-written JSON line — the mirror of the
-/// writer in worlds::persist_com_line, and of soma's sidecar.
-fn json_field(line: &str, name: &str) -> Option<String> {
-    let key = format!("\"{name}\":\"");
-    let start = line.find(&key)? + key.len();
-    let mut out = String::new();
-    let mut chars = line[start..].chars();
-    while let Some(c) = chars.next() {
-        match c {
-            '\\' => match chars.next() {
-                Some('n') => out.push('\n'),
-                Some(other) => out.push(other),
-                None => return None,
-            },
-            '"' => return Some(out),
-            _ => out.push(c),
-        }
-    }
-    None
 }
 
 // ── Scroll ────────────────────────────────────────────────────────────────────

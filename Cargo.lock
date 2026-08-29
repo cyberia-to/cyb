@@ -2781,6 +2781,7 @@ dependencies = [
  "bevy",
  "chrono",
  "cyb-core",
+ "cyber-hemera",
  "cyber-tape",
  "global-hotkey",
  "libc",
