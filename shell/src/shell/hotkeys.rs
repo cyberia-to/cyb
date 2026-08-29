@@ -14,6 +14,7 @@ struct HotkeyManagerRes {
     com_id: u32,
     robot_id: u32,
     sigma_id: u32,
+    models_id: u32,
 }
 
 impl Plugin for HotkeysPlugin {
@@ -31,11 +32,13 @@ fn register_hotkeys(world: &mut World) {
     let hk_com = HotKey::new(Some(mods), Code::Digit2);
     let hk_robot = HotKey::new(Some(mods), Code::Digit3);
     let hk_sigma = HotKey::new(Some(mods), Code::Digit4);
+    let hk_models = HotKey::new(Some(mods), Code::Digit5);
 
     manager.register(hk_graph).expect("register Cmd+1");
     manager.register(hk_com).expect("register Cmd+2");
     manager.register(hk_robot).expect("register Cmd+3");
     manager.register(hk_sigma).expect("register Cmd+4");
+    manager.register(hk_models).expect("register Cmd+5");
 
     world.insert_non_send_resource(HotkeyManagerRes {
         _manager: manager,
@@ -43,6 +46,7 @@ fn register_hotkeys(world: &mut World) {
         com_id: hk_com.id(),
         robot_id: hk_robot.id(),
         sigma_id: hk_sigma.id(),
+        models_id: hk_models.id(),
     });
 }
 
@@ -61,6 +65,8 @@ fn poll_hotkey_events(
             WorldState::Robot
         } else if event.id == hotkeys.sigma_id {
             WorldState::Sigma
+        } else if event.id == hotkeys.models_id {
+            WorldState::Models
         } else {
             continue;
         };

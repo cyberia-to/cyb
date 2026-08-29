@@ -3,6 +3,7 @@ pub mod graph;
 pub mod sigma;
 pub mod com;
 pub mod content;
+pub mod models;
 pub mod soma_bridge;
 
 use bevy::prelude::*;
@@ -18,6 +19,8 @@ pub enum WorldState {
     Robot,
     /// Money: balance, send, events, sense (MoneyWallet).
     Sigma,
+    /// Which mind runs, and which are on disk.
+    Models,
 }
 
 /// Shell command forwarded from the commander bar to nushell.
@@ -165,6 +168,7 @@ impl Plugin for WorldsPlugin {
             Ok("com") => Some(WorldState::Com),
             Ok("robot") => Some(WorldState::Robot),
             Ok("sigma") => Some(WorldState::Sigma),
+            Ok("models") => Some(WorldState::Models),
             _ => None,
         };
         if let Some(w) = initial {

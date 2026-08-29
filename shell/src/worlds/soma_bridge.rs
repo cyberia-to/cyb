@@ -128,7 +128,7 @@ pub fn ask(world: &mut World, question: &str) {
     {
         world
             .resource_mut::<ComInbox>()
-            .say(Speaker::System, "this body carries no mind yet — ask on the desktop");
+            .say(Speaker::System, "this body carries no mind yet - ask on the desktop");
         world.resource_mut::<Notice>().show("soma is not aboard");
     }
 }
@@ -143,6 +143,7 @@ fn poll_soma(
     mut thread: ResMut<SomaThread>,
     mut inbox: ResMut<ComInbox>,
     mut notice: ResMut<Notice>,
+    mut status: ResMut<crate::worlds::models::MindStatus>,
 ) {
     // Drain everything that happened since last frame; events are rare and
     // tiny, the loop is almost always empty.
@@ -186,8 +187,9 @@ fn poll_soma(
                     Ok(_) => {
                         shared.bump();
                         thread.0 = Some(a);
+                        status.last_tok_per_s = Some(tok_per_s);
                         notice.show(format!(
-                            "soma: answered ({tokens} tok, {tok_per_s:.0} tok/s) — {n_links} links"
+                            "soma: answered ({tokens} tok, {tok_per_s:.0} tok/s) - {n_links} links"
                         ));
                     }
                     Err(e) => {
@@ -207,6 +209,12 @@ fn poll_soma(
                 if !pending.0.is_empty() {
                     pending.0.remove(0);
                 }
+            }
+            // Confirmed by the mind itself, so the models page shows what the
+            // thread will actually run — not what the UI hopes it will.
+            soma_kernel::SomaEvent::ModelChanged(path) => {
+                status.model = Some(path);
+                status.last_tok_per_s = None;
             }
         }
     }

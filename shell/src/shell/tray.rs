@@ -14,6 +14,7 @@ struct TrayState {
     com_id: String,
     robot_id:     String,
     sigma_id:    String,
+    models_id:   String,
     quit_id:     String,
 }
 
@@ -32,6 +33,7 @@ fn create_tray(world: &mut World) {
     let item_com = MenuItem::new("Com (Cmd+2)", true, None);
     let item_robot     = MenuItem::new("Robot (Cmd+3)", true, None);
     let item_sigma    = MenuItem::new("Sigma (Cmd+4)", true, None);
+    let item_models   = MenuItem::new("Models (Cmd+5)", true, None);
     let item_quit     = MenuItem::new("Quit cyb", true, None);
 
     let show_id     = item_show.id().as_ref().to_string();
@@ -39,6 +41,7 @@ fn create_tray(world: &mut World) {
     let com_id = item_com.id().as_ref().to_string();
     let robot_id     = item_robot.id().as_ref().to_string();
     let sigma_id    = item_sigma.id().as_ref().to_string();
+    let models_id   = item_models.id().as_ref().to_string();
     let quit_id     = item_quit.id().as_ref().to_string();
 
     let _ = menu.append(&item_show);
@@ -47,6 +50,7 @@ fn create_tray(world: &mut World) {
     let _ = menu.append(&item_com);
     let _ = menu.append(&item_robot);
     let _ = menu.append(&item_sigma);
+    let _ = menu.append(&item_models);
     let _ = menu.append(&PredefinedMenuItem::separator());
     let _ = menu.append(&item_quit);
 
@@ -70,6 +74,7 @@ fn create_tray(world: &mut World) {
         com_id,
         robot_id,
         sigma_id,
+        models_id,
         quit_id,
     });
 }
@@ -162,6 +167,8 @@ fn poll_tray_events(
             WorldState::Robot
         } else if id == tray.sigma_id {
             WorldState::Sigma
+        } else if id == tray.models_id {
+            WorldState::Models
         } else {
             continue;
         };
