@@ -71,20 +71,40 @@ pub struct FetchState {
     label: String,
 }
 
-/// Reference point for the speed estimate: the 0.6B (0.43 GB) measures
-/// ~21 tok/s on the cpu backend of this machine class, and throughput
-/// scales roughly inversely with weight bytes. Order-of-magnitude honesty,
-/// not a benchmark — the 14B predicts 0.6 and measures 0.3.
-const CPU_GB_TOKS: f32 = 9.0;
+/// Measured anchors for the speed estimate on this stack (honeycrisp on
+/// Apple Silicon, the backend soma actually runs): (weight GB, tok/s).
+/// Between anchors the estimate interpolates in log-log space, because
+/// throughput is nowhere near a single constant over weight — small models
+/// pay fixed overheads, large ones fall off the fast path. Order-of-
+/// magnitude honesty, not a benchmark.
+const SPEED_ANCHORS: &[(f32, f32)] = &[(0.43, 122.0), (2.2, 56.0), (15.7, 1.5)];
 
 fn est_tok_per_s(bytes: u64) -> f32 {
-    CPU_GB_TOKS / (bytes as f32 / 1e9).max(0.05)
+    let gb = (bytes as f32 / 1e9).max(0.05);
+    let first = SPEED_ANCHORS[0];
+    let last = SPEED_ANCHORS[SPEED_ANCHORS.len() - 1];
+    if gb <= first.0 {
+        return first.1;
+    }
+    if gb >= last.0 {
+        // Extrapolate below the last anchor at its local slope.
+        return last.1 * last.0 / gb;
+    }
+    for w in SPEED_ANCHORS.windows(2) {
+        let (g0, t0) = w[0];
+        let (g1, t1) = w[1];
+        if gb <= g1 {
+            let f = (gb.ln() - g0.ln()) / (g1.ln() - g0.ln());
+            return (t0.ln() + f * (t1.ln() - t0.ln())).exp();
+        }
+    }
+    last.1
 }
 
 fn speed_hint(bytes: u64) -> String {
     let est = est_tok_per_s(bytes);
-    if est < 2.0 {
-        "too heavy for the cpu backend".into()
+    if est < 4.0 {
+        format!("~{est:.0} tok/s - slow")
     } else {
         format!("~{est:.0} tok/s")
     }
@@ -348,7 +368,7 @@ fn handle_model_press(
             );
             soma.use_model(&path);
             let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-            if est_tok_per_s(size) < 2.0 {
+            if est_tok_per_s(size) < 4.0 {
                 notice.show(format!(
                     "mind: {} - {} on cpu; answers will crawl",
                     file_label(&path),
