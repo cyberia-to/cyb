@@ -331,6 +331,11 @@ fn format_event(e: &MoneyEvent) -> String {
             format!("in {amount} <- {}", hex3(from))
         }
         MoneyEvent::RewardCredited { amount, clock, .. } => format!("reward {:?} {amount}", clock),
+        MoneyEvent::ReferralAccrued {
+            amount,
+            share_micros,
+            ..
+        } => format!("ref {amount} ({share_micros}u)"),
         MoneyEvent::Finalized { signal, .. } => format!("final {}", hex3(signal)),
         MoneyEvent::TipAdvanced { height, grade4, .. } => {
             format!("tip h={height} g4={grade4}")
