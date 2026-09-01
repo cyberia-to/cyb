@@ -1,4 +1,5 @@
 pub mod robot;
+pub mod snapshot;
 pub mod graph;
 pub mod sigma;
 pub mod com;

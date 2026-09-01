@@ -15,6 +15,13 @@ pub struct GraphBridgePlugin;
 impl Plugin for GraphBridgePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<BrainIndex>()
+            .init_resource::<BrainStats>()
+            .add_systems(OnEnter(WorldState::Graph), spawn_hud)
+            .add_systems(OnExit(WorldState::Graph), despawn_hud)
+            .add_systems(
+                Update,
+                refresh_hud.run_if(in_state(WorldState::Graph)),
+            )
             .add_systems(Startup, insert_graph_config)
             .add_systems(
                 Update,
@@ -37,8 +44,11 @@ fn insert_graph_config(
     mut commands: Commands,
     shared: Res<SharedCell>,
     mut index: ResMut<BrainIndex>,
+    mut stats: ResMut<BrainStats>,
 ) {
     let axons = shared.cell.lock().expect("shared cell poisoned").axons();
+    let mut values: Option<std::sync::Arc<mir::epoch::GraphValues>> = None;
+    *stats = BrainStats::default();
     let csr = if axons.is_empty() {
         // Nothing yet — and honestly nothing, not a demo constellation. The
         // graph seeds itself from use: the first world switch casts the
@@ -65,18 +75,94 @@ fn insert_graph_config(
         // links mir will draw, attention seconds and knowledge stakes as
         // conviction, neutral market. Deterministic fixed-point inside;
         // floats only leave for display.
-        let focus_by_hash: std::collections::HashMap<[u8; 32], f32> = {
-            let tru_links = axons.iter().map(|&(from, to, w)| {
-                tru::Link::stake(from, to, w.max(1) as u128)
-            });
-            let g = tru::FocusingGraph::build(tru_links, &tru::Context::none());
-            let result = tru::compute_focusing(&g, &tru::FocusingParams::default());
-            g.node_ids()
-                .iter()
-                .zip(result.focus.iter())
-                .map(|(id, fx)| (*id, fx.to_f64() as f32))
-                .collect()
+        // tru's full tri-kernel run: φ* plus its diffusion / springs / heat
+        // decomposition and the syntropy of the whole distribution. One
+        // computation feeds four consumers — label rank, particle radius,
+        // particle colour, and the HUD.
+        let tru_links = axons.iter().map(|&(from, to, w)| {
+            tru::Link::stake(from, to, w.max(1) as u128)
+        });
+        let g = tru::FocusingGraph::build(tru_links, &tru::Context::none());
+        let result = tru::compute_focusing(&g, &tru::FocusingParams::default());
+
+        let mut by_hash: std::collections::HashMap<[u8; 32], (f32, [f32; 3])> =
+            std::collections::HashMap::new();
+        for (i, id) in g.node_ids().iter().enumerate() {
+            let f = result.focus.get(i).map(|x| x.to_f64() as f32).unwrap_or(0.0);
+            let k = [
+                result.diffusion.get(i).map(|x| x.to_f64() as f32).unwrap_or(0.0),
+                result.springs.get(i).map(|x| x.to_f64() as f32).unwrap_or(0.0),
+                result.heat.get(i).map(|x| x.to_f64() as f32).unwrap_or(0.0),
+            ];
+            by_hash.insert(*id, (f, k));
+        }
+        let focus_by_hash: std::collections::HashMap<[u8; 32], f32> =
+            by_hash.iter().map(|(h, (f, _))| (*h, *f)).collect();
+
+        // Per-particle values in the CSR's own row order, for mir.
+        let mut gv = mir::epoch::GraphValues::default();
+        for hash in vocab.anchor() {
+            let (f, k) = by_hash.get(hash).copied().unwrap_or((0.0, [0.0; 3]));
+            gv.focus.push(f);
+            gv.kernel.push(k);
+        }
+        values = Some(std::sync::Arc::new(gv));
+
+        // The HUD's numbers, computed once here where everything is at hand.
+        let world_particles: std::collections::HashSet<[u8; 32]> =
+            [WorldState::Graph, WorldState::Com, WorldState::Robot, WorldState::Sigma, WorldState::Models]
+                .into_iter()
+                .map(|w| super::content::particle_of(super::attention::world_name(w)))
+                .collect();
+        let attention_secs: u64 = axons
+            .iter()
+            .filter(|(f, t, _)| world_particles.contains(f) && world_particles.contains(t))
+            .map(|(_, _, w)| w)
+            .sum();
+        stats.particles = vocab.len();
+        stats.axons = axons.len();
+        stats.stake = axons.iter().map(|(_, _, w)| *w).sum();
+        stats.attention_secs = attention_secs;
+        stats.syntropy = result.syntropy.to_f64() as f32;
+        stats.kernel_split = {
+            let (mut d, mut sp, mut h) = (0f64, 0f64, 0f64);
+            for (_, k) in by_hash.values() {
+                d += k[0] as f64;
+                sp += k[1] as f64;
+                h += k[2] as f64;
+            }
+            let total = (d + sp + h).max(1e-12);
+            [(d / total) as f32, (sp / total) as f32, (h / total) as f32]
         };
+        let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+        stats.graph_bytes = std::fs::metadata(
+            std::path::Path::new(&home).join("cyb").join("graph.log"),
+        )
+        .map(|m| m.len())
+        .unwrap_or(0);
+        // Top particles by focus, with the words behind them when known.
+        let texts = super::content::load();
+        let mut ranked: Vec<([u8; 32], f32)> =
+            focus_by_hash.iter().map(|(h, f)| (*h, *f)).collect();
+        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        stats.top = ranked
+            .into_iter()
+            .take(5)
+            .map(|(h, f)| {
+                let name = texts
+                    .get(&h)
+                    .map(|t| {
+                        let mut s: String = t.chars().take(18).collect();
+                        if t.chars().count() > 18 {
+                            s.push_str("..");
+                        }
+                        s
+                    })
+                    .unwrap_or_else(|| "?".into());
+                (name, f)
+            })
+            .collect();
+
         *index = BrainIndex::from_vocab(&vocab, &focus_by_hash);
         Csr::build(links.into_iter(), &vocab)
     };
@@ -86,7 +172,7 @@ fn insert_graph_config(
         axons.len(),
         index.labels.iter().flatten().count(),
     );
-    commands.insert_resource(GraphWorldConfig { graph: Arc::new(csr) });
+    commands.insert_resource(GraphWorldConfig { graph: Arc::new(csr), values });
 }
 
 // ── labels ───────────────────────────────────────────────────────────────────
@@ -97,6 +183,28 @@ fn insert_graph_config(
 /// A graph of anonymous spheres proves nothing to the person who just asked a
 /// question. The whole point of linking an answer is that you can go to brain
 /// and see it — which needs the text back, not the hash.
+/// What the graph *is* right now, in numbers: the HUD's data. Filled where
+/// the tri-kernel runs, shown in brain's corner — feeling the graph means
+/// seeing its size, its weight, and where its focus pools, at a glance,
+/// every time it changes.
+#[derive(Resource, Default)]
+pub struct BrainStats {
+    pub particles: usize,
+    pub axons: usize,
+    pub graph_bytes: u64,
+    /// Sum of all link amounts — stake in the broadest sense.
+    pub stake: u64,
+    /// The slice of stake that is measured attention: world → world dwell.
+    pub attention_secs: u64,
+    /// J(φ*) — how far focus has pulled away from uniform. Zero is a graph
+    /// nobody has looked at; rising syntropy is a graph forming opinions.
+    pub syntropy: f32,
+    /// Global tri-kernel split (diffusion, springs, heat), summing to one.
+    pub kernel_split: [f32; 3],
+    /// Top particles by φ*, with their words where known.
+    pub top: Vec<(String, f32)>,
+}
+
 #[derive(Resource, Default)]
 struct BrainIndex {
     labels: Vec<Option<String>>,
@@ -171,6 +279,91 @@ fn decode_ascii_particle(hash: &[u8; 32]) -> Option<String> {
     head.iter()
         .all(|&b| b.is_ascii_graphic() || b == b' ')
         .then(|| String::from_utf8_lossy(head).into_owned())
+}
+
+// ── the HUD ─────────────────────────────────────────────────────────────────
+
+#[derive(Component)]
+struct HudRoot;
+
+#[derive(Component)]
+struct HudText;
+
+/// An ASCII bar, `width` characters at `frac` full. The font has no blocks
+/// worth trusting; `=` and `.` are everywhere and read instantly.
+fn bar(frac: f32, width: usize) -> String {
+    let filled = ((frac.clamp(0.0, 1.0) * width as f32).round() as usize).min(width);
+    format!("{}{}", "=".repeat(filled), ".".repeat(width - filled))
+}
+
+fn hud_text(stats: &BrainStats) -> String {
+    let mut out = String::new();
+    out.push_str(&format!(
+        "{} particles   {} axons   {:.1} KB\n",
+        stats.particles,
+        stats.axons,
+        stats.graph_bytes as f64 / 1024.0
+    ));
+    out.push_str(&format!(
+        "stake {}   attention {}s   J {:.3}\n",
+        stats.stake, stats.attention_secs, stats.syntropy
+    ));
+    let [d, s_, h] = stats.kernel_split;
+    out.push_str(&format!(
+        "D {} {:>2.0}%   S {} {:>2.0}%   H {} {:>2.0}%\n",
+        bar(d, 8),
+        d * 100.0,
+        bar(s_, 8),
+        s_ * 100.0,
+        bar(h, 8),
+        h * 100.0
+    ));
+    if !stats.top.is_empty() {
+        out.push('\n');
+        let max = stats.top.first().map(|(_, f)| *f).unwrap_or(1.0).max(1e-9);
+        for (name, f) in &stats.top {
+            out.push_str(&format!("{} {:<20}\n", bar(f / max, 10), name));
+        }
+    }
+    out
+}
+
+fn spawn_hud(mut commands: Commands, stats: Res<BrainStats>) {
+    commands
+        .spawn((
+            HudRoot,
+            Node {
+                position_type: PositionType::Absolute,
+                left: Val::Px(12.0),
+                top: Val::Px(CHROME_TOP_H + 10.0),
+                padding: UiRect::all(Val::Px(8.0)),
+                ..default()
+            },
+            GlobalZIndex(5),
+        ))
+        .with_children(|hud| {
+            hud.spawn((
+                HudText,
+                Text::new(hud_text(&stats)),
+                TextFont { font_size: 11.0, ..default() },
+                TextColor(prysm::theme::TEXT_DIM),
+            ));
+        });
+}
+
+fn despawn_hud(mut commands: Commands, q: Query<Entity, With<HudRoot>>) {
+    for e in &q {
+        commands.entity(e).despawn();
+    }
+}
+
+fn refresh_hud(stats: Res<BrainStats>, mut q: Query<&mut Text, With<HudText>>) {
+    if !stats.is_changed() {
+        return;
+    }
+    for mut t in &mut q {
+        **t = hud_text(&stats);
+    }
 }
 
 #[derive(Component)]

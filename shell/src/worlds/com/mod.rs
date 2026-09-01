@@ -452,6 +452,23 @@ fn run_pending_command(world: &mut World) {
         return;
     }
 
+    // `snapshot` is the cell's own verb: write the whole graph as a
+    // CT-0-ready .graph container and say where it landed.
+    if cmd.trim() == "snapshot" {
+        let shared = world.resource::<crate::worlds::SharedCell>().clone();
+        let said = match crate::worlds::snapshot::export(&shared) {
+            Ok((path, signals, links)) => {
+                format!("snapshot: {} ({signals} signals, {links} links)", path.display())
+            }
+            Err(e) => format!("snapshot failed: {e}"),
+        };
+        world.resource_mut::<crate::worlds::Notice>().show(said.clone());
+        world
+            .resource_mut::<crate::worlds::ComInbox>()
+            .say(crate::worlds::Speaker::System, said);
+        return;
+    }
+
     // A question outranks a command: `? ...` and `ask ...` go to soma
     // explicitly, and a line whose first word is nothing this shell can run
     // goes there too. Typing `privet` into a box whose placeholder says
