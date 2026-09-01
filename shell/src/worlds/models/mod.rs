@@ -69,6 +69,12 @@ pub struct FetchState {
     // system ever touches it.
     rx: Option<std::sync::Mutex<std::sync::mpsc::Receiver<Result<std::path::PathBuf, String>>>>,
     label: String,
+    /// Live byte counters, written by the fetch thread.
+    #[cfg(target_os = "macos")]
+    status: Option<std::sync::Arc<glia_import::hf::DownloadStatus>>,
+    /// The catalog row's live caption ("42%  0.6 GB / 1.4 GB ..."). Updated
+    /// only on whole-percent moves so the page is not rebuilt every frame.
+    progress: String,
 }
 
 /// Measured anchors for the speed estimate on this stack (honeycrisp on
@@ -123,7 +129,7 @@ impl Plugin for ModelsWorldPlugin {
             .init_resource::<FetchState>()
             .add_systems(OnEnter(WorldState::Models), build_page)
             .add_systems(OnExit(WorldState::Models), destroy_page)
-            .add_systems(Update, poll_fetch)
+            .add_systems(Update, (poll_fetch, tick_fetch_progress))
             .add_systems(
                 Update,
                 (rebuild_on_change, handle_model_press, handle_fetch_press)
@@ -305,10 +311,16 @@ fn build_page(mut commands: Commands, status: Res<MindStatus>, fetch: Res<FetchS
                 TextColor(if fetching_this { theme::ACID_YELLOW } else { theme::TEXT_PRIMARY }),
                 ChildOf(row),
             ));
+            // The right column is the row's state: size when idle, live
+            // progress while the fetch runs.
             commands.spawn((
-                Text::new(entry.download),
+                Text::new(if fetching_this && !fetch.progress.is_empty() {
+                    fetch.progress.clone()
+                } else {
+                    entry.download.to_string()
+                }),
                 TextFont { font_size: theme::CAPTION, ..default() },
-                TextColor(theme::TEXT_DIM),
+                TextColor(if fetching_this { theme::ACID_YELLOW } else { theme::TEXT_DIM }),
                 ChildOf(row),
             ));
         }
@@ -405,10 +417,13 @@ fn handle_fetch_press(
             notice.show(format!("fetching {} ({})...", entry.label, entry.download));
             fetch.rx = Some(std::sync::Mutex::new(rx));
             fetch.label = label.clone();
+            let status = std::sync::Arc::new(glia_import::hf::DownloadStatus::default());
+            fetch.status = Some(status.clone());
+            fetch.progress = "connecting...".to_string();
             std::thread::Builder::new()
                 .name("model-fetch".into())
                 .spawn(move || {
-                    let result = glia_import::hf::download_model(&hf_id)
+                    let result = glia_import::hf::download_model_observed(&hf_id, Some(status))
                         .and_then(|dl| {
                             let dir = dl
                                 .snapshot_dir()
@@ -434,19 +449,57 @@ fn poll_fetch(mut fetch: ResMut<FetchState>, mut notice: ResMut<super::Notice>) 
     match result {
         Ok(Ok(path)) => {
             notice.show(format!("{} is aboard - select it in models", file_label(&path)));
-            fetch.rx = None;
-            fetch.label.clear();
+            clear_fetch(&mut fetch);
         }
         Ok(Err(e)) => {
             notice.show(format!("fetch failed: {e}"));
-            fetch.rx = None;
-            fetch.label.clear();
+            clear_fetch(&mut fetch);
         }
         Err(std::sync::mpsc::TryRecvError::Empty) => {}
         Err(std::sync::mpsc::TryRecvError::Disconnected) => {
             notice.show("fetch thread died");
-            fetch.rx = None;
-            fetch.label.clear();
+            clear_fetch(&mut fetch);
+        }
+    }
+}
+
+fn clear_fetch(fetch: &mut FetchState) {
+    fetch.rx = None;
+    fetch.label.clear();
+    fetch.progress.clear();
+    #[cfg(target_os = "macos")]
+    {
+        fetch.status = None;
+    }
+}
+
+/// Turn the fetch thread's byte counters into the catalog row's caption.
+/// Writes the resource only when the text actually changes — every write
+/// repaints the whole page via change detection.
+#[cfg_attr(not(target_os = "macos"), allow(unused_variables, unused_mut))]
+fn tick_fetch_progress(mut fetch: ResMut<FetchState>) {
+    #[cfg(target_os = "macos")]
+    {
+        let f = fetch.as_ref();
+        let Some(st) = &f.status else { return };
+        let (done, total, fdone, ftotal, file) = st.snapshot();
+        let line = if ftotal > 0 && fdone >= ftotal {
+            // All bytes are down; glia is converting weights to .model.
+            "importing (converting weights)...".to_string()
+        } else if total > 0 {
+            let pct = (done.saturating_mul(100) / total).min(100);
+            format!(
+                "{}  {}%  {} / {}",
+                file,
+                pct,
+                human_size(done),
+                human_size(total)
+            )
+        } else {
+            "connecting...".to_string()
+        };
+        if line != f.progress {
+            fetch.progress = line;
         }
     }
 }
