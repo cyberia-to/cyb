@@ -320,7 +320,7 @@ fn spawn_chrome(mut commands: Commands) {
                     .with_children(|tabs| {
                         for (label, world) in [
                             ("brain", WorldState::Graph),
-                            ("com", WorldState::Com),
+                            ("log", WorldState::Com),
                             ("robot", WorldState::Robot),
                             ("sigma", WorldState::Sigma),
                             ("models", WorldState::Models),
@@ -555,7 +555,7 @@ fn update_address_bar(
     }
     let uri = match world_state.get() {
         WorldState::Graph => "cyb://brain",
-        WorldState::Com => "cyb://com",
+        WorldState::Com => "cyb://log",
         WorldState::Robot => "cyb://robot",
         WorldState::Sigma => "cyb://sigma",
         WorldState::Models => "cyb://models",
@@ -692,7 +692,9 @@ pub fn handle_chrome_input(world: &mut World) {
             // The surface is the brain; "graph" and "mir" are what it
             // was called before, and both still land here.
             "brain" | "graph" | "mir" => Some(WorldState::Graph),
-            "com" | "terminal" => Some(WorldState::Com),
+            // The world is the log — the record. "com" stays as a spoken
+            // alias: it names the commander, the input that feeds this world.
+            "log" | "com" | "terminal" => Some(WorldState::Com),
             "robot" | "cell" | "landing" => Some(WorldState::Robot),
             "sigma" | "money" => Some(WorldState::Sigma),
             "models" | "mind" => Some(WorldState::Models),

@@ -538,6 +538,9 @@ fn drain_com_inbox(world: &mut World) {
             ComSay::Line(who, text) => {
                 spawn_said_row(world, scrollback, who, text);
             }
+            ComSay::Note(text) => {
+                spawn_note_row(world, scrollback, text);
+            }
             // A streamed reply is one system row whose text grows as the
             // model writes. The row exists from the first instant, so the
             // reply visibly *starts* — the difference between a mind at work
@@ -760,6 +763,7 @@ fn replay_from_graph(world: &mut World, scrollback: Entity) {
     enum Row {
         Cmd(String),
         Said(Speaker, String),
+        Note(String),
     }
     let mut rows: Vec<Row> = Vec::new();
     {
@@ -775,6 +779,15 @@ fn replay_from_graph(world: &mut World, scrollback: Entity) {
                 signals.extend(chain.entries.values());
             }
         }
+        // The worlds' own particles, for recognising attention casts.
+        let world_particles: std::collections::HashMap<[u8; 32], &'static str> =
+            [WorldState::Graph, WorldState::Com, WorldState::Robot, WorldState::Sigma, WorldState::Models]
+                .into_iter()
+                .map(|w| {
+                    let name = crate::worlds::attention::world_name(w);
+                    (content::particle_of(name), name)
+                })
+                .collect();
         let skip = signals.len().saturating_sub(REPLAY_SIGNALS);
         for sig in signals.into_iter().skip(skip) {
             let links = &sig.links;
@@ -784,6 +797,16 @@ fn replay_from_graph(world: &mut World, scrollback: Entity) {
                     rows.push(Row::Cmd(text.clone()));
                 }
                 continue;
+            }
+            // Attention: one weighted link between two worlds.
+            if links.len() == 1 {
+                if let (Some(from), Some(to)) = (
+                    world_particles.get(&links[0].from),
+                    world_particles.get(&links[0].to),
+                ) {
+                    rows.push(Row::Note(format!("-> {to}  ({from} {}s)", links[0].amount)));
+                    continue;
+                }
             }
             // A soma exchange: thread → question, question → answer, weave.
             if links.len() >= 2 && links[1].from == links[0].to {
@@ -816,6 +839,9 @@ fn replay_from_graph(world: &mut World, scrollback: Entity) {
             Row::Said(who, text) => {
                 spawn_said_row(world, scrollback, who, text);
             }
+            Row::Note(text) => {
+                spawn_note_row(world, scrollback, text);
+            }
         }
     }
     // A quiet seam between then and now.
@@ -830,6 +856,18 @@ fn replay_from_graph(world: &mut World, scrollback: Entity) {
         ChildOf(scrollback),
     ));
     info!("com: replayed {n} rows from the cybergraph");
+}
+
+/// A quiet, dim, full-width line: session facts that are part of the record
+/// without being part of the conversation.
+fn spawn_note_row(world: &mut World, scrollback: Entity, text: String) -> Entity {
+    world.spawn((
+        Text::new(text),
+        TextFont { font_size: theme::CAPTION, ..default() },
+        TextColor(theme::TEXT_DIM),
+        Node { margin: UiRect::vertical(Val::Px(2.0)), ..default() },
+        ChildOf(scrollback),
+    )).id()
 }
 
 /// One attributed row in the record: yours on the left, the machine's on the

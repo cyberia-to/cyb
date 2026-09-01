@@ -2,6 +2,7 @@ pub mod robot;
 pub mod graph;
 pub mod sigma;
 pub mod com;
+pub mod attention;
 pub mod content;
 pub mod identity;
 pub mod models;
@@ -47,6 +48,9 @@ pub enum Speaker {
 pub enum ComSay {
     /// A whole line, attributed.
     Line(Speaker, String),
+    /// A quiet fact about the session — a transition, a system aside.
+    /// Rendered dim, full-width, unattributed.
+    Note(String),
     /// A reply is about to arrive in pieces; open a row for it.
     StreamStart,
     /// The next piece of the open reply.
@@ -167,7 +171,7 @@ impl Plugin for WorldsPlugin {
         // for scripted runs and self-shots; people use the tabs.
         let initial = match std::env::var("CYB_WORLD").as_deref() {
             Ok("brain") | Ok("graph") => Some(WorldState::Graph),
-            Ok("com") => Some(WorldState::Com),
+            Ok("log") | Ok("com") => Some(WorldState::Com),
             Ok("robot") => Some(WorldState::Robot),
             Ok("sigma") => Some(WorldState::Sigma),
             Ok("models") => Some(WorldState::Models),

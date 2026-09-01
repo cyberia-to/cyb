@@ -128,6 +128,27 @@ impl Cell {
         self.commit(sig)
     }
 
+    /// Cast links that carry weight: `(from, to, amount)`. The plain
+    /// [`Cell::cast`] asserts existence; this asserts *how much* — attention
+    /// measured in seconds, value measured in tokens, whatever the caller's
+    /// unit is. Layout and ranking read the amount, so a heavier link pulls
+    /// harder.
+    pub fn cast_weighted(
+        &mut self,
+        neuron: NeuronId,
+        links: impl IntoIterator<Item = (Particle, Particle, u64)>,
+    ) -> Result<Particle, ApiError> {
+        let (step, prev) = self.tip(&neuron);
+        let mut builder = SignalBuilder::new(neuron);
+        for (from, to, amount) in links {
+            builder = builder.link(from, to, [0u8; 32], amount.max(1), 1);
+        }
+        let mut sig = builder.build();
+        sig.step = step;
+        sig.prev = prev;
+        self.commit(sig)
+    }
+
     /// Assert a single cyberlink `from → to` as `neuron` — a one-link
     /// [`Cell::cast`].
     pub fn link(
