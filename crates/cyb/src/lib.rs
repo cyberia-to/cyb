@@ -21,6 +21,7 @@ pub mod money;
 pub mod network;
 pub mod sense;
 pub mod signal;
+pub mod wire;
 
 pub use cell::Cell;
 pub use chroma::{chroma_particle, ChromaId, GridPos};

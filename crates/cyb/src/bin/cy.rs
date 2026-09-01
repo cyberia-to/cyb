@@ -19,6 +19,32 @@ fn main() {
                 println!("  (product default — soft3 chaosnet)");
             }
         }
+        "wire" => {
+            // the milestone: two cells converge over radio, no server between
+            let rt = tokio::runtime::Runtime::new().expect("tokio");
+            let sub = args.get(1).map(|s| s.as_str()).unwrap_or("");
+            let res = match sub {
+                "listen" => rt.block_on(cyb::wire::listen(args.get(2).map(|s| s.as_str()))),
+                "dial" => {
+                    let id = args.get(2).cloned().unwrap_or_default();
+                    // sockets are every ip:port arg; an arg without ':' is the cell path
+                    let socks: Vec<String> =
+                        args[3..].iter().filter(|a| a.contains(':')).cloned().collect();
+                    let cell = args[3..].iter().find(|a| !a.contains(':')).cloned();
+                    rt.block_on(cyb::wire::dial(&id, &socks, cell.as_deref()))
+                }
+                _ => {
+                    eprintln!("usage:");
+                    eprintln!("  cy wire listen [cell.log]");
+                    eprintln!("  cy wire dial <id> <ip:port>… [cell.log]");
+                    std::process::exit(2);
+                }
+            };
+            if let Err(e) = res {
+                eprintln!("wire: {e:#}");
+                std::process::exit(1);
+            }
+        }
         "help" | "-h" | "--help" => print_help(),
         _ if args.is_empty() => print_help(),
         other => {
@@ -37,6 +63,8 @@ fn print_help() {
     println!("  soft3 chaosnet — not cosmos space-pussy on cybernode");
     println!();
     println!("  cy network [spacepussy-test]");
+    println!("  cy wire listen [cell.log]      # hold a cell open for peers");
+    println!("  cy wire dial <id> <ip:port>…   # converge with a listening cell");
     println!("  cy version");
     println!();
     println!("product probe:");

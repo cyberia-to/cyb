@@ -23,6 +23,9 @@ cybergraph = { version = "0.1.1" }
 bbg = { version = "0.1.1" }
 cyber-hemera = { version = "0.3" }
 foculus = { version = "0.1.1", default-features = false }
+iroh = { package = "cyber-radio", version = "0.1" }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "sync", "time"] }
+anyhow = "1"
 tru = { package = "cyber-tru", version = "0.1.1" }
 tok = { package = "cyber-tok", version = "0.1.1" }
 
