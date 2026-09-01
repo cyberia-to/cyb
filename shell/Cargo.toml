@@ -24,6 +24,7 @@ path = "src/main.rs"
 cyb-core   = { path = "../core" }
 hemera     = { package = "cyber-hemera", version = "0.3", path = "../../hemera/rs" }
 mudra      = { package = "cyber-mudra", path = "../../mudra" }
+tru        = { package = "cyber-tru", path = "../../tru/rs" }
 tape       = { package = "cyber-tape", path = "../../tape/impl/rust" }
 prysm      = { path = "../../prysm" }
 
