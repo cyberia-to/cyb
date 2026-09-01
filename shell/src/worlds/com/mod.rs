@@ -497,9 +497,10 @@ fn run_pending_command(world: &mut World) {
         use crate::worlds::content;
         content::remember(&cmd);
         let shared = world.resource::<crate::worlds::SharedCell>().clone();
+        let neuron = world.resource::<crate::worlds::identity::Identity>().neuron;
         let cast = {
             let mut cell = shared.cell.lock().expect("shared cell poisoned");
-            cell.cast(crate::worlds::local_neuron(), [(content::com_anchor(), content::particle_of(&cmd))])
+            cell.cast(neuron, [(content::com_anchor(), content::particle_of(&cmd))])
         };
         match cast {
             Ok(_) => shared.bump(),
@@ -763,11 +764,19 @@ fn replay_from_graph(world: &mut World, scrollback: Entity) {
     let mut rows: Vec<Row> = Vec::new();
     {
         let cell = shared.cell.lock().expect("shared cell poisoned");
-        let Some(chain) = cell.graph.chains.get(&crate::worlds::local_neuron()) else {
-            return;
-        };
-        let skip = chain.entries.len().saturating_sub(REPLAY_SIGNALS);
-        for (_, sig) in chain.entries.iter().skip(skip) {
+        // Two chains, one record: the pre-keypair neuron's history first (the
+        // older era), then the identity's own. The past does not vanish
+        // because the signer grew up.
+        let me = world.resource::<crate::worlds::identity::Identity>().neuron;
+        let eras = [crate::worlds::local_neuron(), me];
+        let mut signals: Vec<&_> = Vec::new();
+        for neuron in eras.iter() {
+            if let Some(chain) = cell.graph.chains.get(neuron) {
+                signals.extend(chain.entries.values());
+            }
+        }
+        let skip = signals.len().saturating_sub(REPLAY_SIGNALS);
+        for sig in signals.into_iter().skip(skip) {
             let links = &sig.links;
             // A command: one link off com's anchor.
             if links.len() == 1 && links[0].from == com_anchor {

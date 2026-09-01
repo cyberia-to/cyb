@@ -97,6 +97,7 @@ impl Plugin for ChromePlugin {
                     sync_commander_focus_style,
                     apply_safe_area,
                     show_notice,
+                    show_identity,
                     request_soft_input,
                     sync_commander_prompt,
                 )
@@ -203,7 +204,8 @@ fn spawn_chrome(mut commands: Commands) {
                     TextColor(Color::srgba(0.55, 0.55, 0.70, 1.0)),
                 ));
                 bar.spawn((
-                    Text::new("master"),
+                    IdentityLabel,
+                    Text::new(""),
                     TextFont {
                         font_size: 13.0,
                         ..default()
@@ -445,6 +447,23 @@ fn apply_safe_area(
     for mut node in &mut content {
         node.top = Val::Px(CHROME_TOP_H + safe.top);
         node.bottom = Val::Px(CHROME_BOTTOM_H + safe.bottom);
+    }
+}
+
+#[derive(Component)]
+struct IdentityLabel;
+
+/// The top-right corner says who this cyb is — the short form of the
+/// owner's address, from the mnemonic, not a hardcoded word.
+fn show_identity(
+    who: Res<crate::worlds::identity::Identity>,
+    mut q: Query<&mut Text, With<IdentityLabel>>,
+) {
+    if !who.is_changed() {
+        return;
+    }
+    for mut t in &mut q {
+        **t = who.short();
     }
 }
 

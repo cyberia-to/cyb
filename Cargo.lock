@@ -2839,6 +2839,7 @@ dependencies = [
  "chrono",
  "cyb-core",
  "cyber-hemera",
+ "cyber-mudra",
  "cyber-tape",
  "global-hotkey",
  "import",

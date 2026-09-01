@@ -45,8 +45,7 @@ pub struct SigmaState {
 impl SigmaState {
     /// Built against the shared cell rather than `Default`, because the tip
     /// and balance are read out of the same graph everyone else writes.
-    fn new(shared: &SharedCell) -> Self {
-        let neuron = super::local_neuron();
+    fn new(shared: &SharedCell, neuron: [u8; 32]) -> Self {
         let cell = shared.cell.lock().expect("shared cell poisoned");
         let mut wallet = MoneyWallet::new(neuron).with_tip_prover();
         wallet.sync_tip_local(&cell);
@@ -77,7 +76,8 @@ impl Plugin for SigmaWorldPlugin {
         // the state must already exist. WorldsPlugin registered SharedCell
         // just before this plugin.
         let shared = app.world().resource::<SharedCell>().clone();
-        app.insert_resource(SigmaState::new(&shared));
+        let neuron = app.world().resource::<super::identity::Identity>().neuron;
+        app.insert_resource(SigmaState::new(&shared, neuron));
         app
             .add_systems(OnEnter(WorldState::Sigma), setup_sigma)
             .add_systems(OnExit(WorldState::Sigma), destroy_sigma)

@@ -3,6 +3,7 @@ pub mod graph;
 pub mod sigma;
 pub mod com;
 pub mod content;
+pub mod identity;
 pub mod models;
 pub mod soma_bridge;
 
@@ -144,9 +145,10 @@ impl SharedCell {
     }
 }
 
-/// The per-device neuron every world signs as — sigma's money, soma's
-/// knowledge, one chain. Derived, not stored; the mnemonic identity stack
-/// replaces this when it lands.
+/// The pre-identity neuron: `$USER` padded with zeros. Retired as the
+/// signing identity — [`identity::Identity`] replaced it — but kept so the
+/// chain it accumulated can still be read: history cast before the keypair
+/// era lives here, and the record does not forget its own past.
 pub fn local_neuron() -> [u8; 32] {
     let host = std::env::var("USER").unwrap_or_else(|_| "cyb".into());
     let mut p = [0u8; 32];
@@ -178,6 +180,7 @@ impl Plugin for WorldsPlugin {
             .init_resource::<PendingShellCmd>()
             .init_resource::<ComInbox>()
             .init_resource::<Notice>()
+            .insert_resource(identity::load_or_mint())
             .insert_resource(SharedCell::open_default());
     }
 }
