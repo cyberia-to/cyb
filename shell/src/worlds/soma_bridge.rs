@@ -35,9 +35,10 @@
 //! star. The thread link makes a session readable as a path; the anchor
 //! marks only where threads begin.
 //!
-//! Desktop-only for now: the model runtime is heavy and the phone carries no
-//! weights yet. The `ask` prefix still exists on Android — it answers
-//! honestly that this body has no mind aboard.
+//! The mind runs on every body. What differs per platform is the backend
+//! glia picks (honeycrisp on Apple, the CPU reference elsewhere) and how
+//! weights arrive (fetched in-app on the desktop, pushed to the phone until
+//! p2p distribution lands). A body without weights says so when asked.
 
 use bevy::prelude::*;
 
@@ -61,30 +62,27 @@ impl Plugin for SomaBridgePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SomaPending>();
         app.init_resource::<SomaThread>();
-        #[cfg(target_os = "macos")]
-        {
-            app.insert_non_send_resource(soma_kernel::Soma::spawn(
-                soma_kernel::SomaConfig::default(),
-            ));
-            app.add_systems(Update, poll_soma);
-            // `SOMA_ASK="..."` asks the moment the app is up — the whole
-            // pipeline (wake, think, answer, cast) exercised without a hand
-            // on the keyboard. A smoke test that doubles as a demo.
-            if let Ok(qs) = std::env::var("SOMA_ASK") {
-                let questions: Vec<String> = qs
-                    .split(";;")
-                    .map(str::trim)
-                    .filter(|q| !q.is_empty())
-                    .map(str::to_string)
-                    .collect();
-                if !questions.is_empty() {
-                    app.add_systems(PostStartup, move |world: &mut World| {
-                        // soma answers serially, so these form one thread.
-                        for q in &questions {
-                            ask(world, q);
-                        }
-                    });
-                }
+        app.insert_non_send_resource(soma_kernel::Soma::spawn(
+            soma_kernel::SomaConfig::default(),
+        ));
+        app.add_systems(Update, poll_soma);
+        // `SOMA_ASK="..."` asks the moment the app is up — the whole
+        // pipeline (wake, think, answer, cast) exercised without a hand
+        // on the keyboard. A smoke test that doubles as a demo.
+        if let Ok(qs) = std::env::var("SOMA_ASK") {
+            let questions: Vec<String> = qs
+                .split(";;")
+                .map(str::trim)
+                .filter(|q| !q.is_empty())
+                .map(str::to_string)
+                .collect();
+            if !questions.is_empty() {
+                app.add_systems(PostStartup, move |world: &mut World| {
+                    // soma answers serially, so these form one thread.
+                    for q in &questions {
+                        ask(world, q);
+                    }
+                });
             }
         }
     }
@@ -117,27 +115,17 @@ pub fn ask(world: &mut World, question: &str) {
         .resource_mut::<ComInbox>()
         .say(Speaker::User, question.to_string());
 
-    #[cfg(target_os = "macos")]
-    {
-        let context = recall(world, question);
-        let recalled = context.len();
-        world.resource_mut::<SomaPending>().0.push(question.to_string());
-        world
-            .non_send_resource::<soma_kernel::Soma>()
-            .ask_grounded(question, context);
-        world.resource_mut::<Notice>().show(if recalled > 0 {
-            format!("soma: thinking (recalled {recalled})...")
-        } else {
-            "soma: thinking...".to_string()
-        });
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        world
-            .resource_mut::<ComInbox>()
-            .say(Speaker::System, "this body carries no mind yet - ask on the desktop");
-        world.resource_mut::<Notice>().show("soma is not aboard");
-    }
+    let context = recall(world, question);
+    let recalled = context.len();
+    world.resource_mut::<SomaPending>().0.push(question.to_string());
+    world
+        .non_send_resource::<soma_kernel::Soma>()
+        .ask_grounded(question, context);
+    world.resource_mut::<Notice>().show(if recalled > 0 {
+        format!("soma: thinking (recalled {recalled})...")
+    } else {
+        "soma: thinking...".to_string()
+    });
 }
 
 /// What the graph already holds on this question.
@@ -151,7 +139,6 @@ pub fn ask(world: &mut World, question: &str) {
 ///
 /// Both eras of the chain are read — the pre-keypair neuron and the identity
 /// — for the same reason com replays both: the record precedes the signer.
-#[cfg(target_os = "macos")]
 fn recall(world: &World, question: &str) -> Vec<String> {
     /// The most exchanges spoken into the prompt. Three keeps prefill short
     /// enough that recall costs tens of milliseconds at 0.6B speeds.
@@ -217,7 +204,6 @@ fn recall(world: &World, question: &str) -> Vec<String> {
 
 /// Receive soma's events: narrate the slow parts, and when the answer lands,
 /// put it in the record and cast the links that make it knowledge.
-#[cfg(target_os = "macos")]
 fn poll_soma(
     soma: NonSend<soma_kernel::Soma>,
     shared: Res<SharedCell>,

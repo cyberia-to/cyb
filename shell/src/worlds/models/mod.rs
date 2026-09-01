@@ -116,10 +116,7 @@ impl Plugin for ModelsWorldPlugin {
         // page can never race a Startup system and open saying "no mind" on
         // a machine that has one.
         let status = MindStatus {
-            #[cfg(target_os = "macos")]
             model: Some(soma_kernel::default_model_path()),
-            #[cfg(not(target_os = "macos"))]
-            model: None,
             last_tok_per_s: None,
         };
         app.insert_resource(status)
@@ -209,7 +206,7 @@ fn build_page(mut commands: Commands, status: Res<MindStatus>, fetch: Res<FetchS
             file_label(m)
         ),
         (Some(m), None) => format!("mind: {}  /  wakes on the first question", file_label(m)),
-        (None, _) => "this body carries no mind - models run on the desktop".into(),
+        (None, _) => "no model chosen".into(),
     };
     commands.spawn((
         Text::new(status_line),
@@ -343,18 +340,16 @@ fn rebuild_on_change(
     build_page(commands, status.into(), fetch.into());
 }
 
-#[cfg_attr(not(target_os = "macos"), allow(unused_variables, unused_mut))]
 fn handle_model_press(
     mut interactions: Query<(&Interaction, &ModelRow), Changed<Interaction>>,
     mut status: ResMut<MindStatus>,
     mut notice: ResMut<super::Notice>,
-    #[cfg(target_os = "macos")] soma: NonSend<soma_kernel::Soma>,
+    soma: NonSend<soma_kernel::Soma>,
 ) {
     for (interaction, row) in &mut interactions {
         if *interaction != Interaction::Pressed {
             continue;
         }
-        #[cfg(target_os = "macos")]
         {
             // The choice outlives the session; the swap reaches the mind's
             // queue now and the weights load on the next question.
@@ -382,10 +377,6 @@ fn handle_model_press(
             }
             status.model = Some(path);
             status.last_tok_per_s = None;
-        }
-        #[cfg(not(target_os = "macos"))]
-        {
-            notice.show("this body carries no mind yet");
         }
     }
 }
