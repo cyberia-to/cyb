@@ -23,20 +23,26 @@ fn main() {
             // the milestone: two cells converge over radio, no server between
             let rt = tokio::runtime::Runtime::new().expect("tokio");
             let sub = args.get(1).map(|s| s.as_str()).unwrap_or("");
+            // `cy wire up [<peer-id> <ip:port>…] [cell.log]` — one verb: a
+            // node is always both sides. The peer id (64 hex) marks the
+            // bootstrap; args with ':' are its sockets; the rest is the cell.
             let res = match sub {
-                "listen" => rt.block_on(cyb::wire::listen(args.get(2).map(|s| s.as_str()))),
-                "dial" => {
-                    let id = args.get(2).cloned().unwrap_or_default();
-                    // sockets are every ip:port arg; an arg without ':' is the cell path
-                    let socks: Vec<String> =
-                        args[3..].iter().filter(|a| a.contains(':')).cloned().collect();
-                    let cell = args[3..].iter().find(|a| !a.contains(':')).cloned();
-                    rt.block_on(cyb::wire::dial(&id, &socks, cell.as_deref()))
+                "up" | "listen" | "dial" => {
+                    let rest = &args[2..];
+                    let peer = rest.iter().find(|a| a.len() == 64 && a.chars().all(|c| c.is_ascii_hexdigit())).cloned();
+                    let socks: Vec<String> = rest.iter().filter(|a| a.contains(':')).cloned().collect();
+                    let cell = rest
+                        .iter()
+                        .find(|a| !a.contains(':') && Some(*a) != peer.as_ref().map(|p| p).map(|p| p))
+                        .filter(|a| a.len() != 64)
+                        .cloned();
+                    let bootstrap = peer.map(|p| (p, socks));
+                    rt.block_on(cyb::wire::up(cell.as_deref(), bootstrap))
                 }
                 _ => {
                     eprintln!("usage:");
-                    eprintln!("  cy wire listen [cell.log]");
-                    eprintln!("  cy wire dial <id> <ip:port>… [cell.log]");
+                    eprintln!("  cy wire up [cell.log]                     # hold a cell open");
+                    eprintln!("  cy wire up <peer-id> <ip:port> [cell.log] # first contact; after that the graph dials");
                     std::process::exit(2);
                 }
             };
@@ -63,8 +69,8 @@ fn print_help() {
     println!("  soft3 chaosnet — not cosmos space-pussy on cybernode");
     println!();
     println!("  cy network [spacepussy-test]");
-    println!("  cy wire listen [cell.log]      # hold a cell open for peers");
-    println!("  cy wire dial <id> <ip:port>…   # converge with a listening cell");
+    println!("  cy wire up [cell.log]                     # a cell on the wire");
+    println!("  cy wire up <peer-id> <ip:port> [cell.log] # bootstrap; then the graph dials");
     println!("  cy version");
     println!();
     println!("product probe:");
