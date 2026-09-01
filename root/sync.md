@@ -1,3 +1,5 @@
+> legacy: this documents the JS-era indexer sync of the cosmos-based cyb. the soft3 path syncs cells peer-to-peer over radio — see [[wire]].
+
 ## General
 
 - every process is RxJs async loop with N-second interval
