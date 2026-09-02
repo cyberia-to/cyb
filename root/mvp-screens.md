@@ -28,7 +28,7 @@ stack integration points
 
 prysm foundation
 
-all three screens compose from the same prysm atoms and molecules: glass surfaces at four depth levels, acid emotion colors, monospace typography scale, saber dividers, commander tabs, spawn_button, and spawn_input. visual consistency across screens follows from shared theme constants rather than per-screen style decisions.
+all three screens compose from the same prysm atoms and molecules: glass surfaces at four depth levels, acid emotion colors (grounded in the evolutionary [[color]] map), monospace typography scale, saber dividers, commander tabs, spawn_button, and spawn_input. visual consistency across screens follows from shared theme constants rather than per-screen style decisions.
 
 build order
 

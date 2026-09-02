@@ -24,7 +24,7 @@ nine applications that form the essential interface between [[neurons]] and the 
 
 the core apps cover the fundamental interactions a [[neuron]] has with the [[cybergraph]]:
 
-- perceive: [[cyb/sense]] reads the emotional and contextual state
+- perceive: [[cyb/sense]] reads the emotional and contextual state — affect rendered per the [[color]] map
 - navigate: [[cyb/brain]] browses and manages the graph
 - query: [[cyb/oracle]] asks questions and discovers knowledge
 - create: [[cyb/studio]] produces [[particles]] in all content formats
