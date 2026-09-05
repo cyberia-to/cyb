@@ -10,6 +10,7 @@
 pub mod telemetry;
 #[cfg(target_os = "macos")]
 pub mod miner;
+pub mod prover;
 
 use bevy::prelude::*;
 use prysm::theme;
@@ -25,6 +26,7 @@ struct BodyLink {
     telemetry: telemetry::Telemetry,
     #[cfg(target_os = "macos")]
     miner: miner::Miner,
+    prover: prover::Prover,
 }
 
 /// The snapshot the page renders. Rewritten once a second while the body
@@ -38,6 +40,7 @@ struct BodyView {
     ours: bool,
     #[cfg(target_os = "macos")]
     intensity: String,
+    prover: prover::ProverStat,
 }
 
 #[derive(Component)]
@@ -51,23 +54,35 @@ struct MineButton;
 #[derive(Component)]
 struct IntensityButton(&'static str);
 
+/// The prove/stop lever on the zheng card.
+#[derive(Component)]
+struct ProveButton;
+
 impl Plugin for BodyWorldPlugin {
     fn build(&self, app: &mut App) {
         app.insert_resource(BodyLink {
             telemetry: telemetry::Telemetry::start(),
             #[cfg(target_os = "macos")]
             miner: miner::Miner::start(),
+            prover: prover::Prover::start(),
         })
         .init_resource::<BodyView>()
         .add_systems(OnEnter(WorldState::Body), build_page)
         .add_systems(OnExit(WorldState::Body), destroy_page)
         .add_systems(
             Update,
-            (tick_view, rebuild_on_change, handle_mine_press, handle_intensity_press)
+            (
+                tick_view,
+                rebuild_on_change,
+                handle_mine_press,
+                handle_intensity_press,
+                handle_prove_press,
+            )
                 .run_if(in_state(WorldState::Body)),
         );
         #[cfg(target_os = "macos")]
         app.add_systems(Startup, resume_mining);
+        app.add_systems(Startup, resume_proving);
     }
 }
 
@@ -92,6 +107,22 @@ fn resume_mining(link: Res<BodyLink>, mut notice: ResMut<super::Notice>) {
     }
 }
 
+/// The prover's standing order, twin of `~/cyb/mining`.
+fn proving_wanted_file() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    std::path::Path::new(&home).join("cyb").join("proving")
+}
+
+fn resume_proving(link: Res<BodyLink>, shared: Res<super::SharedCell>) {
+    let wanted = std::fs::read_to_string(proving_wanted_file())
+        .map(|s| s.trim() == "on")
+        .unwrap_or(false);
+    if wanted && !link.prover.is_running() {
+        let axons = shared.cell.lock().expect("shared cell poisoned").axons();
+        link.prover.prove(axons);
+    }
+}
+
 /// Once a second, copy the live counters into the view. The page repaints
 /// on the resource write; sub-second flicker would just burn battery.
 fn tick_view(
@@ -106,6 +137,7 @@ fn tick_view(
     }
     *timer = 0.0;
     view.vitals = link.telemetry.snapshot();
+    view.prover = link.prover.stat.lock().map(|s| s.clone()).unwrap_or_default();
     #[cfg(target_os = "macos")]
     {
         view.miner = link.miner.stat.lock().map(|s| s.clone()).unwrap_or_default();
@@ -132,6 +164,40 @@ fn rebuild_on_change(
 fn destroy_page(mut commands: Commands, q: Query<Entity, With<BodyRoot>>) {
     for e in &q {
         commands.entity(e).despawn();
+    }
+}
+
+/// A declared conversion rate from `~/cyb/rates.toml` (`key = value`).
+/// The file is written with defaults on first read so there is something
+/// to edit; PUSSY has no market yet and the page never pretends otherwise.
+pub fn declared_rate(key: &str, default: f64) -> f64 {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    let path = std::path::Path::new(&home).join("cyb").join("rates.toml");
+    match std::fs::read_to_string(&path) {
+        Ok(text) => match text.lines().find_map(|l| {
+            let (k, v) = l.split_once('=')?;
+            (k.trim() == key).then(|| v.trim().parse::<f64>().ok())?
+        }) {
+            Some(v) => v,
+            None => {
+                // The file predates this rate: append it so the owner can
+                // see and edit what the page is using.
+                let _ = std::fs::write(&path, format!("{text}{key} = {default}\n"));
+                default
+            }
+        },
+        Err(_) => {
+            let template = "# Declared conversion rates for the body page.\n\
+                            # PUSSY has no market yet; these rates are yours to declare.\n\
+                            [pussy]\n\
+                            per_erg = 1000000\n\
+                            per_proof = 1\n";
+            if let Some(dir) = path.parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
+            let _ = std::fs::write(&path, template);
+            default
+        }
     }
 }
 
@@ -212,10 +278,17 @@ fn build_page(mut commands: Commands, view: Res<BodyView>, _link: Res<BodyLink>)
         }
     };
 
+    let cpu_task = if view.prover.running { "   zheng (proving)" } else { "" };
     text(
         &mut commands,
         page,
-        format!("cpu     {}  {:>3.0}%{}", bar(v.cpu_pct / 100.0), v.cpu_pct, watts(v.cpu_mw)),
+        format!(
+            "cpu     {}  {:>3.0}%{}{}",
+            bar(v.cpu_pct / 100.0),
+            v.cpu_pct,
+            watts(v.cpu_mw),
+            cpu_task
+        ),
         theme::BODY,
         theme::TEXT_PRIMARY,
     );
@@ -274,22 +347,158 @@ fn build_page(mut commands: Commands, view: Res<BodyView>, _link: Res<BodyLink>)
         theme::TEXT_PRIMARY,
     );
 
-    // ── work: the miner card ────────────────────────────────────────────
+    // ── work: every way this body earns ─────────────────────────────────
+    #[allow(unused_mut)]
+    let mut pussy_day = 0.0f64;
     #[cfg(target_os = "macos")]
-    build_miner_card(&mut commands, page, &view);
+    {
+        pussy_day += build_miner_card(&mut commands, page, &view);
+    }
+    pussy_day += build_prover_card(&mut commands, page, &view);
 
-    #[cfg(not(target_os = "macos"))]
+    if pussy_day > 0.0 {
+        text(
+            &mut commands,
+            page,
+            format!(
+                "total  {pussy_day:.0} PUSSY/day   -   rates declared in ~/cyb/rates.toml"
+            ),
+            theme::CAPTION,
+            theme::TEXT_DIM,
+        );
+    }
+}
+
+/// The zheng card: PUSSY earned by proving — sumcheck sampling over this
+/// cyb's own graph, HyperNova folding, a verified ticket or nothing.
+fn build_prover_card(commands: &mut Commands, page: Entity, view: &BodyView) -> f64 {
+    let text = |commands: &mut Commands, parent: Entity, s: String, size: f32, color: Color| {
+        commands.spawn((
+            Text::new(s),
+            TextFont { font_size: size, ..default() },
+            TextColor(color),
+            ChildOf(parent),
+        ));
+    };
+
+    let card = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::all(Val::Px(theme::G * 1.5)),
+                border: UiRect::all(Val::Px(1.0)),
+                row_gap: Val::Px(theme::G * 0.75),
+                ..default()
+            },
+            BackgroundColor(theme::DARK_BASE),
+            BorderColor::all(theme::BORDER),
+            ChildOf(page),
+        ))
+        .id();
+
+    let p = &view.prover;
+    let (state, color) = if p.running {
+        (
+            format!("proving - {:.0} tickets/min", p.tickets_per_min()),
+            theme::ACID_GREEN,
+        )
+    } else {
+        ("idle".to_string(), theme::TEXT_DIM)
+    };
+
+    let head = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                justify_content: JustifyContent::SpaceBetween,
+                ..default()
+            },
+            ChildOf(card),
+        ))
+        .id();
     text(
-        &mut commands,
-        page,
-        "work: this body carries no miner yet".into(),
-        theme::CAPTION,
-        theme::TEXT_DIM,
+        commands,
+        head,
+        "zheng - PUSSY on sampling + folding".into(),
+        theme::BODY,
+        theme::TEXT_PRIMARY,
     );
+    text(commands, head, state, theme::BODY, color);
+
+    if p.running {
+        let fails = if p.failed > 0 {
+            format!("  FAILED {}", p.failed)
+        } else {
+            String::new()
+        };
+        text(
+            commands,
+            card,
+            format!(
+                "tickets {} verified  last {:.1}ms  graph n={} axons {}{}",
+                p.tickets, p.last_ms, p.n, p.axons, fails
+            ),
+            theme::CAPTION,
+            theme::TEXT_DIM,
+        );
+    }
+
+    let lever = commands
+        .spawn((
+            ProveButton,
+            Button,
+            Node {
+                padding: UiRect::axes(Val::Px(theme::G * 1.5), Val::Px(theme::G * 0.5)),
+                border: UiRect::all(Val::Px(1.0)),
+                align_self: AlignSelf::FlexStart,
+                ..default()
+            },
+            BackgroundColor(theme::DARK_BASE),
+            BorderColor::all(if p.running { theme::ACID_GREEN } else { theme::BORDER }),
+            ChildOf(card),
+        ))
+        .id();
+    text(
+        commands,
+        lever,
+        if p.running { "stop" } else { "prove" }.into(),
+        theme::CAPTION,
+        if p.running { theme::ACID_GREEN } else { theme::TEXT_PRIMARY },
+    );
+
+    let per_proof = declared_rate("per_proof", 1.0);
+    let accrued = p.lifetime as f64 * per_proof;
+    let day_rate = p.tickets_per_min() * 60.0 * 24.0 * per_proof;
+    if p.lifetime > 0 || p.running {
+        let pace = if p.running && day_rate > 0.0 {
+            format!("   ~ {day_rate:.0} PUSSY/day at this pace")
+        } else {
+            String::new()
+        };
+        text(
+            commands,
+            card,
+            format!(
+                "accrued {accrued:.0} PUSSY ({} proofs, {per_proof:.0}/proof declared){pace}",
+                p.lifetime
+            ),
+            theme::BODY,
+            theme::ACID_GREEN,
+        );
+        text(
+            commands,
+            card,
+            "offline onramp: proven work is metered now, the chain pays when it lands".into(),
+            theme::CAPTION,
+            theme::TEXT_DIM,
+        );
+    }
+    if p.running { day_rate } else { 0.0 }
 }
 
 #[cfg(target_os = "macos")]
-fn build_miner_card(commands: &mut Commands, page: Entity, view: &BodyView) {
+fn build_miner_card(commands: &mut Commands, page: Entity, view: &BodyView) -> f64 {
     let text = |commands: &mut Commands, parent: Entity, s: String, size: f32, color: Color| {
         commands.spawn((
             Text::new(s),
@@ -415,8 +624,10 @@ fn build_miner_card(commands: &mut Commands, page: Entity, view: &BodyView) {
     }
 
     // ── earnings ────────────────────────────────────────────────────────
+    let mut pussy_day = 0.0;
     if let Some(erg_day) = m.erg_per_day() {
-        let pussy = erg_day * miner::pussy_per_erg();
+        let pussy = erg_day * declared_rate("per_erg", 1_000_000.0);
+        pussy_day = pussy;
         let usd = if m.price_usd > 0.0 {
             format!("   (${:.2}/day)", erg_day * m.price_usd)
         } else {
@@ -429,13 +640,6 @@ fn build_miner_card(commands: &mut Commands, page: Entity, view: &BodyView) {
             theme::BODY,
             theme::ACID_GREEN,
         );
-        text(
-            commands,
-            page,
-            format!("total  {pussy:.0} PUSSY/day   -   rate declared in ~/cyb/rates.toml"),
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
     } else if view.ours && m.running {
         let why = if m.difficulty <= 0.0 {
             "est: waiting for network difficulty..."
@@ -444,6 +648,7 @@ fn build_miner_card(commands: &mut Commands, page: Entity, view: &BodyView) {
         };
         text(commands, card, why.into(), theme::CAPTION, theme::TEXT_DIM);
     }
+    pussy_day
 }
 
 fn handle_mine_press(
@@ -475,6 +680,29 @@ fn handle_mine_press(
         {
             let _ = &link;
             notice.show("this body carries no miner yet");
+        }
+    }
+}
+
+fn handle_prove_press(
+    interactions: Query<&Interaction, (Changed<Interaction>, With<ProveButton>)>,
+    link: Res<BodyLink>,
+    shared: Res<super::SharedCell>,
+    mut notice: ResMut<super::Notice>,
+) {
+    for i in &interactions {
+        if *i != Interaction::Pressed {
+            continue;
+        }
+        if link.prover.is_running() {
+            link.prover.stop();
+            let _ = std::fs::write(proving_wanted_file(), "off");
+            notice.show("prover stopped - the count is kept");
+        } else {
+            let axons = shared.cell.lock().expect("shared cell poisoned").axons();
+            link.prover.prove(axons);
+            let _ = std::fs::write(proving_wanted_file(), "on");
+            notice.show("proving over your graph - every ticket verified");
         }
     }
 }

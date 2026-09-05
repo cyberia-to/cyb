@@ -305,34 +305,6 @@ fn fetch_network() -> Option<(f64, f64)> {
     (diff > 0.0).then_some((diff, price))
 }
 
-// ── PUSSY conversion ────────────────────────────────────────────────────
-
-/// The declared conversion: `~/cyb/rates.toml`, `per_erg = <PUSSY per ERG>`.
-/// Written with a default on first read so the owner has a file to edit.
-pub fn pussy_per_erg() -> f64 {
-    let path = dirs_home().join("cyb").join("rates.toml");
-    match std::fs::read_to_string(&path) {
-        Ok(text) => text
-            .lines()
-            .find_map(|l| {
-                let (k, v) = l.split_once('=')?;
-                (k.trim() == "per_erg").then(|| v.trim().parse::<f64>().ok())?
-            })
-            .unwrap_or(0.0),
-        Err(_) => {
-            let default = "# Declared conversion rates for the body page.\n\
-                           # PUSSY has no market yet; this rate is yours to declare.\n\
-                           [pussy]\n\
-                           per_erg = 1000000\n";
-            if let Some(dir) = path.parent() {
-                let _ = std::fs::create_dir_all(dir);
-            }
-            let _ = std::fs::write(&path, default);
-            1_000_000.0
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
