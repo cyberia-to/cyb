@@ -319,6 +319,7 @@ fn spawn_chrome(mut commands: Commands) {
                     ))
                     .with_children(|tabs| {
                         for (label, world) in [
+                            ("body", WorldState::Body),
                             ("brain", WorldState::Graph),
                             ("log", WorldState::Com),
                             ("robot", WorldState::Robot),
@@ -554,6 +555,7 @@ fn update_address_bar(
         return;
     }
     let uri = match world_state.get() {
+        WorldState::Body => "cyb://body",
         WorldState::Graph => "cyb://brain",
         WorldState::Com => "cyb://log",
         WorldState::Robot => "cyb://robot",
@@ -689,6 +691,8 @@ pub fn handle_chrome_input(world: &mut World) {
         world.resource_mut::<ChromeState>().just_submitted = true;
 
         let target = match cmd.as_str() {
+            // The machine itself — the main page.
+            "body" | "machine" => Some(WorldState::Body),
             // The surface is the brain; "graph" and "mir" are what it
             // was called before, and both still land here.
             "brain" | "graph" | "mir" => Some(WorldState::Graph),

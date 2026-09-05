@@ -1,3 +1,4 @@
+pub mod body;
 pub mod robot;
 pub mod snapshot;
 pub mod graph;
@@ -13,8 +14,10 @@ use bevy::prelude::*;
 
 #[derive(States, Debug, Clone, Copy, PartialEq, Eq, Hash, Default)]
 pub enum WorldState {
-    /// The cybergraph itself, rendered by mir.
+    /// The machine itself: resources, work, earnings. The main page.
     #[default]
+    Body,
+    /// The cybergraph itself, rendered by mir.
     Graph,
     /// The commander's own world: nushell, rune, the prompt.
     Com,
@@ -171,6 +174,7 @@ impl Plugin for WorldsPlugin {
         // `CYB_WORLD=brain|com|robot|sigma` boots straight into a world —
         // for scripted runs and self-shots; people use the tabs.
         let initial = match std::env::var("CYB_WORLD").as_deref() {
+            Ok("body") => Some(WorldState::Body),
             Ok("brain") | Ok("graph") => Some(WorldState::Graph),
             Ok("log") | Ok("com") => Some(WorldState::Com),
             Ok("robot") => Some(WorldState::Robot),

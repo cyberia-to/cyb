@@ -2866,6 +2866,7 @@ dependencies = [
  "serde_json",
  "soma-kernel",
  "tray-icon",
+ "ureq",
 ]
 
 [[package]]

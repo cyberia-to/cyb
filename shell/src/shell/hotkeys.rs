@@ -10,11 +10,8 @@ pub struct HotkeysPlugin;
 
 struct HotkeyManagerRes {
     _manager: GlobalHotKeyManager,
-    graph_id: u32,
-    com_id: u32,
-    robot_id: u32,
-    sigma_id: u32,
-    models_id: u32,
+    /// hotkey id -> world, in tab order (Cmd+1 = the main page).
+    map: Vec<(u32, WorldState)>,
 }
 
 impl Plugin for HotkeysPlugin {
@@ -28,26 +25,22 @@ fn register_hotkeys(world: &mut World) {
     let manager = GlobalHotKeyManager::new().expect("Failed to create hotkey manager");
 
     let mods = Modifiers::SUPER;
-    let hk_graph = HotKey::new(Some(mods), Code::Digit1);
-    let hk_com = HotKey::new(Some(mods), Code::Digit2);
-    let hk_robot = HotKey::new(Some(mods), Code::Digit3);
-    let hk_sigma = HotKey::new(Some(mods), Code::Digit4);
-    let hk_models = HotKey::new(Some(mods), Code::Digit5);
+    let worlds = [
+        (Code::Digit1, WorldState::Body),
+        (Code::Digit2, WorldState::Graph),
+        (Code::Digit3, WorldState::Com),
+        (Code::Digit4, WorldState::Robot),
+        (Code::Digit5, WorldState::Sigma),
+        (Code::Digit6, WorldState::Models),
+    ];
+    let mut map = Vec::new();
+    for (code, w) in worlds {
+        let hk = HotKey::new(Some(mods), code);
+        manager.register(hk).unwrap_or_else(|e| panic!("register {code:?}: {e}"));
+        map.push((hk.id(), w));
+    }
 
-    manager.register(hk_graph).expect("register Cmd+1");
-    manager.register(hk_com).expect("register Cmd+2");
-    manager.register(hk_robot).expect("register Cmd+3");
-    manager.register(hk_sigma).expect("register Cmd+4");
-    manager.register(hk_models).expect("register Cmd+5");
-
-    world.insert_non_send_resource(HotkeyManagerRes {
-        _manager: manager,
-        graph_id: hk_graph.id(),
-        com_id: hk_com.id(),
-        robot_id: hk_robot.id(),
-        sigma_id: hk_sigma.id(),
-        models_id: hk_models.id(),
-    });
+    world.insert_non_send_resource(HotkeyManagerRes { _manager: manager, map });
 }
 
 fn poll_hotkey_events(
@@ -57,17 +50,7 @@ fn poll_hotkey_events(
     mut show: MessageWriter<ShowWindow>,
 ) {
     while let Ok(event) = GlobalHotKeyEvent::receiver().try_recv() {
-        let target = if event.id == hotkeys.graph_id {
-            WorldState::Graph
-        } else if event.id == hotkeys.com_id {
-            WorldState::Com
-        } else if event.id == hotkeys.robot_id {
-            WorldState::Robot
-        } else if event.id == hotkeys.sigma_id {
-            WorldState::Sigma
-        } else if event.id == hotkeys.models_id {
-            WorldState::Models
-        } else {
+        let Some(&(_, target)) = hotkeys.map.iter().find(|(id, _)| *id == event.id) else {
             continue;
         };
 

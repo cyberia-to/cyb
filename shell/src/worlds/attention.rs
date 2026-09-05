@@ -59,6 +59,7 @@ impl Plugin for AttentionPlugin {
                 .filter_map(|s| {
                     let (name, secs) = s.trim().split_once(':')?;
                     let world = match name {
+                        "body" => WorldState::Body,
                         "brain" | "graph" => WorldState::Graph,
                         "log" | "com" => WorldState::Com,
                         "robot" => WorldState::Robot,
@@ -106,6 +107,7 @@ fn run_tour(
 /// same name from two cybs is the same particle — attention is comparable.
 pub fn world_name(w: WorldState) -> &'static str {
     match w {
+        WorldState::Body => "body",
         WorldState::Graph => "brain",
         WorldState::Com => "log",
         WorldState::Robot => "robot",

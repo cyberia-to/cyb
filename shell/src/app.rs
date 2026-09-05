@@ -142,6 +142,7 @@ pub fn build_app() -> App {
     .add_plugins(worlds::com::ComWorldPlugin)
     .add_plugins(worlds::soma_bridge::SomaBridgePlugin)
     .add_plugins(worlds::attention::AttentionPlugin)
+    .add_plugins(worlds::body::BodyWorldPlugin)
     .add_plugins(worlds::robot::RobotWorldPlugin)
     .add_plugins(worlds::sigma::SigmaWorldPlugin)
     .add_plugins(worlds::models::ModelsWorldPlugin)
