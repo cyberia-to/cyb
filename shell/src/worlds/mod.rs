@@ -9,6 +9,7 @@ pub mod content;
 pub mod identity;
 pub mod models;
 pub mod soma_bridge;
+pub mod viewer;
 
 use bevy::prelude::*;
 

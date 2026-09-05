@@ -206,13 +206,16 @@ pub struct BrainStats {
 }
 
 #[derive(Resource, Default)]
-struct BrainIndex {
-    labels: Vec<Option<String>>,
+pub(crate) struct BrainIndex {
+    pub(crate) labels: Vec<Option<String>>,
     /// tru's φ* focus per particle, same indexing as `labels`. Text in brain
     /// is *earned*: only the particles the graph's own attention ranks
     /// highest get their words drawn. Everything else stays geometry until
     /// you fly close — a name you did not earn is noise you cannot unsee.
-    focus: Vec<f32>,
+    pub(crate) focus: Vec<f32>,
+    /// The particles themselves, CSR row order — the viewer's way from a
+    /// node index back to the thing the node stands for.
+    pub(crate) hashes: Vec<[u8; 32]>,
 }
 
 /// Longest label drawn in the graph. Enough to recognise the sentence you
@@ -234,7 +237,7 @@ impl BrainIndex {
             });
             focus.push(focus_by_hash.get(hash).copied().unwrap_or(0.0));
         }
-        Self { labels, focus }
+        Self { labels, focus, hashes: vocab.anchor().to_vec() }
     }
 
     /// The φ* floor a particle must clear for its label to be drawn: the

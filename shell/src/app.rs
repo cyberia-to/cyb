@@ -139,6 +139,7 @@ pub fn build_app() -> App {
     .add_plugins(shell::nav::NavPlugin)
     .add_plugins(mir::bevy::GraphWorldPlugin)
     .add_plugins(worlds::graph::GraphBridgePlugin)
+    .add_plugins(worlds::viewer::ViewerPlugin)
     .add_plugins(worlds::com::ComWorldPlugin)
     .add_plugins(worlds::soma_bridge::SomaBridgePlugin)
     .add_plugins(worlds::attention::AttentionPlugin)
