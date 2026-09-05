@@ -10,6 +10,7 @@ pub mod identity;
 pub mod models;
 pub mod soma_bridge;
 pub mod viewer;
+pub mod vault;
 
 use bevy::prelude::*;
 
@@ -28,6 +29,8 @@ pub enum WorldState {
     Sigma,
     /// Which mind runs, and which are on disk.
     Models,
+    /// Secrets sealed under the owner's mnemonic; never cast to the graph.
+    Vault,
 }
 
 /// Shell command forwarded from the commander bar to nushell.
@@ -181,6 +184,7 @@ impl Plugin for WorldsPlugin {
             Ok("robot") => Some(WorldState::Robot),
             Ok("sigma") => Some(WorldState::Sigma),
             Ok("models") => Some(WorldState::Models),
+            Ok("vault") => Some(WorldState::Vault),
             _ => None,
         };
         if let Some(w) = initial {

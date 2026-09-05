@@ -469,6 +469,25 @@ fn run_pending_command(world: &mut World) {
         return;
     }
 
+    // The vault outranks everything: its lines carry secrets, and this is
+    // the LAST moment before a command is echoed, remembered and cast to
+    // the graph. Whatever the vault says back is safe to say out loud;
+    // the line itself is dropped here and now.
+    if cmd.trim() == "vault" {
+        world
+            .resource_mut::<bevy::prelude::NextState<crate::worlds::WorldState>>()
+            .set(crate::worlds::WorldState::Vault);
+        return;
+    }
+    if let Some(rest) = cmd.trim().strip_prefix("vault ") {
+        let said = crate::worlds::vault::handle_command(rest);
+        world.resource_mut::<crate::worlds::Notice>().show(said.clone());
+        world
+            .resource_mut::<crate::worlds::ComInbox>()
+            .say(crate::worlds::Speaker::System, said);
+        return;
+    }
+
     // A question outranks a command: `? ...` and `ask ...` go to soma
     // explicitly, and a line whose first word is nothing this shell can run
     // goes there too. Typing `privet` into a box whose placeholder says

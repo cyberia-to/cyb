@@ -32,6 +32,7 @@ fn register_hotkeys(world: &mut World) {
         (Code::Digit4, WorldState::Robot),
         (Code::Digit5, WorldState::Sigma),
         (Code::Digit6, WorldState::Models),
+        (Code::Digit7, WorldState::Vault),
     ];
     let mut map = Vec::new();
     for (code, w) in worlds {

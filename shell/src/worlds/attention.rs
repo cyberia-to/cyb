@@ -65,6 +65,7 @@ impl Plugin for AttentionPlugin {
                         "robot" => WorldState::Robot,
                         "sigma" => WorldState::Sigma,
                         "models" => WorldState::Models,
+                        "vault" => WorldState::Vault,
                         _ => return None,
                     };
                     Some((world, secs.parse().ok()?))
@@ -113,6 +114,7 @@ pub fn world_name(w: WorldState) -> &'static str {
         WorldState::Robot => "robot",
         WorldState::Sigma => "sigma",
         WorldState::Models => "models",
+        WorldState::Vault => "vault",
     }
 }
 

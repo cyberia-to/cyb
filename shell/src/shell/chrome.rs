@@ -325,6 +325,7 @@ fn spawn_chrome(mut commands: Commands) {
                             ("robot", WorldState::Robot),
                             ("sigma", WorldState::Sigma),
                             ("models", WorldState::Models),
+                            ("vault", WorldState::Vault),
                         ] {
                             tabs.spawn((
                                 WorldNavButton(world),
@@ -561,6 +562,7 @@ fn update_address_bar(
         WorldState::Robot => "cyb://robot",
         WorldState::Sigma => "cyb://sigma",
         WorldState::Models => "cyb://models",
+        WorldState::Vault => "cyb://vault",
     };
     for mut text in &mut q {
         **text = uri.to_string();
@@ -702,6 +704,7 @@ pub fn handle_chrome_input(world: &mut World) {
             "robot" | "cell" | "landing" => Some(WorldState::Robot),
             "sigma" | "money" => Some(WorldState::Sigma),
             "models" | "mind" => Some(WorldState::Models),
+            "vault" | "secrets" => Some(WorldState::Vault),
             _ => None,
         };
         if let Some(t) = target {
