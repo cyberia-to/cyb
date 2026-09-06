@@ -69,12 +69,26 @@ done
 curl -s "http://127.0.0.1:$PORT/status" | grep -q "height:" \
   || { say "fleet: mockchain did not come up"; exit 1; }
 
+# ── the fault: a blackhole "chain" that accepts and never answers ───────
+# Every body gets it as a second network. Mission rule under test: a dead
+# chain may only lose its own row, never freeze pussy or the body.
+VOID_PORT=$((PORT + 1))
+python3 -c "
+import socket, time
+s = socket.socket(); s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+s.bind(('127.0.0.1', $VOID_PORT)); s.listen(16)
+conns = []
+while True:
+    c, _ = s.accept(); conns.append(c)  # hold forever, say nothing
+" >"$WORK/void.log" 2>&1 &
+PIDS+=($!)
+
 # ── launch the bodies ───────────────────────────────────────────────────
 for i in $(seq 1 "$N"); do
   ENV="$WORK/env-$i"
   mkdir -p "$ENV/cyb" "$ENV/llm"
   # Every body follows the same mockchain — the shared world.
-  printf '[[network]]\nname = "pussy"\nurl = "http://127.0.0.1:%s"\n' "$PORT" \
+  printf '[[network]]\nname = "pussy"\nurl = "http://127.0.0.1:%s"\n\n[[network]]\nname = "void"\nurl = "http://127.0.0.1:%s"\n' "$PORT" "$VOID_PORT" \
     > "$ENV/cyb/networks.toml"
   printf 'on' > "$ENV/cyb/proving"
 
@@ -151,12 +165,16 @@ for i in $(seq 1 "$N"); do
     bad "env-$i graph: empty or missing graph.log"
   fi
 
-  # networks: the body synced the chain and remembered it
+  # networks: the body synced the chain and remembered it — WITH a
+  # blackhole sibling wired in. Isolation is the assertion.
   if [ -s "$C/netstate" ] && grep -q "^pussy [0-9]" "$C/netstate"; then
-    ok "env-$i networks: netstate has pussy height $(awk '{print $2}' "$C/netstate" | head -1)"
-    awk '{print $3}' "$C/netstate" | head -1 >> "$ROOTS"
+    ok "env-$i networks: pussy synced despite the blackhole (h=$(grep '^pussy' "$C/netstate" | awk '{print $2}'))"
+    grep '^pussy' "$C/netstate" | awk '{print $3}' | head -1 >> "$ROOTS"
   else
     bad "env-$i networks: no synced netstate"
+  fi
+  if grep -q "^void" "$C/netstate" 2>/dev/null; then
+    bad "env-$i networks: the blackhole produced fake state"
   fi
 
   # prover: verified tickets accumulated

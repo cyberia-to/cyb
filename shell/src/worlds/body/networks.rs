@@ -13,6 +13,18 @@
 //! chain sample the same beacon, and multi-environment runs can check
 //! exactly that.
 //!
+//! Mission rules (learned the hard way — a hung GET froze every network
+//! for the whole session):
+//! - EVERY request carries timeouts (connect 5s, whole call 10s). ureq's
+//!   defaults are None across the board; a black-holed TCP connection
+//!   would otherwise hang a thread forever.
+//! - one thread PER network: a stalled chain can only ever lose its own
+//!   cadence, never a neighbour's. Threads retire via a generation
+//!   counter when the config is edited.
+//! - the relay's POST responses carry fresh (height, root) — they land in
+//!   the state immediately, so the page shows a block the moment the body
+//!   makes one instead of waiting for the next probe.
+//!
 //! Config lives in `~/cyb/networks.toml`, edited by the commander:
 //! `net add <name> <url>` / `net set <name> <url>` / `net rm <name>` /
 //! `net` to list. spacepussy-test is the default first network.
@@ -22,6 +34,20 @@ use std::time::{Duration, Instant};
 
 /// How often each network is stepped.
 const STEP_EVERY: Duration = Duration::from_secs(15);
+/// A probe may never outlive these; a chain that answers slower than
+/// this is DOWN for our purposes, and the row will say so.
+const CONNECT_TIMEOUT: Duration = Duration::from_secs(5);
+const CALL_TIMEOUT: Duration = Duration::from_secs(10);
+
+/// The one HTTP agent every chain conversation goes through — with hard
+/// timeouts, because ureq's defaults have none at all.
+pub fn agent() -> ureq::Agent {
+    ureq::Agent::config_builder()
+        .timeout_connect(Some(CONNECT_TIMEOUT))
+        .timeout_global(Some(CALL_TIMEOUT))
+        .build()
+        .new_agent()
+}
 /// A failed network retries sooner; a chain outage should not hide for
 /// a whole quiet period.
 const RETRY_EVERY: Duration = Duration::from_secs(5);
@@ -50,95 +76,127 @@ pub struct NetState {
 
 /// The hub every reader shares: sync thread writes, UI and prover read.
 #[derive(Clone, Default)]
-pub struct NetHub(pub Arc<Mutex<Vec<NetState>>>);
+pub struct NetHub {
+    pub states: Arc<Mutex<Vec<NetState>>>,
+    /// Bumped on every reload; sync threads retire when it moves past them.
+    generation: Arc<std::sync::atomic::AtomicU64>,
+}
 
 impl NetHub {
     pub fn snapshot(&self) -> Vec<NetState> {
-        self.0.lock().map(|v| v.clone()).unwrap_or_default()
+        self.states.lock().map(|v| v.clone()).unwrap_or_default()
     }
 
     /// The beacon: (name, height, root) of the first reachable network.
     pub fn beacon(&self) -> Option<(String, u64, String)> {
-        self.0.lock().ok()?.iter().find(|n| n.height > 0).map(|n| {
+        self.states.lock().ok()?.iter().find(|n| n.height > 0).map(|n| {
             (n.name.clone(), n.height, n.root.clone())
         })
     }
 
-    /// Start the sync engine: load config, then step every network on its
-    /// cadence, forever. Config edits land via [`reload`].
+    /// Fresh chain state learned outside the probe loop (a relay POST
+    /// response). Lands immediately — a block the body just made must not
+    /// wait fifteen seconds to be seen.
+    pub fn note_block(&self, name: &str, height: u64, root: &str) {
+        if let Ok(mut v) = self.states.lock() {
+            if let Some(n) = v.iter_mut().find(|n| n.name == name) {
+                if height > n.height {
+                    n.last_advance = Some(Instant::now());
+                    n.height = height;
+                    n.root = root.to_string();
+                    n.ok = true;
+                    n.last_step = format!("ok h={height} (relay)");
+                    persist_state(&v);
+                }
+            }
+        }
+    }
+
+    /// Start the sync engine: load the config and spawn one thread per
+    /// network. Edits land via [`reload`], which retires the old threads.
     pub fn start() -> Self {
         let hub = NetHub::default();
         hub.reload();
-        let states = hub.0.clone();
+        hub
+    }
+
+    /// One network, one thread, one cadence. The thread exits the moment
+    /// the hub's generation moves past the one it was born with.
+    fn spawn_sync(&self, name: String, url: String, born: u64) {
+        let states = self.states.clone();
+        let generation = self.generation.clone();
         std::thread::Builder::new()
-            .name("body-networks".into())
+            .name(format!("net-{name}"))
             .spawn(move || {
-                let mut due: std::collections::HashMap<String, Instant> = Default::default();
+                let agent = agent();
                 loop {
-                    let targets: Vec<(String, String)> = states
-                        .lock()
-                        .map(|v| v.iter().map(|n| (n.name.clone(), n.url.clone())).collect())
-                        .unwrap_or_default();
-                    for (name, url) in targets {
-                        let now = Instant::now();
-                        if due.get(&name).map(|t| now < *t).unwrap_or(false) {
-                            continue;
-                        }
-                        let step = step_status(&url);
-                        due.insert(
-                            name.clone(),
-                            now + if step.is_ok() { STEP_EVERY } else { RETRY_EVERY },
-                        );
-                        if let Ok(mut v) = states.lock() {
-                            if let Some(n) = v.iter_mut().find(|n| n.name == name) {
-                                n.tx += (url.len() + 16) as u64; // request line, honest floor
-                                match &step {
-                                    Ok((height, root, bytes)) => {
-                                        n.rx += *bytes as u64;
-                                        if *height != n.height {
-                                            n.last_advance = Some(Instant::now());
-                                        }
-                                        n.height = *height;
-                                        n.root = root.clone();
-                                        n.ok = true;
-                                        n.last_step = format!("ok h={height}");
-                                        n.last_sync = Some(Instant::now());
-                                        persist_state(&v);
+                    if generation.load(std::sync::atomic::Ordering::Relaxed) != born {
+                        return; // config changed; a newer thread owns this
+                    }
+                    let step = step_status_with(&agent, &url);
+                    if let Ok(mut v) = states.lock() {
+                        if let Some(n) = v.iter_mut().find(|n| n.name == name) {
+                            n.tx += (url.len() + 16) as u64; // request line, honest floor
+                            match &step {
+                                Ok((height, root, bytes)) => {
+                                    n.rx += *bytes as u64;
+                                    if *height != n.height {
+                                        n.last_advance = Some(Instant::now());
                                     }
-                                    Err(e) => {
-                                        n.ok = false;
-                                        n.last_step = e.clone();
-                                    }
+                                    n.height = *height;
+                                    n.root = root.clone();
+                                    n.ok = true;
+                                    n.last_step = format!("ok h={height}");
+                                    n.last_sync = Some(Instant::now());
+                                    persist_state(&v);
+                                }
+                                Err(e) => {
+                                    n.ok = false;
+                                    n.last_step = e.clone();
                                 }
                             }
                         }
                     }
-                    std::thread::sleep(Duration::from_millis(500));
+                    // Sleep in slices so retirement is prompt.
+                    let nap = if step.is_ok() { STEP_EVERY } else { RETRY_EVERY };
+                    let slept = Instant::now();
+                    while slept.elapsed() < nap {
+                        if generation.load(std::sync::atomic::Ordering::Relaxed) != born {
+                            return;
+                        }
+                        std::thread::sleep(Duration::from_millis(250));
+                    }
                 }
             })
-            .expect("spawn body-networks");
-        hub
+            .expect("spawn net sync thread");
     }
 
     /// Re-read the config, keeping live counters for networks that stay.
     pub fn reload(&self) {
         let configured = load_config();
-        if let Ok(mut v) = self.0.lock() {
+        let born = self
+            .generation
+            .fetch_add(1, std::sync::atomic::Ordering::SeqCst)
+            + 1;
+        if let Ok(mut v) = self.states.lock() {
             let old = std::mem::take(&mut *v);
-            for (name, url) in configured {
+            for (name, url) in &configured {
                 let mut st = old
                     .iter()
-                    .find(|n| n.name == name)
+                    .find(|n| &n.name == name)
                     .cloned()
                     .unwrap_or_default();
-                st.name = name;
-                if st.url != url {
+                st.name = name.clone();
+                if &st.url != url {
                     // A different endpoint is a different conversation.
                     st = NetState { name: st.name.clone(), ..Default::default() };
                 }
-                st.url = url;
+                st.url = url.clone();
                 v.push(st);
             }
+        }
+        for (name, url) in configured {
+            self.spawn_sync(name, url, born);
         }
     }
 }
@@ -227,9 +285,10 @@ fn persist_state(states: &[NetState]) {
 
 /// One sync step: GET `<url>/status`, parse the soft3 plain-text form.
 /// Returns (height, root, response_bytes).
-fn step_status(url: &str) -> Result<(u64, String, usize), String> {
+fn step_status_with(agent: &ureq::Agent, url: &str) -> Result<(u64, String, usize), String> {
     let full = format!("{url}/status");
-    let mut res = ureq::get(&full)
+    let mut res = agent
+        .get(&full)
         .call()
         .map_err(|e| short_err(&e.to_string()))?;
     let body = res
@@ -373,12 +432,38 @@ mod tests {
         assert!(field("bbg-root").unwrap().starts_with("3acf5059"));
     }
 
+    /// The regression for the frozen-h incident: a socket that accepts
+    /// and then says nothing must cost a bounded timeout, never a thread.
+    /// (ureq's defaults have NO timeouts; networks::agent adds them.)
+    #[test]
+    fn blackhole_times_out_instead_of_hanging() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
+        let addr = listener.local_addr().expect("addr");
+        std::thread::spawn(move || {
+            for stream in listener.incoming() {
+                // Hold the connection open, send nothing.
+                let s = stream;
+                std::thread::sleep(Duration::from_secs(120));
+                drop(s);
+            }
+        });
+        let t0 = Instant::now();
+        let r = step_status_with(&agent(), &format!("http://{addr}"));
+        assert!(r.is_err(), "a silent socket must not look like a chain");
+        assert!(
+            t0.elapsed() < Duration::from_secs(15),
+            "timeout too slow: {:?}",
+            t0.elapsed()
+        );
+    }
+
     /// Live probe of the first network — run by hand:
     /// `cargo test -p cyb net_step_live -- --ignored --nocapture`
     #[test]
     #[ignore]
     fn net_step_live() {
-        let (h, root, bytes) = step_status("https://cyb.ai/spacepussy-test").expect("reachable");
+        let (h, root, bytes) =
+            step_status_with(&agent(), "https://cyb.ai/spacepussy-test").expect("reachable");
         eprintln!("pussy: h={h} root={root} ({bytes} bytes)");
         assert!(h >= 1);
         assert!(!root.is_empty());

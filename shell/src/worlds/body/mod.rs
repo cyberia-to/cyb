@@ -410,7 +410,17 @@ fn build_page(mut commands: Commands, view: Res<BodyView>, _link: Res<BodyLink>)
                     Some(t) => format!("block {} ago", ago(t.elapsed().as_secs())),
                     None => "no new block while watching".to_string(),
                 };
-                let stale = if n.ok { "" } else { "  (last step failed)" };
+                // Watchdog: a probe older than three cadences is a stall,
+                // whatever the last step said.
+                let probe_age = n.last_sync.map(|t| t.elapsed().as_secs()).unwrap_or(u64::MAX);
+                let stalled = probe_age > 45;
+                let stale = if !n.ok {
+                    format!("  ({})", n.last_step)
+                } else if stalled {
+                    format!("  (stalled {})", ago(probe_age))
+                } else {
+                    String::new()
+                };
                 (
                     format!(
                         "{:8} h={}  root {}  step {step}  {block}{stale}   in {}  out {}",
@@ -420,7 +430,7 @@ fn build_page(mut commands: Commands, view: Res<BodyView>, _link: Res<BodyLink>)
                         human_size(n.rx),
                         human_size(n.tx),
                     ),
-                    if n.ok { theme::TEXT_PRIMARY } else { theme::ACID_YELLOW },
+                    if n.ok && !stalled { theme::TEXT_PRIMARY } else { theme::ACID_YELLOW },
                 )
             } else {
                 (

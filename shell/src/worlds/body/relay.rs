@@ -87,17 +87,20 @@ impl Relay {
             .spawn(move || {
                 let mut marks = load_marks();
                 let first_run = !relay_file().exists();
+                // Timeouts are non-negotiable: a hung POST may cost one
+                // pass, never the thread (networks::agent carries them).
+                let agent = super::networks::agent();
                 loop {
                     std::thread::sleep(PASS_EVERY);
                     if !wanted() {
                         continue;
                     }
                     // The first network is where the body publishes.
-                    let Some(url) = hub
-                        .0
+                    let Some((net_name, url)) = hub
+                        .states
                         .lock()
                         .ok()
-                        .and_then(|v| v.first().map(|n| n.url.clone()))
+                        .and_then(|v| v.first().map(|n| (n.name.clone(), n.url.clone())))
                     else {
                         continue;
                     };
@@ -149,20 +152,36 @@ impl Relay {
 
                     let mut failed = 0u64;
                     for (neuron_key, step, body) in fresh {
-                        let ok = ureq::post(&format!("{url}/v1/link"))
+                        // The response carries the block our signal became;
+                        // the page learns the new height NOW, not on the
+                        // next probe.
+                        let posted = agent
+                            .post(&format!("{url}/v1/link"))
                             .send_json(&body)
-                            .is_ok();
-                        if ok {
-                            sent.fetch_add(1, Ordering::Relaxed);
-                            let m = marks.entry(neuron_key).or_insert(0);
-                            if step > *m {
-                                *m = step;
+                            .ok()
+                            .and_then(|mut r| {
+                                r.body_mut().read_json::<serde_json::Value>().ok()
+                            });
+                        match posted {
+                            Some(resp) => {
+                                sent.fetch_add(1, Ordering::Relaxed);
+                                if let (Some(h), Some(root)) = (
+                                    resp.get("height").and_then(|v| v.as_u64()),
+                                    resp.get("root").and_then(|v| v.as_str()),
+                                ) {
+                                    hub.note_block(&net_name, h, root);
+                                }
+                                let m = marks.entry(neuron_key).or_insert(0);
+                                if step > *m {
+                                    *m = step;
+                                }
                             }
-                        } else {
-                            failed += 1;
-                            // Stop the pass on first failure per chain order;
-                            // the next pass retries from the mark.
-                            break;
+                            None => {
+                                failed += 1;
+                                // Stop the pass; the next one retries from
+                                // the mark — order within a chain holds.
+                                break;
+                            }
                         }
                     }
                     pending.store(failed, Ordering::Relaxed);
