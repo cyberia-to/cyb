@@ -5,8 +5,7 @@
 # build the dmg AND the signed APK from the clean tagged tree (a release
 # never wears the dirty star), publish to GitHub with both attached,
 # install locally. One binary, every body: apple silicon + android in
-# every release; linux joins via CYB_LINUX_HOST (a build node reachable
-# over ssh) when one is on the wire.
+# every release; ubuntu and windows come from the cybernode build node.
 #
 #   make ship                       # bump minor, title = last commit line
 #   make ship V=0.3.0 T="headline"  # explicit version and title
@@ -80,15 +79,17 @@ else
   echo "ship: no $KS - skipping the android body"
 fi
 
-# Linux: built on a real linux machine over ssh when one is configured.
-# The workspace spans sibling repos GitHub never sees, so CI cannot do
-# this — a build node can. CYB_LINUX_HOST=user@host enables it.
-if [ -n "${CYB_LINUX_HOST:-}" ]; then
-  echo "ship: linux build on $CYB_LINUX_HOST..."
-  if bash harness/build-linux.sh "$CYB_LINUX_HOST" "$V"; then
+# Linux + Windows: built on the cybernode (deimos, the quiet one) — the
+# workspace spans sibling repos GitHub never sees, so CI cannot build it,
+# a node can. CYB_NODE overrides; CYB_SKIP_NODE=1 ships mac+android only.
+NODE="${CYB_NODE:-deimos}"
+if [ "${CYB_SKIP_NODE:-0}" != "1" ]; then
+  echo "ship: ubuntu + windows on $NODE..."
+  if bash harness/build-node.sh "$NODE" "$V" all; then
     ASSETS+=("target/release/cyb-$V-linux-x86_64.tar.gz")
+    ASSETS+=("target/release/cyb-$V-windows-x86_64.zip")
   else
-    echo "ship: linux build FAILED - shipping without it"
+    echo "ship: node build FAILED - shipping without linux/windows"
   fi
 fi
 
@@ -111,7 +112,9 @@ NOTES_FILE=$(mktemp)
   echo '```'
   echo "xattr -cr /Applications/cyb.app && codesign --force --deep -s - /Applications/cyb.app"
   echo '```'
-  echo "**android**: \\`adb install cyb-$V.apk\\` (self-signed; allow unknown sources)"
+  echo "**android**: \`adb install cyb-$V.apk\` (self-signed; allow unknown sources)"
+  echo "**ubuntu (x86_64, 20.04+)**: untar, then ./cyb"
+  echo "**windows (x86_64)**: unzip, run cyb.exe - cross-built, testers welcome"
 } > "$NOTES_FILE"
 
 # ── publish ─────────────────────────────────────────────────────────────
