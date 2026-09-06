@@ -42,7 +42,6 @@ T_BIN="$HOME/.rustup/toolchains/stable-aarch64-apple-darwin/bin"
 RUSTC="$T_BIN/rustc" "$T_BIN/cargo" check -p cyb >/dev/null 2>&1 || true # refresh lock
 git add shell/Cargo.toml Cargo.lock
 git commit -m "cyb $V"
-git tag -a "$TAG" -m "cyb $V — $TITLE"
 
 # ── build the artifacts from the tagged, clean tree ─────────────────────
 make dmg
@@ -83,6 +82,9 @@ if [ -n "${CYB_LINUX_HOST:-}" ]; then
     echo "ship: linux build FAILED - shipping without it"
   fi
 fi
+
+# Every body built — NOW the version is real.
+git tag -a "$TAG" -m "cyb $V — $TITLE"
 
 # ── notes: what actually changed since the last release ─────────────────
 PREV=$(git describe --tags --abbrev=0 "$TAG"^ 2>/dev/null || echo "")

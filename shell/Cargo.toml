@@ -20,7 +20,7 @@ name = "cyb"
 path = "src/main.rs"
 
 [dependencies]
-ureq       = "3"
+ureq       = { version = "3", features = ["json"] }
 zheng      = { path = "../../zheng/rs" }
 nebu       = { package = "strata-nebu", path = "../../strata/nebu/rs" }
 # vault: encrypted-at-rest secrets (pure-rust, all platforms)
