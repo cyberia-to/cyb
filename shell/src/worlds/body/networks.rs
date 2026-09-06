@@ -38,6 +38,11 @@ pub struct NetState {
     pub last_step: String,
     pub ok: bool,
     pub last_sync: Option<Instant>,
+    /// When the height last MOVED while we watched. A step that returns
+    /// the same height is a healthy probe of an idle chain — the page
+    /// shows both, because "synced" and "the chain is alive" are
+    /// different claims.
+    pub last_advance: Option<Instant>,
     /// Session exchange with this chain, bytes.
     pub rx: u64,
     pub tx: u64,
@@ -90,6 +95,9 @@ impl NetHub {
                                 match &step {
                                     Ok((height, root, bytes)) => {
                                         n.rx += *bytes as u64;
+                                        if *height != n.height {
+                                            n.last_advance = Some(Instant::now());
+                                        }
                                         n.height = *height;
                                         n.root = root.clone();
                                         n.ok = true;

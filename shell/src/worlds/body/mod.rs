@@ -223,6 +223,17 @@ fn gb(bytes: u64) -> f64 {
     bytes as f64 / 1e9
 }
 
+/// Seconds as a compact age: 47s, 12m, 3h.
+fn ago(secs: u64) -> String {
+    if secs >= 3600 {
+        format!("{}h", secs / 3600)
+    } else if secs >= 60 {
+        format!("{}m", secs / 60)
+    } else {
+        format!("{secs}s")
+    }
+}
+
 fn human_size(bytes: u64) -> String {
     if bytes >= 1_000_000 {
         format!("{:.1} MB", bytes as f64 / 1e6)
@@ -380,14 +391,19 @@ fn build_page(mut commands: Commands, view: Res<BodyView>, _link: Res<BodyLink>)
         ));
         for n in &view.nets {
             let (line, color) = if n.height > 0 {
-                let ago = n
+                let step = n
                     .last_sync
-                    .map(|t| format!("{}s ago", t.elapsed().as_secs()))
+                    .map(|t| format!("{}s", t.elapsed().as_secs()))
                     .unwrap_or_default();
+                // The step is our probe; the block is the chain's pulse.
+                let block = match n.last_advance {
+                    Some(t) => format!("block {} ago", ago(t.elapsed().as_secs())),
+                    None => "no new block while watching".to_string(),
+                };
                 let stale = if n.ok { "" } else { "  (last step failed)" };
                 (
                     format!(
-                        "{:8} h={}  root {}  synced {ago}{stale}   in {}  out {}",
+                        "{:8} h={}  root {}  step {step}  {block}{stale}   in {}  out {}",
                         n.name,
                         n.height,
                         networks::short_root(&n.root),
