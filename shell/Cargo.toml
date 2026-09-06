@@ -20,6 +20,7 @@ name = "cyb"
 path = "src/main.rs"
 
 [dependencies]
+ureq       = "3"
 zheng      = { path = "../../zheng/rs" }
 nebu       = { package = "strata-nebu", path = "../../strata/nebu/rs" }
 # vault: encrypted-at-rest secrets (pure-rust, all platforms)
@@ -89,6 +90,4 @@ arboard = "3"
 # import pipeline shells to python3); the phone receives weights pushed to
 # it until p2p distribution lands.
 [target.'cfg(target_os = "macos")'.dependencies]
-ureq       = "3"
-serde_json = "1"
 glia-import = { package = "import", path = "../../glia/import" }

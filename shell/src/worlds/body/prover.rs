@@ -20,6 +20,8 @@ use std::time::Instant;
 use nebu::Goldilocks;
 use zheng::{prove_spmv, spmv_native, verify_spmv, SparseGraph};
 
+use super::networks::NetHub;
+
 #[derive(Clone, Debug, Default)]
 pub struct ProverStat {
     pub running: bool,
@@ -35,6 +37,9 @@ pub struct ProverStat {
     pub n: usize,
     pub axons: usize,
     pub since: Option<Instant>,
+    /// The chain state the current tickets bind to: (network, height,
+    /// state root). Empty until the first network is reached.
+    pub beacon: Option<(String, u64, String)>,
 }
 
 impl ProverStat {
@@ -89,7 +94,10 @@ impl Prover {
 
     /// Begin proving over the given axons (this cyb's graph, snapshotted).
     /// One core, utility QoS — earning must not fight thinking or drawing.
-    pub fn prove(&self, axons: Vec<([u8; 32], [u8; 32], u64)>) {
+    /// Every ticket's public vector is bound to the current beacon — the
+    /// last block state of the first configured network — so two bodies
+    /// watching the same chain provably sample the same state.
+    pub fn prove(&self, axons: Vec<([u8; 32], [u8; 32], u64)>, hub: NetHub) {
         if self.run.swap(true, Ordering::SeqCst) {
             return;
         }
@@ -122,11 +130,24 @@ impl Prover {
                 let mut last_flush = Instant::now();
                 while run.load(Ordering::Relaxed) {
                     let t0 = Instant::now();
-                    // A fresh public vector per ticket: the work is never
-                    // the same twice, and anyone can rebuild x from the
-                    // ticket number alone.
+                    // A fresh public vector per ticket, bound to the beacon:
+                    // anyone holding (ticket number, chain state root) can
+                    // rebuild x and re-verify. No beacon yet = seed 0, and
+                    // the card says so.
+                    let beacon = hub.beacon();
+                    let root_seed = beacon
+                        .as_ref()
+                        .map(|(_, h, root)| beacon_seed(*h, root))
+                        .unwrap_or(0);
+                    if let Ok(mut s) = stat.lock() {
+                        s.beacon = beacon;
+                    }
                     let x: Vec<Goldilocks> = (0..graph.n)
-                        .map(|i| Goldilocks::new(splitmix64(ticket_no.wrapping_mul(0x9e37) ^ i as u64)))
+                        .map(|i| {
+                            Goldilocks::new(splitmix64(
+                                ticket_no.wrapping_mul(0x9e37) ^ root_seed ^ i as u64,
+                            ))
+                        })
                         .collect();
                     let y = spmv_native(&graph, &x);
                     let ok = prove_spmv(&graph, &x, &y)
@@ -193,6 +214,14 @@ fn build_graph(axons: &[([u8; 32], [u8; 32], u64)]) -> (SparseGraph, usize, usiz
     }
     let nnz = g.edges.len();
     (g, n, nnz)
+}
+
+/// Fold the beacon into one seed word: height plus the leading 16 hex
+/// digits of the state root. Deterministic for everyone watching the
+/// same chain at the same height.
+fn beacon_seed(height: u64, root: &str) -> u64 {
+    let hex = root.get(..16).unwrap_or(root);
+    u64::from_str_radix(hex, 16).unwrap_or(0) ^ height.rotate_left(32)
 }
 
 /// splitmix64 — the standard seed scrambler; deterministic x vectors.

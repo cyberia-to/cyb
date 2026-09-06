@@ -10,6 +10,7 @@
 pub mod telemetry;
 #[cfg(target_os = "macos")]
 pub mod miner;
+pub mod networks;
 pub mod prover;
 
 use bevy::prelude::*;
@@ -20,6 +21,11 @@ use crate::shell::chrome::{ContentRoot, CHROME_BOTTOM_H, CHROME_TOP_H};
 
 pub struct BodyWorldPlugin;
 
+/// The network hub, exposed as its own resource so the commander (com)
+/// can drive the configurator without reaching into body internals.
+#[derive(Resource, Clone)]
+pub struct BodyLinkHub(pub networks::NetHub);
+
 /// Live handles to the samplers and the miner; created once at build.
 #[derive(Resource)]
 struct BodyLink {
@@ -27,6 +33,7 @@ struct BodyLink {
     #[cfg(target_os = "macos")]
     miner: miner::Miner,
     prover: prover::Prover,
+    pub(crate) nets: networks::NetHub,
 }
 
 /// The snapshot the page renders. Rewritten once a second while the body
@@ -41,6 +48,7 @@ struct BodyView {
     #[cfg(target_os = "macos")]
     intensity: String,
     prover: prover::ProverStat,
+    nets: Vec<networks::NetState>,
 }
 
 #[derive(Component)]
@@ -60,11 +68,14 @@ struct ProveButton;
 
 impl Plugin for BodyWorldPlugin {
     fn build(&self, app: &mut App) {
+        let nets = networks::NetHub::start();
+        app.insert_resource(BodyLinkHub(nets.clone()));
         app.insert_resource(BodyLink {
             telemetry: telemetry::Telemetry::start(),
             #[cfg(target_os = "macos")]
             miner: miner::Miner::start(),
             prover: prover::Prover::start(),
+            nets,
         })
         .init_resource::<BodyView>()
         .add_systems(OnEnter(WorldState::Body), build_page)
@@ -119,7 +130,7 @@ fn resume_proving(link: Res<BodyLink>, shared: Res<super::SharedCell>) {
         .unwrap_or(false);
     if wanted && !link.prover.is_running() {
         let axons = shared.cell.lock().expect("shared cell poisoned").axons();
-        link.prover.prove(axons);
+        link.prover.prove(axons, link.nets.clone());
     }
 }
 
@@ -138,6 +149,7 @@ fn tick_view(
     *timer = 0.0;
     view.vitals = link.telemetry.snapshot();
     view.prover = link.prover.stat.lock().map(|s| s.clone()).unwrap_or_default();
+    view.nets = link.nets.snapshot();
     #[cfg(target_os = "macos")]
     {
         view.miner = link.miner.stat.lock().map(|s| s.clone()).unwrap_or_default();
@@ -209,6 +221,16 @@ fn bar(frac: f32) -> String {
 
 fn gb(bytes: u64) -> f64 {
     bytes as f64 / 1e9
+}
+
+fn human_size(bytes: u64) -> String {
+    if bytes >= 1_000_000 {
+        format!("{:.1} MB", bytes as f64 / 1e6)
+    } else if bytes >= 1_000 {
+        format!("{:.1} KB", bytes as f64 / 1e3)
+    } else {
+        format!("{bytes} B")
+    }
 }
 
 fn rate(bps: f64) -> String {
@@ -347,6 +369,50 @@ fn build_page(mut commands: Commands, view: Res<BodyView>, _link: Res<BodyLink>)
         theme::TEXT_PRIMARY,
     );
 
+    // ── networks: the chains this body follows ──────────────────────────
+    if !view.nets.is_empty() {
+        commands.spawn((
+            Text::new("networks"),
+            TextFont { font_size: theme::CAPTION, ..default() },
+            TextColor(theme::TEXT_DIM),
+            Node { margin: UiRect::top(Val::Px(theme::G * 2.0)), ..default() },
+            ChildOf(page),
+        ));
+        for n in &view.nets {
+            let (line, color) = if n.height > 0 {
+                let ago = n
+                    .last_sync
+                    .map(|t| format!("{}s ago", t.elapsed().as_secs()))
+                    .unwrap_or_default();
+                let stale = if n.ok { "" } else { "  (last step failed)" };
+                (
+                    format!(
+                        "{:8} h={}  root {}  synced {ago}{stale}   in {}  out {}",
+                        n.name,
+                        n.height,
+                        networks::short_root(&n.root),
+                        human_size(n.rx),
+                        human_size(n.tx),
+                    ),
+                    if n.ok { theme::TEXT_PRIMARY } else { theme::ACID_YELLOW },
+                )
+            } else {
+                (
+                    format!("{:8} {}  -  {}", n.name, n.url, n.last_step),
+                    theme::TEXT_DIM,
+                )
+            };
+            text(&mut commands, page, line, theme::BODY, color);
+        }
+        text(
+            &mut commands,
+            page,
+            "net add <name> <url>  |  net set  |  net rm".into(),
+            theme::CAPTION,
+            theme::TEXT_DIM,
+        );
+    }
+
     // ── work: every way this body earns ─────────────────────────────────
     #[allow(unused_mut)]
     let mut pussy_day = 0.0f64;
@@ -442,6 +508,14 @@ fn build_prover_card(commands: &mut Commands, page: Entity, view: &BodyView) -> 
             theme::CAPTION,
             theme::TEXT_DIM,
         );
+        let beacon = match &p.beacon {
+            Some((name, h, root)) => format!(
+                "beacon {name} h={h} {}  -  tickets bind to the last block",
+                networks::short_root(root)
+            ),
+            None => "beacon: none yet - tickets unbound until a network answers".into(),
+        };
+        text(commands, card, beacon, theme::CAPTION, theme::TEXT_DIM);
     }
 
     let lever = commands
@@ -700,7 +774,7 @@ fn handle_prove_press(
             notice.show("prover stopped - the count is kept");
         } else {
             let axons = shared.cell.lock().expect("shared cell poisoned").axons();
-            link.prover.prove(axons);
+            link.prover.prove(axons, link.nets.clone());
             let _ = std::fs::write(proving_wanted_file(), "on");
             notice.show("proving over your graph - every ticket verified");
         }

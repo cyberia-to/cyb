@@ -38,6 +38,11 @@ run:
 	$(CARGO) run --release -p cyb
 
 # Check all (fast, no codegen)
+# Multi-environment gate: N isolated bodies + mockchain + assertions.
+# Run before every commit. FLEET_SKIP_BUILD=1 to trust the binary.
+fleet:
+	bash harness/fleet.sh
+
 check:
 	$(CARGO) check --workspace
 

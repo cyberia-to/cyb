@@ -55,6 +55,12 @@ make dev                           # cargo run -p cyb
 
 ## Проверка после изменений
 
+- **Fleet (обязателен перед коммитом)**: `make fleet` — мульти-окружение:
+  N изолированных тел (свои HOME) + детерминированный mockchain
+  (`harness/mockchain.py`), ассерты на boot/identity/graph/networks/
+  beacon/prover/vault/orphans. Хук pre-commit гоняет его сам;
+  `SKIP_FLEET=1` для docs-only коммитов. `FLEET_SKIP_BUILD=1` если
+  бинарь свежий.
 - **Shell**: `cargo check -p cyb`
 - **Apps**: `cd apps && trunk build --release`
 - **Release**: `make dmg`

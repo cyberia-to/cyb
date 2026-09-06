@@ -469,6 +469,21 @@ fn run_pending_command(world: &mut World) {
         return;
     }
 
+    // `net ...` — the network configurator speaks through the commander.
+    if cmd.trim() == "net" || cmd.trim().starts_with("net ") {
+        let rest = cmd.trim().strip_prefix("net").unwrap_or("").trim().to_string();
+        let hub = world
+            .resource::<crate::worlds::body::BodyLinkHub>()
+            .0
+            .clone();
+        let said = crate::worlds::body::networks::handle_command(&rest, &hub);
+        world.resource_mut::<crate::worlds::Notice>().show(said.clone());
+        world
+            .resource_mut::<crate::worlds::ComInbox>()
+            .say(crate::worlds::Speaker::System, said);
+        return;
+    }
+
     // The vault outranks everything: its lines carry secrets, and this is
     // the LAST moment before a command is echoed, remembered and cast to
     // the graph. Whatever the vault says back is safe to say out loud;
