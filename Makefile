@@ -43,6 +43,11 @@ run:
 fleet:
 	bash harness/fleet.sh
 
+# Every version is a GitHub release, the erga way: bump, fleet-gated
+# commit, tag, dmg, publish, install. V=x.y.z T="headline" to override.
+ship:
+	bash harness/ship.sh
+
 check:
 	$(CARGO) check --workspace
 
