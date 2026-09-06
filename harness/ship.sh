@@ -17,6 +17,10 @@
 
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# apksigner is a java program; gradle found its jdk through the Makefile,
+# the signer gets the same one.
+export JAVA_HOME="${JAVA_HOME:-/opt/homebrew/opt/openjdk@17}"
+export PATH="$JAVA_HOME/bin:$PATH"
 
 # A release is a statement about a tree, so the tree must be fully told.
 if [ -n "$(git status --porcelain)" ]; then
@@ -37,11 +41,16 @@ fi
 echo "ship: $CUR -> $V  ($TITLE)"
 
 # ── bump + commit (the pre-commit fleet gate runs here) ─────────────────
-sed -i '' "s/^version = \"$CUR\"/version = \"$V\"/" shell/Cargo.toml
-T_BIN="$HOME/.rustup/toolchains/stable-aarch64-apple-darwin/bin"
-RUSTC="$T_BIN/rustc" "$T_BIN/cargo" check -p cyb >/dev/null 2>&1 || true # refresh lock
-git add shell/Cargo.toml Cargo.lock
-git commit -m "cyb $V"
+# Idempotent: a ship that died after the bump resumes without re-bumping.
+if [ "$V" != "$CUR" ]; then
+  sed -i '' "s/^version = \"$CUR\"/version = \"$V\"/" shell/Cargo.toml
+  T_BIN="$HOME/.rustup/toolchains/stable-aarch64-apple-darwin/bin"
+  RUSTC="$T_BIN/rustc" "$T_BIN/cargo" check -p cyb >/dev/null 2>&1 || true # refresh lock
+  git add shell/Cargo.toml Cargo.lock
+  git commit -m "cyb $V"
+else
+  echo "ship: version already $V - resuming"
+fi
 
 # ── build the artifacts from the tagged, clean tree ─────────────────────
 make dmg
