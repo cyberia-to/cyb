@@ -99,6 +99,7 @@ sleep "$RUN_SECS"
 
 # The chain's view of the fleet, captured while it still answers.
 HITS=$(curl -s --max-time 2 "http://127.0.0.1:$PORT/hits" | tr -d '[:space:]')
+LINKS=$(curl -s --max-time 2 "http://127.0.0.1:$PORT/links" | tr -d '[:space:]')
 
 # ── stop the fleet (graceful first: provers flush their counters) ──────
 for pid in "${PIDS[@]}"; do kill "$pid" 2>/dev/null; done
@@ -111,6 +112,14 @@ if [ "${HITS:-0}" -ge "$N" ] 2>/dev/null; then
   ok "fleet networks: chain answered $HITS status probes (>= $N bodies)"
 else
   bad "fleet networks: chain saw only '${HITS:-0}' probes for $N bodies"
+fi
+
+# relay: living bodies cast attention, the relay carries it, one signal = one
+# block — the chain must have RECEIVED links from the fleet.
+if [ "${LINKS:-0}" -ge "$N" ] 2>/dev/null; then
+  ok "fleet relay: chain received $LINKS links from living bodies"
+else
+  bad "fleet relay: chain received only '${LINKS:-0}' links for $N bodies"
 fi
 
 ROOTS="$WORK/roots.txt"; : > "$ROOTS"

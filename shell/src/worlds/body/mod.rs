@@ -12,6 +12,7 @@ pub mod telemetry;
 pub mod miner;
 pub mod networks;
 pub mod prover;
+pub mod relay;
 
 use bevy::prelude::*;
 use prysm::theme;
@@ -34,6 +35,7 @@ struct BodyLink {
     miner: miner::Miner,
     prover: prover::Prover,
     pub(crate) nets: networks::NetHub,
+    relay: relay::Relay,
 }
 
 /// The snapshot the page renders. Rewritten once a second while the body
@@ -49,6 +51,8 @@ struct BodyView {
     intensity: String,
     prover: prover::ProverStat,
     nets: Vec<networks::NetState>,
+    relayed: u64,
+    relay_pending: u64,
 }
 
 #[derive(Component)]
@@ -70,11 +74,15 @@ impl Plugin for BodyWorldPlugin {
     fn build(&self, app: &mut App) {
         let nets = networks::NetHub::start();
         app.insert_resource(BodyLinkHub(nets.clone()));
+        // The relay tails the one shared cell — WorldsPlugin opened it
+        // before this plugin was added.
+        let shared = app.world().resource::<super::SharedCell>().clone();
         app.insert_resource(BodyLink {
             telemetry: telemetry::Telemetry::start(),
             #[cfg(target_os = "macos")]
             miner: miner::Miner::start(),
             prover: prover::Prover::start(),
+            relay: relay::Relay::start(shared, nets.clone()),
             nets,
         })
         .init_resource::<BodyView>()
@@ -150,6 +158,8 @@ fn tick_view(
     view.vitals = link.telemetry.snapshot();
     view.prover = link.prover.stat.lock().map(|s| s.clone()).unwrap_or_default();
     view.nets = link.nets.snapshot();
+    view.relayed = link.relay.sent.load(std::sync::atomic::Ordering::Relaxed);
+    view.relay_pending = link.relay.pending.load(std::sync::atomic::Ordering::Relaxed);
     #[cfg(target_os = "macos")]
     {
         view.miner = link.miner.stat.lock().map(|s| s.clone()).unwrap_or_default();
@@ -420,10 +430,18 @@ fn build_page(mut commands: Commands, view: Res<BodyView>, _link: Res<BodyLink>)
             };
             text(&mut commands, page, line, theme::BODY, color);
         }
+        let stuck = if view.relay_pending > 0 {
+            format!("  ({} waiting)", view.relay_pending)
+        } else {
+            String::new()
+        };
         text(
             &mut commands,
             page,
-            "net add <name> <url>  |  net set  |  net rm".into(),
+            format!(
+                "relayed {} signals this session{stuck}   -   net add <name> <url> | net set | net rm",
+                view.relayed
+            ),
             theme::CAPTION,
             theme::TEXT_DIM,
         );

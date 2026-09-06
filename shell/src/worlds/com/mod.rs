@@ -469,6 +469,42 @@ fn run_pending_command(world: &mut World) {
         return;
     }
 
+    // `cast <from> <to> [amount]` — a deliberate link, by hand. It lands
+    // in the local cell like every other signal; the relay carries it to
+    // the chain, where one signal is one block.
+    if let Some(rest) = cmd.trim().strip_prefix("cast ") {
+        let words: Vec<&str> = rest.split_whitespace().collect();
+        let said = if words.len() < 2 {
+            "cast <from> <to> [amount]".to_string()
+        } else {
+            let amount: u64 = words.get(2).and_then(|a| a.parse().ok()).unwrap_or(1);
+            use crate::worlds::content;
+            content::remember(words[0]);
+            content::remember(words[1]);
+            let shared = world.resource::<crate::worlds::SharedCell>().clone();
+            let neuron = world.resource::<crate::worlds::identity::Identity>().neuron;
+            let cast = {
+                let mut cell = shared.cell.lock().expect("shared cell poisoned");
+                cell.cast_weighted(
+                    neuron,
+                    [(content::particle_of(words[0]), content::particle_of(words[1]), amount)],
+                )
+            };
+            match cast {
+                Ok(_) => {
+                    shared.bump();
+                    format!("cast {} -> {} ({amount}) - the relay will block it", words[0], words[1])
+                }
+                Err(e) => format!("cast failed: {e:?}"),
+            }
+        };
+        world.resource_mut::<crate::worlds::Notice>().show(said.clone());
+        world
+            .resource_mut::<crate::worlds::ComInbox>()
+            .say(crate::worlds::Speaker::System, said);
+        return;
+    }
+
     // `net ...` — the network configurator speaks through the commander.
     if cmd.trim() == "net" || cmd.trim().starts_with("net ") {
         let rest = cmd.trim().strip_prefix("net").unwrap_or("").trim().to_string();

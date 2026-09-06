@@ -24,11 +24,14 @@ START = time.time()
 BASE_HEIGHT = 100
 
 hits = 0
+links = 0
 lock = Lock()
 
 
 def height() -> int:
-    return BASE_HEIGHT + int((time.time() - START) / TICK)
+    # Time ticks AND received links both advance the chain — the soft3
+    # canon (one signal, one block) on top of a heartbeat.
+    return BASE_HEIGHT + int((time.time() - START) / TICK) + links
 
 
 def root(h: int) -> str:
@@ -59,6 +62,30 @@ class Handler(BaseHTTPRequestHandler):
         elif self.path == "/hits":
             body = f"{hits}\n".encode()
             self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        elif self.path == "/links":
+            body = f"{links}\n".encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+        else:
+            self.send_response(404)
+            self.end_headers()
+
+    def do_POST(self):
+        global links
+        length = int(self.headers.get("Content-Length", 0))
+        self.rfile.read(length)  # accept any well-formed link
+        if self.path.rstrip("/") == "/v1/link":
+            with lock:
+                links += 1
+            h = height()
+            body = f'{{"ok": true, "height": {h}, "root": "{root(h)}"}}\n'.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json")
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
