@@ -102,6 +102,9 @@ impl Plugin for BodyWorldPlugin {
         #[cfg(target_os = "macos")]
         app.add_systems(Startup, resume_mining);
         app.add_systems(Startup, resume_proving);
+        // Checkpoints tick in every world — proving does not stop when
+        // the body page is closed, and neither does its meter.
+        app.add_systems(Update, proof_checkpoint);
     }
 }
 
@@ -139,6 +142,67 @@ fn resume_proving(link: Res<BodyLink>, shared: Res<super::SharedCell>) {
     if wanted && !link.prover.is_running() {
         let axons = shared.cell.lock().expect("shared cell poisoned").axons();
         link.prover.prove(axons, link.nets.clone());
+    }
+}
+
+/// Every two minutes of proving, the new tickets become one weighted
+/// link — `zheng -> pussy`, weight = tickets since the last checkpoint —
+/// cast into the local cell like any other signal. The relay carries it,
+/// one signal one block: a body that only proves still moves the chain,
+/// and the proven work is metered ON the chain instead of only in a file.
+const CHECKPOINT_EVERY_S: f32 = 120.0;
+
+fn proof_checkpoint(
+    time: Res<Time>,
+    mut wait: Local<f32>,
+    mut last_count: Local<u64>,
+    link: Res<BodyLink>,
+    shared: Res<super::SharedCell>,
+    who: Res<super::identity::Identity>,
+    mut inbox: ResMut<super::ComInbox>,
+) {
+    *wait += time.delta_secs();
+    if *wait < CHECKPOINT_EVERY_S {
+        return;
+    }
+    *wait = 0.0;
+    let lifetime = link
+        .prover
+        .stat
+        .lock()
+        .map(|s| s.lifetime)
+        .unwrap_or(0);
+    if *last_count == 0 {
+        // First sight of the counter: checkpoint deltas from here on.
+        *last_count = lifetime;
+        return;
+    }
+    let delta = lifetime.saturating_sub(*last_count);
+    if delta == 0 {
+        return;
+    }
+    *last_count = lifetime;
+    super::content::remember("zheng");
+    super::content::remember("pussy");
+    let cast = {
+        let mut cell = shared.cell.lock().expect("shared cell poisoned");
+        cell.cast_weighted(
+            who.neuron,
+            [(
+                super::content::particle_of("zheng"),
+                super::content::particle_of("pussy"),
+                delta,
+            )],
+        )
+    };
+    match cast {
+        Ok(_) => {
+            shared.bump();
+            inbox
+                .0
+                .push(super::ComSay::Note(format!("proof checkpoint: {delta} tickets -> chain")));
+        }
+        Err(e) => warn!("body: checkpoint cast failed: {e:?}"),
     }
 }
 

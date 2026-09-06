@@ -203,15 +203,33 @@ fn spawn_chrome(mut commands: Commands) {
                     },
                     TextColor(Color::srgba(0.55, 0.55, 0.70, 1.0)),
                 ));
-                bar.spawn((
-                    IdentityLabel,
-                    Text::new(""),
-                    TextFont {
-                        font_size: 13.0,
-                        ..default()
-                    },
-                    TextColor(Color::srgba(0.35, 0.35, 0.50, 0.8)),
-                ));
+                bar.spawn(Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(16.0),
+                    ..default()
+                })
+                .with_children(|right| {
+                    // Which cyb this window IS — hash + build minute. The
+                    // question "am I looking at the build I just made?"
+                    // should never need a terminal to answer.
+                    right.spawn((
+                        Text::new(env!("CYB_VERSION")),
+                        TextFont {
+                            font_size: 13.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgba(0.30, 0.42, 0.36, 0.9)),
+                    ));
+                    right.spawn((
+                        IdentityLabel,
+                        Text::new(""),
+                        TextFont {
+                            font_size: 13.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgba(0.35, 0.35, 0.50, 0.8)),
+                    ));
+                });
             });
 
             // ── Bottom chrome: commander above, world tabs on the very
