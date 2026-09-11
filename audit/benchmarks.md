@@ -1,3 +1,7 @@
+---
+title: build benchmarks
+tags: cyb, audit, benchmarks
+---
 # Бенчмарки проекта
 
 ## Baseline (Webpack 5.94.0 + Node.js 22)
