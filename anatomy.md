@@ -47,7 +47,7 @@ the robot is one organism with **21 parts in six layers**. every surface — the
 
 | part | is | today |
 |---|---|---|
-| **[[cyb/parts/log|log]]** | the history of every interaction | live in substance: the durable tape `~/cyb/graph.log` *is* the log |
+| **[[cyb/parts/log|log]]** | the history of every interaction | live in substance: the durable tade `~/cyb/graph.log` *is* the log |
 | **[[cyb/parts/now|now]]** | the context — the file the robot stands on, and the hinge of everything: what [[cyb/parts/com|com]] acts on by default, what [[cyb/parts/soma|soma]] packs into the model's window, where casts attach, where [[cyb/parts/brain|brain]] and [[cyb/parts/memory|memory]] stand, the center [[cyb/parts/time|time]] pivots on | partial — the app tracks a current particle; the organ with its many functions is to build |
 | **[[cyb/parts/plan|plan]]** | the schedule: standing orders, deferred intents | seed exists (mining standing order); generalizes |
 | **[[cyb/parts/time|time]]** | one screen: log ← **now** → plan, the present in the middle | to build; the flagship view |
@@ -71,7 +71,7 @@ the robot is one organism with **21 parts in six layers**. every surface — the
 ## alignment phases
 
 1. **docs** — [[cyb/product/robot|robot]], [[cyb/product/spec|spec]], [[cyb/product/product|product]], [[cyb/decide/os|os]] restate themselves as expansions of parts; anything untraceable goes legacy (per [[restructure]])
-2. **app** — world *graph* → *brain*; com becomes chrome; *now* indicator; *time* world from tape + standing orders
+2. **app** — world *graph* → *brain*; com becomes chrome; *now* indicator; *time* world from tade + standing orders
 3. **landing** — cyb.ai lists the anatomy, one line per part
 4. **code** — crates and modules adopt part names; `~/cyb/soul` file is born
 

@@ -7,6 +7,6 @@ crystal-domain: cyb
 ---
 # log
 
-the history of every interaction — and it already exists in substance: the durable tape `~/cyb/graph.log` *is* the log. every cast, every answer, every act lands on the tape; nothing is forgotten. [[cyb/parts/time|time]] reads the log backward as the past half of its screen.
+the history of every interaction — and it already exists in substance: the durable tade `~/cyb/graph.log` *is* the log. every cast, every answer, every act lands on the tade; nothing is forgotten. [[cyb/parts/time|time]] reads the log backward as the past half of its screen.
 
 part of the [[cyb/anatomy|anatomy]] (time)

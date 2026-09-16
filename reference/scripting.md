@@ -67,7 +67,7 @@ identity (`~self`) and authority (`~caps`) are not two systems bolted together �
 
 ## output — prysm chunks
 
-a program that renders returns a **chunk-noun**: a tree built from [[prysm]] element constructors. these lower to `tape` chunks, which [[prysm]] renders identically to GPU cells, ansi, or html. the vocabulary:
+a program that renders returns a **chunk-noun**: a tree built from [[prysm]] element constructors. these lower to `tade` chunks, which [[prysm]] renders identically to GPU cells, ansi, or html. the vocabulary:
 
 | constructor | renders as |
 |-------------|-----------|
@@ -134,7 +134,7 @@ this is why running a stranger's `.moon` resolver is safe: it is mounted with `{
 | piece | state |
 |-------|-------|
 | rune language (parse → lower → [[Nox]] interpret) | working |
-| rune↔[[prysm]] binding (chunk-noun → `tape` chunks) | working, tested |
+| rune↔[[prysm]] binding (chunk-noun → `tade` chunks) | working, tested |
 | **command** entrypoint in the [[terminal]] (`rune <expr>`) | **live** (compiles; emit ungated) |
 | cell / processor / resolver / companion | planned |
 | [[ward]] (capability enforcement) | designed, not built |

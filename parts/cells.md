@@ -115,4 +115,4 @@ robot image, and spaces the sections.
 
 the city where the buildings stand is [[aos]] — portal, teleport, oracle, temple and the rest are cells the robot walks into
 
-the robot's cell is the first rung of the [[cell]] ladder — one neuron's sovereign micro-ledger on the tape; the same primitive scales up to buildings ([[aos]]), households ([[oikos]]) and knowledge shards
+the robot's cell is the first rung of the [[cell]] ladder — one neuron's sovereign micro-ledger on the tade; the same primitive scales up to buildings ([[aos]]), households ([[oikos]]) and knowledge shards

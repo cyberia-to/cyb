@@ -35,7 +35,7 @@ a node casts its ANTENNA and SOCKET links as **one atomic signal at startup** �
 ALPN `cyb/sync/1`, one QUIC bi-stream per peer pair, over [[radio]]. every blob wears a one-byte tag:
 
 - **HELLO** — the 32-byte [[neuron]] ids the sender wants: its follows, plus itself (another device of mine may hold signals this one lost). answered with a snapshot of exactly those chains. HELLO may repeat at any time — casting a new follow re-hellos every live session, so a subscription made mid-conversation takes effect at once.
-- **FRAMES** — [[signal]]s, as the same tape frames the cell's own log holds ([[foculus]] encoding). the opening snapshot and every later live push are the same shape.
+- **FRAMES** — [[signal]]s, as the same tade frames the cell's own log holds ([[foculus]] encoding). the opening snapshot and every later live push are the same shape.
 
 everything received feeds the one idempotent commit ([[cell]]'s signal chain dedups equivocation), so **replay, anti-entropy and push are one mechanism**. a frame that applies is forwarded to every other connected peer whose follows want that neuron; a frame that dedups is not re-forwarded, so echoes die at one hop. any topology converges to the union of what its follow edges ask for.
 
