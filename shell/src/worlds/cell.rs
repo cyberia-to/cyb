@@ -59,12 +59,12 @@ pub fn button(label: &str, target: &str) -> Noun {
     )
 }
 
-pub fn tr(cells: &[&str]) -> Noun {
+pub fn row(cells: &[&str]) -> Noun {
     let mut n = Noun::Atom(0);
     for s in cells.iter().rev() {
         n = Noun::cell(tape(s), n);
     }
-    Noun::cell(Noun::Atom(tag::TR), n)
+    Noun::cell(Noun::Atom(tag::ROW), n)
 }
 
 pub fn query_name(args: &Noun) -> String {

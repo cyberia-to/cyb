@@ -271,7 +271,7 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Re
                 if r.label.chars().count() > 40 {
                     label.push_str("..");
                 }
-                cell::tr(&[
+                cell::row(&[
                     &label,
                     &format!("{:.3}", r.focus),
                     &size_text(r.size),

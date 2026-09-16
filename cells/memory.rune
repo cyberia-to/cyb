@@ -5,7 +5,7 @@ col(
     stat(query("links"), "links")
   ),
   table(
-    tr("name", "focus", "size", "when"),
+    row("name", "focus", "size", "when"),
     query("table-body")
   )
 )

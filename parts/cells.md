@@ -38,9 +38,8 @@ elements are the chunk-noun constructors already defined in `rune_ast::tag`:
 | `button(label, tgt)` | BUTTON 5 | action button (ZAP/COMPONENT) | ✅ now |
 | `col(…)`             | LIST 0   | vertical list / page          | ✅ now |
 | `stat(value, cap)`   | STAT 6   | census card (value over label)| ✅ now |
-| `row(…)`             | ROW 7    | horizontal pack of elements   | ✅ now |
-| `table(tr, …)`       | TABLE 8  | grid of `tr` rows             | ✅ now |
-| `tr(c0, c1, …)`      | TR 9     | one table row of cells        | ✅ now |
+| `row(…)`             | ROW 7    | a row — widgets across, or cells of a table | ✅ now |
+| `table(row, …)`      | TABLE 8  | a grid of rows                | ✅ now |
 | `heading(level,"…")` | (new)    | H1/H2/H3 headline             | ⬜ P2  |
 | `image("src")`       | (new)    | image atom                    | ⬜ P2  |
 | `section(…)`         | (new)    | spaced block (hero/section)   | ⬜ P2  |
