@@ -9,7 +9,7 @@ how [[cyb]] resolves, fetches, and renders [[files]] from the [[cybergraph]]
 
 ## resolution
 
-a [[particle]] is a content-addressed hash ([[hemera]] digest). when [[cyb/brain]] or [[cyb/oracle]] encounters a particle CID:
+a [[particle]] is a content-addressed hash ([[hemera]] digest). when [[cyb/brain]] or [[cyb/oracle]] encounters a particle:
 
 1. check local cache (SQLite)
 2. check local [[radio]] blob store
