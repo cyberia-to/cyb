@@ -10,8 +10,8 @@ use bevy::prelude::*;
 use mir::bevy::resources::WarpTarget;
 use prysm::theme;
 
-use super::WorldState;
 use super::graph::BrainIndex;
+use super::{WorldState, content};
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
 
 pub struct MemoryWorldPlugin;
@@ -104,7 +104,7 @@ struct Row {
 }
 
 fn ranked_rows(index: &BrainIndex) -> Vec<Row> {
-    let meta = &index.texts;
+    let meta = content::load_with_meta();
     let mut rows: Vec<Row> = index
         .hashes
         .iter()
