@@ -54,7 +54,7 @@ each file renders independently. no cascading styles, no reflow between files. a
 
 ## caching
 
-- parsed content cached in SQLite with CID as key
+- parsed content cached in SQLite with the particle as key
 - GPU resources (textures, glyph atlases) cached per session
 - [[radio/bao]] verified streaming for large files (progressive render while downloading)
 
