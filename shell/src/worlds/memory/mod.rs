@@ -155,11 +155,26 @@ fn size_text(n: usize) -> String {
 }
 
 fn date_text(created: Option<u64>) -> String {
-    match created {
-        None => "-".into(),
-        Some(secs) => chrono::DateTime::from_timestamp(secs as i64, 0)
-            .map(|dt| dt.format("%Y-%m-%d %H:%M").to_string())
-            .unwrap_or_else(|| "-".into()),
+    let Some(secs) = created else {
+        return "-".into();
+    };
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(secs);
+    let ago = now.saturating_sub(secs);
+    if ago < 60 {
+        "now".into()
+    } else if ago < 3600 {
+        format!("{}m", ago / 60)
+    } else if ago < 86_400 {
+        format!("{}h", ago / 3600)
+    } else if ago < 86_400 * 14 {
+        format!("{}d", ago / 86_400)
+    } else if ago < 86_400 * 7 * 52 {
+        format!("{}w", ago / (86_400 * 7))
+    } else {
+        format!("{}y", ago / (86_400 * 365))
     }
 }
 
