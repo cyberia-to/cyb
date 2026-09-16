@@ -10,8 +10,8 @@ use bevy::prelude::*;
 use mir::bevy::resources::WarpTarget;
 use prysm::theme;
 
+use super::WorldState;
 use super::graph::BrainIndex;
-use super::{WorldState, content};
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
 
 pub struct MemoryWorldPlugin;
@@ -34,7 +34,7 @@ impl Plugin for MemoryWorldPlugin {
         app.add_systems(OnEnter(WorldState::Memory), enter)
             .add_systems(
                 Update,
-                (refresh_on_index, handle_open, scroll_page).run_if(in_state(WorldState::Memory)),
+                (refresh_on_index, finger).run_if(in_state(WorldState::Memory)),
             );
     }
 }
@@ -104,7 +104,7 @@ struct Row {
 }
 
 fn ranked_rows(index: &BrainIndex) -> Vec<Row> {
-    let meta = content::load_with_meta();
+    let meta = &index.texts;
     let mut rows: Vec<Row> = index
         .hashes
         .iter()
@@ -321,42 +321,105 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>) {
     }
 }
 
-fn handle_open(
-    interactions: Query<(&Interaction, &OpenRow), Changed<Interaction>>,
+/// A tap is a press that did not travel. Drag is scroll. Opening used to
+/// fire on Button-Pressed, so the first finger-down jumped to brain and
+/// the list never moved.
+const TAP_SLOP_PX: f32 = 12.0;
+
+struct Gesture {
+    start: Vec2,
+    last: Vec2,
+    scrolling: bool,
+    row: Option<(usize, [u8; 32])>,
+}
+
+fn finger(
+    mut g: Local<Option<Gesture>>,
+    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
+    windows: Query<&Window>,
+    touches: Res<Touches>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    rows: Query<(&Interaction, &OpenRow)>,
+    mut scroll: Query<(&mut ScrollPosition, &ComputedNode), With<MemoryScroll>>,
     mut commands: Commands,
     mut next: ResMut<NextState<WorldState>>,
     warp: Option<ResMut<WarpTarget>>,
 ) {
-    for (interaction, row) in &interactions {
-        if *interaction != Interaction::Pressed {
-            continue;
-        }
-        if let Some(mut warp) = warp {
-            warp.particle_idx = Some(row.idx as u32);
-        }
-        super::viewer::open(&mut commands, row.idx, row.hash);
-        next.set(WorldState::Graph);
-        break;
-    }
-}
-
-fn scroll_page(
-    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
-    touches: Res<Touches>,
-    mut q: Query<(&mut ScrollPosition, &ComputedNode), With<MemoryScroll>>,
-) {
     let mut dy: f32 = wheel.read().map(|e| -e.y * 40.0).sum();
-    let live: Vec<&bevy::input::touch::Touch> = touches.iter().collect();
-    if live.len() == 1 {
-        dy -= live[0].delta().y;
-    }
-    if dy == 0.0 {
+
+    let Ok(window) = windows.single() else {
         return;
+    };
+    let mouse_pos = window.cursor_position();
+    let down_pos = touches.iter().next().map(|t| t.position()).or_else(|| {
+        mouse
+            .pressed(MouseButton::Left)
+            .then_some(())
+            .and_then(|_| mouse_pos)
+    });
+    let released_pos = touches
+        .iter_just_released()
+        .next()
+        .map(|t| t.position())
+        .or_else(|| {
+            mouse
+                .just_released(MouseButton::Left)
+                .then_some(())
+                .and_then(|_| mouse_pos)
+        });
+
+    if let Some(pos) = down_pos {
+        if g.is_none() {
+            let row = rows
+                .iter()
+                .find_map(|(i, r)| (*i == Interaction::Pressed).then_some((r.idx, r.hash)));
+            *g = Some(Gesture {
+                start: pos,
+                last: pos,
+                scrolling: false,
+                row,
+            });
+        }
+        if let Some(g) = g.as_mut() {
+            let delta = pos - g.last;
+            g.last = pos;
+            if (pos - g.start).length() > TAP_SLOP_PX {
+                g.scrolling = true;
+            }
+            if g.scrolling {
+                dy -= delta.y;
+            }
+        }
     }
-    for (mut pos, computed) in &mut q {
-        let content = computed.content_size().y * computed.inverse_scale_factor();
-        let view = computed.size().y * computed.inverse_scale_factor();
-        let max = (content - view).max(0.0);
-        pos.y = (pos.y + dy).clamp(0.0, max);
+
+    if dy != 0.0 {
+        for (mut pos, computed) in &mut scroll {
+            let content = computed.content_size().y * computed.inverse_scale_factor();
+            let view = computed.size().y * computed.inverse_scale_factor();
+            let max = (content - view).max(0.0);
+            pos.y = (pos.y + dy).clamp(0.0, max);
+        }
+    }
+
+    if let Some(pos) = released_pos {
+        let Some(g) = g.take() else { return };
+        if g.scrolling || (pos - g.start).length() > TAP_SLOP_PX {
+            return;
+        }
+        let Some((idx, hash)) = g.row.or_else(|| {
+            rows.iter().find_map(|(i, r)| {
+                (*i == Interaction::Pressed || *i == Interaction::Hovered)
+                    .then_some((r.idx, r.hash))
+            })
+        }) else {
+            return;
+        };
+        if let Some(mut warp) = warp {
+            warp.particle_idx = Some(idx as u32);
+        }
+        super::viewer::open(&mut commands, idx, hash);
+        next.set(WorldState::Graph);
+    } else if down_pos.is_none() {
+        *g = None;
     }
 }
