@@ -75,11 +75,12 @@ fn append(text: &str) {
     }
 }
 
-/// One particle's record: the text and, where the line carries it, when it
-/// was (re-)remembered. `created` is `None` for lines soma-kernel wrote
-/// before this field existed, or ever writes without it — an unknown date
-/// stays unknown, never a fabricated one.
-pub struct ParticleMeta {
+/// One file's record: the text and, where the line carries it, when it
+/// was (re-)remembered. The particle is the map key; this is what it names.
+/// `created` is `None` for lines soma-kernel wrote before this field
+/// existed, or ever writes without it — an unknown date stays unknown,
+/// never a fabricated one.
+pub struct FileRecord {
     pub text: String,
     pub created: Option<u64>,
 }
@@ -87,7 +88,7 @@ pub struct ParticleMeta {
 /// Everything the store holds, with its metadata. The store keeps the last
 /// line for a given particle, so a re-remembered particle's `created` is
 /// its most recent remembering, not its first.
-pub fn load_with_meta() -> HashMap<[u8; 32], ParticleMeta> {
+pub fn load_with_meta() -> HashMap<[u8; 32], FileRecord> {
     let mut map = HashMap::new();
     let Ok(body) = std::fs::read_to_string(store_path()) else { return map };
     for line in body.lines() {
@@ -104,7 +105,7 @@ pub fn load_with_meta() -> HashMap<[u8; 32], ParticleMeta> {
         });
         if ok {
             let created = json_u64_field(line, "created");
-            map.insert(hash, ParticleMeta { text, created });
+            map.insert(hash, FileRecord { text, created });
         }
     }
     map

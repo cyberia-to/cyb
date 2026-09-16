@@ -1,6 +1,6 @@
-//! memory — the file manager for particles.
+//! memory — the file manager.
 //!
-//! Every particle this body holds text for, one row each, ranked by the
+//! Every file this body holds text for, one row each, ranked by the
 //! same tru φ* focus brain draws by (`super::graph::BrainIndex` — one
 //! computation, two consumers), with its size in bytes and when it was
 //! last remembered. Tap a row to read it: the exact fullscreen page brain
