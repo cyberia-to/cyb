@@ -1,0 +1,8 @@
+col(
+  row(
+    stat(query("particles"), "particles"),
+    stat(query("bytes"), "bytes"),
+    stat(query("links"), "links")
+  ),
+  query("rows")
+)

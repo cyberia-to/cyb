@@ -1,5 +1,6 @@
 pub mod attention;
 pub mod body;
+pub mod cell;
 pub mod com;
 pub mod content;
 pub mod graph;

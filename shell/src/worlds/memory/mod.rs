@@ -10,9 +10,15 @@ use bevy::prelude::*;
 use mir::bevy::resources::WarpTarget;
 use prysm::theme;
 
+use super::cell;
 use super::graph::BrainIndex;
 use super::{SharedCell, WorldState, content};
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
+use prysm::dispatch;
+use prysm::molecules::action::ActionButton;
+use rune_ast::Noun;
+use rune_interp::{Host, InterpError};
+use tape::{self, render, sigil};
 
 pub struct MemoryWorldPlugin;
 
@@ -22,11 +28,10 @@ struct MemoryRoot;
 #[derive(Component)]
 struct MemoryScroll;
 
-/// Tap the row: open the same particle brain would show for this node.
-#[derive(Component)]
-struct OpenRow {
-    idx: usize,
-    hash: [u8; 32],
+fn index_of_hash(hash: &[u8; 32], index: Option<&BrainIndex>) -> usize {
+    index
+        .and_then(|i| i.hashes.iter().position(|h| h == hash))
+        .unwrap_or(0)
 }
 
 impl Plugin for MemoryWorldPlugin {
@@ -178,44 +183,41 @@ fn bytes_text(n: u64) -> String {
     }
 }
 
-fn spawn_stat(commands: &mut Commands, parent: Entity, value: String, caption: &'static str) {
-    let (fill, hair) = prysm::glass(prysm::GlassDepth::Foreground);
-    let card = commands
-        .spawn((
-            Node {
-                flex_grow: 1.0,
-                flex_basis: Val::Px(0.0),
-                flex_direction: FlexDirection::Column,
-                align_items: AlignItems::Center,
-                justify_content: JustifyContent::Center,
-                padding: UiRect::axes(Val::Px(theme::G), Val::Px(theme::G * 1.5)),
-                border: UiRect::all(Val::Px(1.0)),
-                row_gap: Val::Px(2.0),
-                ..default()
-            },
-            fill,
-            hair,
-            ChildOf(parent),
-        ))
-        .id();
-    commands.spawn((
-        Text::new(value),
-        TextFont {
-            font_size: theme::H2,
-            ..default()
-        },
-        TextColor(theme::ACID_GREEN),
-        ChildOf(card),
-    ));
-    commands.spawn((
-        Text::new(caption),
-        TextFont {
-            font_size: theme::MICRO,
-            ..default()
-        },
-        TextColor(theme::TEXT_DIM),
-        ChildOf(card),
-    ));
+fn hex32(h: &[u8; 32]) -> String {
+    h.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn unhex32(s: &str) -> Option<[u8; 32]> {
+    if s.len() != 64 {
+        return None;
+    }
+    let mut out = [0u8; 32];
+    for i in 0..32 {
+        out[i] = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    Some(out)
+}
+
+struct MemoryHost {
+    particles: String,
+    bytes: String,
+    links: String,
+    rows: Noun,
+}
+
+impl Host for MemoryHost {
+    fn perform(&mut self, act: u64, args: &Noun, _caps: &Noun) -> Result<Noun, InterpError> {
+        if !cell::act_is_query(act) {
+            return Ok(Noun::Atom(0));
+        }
+        match cell::query_name(args).as_str() {
+            "particles" => Ok(cell::tape(&self.particles)),
+            "bytes" => Ok(cell::tape(&self.bytes)),
+            "links" => Ok(cell::tape(&self.links)),
+            "rows" => Ok(self.rows.clone()),
+            other => Err(cell::unknown_query(other)),
+        }
+    }
 }
 
 fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Res<SharedCell>) {
@@ -239,59 +241,68 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Re
         ))
         .id();
 
-    let text = |commands: &mut Commands, parent: Entity, s: String, size: f32, color: Color| {
+    let Some(index) = index else {
         commands.spawn((
-            Text::new(s),
+            Text::new("the graph has not opened yet"),
             TextFont {
-                font_size: size,
+                font_size: theme::CAPTION,
                 ..default()
             },
-            TextColor(color),
-            ChildOf(parent),
+            TextColor(theme::TEXT_DIM),
+            ChildOf(root),
         ));
-    };
-
-    let Some(index) = index else {
-        text(
-            &mut commands,
-            root,
-            "the graph has not opened yet".into(),
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
         return;
     };
 
-    let rows = ranked_rows(&index);
-    let bytes: u64 = rows.iter().map(|r| r.size as u64).sum();
-    let particles = rows.len() as u64;
+    let ranked = ranked_rows(&index);
+    let bytes: u64 = ranked.iter().map(|r| r.size as u64).sum();
+    let particles = ranked.len() as u64;
     let links = shared
         .cell
         .lock()
         .map(|c| c.axons().len() as u64)
         .unwrap_or(0);
+    let rows = cell::list(
+        ranked
+            .iter()
+            .map(|r| {
+                let mut label: String = r.label.chars().take(40).collect();
+                if r.label.chars().count() > 40 {
+                    label.push_str("..");
+                }
+                cell::button(&label, &format!("particle:{}", hex32(&r.hash)))
+            })
+            .collect(),
+    );
+    let mut host = MemoryHost {
+        particles: compact(particles),
+        bytes: bytes_text(bytes),
+        links: compact(links),
+        rows,
+    };
+    let chunks = match cell::load("memory").and_then(|src| cell::eval(&src, &mut host)) {
+        Ok(c) => c,
+        Err(e) => {
+            commands.spawn((
+                Text::new(e),
+                TextFont {
+                    font_size: theme::CAPTION,
+                    ..default()
+                },
+                TextColor(theme::ACID_RED),
+                ChildOf(root),
+            ));
+            return;
+        }
+    };
 
-    let stats = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                max_width: Val::Px(theme::MEASURE),
-                flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(theme::G),
-                padding: UiRect::new(
-                    Val::Px(theme::G * 3.0),
-                    Val::Px(theme::G * 1.5),
-                    Val::Px(theme::G * 3.0),
-                    Val::Px(theme::G * 2.0),
-                ),
-                ..default()
-            },
-            ChildOf(root),
-        ))
-        .id();
-    spawn_stat(&mut commands, stats, compact(particles), "particles");
-    spawn_stat(&mut commands, stats, bytes_text(bytes), "bytes");
-    spawn_stat(&mut commands, stats, compact(links), "links");
+    let mut rest = chunks.as_slice();
+    if let Some(first) = rest.first() {
+        if first.sigil == tape::sigil::LUS && first.render == tape::render::COMPONENT {
+            dispatch(&mut commands, root, first);
+            rest = &rest[1..];
+        }
+    }
 
     let page = commands
         .spawn((
@@ -316,89 +327,8 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Re
         ))
         .id();
 
-    if rows.is_empty() {
-        text(
-            &mut commands,
-            page,
-            "nothing remembered yet".into(),
-            theme::BODY,
-            theme::TEXT_DIM,
-        );
-        return;
-    }
-
-    for row in &rows {
-        let r = commands
-            .spawn((
-                OpenRow {
-                    idx: row.idx,
-                    hash: row.hash,
-                },
-                Button,
-                Node {
-                    width: Val::Percent(100.0),
-                    justify_content: JustifyContent::SpaceBetween,
-                    align_items: AlignItems::Center,
-                    padding: UiRect::axes(Val::Px(theme::G * 1.5), Val::Px(theme::G)),
-                    border: UiRect::all(Val::Px(1.0)),
-                    column_gap: Val::Px(theme::G),
-                    ..default()
-                },
-                BackgroundColor(theme::DARK_BASE),
-                BorderColor::all(theme::BORDER),
-                ChildOf(page),
-            ))
-            .id();
-
-        let left = commands
-            .spawn((
-                Node {
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(theme::G * 1.5),
-                    ..default()
-                },
-                ChildOf(r),
-            ))
-            .id();
-        let mut label: String = row.label.chars().take(40).collect();
-        if row.label.chars().count() > 40 {
-            label.push_str("..");
-        }
-        text(&mut commands, left, label, theme::BODY, theme::TEXT_PRIMARY);
-        text(
-            &mut commands,
-            left,
-            format!("focus {:.3}", row.focus),
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
-
-        let right = commands
-            .spawn((
-                Node {
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(theme::G * 1.5),
-                    ..default()
-                },
-                ChildOf(r),
-            ))
-            .id();
-        text(
-            &mut commands,
-            right,
-            size_text(row.size),
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
-        text(
-            &mut commands,
-            right,
-            date_text(row.created),
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
+    for chunk in rest {
+        dispatch(&mut commands, page, chunk);
     }
 }
 
@@ -407,16 +337,16 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Re
 /// the list never moved.
 const TAP_SLOP_PX: f32 = 12.0;
 /// Finger delta multiplier — the list should outrun the thumb a little.
-const DRAG_GAIN: f32 = 1.75;
-const FRICTION: f32 = 3.6;
-const FLING_MIN: f32 = 90.0;
-const V_MAX: f32 = 14_000.0;
+const DRAG_GAIN: f32 = 2.45;
+const FRICTION: f32 = 2.05;
+const FLING_MIN: f32 = 40.0;
+const V_MAX: f32 = 24_000.0;
 
 struct Gesture {
     start: Vec2,
     last: Vec2,
     scrolling: bool,
-    row: Option<(usize, [u8; 32])>,
+    row: Option<String>,
 }
 
 #[derive(Default)]
@@ -465,7 +395,8 @@ fn finger(
     windows: Query<&Window>,
     touches: Res<Touches>,
     mouse: Res<ButtonInput<MouseButton>>,
-    rows: Query<(&Interaction, &OpenRow)>,
+    rows: Query<(&Interaction, &ActionButton)>,
+    index: Option<Res<BrainIndex>>,
     mut scroll: Query<(&mut ScrollPosition, &ComputedNode), With<MemoryScroll>>,
     mut commands: Commands,
     mut next: ResMut<NextState<WorldState>>,
@@ -501,7 +432,7 @@ fn finger(
         if g.is_none() {
             let row = rows
                 .iter()
-                .find_map(|(i, r)| (*i == Interaction::Pressed).then_some((r.idx, r.hash)));
+                .find_map(|(i, r)| (*i == Interaction::Pressed).then_some(r.target_ref.clone()));
             *g = Some(Gesture {
                 start: pos,
                 last: pos,
@@ -562,14 +493,18 @@ fn finger(
             return;
         }
         fling.v = 0.0;
-        let Some((idx, hash)) = g.row.or_else(|| {
+        let Some(target) = g.row.or_else(|| {
             rows.iter().find_map(|(i, r)| {
                 (*i == Interaction::Pressed || *i == Interaction::Hovered)
-                    .then_some((r.idx, r.hash))
+                    .then_some(r.target_ref.clone())
             })
         }) else {
             return;
         };
+        let Some(hash) = target.strip_prefix("particle:").and_then(unhex32) else {
+            return;
+        };
+        let idx = index_of_hash(&hash, index.as_deref());
         if let Some(mut warp) = warp {
             warp.particle_idx = Some(idx as u32);
         }

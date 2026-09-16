@@ -37,6 +37,8 @@ elements are the chunk-noun constructors already defined in `rune_ast::tag`:
 | `log("…")`           | LOG 4    | log line (DOT/LOG)            | ✅ now |
 | `button(label, tgt)` | BUTTON 5 | action button (ZAP/COMPONENT) | ✅ now |
 | `col(…)`             | LIST 0   | vertical list / page          | ✅ now |
+| `stat(value, cap)`   | STAT 6   | census card (value over label)| ✅ now |
+| `row(…)`             | ROW 7    | horizontal pack of elements   | ✅ now |
 | `heading(level,"…")` | (new)    | H1/H2/H3 headline             | ⬜ P2  |
 | `image("src")`       | (new)    | image atom                    | ⬜ P2  |
 | `section(…)`         | (new)    | spaced block (hero/section)   | ⬜ P2  |
@@ -53,8 +55,9 @@ cells resolve through `cell://<name>`:
 - **prod** → radio particle: a `name → hash` pointer; fetch bytes from iroh-blobs,
   decode UTF-8 rune source (P4)
 
-P1 hardwires the path `cyb/cells/landing.rune`. the name→file and name→hash
-resolvers come in P2/P4 behind the same `load_cell(name) -> String` seam.
+P1 hardwires `cyb/cells/landing.rune`. memory is `cyb/cells/memory.rune` —
+the first world authored in rune, fed by `query("particles"|"bytes"|"links"|"rows")`.
+the name→file and name→hash resolvers come in P2/P4 behind the same `load(name)` seam.
 
 ## button semantics (MVP)
 
