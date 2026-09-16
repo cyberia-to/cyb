@@ -11,7 +11,7 @@ use mir::bevy::resources::WarpTarget;
 use prysm::theme;
 
 use super::graph::BrainIndex;
-use super::{WorldState, content};
+use super::{SharedCell, WorldState, content};
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
 
 pub struct MemoryWorldPlugin;
@@ -42,12 +42,13 @@ impl Plugin for MemoryWorldPlugin {
 fn enter(
     commands: Commands,
     index: Option<Res<BrainIndex>>,
+    shared: Res<SharedCell>,
     mut worlds: Query<(&crate::worlds::WorldUi, &mut Visibility)>,
 ) {
     if crate::worlds::reveal_world(WorldState::Memory, &mut worlds) {
         return;
     }
-    build_page(commands, index);
+    build_page(commands, index, shared);
 }
 
 /// Rebuild whenever the graph's own index moves — which includes the very
@@ -57,6 +58,7 @@ fn enter(
 fn refresh_on_index(
     mut commands: Commands,
     index: Option<Res<BrainIndex>>,
+    shared: Res<SharedCell>,
     roots: Query<Entity, With<MemoryRoot>>,
     mut last: Local<Option<(usize, Option<[u8; 32]>, Option<[u8; 32]>)>>,
 ) {
@@ -87,7 +89,7 @@ fn refresh_on_index(
     for e in &roots {
         commands.entity(e).despawn();
     }
-    build_page(commands, index);
+    build_page(commands, index, shared);
 }
 
 /// One ranked row: hash, label, focus, byte size, and when it was last
@@ -156,7 +158,67 @@ fn date_text(created: Option<u64>) -> String {
     }
 }
 
-fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>) {
+fn compact(n: u64) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1e6)
+    } else if n >= 10_000 {
+        format!("{:.1}k", n as f64 / 1e3)
+    } else {
+        n.to_string()
+    }
+}
+
+fn bytes_text(n: u64) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1} MB", n as f64 / 1e6)
+    } else if n >= 1000 {
+        format!("{:.1} KB", n as f64 / 1e3)
+    } else {
+        format!("{n} B")
+    }
+}
+
+fn spawn_stat(commands: &mut Commands, parent: Entity, value: String, caption: &'static str) {
+    let (fill, hair) = prysm::glass(prysm::GlassDepth::Foreground);
+    let card = commands
+        .spawn((
+            Node {
+                flex_grow: 1.0,
+                flex_basis: Val::Px(0.0),
+                flex_direction: FlexDirection::Column,
+                align_items: AlignItems::Center,
+                justify_content: JustifyContent::Center,
+                padding: UiRect::axes(Val::Px(theme::G), Val::Px(theme::G * 1.5)),
+                border: UiRect::all(Val::Px(1.0)),
+                row_gap: Val::Px(2.0),
+                ..default()
+            },
+            fill,
+            hair,
+            ChildOf(parent),
+        ))
+        .id();
+    commands.spawn((
+        Text::new(value),
+        TextFont {
+            font_size: theme::H2,
+            ..default()
+        },
+        TextColor(theme::ACID_GREEN),
+        ChildOf(card),
+    ));
+    commands.spawn((
+        Text::new(caption),
+        TextFont {
+            font_size: theme::MICRO,
+            ..default()
+        },
+        TextColor(theme::TEXT_DIM),
+        ChildOf(card),
+    ));
+}
+
+fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Res<SharedCell>) {
     let root = commands
         .spawn((
             MemoryRoot,
@@ -177,24 +239,6 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>) {
         ))
         .id();
 
-    let page = commands
-        .spawn((
-            MemoryScroll,
-            Node {
-                width: Val::Percent(100.0),
-                max_width: Val::Px(theme::MEASURE),
-                height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(theme::G * 3.0)),
-                row_gap: Val::Px(theme::G),
-                overflow: Overflow::scroll_y(),
-                ..default()
-            },
-            ScrollPosition::default(),
-            ChildOf(root),
-        ))
-        .id();
-
     let text = |commands: &mut Commands, parent: Entity, s: String, size: f32, color: Color| {
         commands.spawn((
             Text::new(s),
@@ -207,18 +251,10 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>) {
         ));
     };
 
-    text(
-        &mut commands,
-        page,
-        "memory".into(),
-        theme::H2,
-        theme::TEXT_PRIMARY,
-    );
-
     let Some(index) = index else {
         text(
             &mut commands,
-            page,
+            root,
             "the graph has not opened yet".into(),
             theme::CAPTION,
             theme::TEXT_DIM,
@@ -227,13 +263,58 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>) {
     };
 
     let rows = ranked_rows(&index);
-    text(
-        &mut commands,
-        page,
-        format!("{} particles, ranked by focus - tap to read", rows.len()),
-        theme::CAPTION,
-        theme::TEXT_DIM,
-    );
+    let bytes: u64 = rows.iter().map(|r| r.size as u64).sum();
+    let particles = rows.len() as u64;
+    let links = shared
+        .cell
+        .lock()
+        .map(|c| c.axons().len() as u64)
+        .unwrap_or(0);
+
+    let stats = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                max_width: Val::Px(theme::MEASURE),
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(theme::G),
+                padding: UiRect::new(
+                    Val::Px(theme::G * 3.0),
+                    Val::Px(theme::G * 1.5),
+                    Val::Px(theme::G * 3.0),
+                    Val::Px(theme::G * 2.0),
+                ),
+                ..default()
+            },
+            ChildOf(root),
+        ))
+        .id();
+    spawn_stat(&mut commands, stats, compact(particles), "particles");
+    spawn_stat(&mut commands, stats, bytes_text(bytes), "bytes");
+    spawn_stat(&mut commands, stats, compact(links), "links");
+
+    let page = commands
+        .spawn((
+            MemoryScroll,
+            Node {
+                width: Val::Percent(100.0),
+                max_width: Val::Px(theme::MEASURE),
+                flex_grow: 1.0,
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::new(
+                    Val::Px(theme::G * 3.0),
+                    Val::Px(theme::G * 3.0),
+                    Val::Px(0.0),
+                    Val::Px(theme::G * 3.0),
+                ),
+                row_gap: Val::Px(theme::G),
+                overflow: Overflow::scroll_y(),
+                ..default()
+            },
+            ScrollPosition::default(),
+            ChildOf(root),
+        ))
+        .id();
 
     if rows.is_empty() {
         text(
@@ -325,6 +406,11 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>) {
 /// fire on Button-Pressed, so the first finger-down jumped to brain and
 /// the list never moved.
 const TAP_SLOP_PX: f32 = 12.0;
+/// Finger delta multiplier — the list should outrun the thumb a little.
+const DRAG_GAIN: f32 = 1.75;
+const FRICTION: f32 = 3.6;
+const FLING_MIN: f32 = 90.0;
+const V_MAX: f32 = 14_000.0;
 
 struct Gesture {
     start: Vec2,
@@ -333,9 +419,49 @@ struct Gesture {
     row: Option<(usize, [u8; 32])>,
 }
 
+#[derive(Default)]
+struct Fling {
+    v: f32,
+}
+
+fn extents(computed: &ComputedNode) -> f32 {
+    let content = computed.content_size().y * computed.inverse_scale_factor();
+    let view = computed.size().y * computed.inverse_scale_factor();
+    (content - view).max(0.0)
+}
+
+fn nudge(pos: &mut f32, dy: f32, max: f32) {
+    let next = *pos + dy;
+    *pos = if next < 0.0 {
+        next * 0.38
+    } else if next > max {
+        max + (next - max) * 0.38
+    } else {
+        next
+    };
+}
+
+fn spring_back(pos: &mut f32, v: &mut f32, max: f32, dt: f32) {
+    if *pos < 0.0 {
+        *pos += (0.0 - *pos) * (1.0 - (-18.0 * dt).exp());
+        *v *= 0.35;
+        if pos.abs() < 0.5 {
+            *pos = 0.0;
+        }
+    } else if *pos > max {
+        *pos += (max - *pos) * (1.0 - (-18.0 * dt).exp());
+        *v *= 0.35;
+        if (*pos - max).abs() < 0.5 {
+            *pos = max;
+        }
+    }
+}
+
 fn finger(
     mut g: Local<Option<Gesture>>,
+    mut fling: Local<Fling>,
     mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
+    time: Res<Time>,
     windows: Query<&Window>,
     touches: Res<Touches>,
     mouse: Res<ButtonInput<MouseButton>>,
@@ -345,7 +471,8 @@ fn finger(
     mut next: ResMut<NextState<WorldState>>,
     warp: Option<ResMut<WarpTarget>>,
 ) {
-    let mut dy: f32 = wheel.read().map(|e| -e.y * 40.0).sum();
+    let dt = time.delta_secs().max(1.0 / 240.0);
+    let mut dy: f32 = wheel.read().map(|e| -e.y * 72.0).sum();
 
     let Ok(window) = windows.single() else {
         return;
@@ -368,6 +495,8 @@ fn finger(
                 .and_then(|_| mouse_pos)
         });
 
+    let dragging = down_pos.is_some();
+
     if let Some(pos) = down_pos {
         if g.is_none() {
             let row = rows
@@ -387,25 +516,52 @@ fn finger(
                 g.scrolling = true;
             }
             if g.scrolling {
-                dy -= delta.y;
+                let step = -delta.y * DRAG_GAIN;
+                dy += step;
+                let inst = step / dt;
+                fling.v = (fling.v * 0.45 + inst * 0.55).clamp(-V_MAX, V_MAX);
             }
         }
     }
 
-    if dy != 0.0 {
-        for (mut pos, computed) in &mut scroll {
-            let content = computed.content_size().y * computed.inverse_scale_factor();
-            let view = computed.size().y * computed.inverse_scale_factor();
-            let max = (content - view).max(0.0);
-            pos.y = (pos.y + dy).clamp(0.0, max);
+    if dragging {
+        if dy != 0.0 {
+            for (mut pos, computed) in &mut scroll {
+                let max = extents(computed);
+                nudge(&mut pos.y, dy, max);
+            }
+        }
+    } else {
+        if dy != 0.0 {
+            fling.v += dy / dt;
+        }
+        if fling.v.abs() > FLING_MIN {
+            let step = fling.v * dt;
+            fling.v *= (-FRICTION * dt).exp();
+            for (mut pos, computed) in &mut scroll {
+                let max = extents(computed);
+                nudge(&mut pos.y, step, max);
+                spring_back(&mut pos.y, &mut fling.v, max, dt);
+            }
+        } else {
+            fling.v = 0.0;
+            for (mut pos, computed) in &mut scroll {
+                let max = extents(computed);
+                let mut v = 0.0;
+                spring_back(&mut pos.y, &mut v, max, dt);
+            }
         }
     }
 
     if let Some(pos) = released_pos {
         let Some(g) = g.take() else { return };
         if g.scrolling || (pos - g.start).length() > TAP_SLOP_PX {
+            if fling.v.abs() < FLING_MIN {
+                fling.v = 0.0;
+            }
             return;
         }
+        fling.v = 0.0;
         let Some((idx, hash)) = g.row.or_else(|| {
             rows.iter().find_map(|(i, r)| {
                 (*i == Interaction::Pressed || *i == Interaction::Hovered)
