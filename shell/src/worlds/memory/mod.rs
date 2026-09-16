@@ -282,12 +282,8 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Re
         ranked
             .iter()
             .map(|r| {
-                let mut label: String = r.label.chars().take(40).collect();
-                if r.label.chars().count() > 40 {
-                    label.push_str("..");
-                }
                 cell::row(&[
-                    &label,
+                    &r.label,
                     &format!("{:.3}", r.focus),
                     &size_text(r.size),
                     &date_text(r.created),
