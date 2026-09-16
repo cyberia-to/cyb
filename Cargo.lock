@@ -2926,7 +2926,6 @@ dependencies = [
  "cyber-mudra",
  "cyber-particle",
  "cyber-spark",
- "cyber-tape",
  "cyber-tru",
  "getrandom 0.2.17",
  "global-hotkey",
@@ -2956,6 +2955,7 @@ dependencies = [
  "sha2",
  "soma-kernel",
  "strata-nebu",
+ "tade",
  "tray-icon",
  "ureq",
  "zheng",
@@ -3083,13 +3083,6 @@ name = "cyber-spark"
 version = "0.1.0"
 dependencies = [
  "cyber-particle",
-]
-
-[[package]]
-name = "cyber-tape"
-version = "0.1.0"
-dependencies = [
- "bytes",
 ]
 
 [[package]]
@@ -3874,13 +3867,13 @@ dependencies = [
  "clap",
  "cyber-hemera",
  "cyber-lens",
- "cyber-tape",
  "cyber-tok",
  "cyber-tru",
  "rand 0.9.2",
  "serde",
  "serde_json",
  "strata-nebu",
+ "tade",
  "zheng",
 ]
 
@@ -7997,8 +7990,8 @@ version = "0.1.0"
 dependencies = [
  "bevy",
  "crossbeam-channel",
- "cyber-tape",
  "neuron-model",
+ "tade",
 ]
 
 [[package]]
@@ -8515,8 +8508,8 @@ dependencies = [
 name = "rune-prysm"
 version = "0.1.0"
 dependencies = [
- "cyber-tape",
  "rune-ast",
+ "tade",
 ]
 
 [[package]]
@@ -9456,6 +9449,13 @@ dependencies = [
  "ansitok",
  "papergrid",
  "testing_table",
+]
+
+[[package]]
+name = "tade"
+version = "0.1.0"
+dependencies = [
+ "bytes",
 ]
 
 [[package]]

@@ -39,7 +39,7 @@ particle   = { package = "cyber-particle", path = "../../particle" }
 spark      = { package = "cyber-spark", path = "../../spark" }
 mudra      = { package = "cyber-mudra", path = "../../mudra" }
 tru        = { package = "cyber-tru", path = "../../tru/rs" }
-tape       = { package = "cyber-tape", path = "../../tape/impl/rust" }
+tape       = { package = "tade", path = "../../tade/impl/rust" }
 prysm      = { path = "../../prysm" }
 
 # rune — open-computation language; terminal `rune` command path
