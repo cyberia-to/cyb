@@ -18,7 +18,7 @@ use prysm::dispatch;
 use prysm::molecules::action::ActionButton;
 use rune_ast::Noun;
 use rune_interp::{Host, InterpError};
-use tape::{self, render, sigil};
+use tade::{self, render, sigil};
 
 pub struct MemoryWorldPlugin;
 
@@ -316,7 +316,7 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Re
 
     let mut rest = chunks.as_slice();
     if let Some(first) = rest.first() {
-        if first.sigil == tape::sigil::LUS && first.render == tape::render::COMPONENT {
+        if first.sigil == tade::sigil::LUS && first.render == tade::render::COMPONENT {
             dispatch(&mut commands, root, first);
             rest = &rest[1..];
         }

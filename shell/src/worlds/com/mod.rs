@@ -19,7 +19,7 @@ use nu_protocol::{OutDest, PipelineData, Signals};
 use nu_std::load_standard_library;
 
 use prysm::{StreamScrollback, dispatch, theme};
-use tape::Chunk;
+use tade::Chunk;
 
 use super::{ComInbox, ComSay, Notice, Speaker, WorldState};
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
@@ -238,7 +238,7 @@ fn evaluate_and_capture(
 
 fn dispatch_eval(state: &mut TerminalNonSendState, input: String) {
     // `rune <expr>` routes to the rune interpreter instead of nushell. Its
-    // result noun decodes to the SAME tape chunks nushell emits, so the rest
+    // result noun decodes to the SAME tade chunks nushell emits, so the rest
     // of the pipeline (poll → dispatch → prysm) is identical. This is the
     // rune↔prysm seam, live in the terminal.
     if let Some(expr) = input.strip_prefix("rune ") {

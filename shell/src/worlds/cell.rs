@@ -5,7 +5,7 @@
 
 use rune_ast::{Noun, act, tag};
 use rune_interp::{Host, InterpError};
-use tape::Chunk;
+use tade::Chunk;
 
 const BUILTIN: &[(&str, &str)] = &[
     ("landing", include_str!("../../../cells/landing.rune")),

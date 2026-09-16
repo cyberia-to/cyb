@@ -13,7 +13,7 @@
 
 use bevy::prelude::*;
 use prysm::{dispatch, theme};
-use tape::Chunk;
+use tade::Chunk;
 
 use super::WorldState;
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H};
