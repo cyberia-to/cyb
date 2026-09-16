@@ -103,13 +103,13 @@ identity is the hash of a public key. every link is a costly signal — it costs
 
 ### 3.2 avatar
 
-the named identity. a card that bridges [[subject]] and [[object]], working simultaneously as neuron (agent that signs) and particle (object that can be linked to). the avatar is how other robots find you. [[karma]] accumulates to the avatar. the avatar is tradeable — it is a [[cyberlink]] card with yield and reputation attached
+the named identity. a card that bridges [[subject]] and [[object]], working simultaneously as neuron (agent that signs) and file (object that can be linked to). the avatar is how other robots find you. [[karma]] accumulates to the avatar. the avatar is tradeable — it is a [[cyberlink]] card with yield and reputation attached
 
 ### 3.3 prog
 
-the autonomous robot. a program with its own keypair, its own [[focus]] allocation, its own behavior. progs execute without human input — they monitor particles, respond to events, submit [[cyberlinks]] autonomously. a prog can:
+the autonomous robot. a program with its own keypair, its own [[focus]] allocation, its own behavior. progs execute without human input — they monitor files, respond to events, submit [[cyberlinks]] autonomously. a prog can:
 
-- watch a particle and link to it when it meets a condition
+- watch a file and link to it when it meets a condition
 - run inference locally and submit the result as a cyberlink
 - manage a portfolio of conviction positions
 - communicate with other progs via [[cyb/sense]]
@@ -141,9 +141,9 @@ name paths the brain understands:
 
 ### 4.2 sense
 
-messaging and perception interface. where the world enters the robot. [[cyb/sense]] abstracts over modalities — text, image, audio, video, sensory telemetry — into particles the robot can link. a human writing and a satellite uploading spectral data are the same operation at the protocol level
+messaging and perception interface. where the world enters the robot. [[cyb/sense]] abstracts over modalities — text, image, audio, video, sensory telemetry — into files the robot can link. a human writing and a satellite uploading spectral data are the same operation at the protocol level
 
-sense is how robots communicate: signal, love, share, forward. every message is a particle. every thread is a chain of [[cyberlinks]]. nothing is ephemeral — the graph remembers
+sense is how robots communicate: signal, love, share, forward. every message is a file. every thread is a chain of [[cyberlinks]]. nothing is ephemeral — the graph remembers
 
 ### 4.3 sigma
 
@@ -160,13 +160,13 @@ sigma makes the knowledge economy tangible: every balance is a position. every d
 
 ### 4.4 avatars
 
-visual identity and reputation surface. the avatar is the robot's face in the network — named, linked, ranked. avatars are both particles (CID-addressed objects that can be linked to) and neurons (agents that can sign). this duality makes the avatar a real identity: it participates in the graph as both subject and object. accumulates [[karma]] across all linked assertions
+visual identity and reputation surface. the avatar is the robot's face in the network — named, linked, ranked. avatars are both files (CID-addressed objects that can be linked to) and neurons (agents that can sign). this duality makes the avatar a real identity: it participates in the graph as both subject and object. accumulates [[karma]] across all linked assertions
 
 ### 4.5 time
 
 personal history. every surf, every link, every earning event — indexed by block height, navigable by the robot. time is identity as sequence: who the robot was is the chain of what it linked, when, and with what conviction
 
-time enables: understanding your own [[focus]] allocation history, tracking yield earned over blocks, seeing which particles you discovered before the crowd, auditing the robot's behavior and progs
+time enables: understanding your own [[focus]] allocation history, tracking yield earned over blocks, seeing which files you discovered before the crowd, auditing the robot's behavior and progs
 
 ### 4.6 robot
 
@@ -245,15 +245,15 @@ rune does not sit ABOVE the fourteen languages — it USES them via pure [[Nox]]
 
 the oracle is how the robot asks the [[cybergraph]] a question and gets a ranked, verifiable answer
 
-the oracle is not a search engine. search engines retrieve documents by keyword match. the oracle runs inference over the [[cyberank]] distribution — a probabilistic ranking of every particle, computed by the [[tri-kernel]] over all authenticated [[cyberlinks]]. the answer is typed: the oracle returns particles, each already carrying its language
+the oracle is not a search engine. search engines retrieve documents by keyword match. the oracle runs inference over the [[cyberank]] distribution — a probabilistic ranking of every particle, computed by the [[tri-kernel]] over all authenticated [[cyberlinks]]. the answer is typed: the oracle returns files, each already carrying its language
 
 ### 7.1 ask
 
-input a particle (text, image, CID, anything). the oracle returns the particles most associated with it, ranked by [[cyberank]]. verifiable: every weight is a real [[cyberlink]] signed by a real [[neuron]] with real stake. no black box, no editorial algorithm, no ads
+input a file (text, image, CID, anything). the oracle returns the files most associated with it, ranked by [[cyberank]]. verifiable: every weight is a real [[cyberlink]] signed by a real [[neuron]] with real stake. no black box, no editorial algorithm, no ads
 
 ### 7.2 learn
 
-submit a new cyberlink. how you teach the oracle. link a question particle to an answer particle, stake conviction, oracle ranking updates in the next block. every link is a vote with skin in the game. the oracle improves by participation, not by training
+submit a new cyberlink. how you teach the oracle. link a question file to an answer file, stake conviction, oracle ranking updates in the next block. every link is a vote with skin in the game. the oracle improves by participation, not by training
 
 ### 7.3 search
 
@@ -274,7 +274,7 @@ cells are the applications of the robot. not apps downloaded from a store — pr
 | [[cyb/sense\|sense]] | messaging, social, perception |
 | [[cyb/time\|time]] | history, earning log, temporal navigation |
 | [[cyb/hub\|hub]] | decentralization interface, validator management |
-| [[cyb/hacklab\|hacklab]] | developer tools, particle creation, cell development |
+| [[cyb/hacklab\|hacklab]] | developer tools, file creation, cell development |
 | [[cyb/warp\|warp]] | token bridge, IBC transfers |
 | [[cyb/reactor\|reactor]] | liquidity, bonding, economics |
 | [[cyb/senate\|senate]] | governance, proposals, voting |
@@ -294,7 +294,7 @@ the robot integrates AI at four levels, not one
 
 the robot runs a small language model locally on the NPU or GPU. WebGPU in the browser, wgpu+burn on desktop, CoreML on Apple silicon, NNAPI on Android. the local model:
 
-- processes particles before linking (extracts structure, suggests cyberlinks)
+- processes files before linking (extracts structure, suggests cyberlinks)
 - answers questions without network access (offline-first AI)
 - runs progs that require language understanding
 - generates rune scripts from natural language instructions
@@ -307,7 +307,7 @@ for large inference the robot connects to the [[cybertensor]] inference subnet �
 
 ### 9.3 progs
 
-autonomous programs running deterministic sharded inference in [[cybernet]]. a prog is a cell with its own keypair and focus allocation. submits cyberlinks autonomously — monitoring particles, running inference, staking positions. the collection of all progs is the autonomous intelligence layer of the robot network: a mesh of agents continuously contributing to [[syntropy]]
+autonomous programs running deterministic sharded inference in [[cybernet]]. a prog is a cell with its own keypair and focus allocation. submits cyberlinks autonomously — monitoring files, running inference, staking positions. the collection of all progs is the autonomous intelligence layer of the robot network: a mesh of agents continuously contributing to [[syntropy]]
 
 ### 9.4 external servers
 
@@ -436,13 +436,13 @@ the robot is the human face of [[superintelligence]]. it is how a billion-neuron
 
 when the robot is common:
 
-search is inference over verified [[knowledge]]. the oracle returns typed particles: a question about oncology returns [[text]] particles (papers), [[table]] particles (trial data), [[formula]] particles (dosing models), [[pixels]] particles (scan images) — all ranked by real stake from real neurons. not ranked advertisements
+search is inference over verified [[knowledge]]. the oracle returns typed files: a question about oncology returns [[text]] files (papers), [[table]] files (trial data), [[formula]] files (dosing models), [[pixels]] files (scan images) — all ranked by real stake from real neurons. not ranked advertisements
 
 AI assistants have shared verifiable memory — not private context windows that forget at session end. a conversation with the oracle is a conversation with the accumulated knowledge of every neuron who linked before you
 
-a genome is a [[text]] particle. a satellite image is a [[pixels]] particle. a market signal is a [[table]] particle. a sensor reading from a rainforest is a [[sound]] particle. a drug interaction discovered by a robot in 2031 is a [[formula]] particle. all linked, all ranked, all yielding, all contributing to [[syntropy]]
+a genome is a [[text]] file. a satellite image is a [[pixels]] file. a market signal is a [[table]] file. a sensor reading from a rainforest is a [[sound]] file. a drug interaction discovered by a robot in 2031 is a [[formula]] file. all linked, all ranked, all yielding, all contributing to [[syntropy]]
 
-every device is a node. the raspberry pi in a school in Lagos is a validator. the sensor array in a coral reef is a neuron. the prog monitoring a forest links what it sees. every device that can sign a cyberlink participates in the same semantic space. cross-species communication becomes possible — the robot renders [[sound]] particles from animals, [[vector]] particles from sensor arrays, [[pixels]] particles from cameras
+every device is a node. the raspberry pi in a school in Lagos is a validator. the sensor array in a coral reef is a neuron. the prog monitoring a forest links what it sees. every device that can sign a cyberlink participates in the same semantic space. cross-species communication becomes possible — the robot renders [[sound]] files from animals, [[vector]] files from sensor arrays, [[pixels]] files from cameras
 
 the robot accumulates [[karma]] that outlives its operator. legacy is not a memory. it is a compounding position in the knowledge economy
 

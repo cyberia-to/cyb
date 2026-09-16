@@ -7,7 +7,7 @@ crystal-domain: cyb
 ---
 # now
 
-the context: the particle the robot stands on this second — shown always, top-left (chroma **space**). now looks like an indicator and is actually the hinge of the whole robot. there is no close: you do not dismiss a particle, you **stand** on another.
+the context: the file the robot stands on this second — shown always, top-left (chroma **space**). now looks like an indicator and is actually the hinge of the whole robot. there is no close: you do not dismiss a file, you **stand** on another.
 
 - **`cyb://particle/<hex>`** — identity: hash, rank, axons. no spark required
 - **`cyb://file/<hex>`** — identity + data, only if a [[cyb/reference/spark|spark]] resolves; otherwise stay on particle

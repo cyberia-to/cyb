@@ -86,12 +86,12 @@ the graph serves as infrastructure for itself:
 | function | how |
 |----------|-----|
 | identity | [[hemera]] hash = address, graph = PKI |
-| key exchange | CSIDH curves as [[particles]], non-interactive |
+| key exchange | CSIDH curves as [[files]], non-interactive |
 | consensus | finalized subgraph IS the canonical state |
 | fork choice | $\phi^*$ from graph topology |
 | finality | $\phi^*_i > \tau$, threshold adapts to graph density |
 | incentives | $\Delta\phi^*$ from convergence = reward signal |
-| proof archive | [[zheng]] proofs published as particles |
+| proof archive | [[zheng]] proofs published as files |
 | version control | patches = [[cyberlinks]], repos = subgraphs |
 | file system | `~neuron/path` resolves through cyberlinks |
 | data availability | [[NMT]] per row, erasure-coded, namespace-aware sampling |
@@ -159,7 +159,7 @@ all inter-cell communication uses wait-free data structures. no mutexes, no lock
 
 ### private messaging
 
-[[neurons]] exchange keys non-interactively via CSIDH curves published as [[particles]]. onion routing with [[zheng]] proof chains — each hop proves correct forwarding. see [[cyber/communication]]
+[[neurons]] exchange keys non-interactively via CSIDH curves published as [[files]]. onion routing with [[zheng]] proof chains — each hop proves correct forwarding. see [[cyber/communication]]
 
 ### storage proofs
 

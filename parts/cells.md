@@ -53,7 +53,7 @@ decode in `rune-prysm`, atom in `prysm`, route in `dispatch`).
 cells resolve through `cell://<name>`:
 
 - **dev**  → local file `cyb/cells/<name>.rune` (file-watched, instant reload — P2)
-- **prod** → radio particle: a `name → hash` pointer; fetch bytes from iroh-blobs,
+- **prod** → radio file: a `name → hash` pointer; fetch bytes from iroh-blobs,
   decode UTF-8 rune source (P4)
 
 P1 hardwires `cyb/cells/landing.rune`. memory is `cyb/cells/memory.rune` —
@@ -110,7 +110,7 @@ robot image, and spaces the sections.
 - **P1** cell world + one-shot renderer + `landing.rune` (text/anno/button)
 - **P2** file-watch reload + `heading`/`image`/`section` primitives
 - **P3** button → `CellAction` → navigate; add `checkout.rune`
-- **P4** radio-backed `load_cell` (publish a particle to update the live app)
+- **P4** radio-backed `load_cell` (publish a file to update the live app)
 - **P5** `query` act → inf/cybergraph live data in a cell
 
 the city where the buildings stand is [[aos]] — portal, teleport, oracle, temple and the rest are cells the robot walks into

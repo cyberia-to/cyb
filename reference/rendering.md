@@ -141,7 +141,7 @@ the cell grid is the logical structure. the visual rendering is gpu-accelerated 
 
 a single molecule shape (`shell`) covers all six cases. only the backend differs. that is the architectural compression that makes terminal-first feasible at this scope.
 
-### osc extensions for inline particles
+### osc extensions for inline files
 
 terminals already extend ansi via osc (operating system command) sequences. iterm2, kitty, and wezterm all use osc codes for inline images, hyperlinks, and metadata. cyb defines its own osc namespace for [[particle]] references
 
@@ -154,7 +154,7 @@ terminals already extend ansi via osc (operating system command) sequences. iter
 \x1b]cyb;hyperlink=cyb://particle/bafyrei...\x1b\\
 ```
 
-a renderer that understands the cyb namespace fetches the particle via [[radio]] and renders it inline at the cursor position. non-cyb terminals ignore the osc and render the rest of the stream — graceful degradation built in.
+a renderer that understands the cyb namespace fetches the file via [[radio]] and renders it inline at the cursor position. non-cyb terminals ignore the osc and render the rest of the stream — graceful degradation built in.
 
 recorded sessions reference particles by hash, not by inline bytes. a recording of a chat with images and a video stays tiny — the media is fetched from radio at replay time. cybergraph-scale session archiving becomes practical.
 

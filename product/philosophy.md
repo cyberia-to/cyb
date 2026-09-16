@@ -29,9 +29,9 @@ crystal-domain: cyber
 
 ## main loop
 
-- you can ask any [[particle]]
-- cyb will resolve input [[particle]] based on logic defined by [[cyb/soul]]
-- and output the new [[particle]] with possible interactions
+- you can ask any [[file]]
+- cyb will resolve input [[file]] based on logic defined by [[cyb/soul]]
+- and output the new [[file]] with possible interactions
 
 ## problems of existing browsers
 

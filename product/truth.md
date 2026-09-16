@@ -9,7 +9,7 @@ the [[cybergraph]] computes [[cyber/truth]] — two-factor truth from structure 
 
 ## what the robot displays
 
-for every [[particle]] and [[axon]] the user navigates:
+for every [[file]] and [[axon]] the user navigates:
 
 | Signal | Source | What the user sees |
 |--------|--------|--------------------|

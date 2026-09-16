@@ -32,7 +32,7 @@ complexity
 - complete features for [[desktop]] and [[mobile]]
 - and unique flow for [[web]]
 - two modes: [[energetic]] and [[alien]]
-- [[cyb/avatar]] which can be both [[particle]] and [[neuron]]
+- [[cyb/avatar]] which can be both [[file]] and [[neuron]]
 
 compatible integration with llms
 

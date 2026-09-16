@@ -7,7 +7,7 @@ alias: .cyb, cyb format, cyb container
 
 # .cyb — universal knowledge container
 
-one file. self-describing. human-readable index. editable as text. native [[particle]] format for [[hemera]].
+one file. self-describing. human-readable index. editable as text. native [[file]] format for [[hemera]].
 
 this spec is frozen. three rules, no versions, no breaking changes.
 
@@ -105,7 +105,7 @@ a .model file IS a .cyb file. the extension is a hint — not a different format
 
 [[hemera]] is the only hash format natively supported by .cyb. deliberate decision: the entire cyber ecosystem is optimized around a unified hash function.
 
-any .cyb file is a valid hemera [[particle]].
+any .cyb file is a valid [[file]] in the [[cybergraph]], its [[particle]] a hemera hash.
 
 ## parsing
 

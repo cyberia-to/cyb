@@ -6,23 +6,23 @@ crystal-domain: cyb
 ---
 the [[cybergraph]] as a filesystem — content-addressed, append-only, patch-based
 
-every [[particle]] is a file. every [[cyberlink]] is a reference. every [[neuron]] has a home directory (`~/`). the filesystem is the graph, navigated via [[markup|cybermark]]
+every [[particle]] names a [[file]]. every [[cyberlink]] is a reference. every [[neuron]] has a home directory (`~/`). the filesystem is the graph, navigated via [[markup|cybermark]]
 
 ## operations
 
 | Operation | What it does | Page |
 |---|---|---|
-| read | query any [[particle]] by [[Hemera]] hash or path | native — no special mechanism |
+| read | query any [[file]] by [[Hemera]] hash or path | native — no special mechanism |
 | create | hash content → new [[particle]] → first [[cyberlink]] names it | [[cyber/link]] |
-| edit | create a new [[particle]] with modified content → link old → new | [[cyb/fs/edit]] |
+| edit | create a new [[file]] with modified content → link old → new | [[cyb/fs/edit]] |
 | patch | commutative morphism over [[particles]] and [[cyberlinks]] | [[cyb/fs/patch]] |
 | delete | withdraw conviction + valence -1 — structural record stays, economic weight removed | [[cyber/link]] |
 
-there is no mutation. editing creates a new [[particle]] (new hash). the old version persists permanently (axiom A3: append-only). the diff between versions is itself navigable
+there is no mutation. editing creates a new [[file]] (new hash). the old version persists permanently (axiom A3: append-only). the diff between versions is itself navigable
 
 ## addressing
 
-three ways to reach a [[particle]]:
+three ways to reach a [[file]]:
 
 ```
 #QmXyz...           by content hash (immutable, permanent)

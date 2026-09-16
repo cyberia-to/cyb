@@ -63,7 +63,7 @@ The consequence: for the first time, it becomes possible to make statements like
 
 Or:
 
-> *"This [[knowledge graph]] query, traversing these [[cyberlinks]], arriving at this conclusion, follows necessarily from these premises — and the [[proof]] is attached to the conclusion as a content-addressed [[particle]]."*
+> *"This [[knowledge graph]] query, traversing these [[cyberlinks]], arriving at this conclusion, follows necessarily from these premises — and the [[proof]] is attached to the conclusion as a content-addressed [[file]]."*
 
 Or:
 

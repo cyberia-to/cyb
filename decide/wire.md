@@ -20,7 +20,7 @@ the bootstrap contact is the only address a human ever types.
 
 ## the vocabulary
 
-three well-known [[particle]]s — just the hemera hashes of the words, mintable by anyone:
+three well-known [[particles]] — just the hemera hashes of the words, mintable by anyone:
 
 | particle | link | meaning |
 |---|---|---|

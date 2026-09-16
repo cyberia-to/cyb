@@ -5,7 +5,7 @@ crystal-domain: cyber
 ---
 # particle handling
 
-how [[cyb]] resolves, fetches, and renders [[particles]] from the [[cybergraph]]
+how [[cyb]] resolves, fetches, and renders [[files]] from the [[cybergraph]]
 
 ## resolution
 
@@ -20,7 +20,7 @@ no HTTP, no URLs, no DNS. identity IS the address
 
 ## content type detection
 
-every particle carries raw bytes. [[cyb]] infers the content type from magic bytes and structure:
+every file carries raw bytes. [[cyb]] infers the content type from magic bytes and structure:
 
 | detected type | render pipeline | GPU primitive |
 |---------------|----------------|--------------|
@@ -50,24 +50,24 @@ raw bytes
   → screen
 ```
 
-each particle renders independently. no cascading styles, no reflow between particles. a [[cyb/brain]] page is a stream of particles, each self-contained
+each file renders independently. no cascading styles, no reflow between files. a [[cyb/brain]] page is a stream of files, each self-contained
 
 ## caching
 
 - parsed content cached in SQLite with CID as key
 - GPU resources (textures, glyph atlases) cached per session
-- [[radio/bao]] verified streaming for large particles (progressive render while downloading)
+- [[radio/bao]] verified streaming for large files (progressive render while downloading)
 
 ## in cyb/brain
 
-[[cyb/brain]] displays particles through tabs:
+[[cyb/brain]] displays files through tabs:
 
 - graph: 3d spatial render
 - list: table with analytics
 - heap: 2d knowledge graph
 - stack: vertical scroll (default)
-- hike: single particle focus
+- hike: single file focus
 
-each tab is a different layout mode over the same particle stream
+each tab is a different layout mode over the same file stream
 
-see [[particle]] for the protocol concept. see [[cyb/features]] for the PureRender engine. see [[cyb/wgpu]] for GPU abstraction
+see [[file]] and [[particle]] for the protocol concepts. see [[cyb/features]] for the PureRender engine. see [[cyb/wgpu]] for GPU abstraction

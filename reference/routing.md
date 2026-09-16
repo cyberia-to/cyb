@@ -36,11 +36,11 @@ cyb://<world>/<path>?<query>
 | `neuron` | conversation with a peer | `cyb://neuron/bostrom...` |
 | `session` | replay a recorded byte stream | `cyb://session/bafyrei...` |
 | `web` | wry loading an external url | `cyb://web/https://wikipedia.org/...` |
-| `media` | media player for a particle | `cyb://media/bafyrei...` |
+| `media` | media player for a file | `cyb://media/bafyrei...` |
 
 the scheme is the dispatcher. typing or pasting any `cyb://` uri into the address bar resolves it to a world transition. the rest is the world's argument: a path inside the graph, a particle hash, a shell command, an external url.
 
-addresses are first-class. they are shareable — paste a `cyb://` uri into a chat, an email, another particle, an external site that links into cyb. they are bookmarkable — save to a particle, recall later. they are recordable — every navigation enters history. they are programmatic — agents compose uris and request transitions.
+addresses are first-class. they are shareable — paste a `cyb://` uri into a chat, an email, another file, an external site that links into cyb. they are bookmarkable — save to a file, recall later. they are recordable — every navigation enters history. they are programmatic — agents compose uris and request transitions.
 
 ---
 
@@ -80,7 +80,7 @@ commands operate on the current world or invoke cross-world actions
 | `search <query>` | run a query in oracle, regardless of current world |
 | `go <address>` | shortcut for typing into address bar |
 | `chat <neuron>` | open a conversation; equivalent to `cyb://neuron/<neuron>` |
-| `record start` | begin recording the current session as a particle |
+| `record start` | begin recording the current session as a file |
 | `pipe <cmd>` | pipe the current world's output through a transform |
 | nushell command | execute in the terminal world if active |
 
@@ -153,7 +153,7 @@ ask(ν, p, q, τ, a, v, t):
   t = timestamp    — exact transition time
 ```
 
-the from-uri and to-uri are themselves [[particle|particles]] — content-addressed by their hash. a uri like `cyb://graph/ai/safety` becomes a particle whose content is its uri string. particle references (`cyb://particle/<hash>`) are already particles. so navigation cyberlinks compose with the rest of the graph naturally — the destinations exist as graph nodes, and the transitions are edges between them.
+the from-uri and to-uri are themselves [[particle|particles]] — content-addressed by their hash. a uri like `cyb://graph/ai/safety` becomes a file whose content is its uri string. particle references (`cyb://particle/<hash>`) are already particles. so navigation cyberlinks compose with the rest of the graph naturally — the destinations exist as graph nodes, and the transitions are edges between them.
 
 navigation cyberlinks land in the `locations` dimension of [[bbg|BBG_poly]] (per [[evy]]'s namespace schema, dimension 4 — spatial proofs). they are committed at tick boundary like any other cybergraph state. a navigation today is provable forever.
 
@@ -194,13 +194,13 @@ back/forward are local cursor moves on the cache and do not create new cyberlink
 
 if the cache misses (older than the cache window), the back operation fetches from the cybergraph. local cache is the fast path; cybergraph is the durable record.
 
-### sessions as composite particles
+### sessions as composite files
 
-a session is a contiguous window of navigation. starting cyb opens a session; closing it ends one. all cyberlinks emitted during the session reference the session particle by parent link. the session particle itself is a particle whose content is its metadata (start time, end time, neuron, device, optional title).
+a session is a contiguous window of navigation. starting cyb opens a session; closing it ends one. all cyberlinks emitted during the session reference the session particle by parent link. the session file itself is a file whose content is its metadata (start time, end time, neuron, device, optional title).
 
-querying "show me my session from yesterday morning" returns the session particle and its child cyberlinks. replaying the session is traversing those cyberlinks in order. sharing the session is publishing the session particle with appropriate privacy on its cyberlinks.
+querying "show me my session from yesterday morning" returns the session file and its child cyberlinks. replaying the session is traversing those cyberlinks in order. sharing the session is publishing the session file with appropriate privacy on its cyberlinks.
 
-sessions can also be branched. forking from an arbitrary point in a past session creates a new session particle that links to the parent session at the fork point. this is git for navigation history.
+sessions can also be branched. forking from an arbitrary point in a past session creates a new session file that links to the parent session at the fork point. this is git for navigation history.
 
 ### implications
 
@@ -232,11 +232,11 @@ the same uri parsing logic serves the address bar input, the commander `go` comm
 
 ---
 
-## addresses as particles
+## addresses as files
 
-uris are content-addressable too. an address like `cyb://graph/ai/safety` is a string; when stored as a [[particle]], it is just bytes with a hash. addresses can be linked to, hashed, gossiped, indexed in the cybergraph. a [[neuron]] can author a particle that is "a curated list of cyb uris on ai safety" — the particle is bytes containing several `cyb://` uris and prose, addressable by its own hash.
+uris are content-addressable too. an address like `cyb://graph/ai/safety` is a string; when stored as a [[file]], it is just bytes with a hash. addresses can be linked to, hashed, gossiped, indexed in the cybergraph. a [[neuron]] can author a file that is "a curated list of cyb uris on ai safety" — the file is bytes containing several `cyb://` uris and prose, addressable by its own hash.
 
-this means the cybergraph itself can guide navigation. an oracle search for "ai safety" returns particles, many of which contain `cyb://` uris. clicking those uris navigates to the destinations. cyb is internally hyperlinked at the cybergraph layer.
+this means the cybergraph itself can guide navigation. an oracle search for "ai safety" returns files, many of which contain `cyb://` uris. clicking those uris navigates to the destinations. cyb is internally hyperlinked at the cybergraph layer.
 
 ---
 
@@ -266,7 +266,7 @@ inside a sugarloaf world (terminal session, agent chat, app), individual outputs
 
 the substring "look at this image" becomes clickable. clicking it fires a Navigate event with the embedded uri. this works in any modern terminal — third-party terminals that understand osc 8 also navigate when the target is a `cyb://` uri (assuming cyb is the registered handler).
 
-agents that emit ansi can include hyperlinks naturally. claude's stream might say "this commit looks good — see `\x1b]8;;cyb://particle/bafy...\x1b\\diff\x1b]8;;\x1b\\`". the user clicks "diff" and navigates to a viewer for that particle.
+agents that emit ansi can include hyperlinks naturally. claude's stream might say "this commit looks good — see `\x1b]8;;cyb://particle/bafy...\x1b\\diff\x1b]8;;\x1b\\`". the user clicks "diff" and navigates to a viewer for that file.
 
 ---
 
@@ -282,7 +282,7 @@ in this fallback mode
 - hotkeys are not available
 - chrome is rendered by leptos in the browser, not bevy
 
-this fallback is not the primary deploy. it exists for shareability (anyone with a browser can follow a `https://cyb.ai/...` link), for seo (particle pages render as proper html), and for low-friction discovery. the desktop and android targets are the primary.
+this fallback is not the primary deploy. it exists for shareability (anyone with a browser can follow a `https://cyb.ai/...` link), for seo (file pages render as proper html), and for low-friction discovery. the desktop and android targets are the primary.
 
 ---
 

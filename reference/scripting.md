@@ -90,7 +90,7 @@ five conventions, one classification axis: **what fires the gate**. each fixes t
 |---------|-----------|-------|-----------|--------------|--------|
 | imperative | **command** | the typed line / args | you run it | `{emit}` | **live** |
 | surface | **cell** | input events for its region | a world/app is open | `{emit, query}` | planned |
-| pipeline | **processor** | one particle `[cid type content]` | a particle enters view | `{emit, query}` | planned |
+| pipeline | **processor** | one file `[cid type content]` | a file enters view | `{emit, query}` | planned |
 | address | **resolver** | a [[cybermark]] address | someone hits `@name` / `#path` / `.moon` | `{emit, query}` | planned |
 | reactive | **companion** | an event stream (via `hint`) | graph / sensor events arrive | `{emit, query, subscribe, link}` | planned |
 
@@ -115,7 +115,7 @@ mechanism: the typed line is the gate's `input`; the shell evaluates it against 
 same spine, different trigger and `input`:
 
 - **cell** `(events) -> chunks` — owns a surface; renders and handles input. the shape of a cyb app (oracle, settings, sense).
-- **processor** `(particle) -> chunks | action` — runs as a particle enters view; transforms, filters, annotates. *(replaces the old `personal_processor`.)*
+- **processor** `(particle) -> chunks | action` — runs as a file enters view; transforms, filters, annotates. *(replaces the old `personal_processor`.)*
 - **resolver** `(address) -> particle` — maps a [[cybermark]] address to content. native to [[rune]]'s sigil layer. *(replaces `moon_domain_resolver`.)*
 - **companion** `hint -> chunks | signals` — a reactive gate; subscribes to events and acts. *(replaces `ask_companion`, generalized.)* **[[soma]]'s four loops are companions** — reactive rune gates, dynamically updatable, which is what makes the avatar's mind a living [[soul]] script rather than frozen Rust.
 
