@@ -35,7 +35,7 @@ soma-kernel = { path = "../../soma/kernel" }
 # cyb workspace crates
 cyb-core   = { path = "../core" }
 hemera     = { package = "cyber-hemera", version = "0.3", path = "../../hemera/rs" }
-particle   = { package = "cyber-particle", path = "../../particle" }
+file       = { package = "cyber-file", path = "../../file" }
 spark      = { package = "cyber-spark", path = "../../spark" }
 mudra      = { package = "cyber-mudra", path = "../../mudra" }
 tru        = { package = "cyber-tru", path = "../../tru/rs" }

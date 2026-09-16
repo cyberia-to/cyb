@@ -14,7 +14,7 @@ crate: [cyber-spark](https://github.com/cyberia-to/spark). the shell does not re
 ## resolve
 
 1. axon of type (`.avi`, `image/png`) — later, graph host
-2. sniffed [`Kind`](https://github.com/cyberia-to/particle) from bytes
+2. sniffed [`Kind`](https://github.com/cyberia-to/file) from bytes
 3. none → stay on the particle page
 
 ## core sparks

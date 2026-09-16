@@ -2922,9 +2922,9 @@ dependencies = [
  "chacha20poly1305",
  "chrono",
  "cyb-core",
+ "cyber-file",
  "cyber-hemera",
  "cyber-mudra",
- "cyber-particle",
  "cyber-spark",
  "cyber-tru",
  "getrandom 0.2.17",
@@ -2971,6 +2971,13 @@ dependencies = [
  "cyber-tru",
  "cybergraph",
  "foculus",
+]
+
+[[package]]
+name = "cyber-file"
+version = "0.1.0"
+dependencies = [
+ "cyber-hemera",
 ]
 
 [[package]]
@@ -3072,17 +3079,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "cyber-particle"
-version = "0.1.0"
-dependencies = [
- "cyber-hemera",
-]
-
-[[package]]
 name = "cyber-spark"
 version = "0.1.0"
 dependencies = [
- "cyber-particle",
+ "cyber-file",
 ]
 
 [[package]]

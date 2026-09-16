@@ -132,7 +132,7 @@ fn sync_page(
                 index
                     .hashes
                     .get(n_idx)
-                    .map(|h| particle::Particle::from_bytes(*h).short_hex())
+                    .map(|h| file::Particle::from_bytes(*h).short_hex())
                     .unwrap_or_else(|| n_idx.to_string())
             });
         commands

@@ -4,7 +4,7 @@
 //! spacetime shows particle meta or a file when we stand.
 
 use bevy::prelude::*;
-use particle::{File, Particle};
+use file::{File, Particle};
 use spark;
 
 use crate::worlds::WorldState;
