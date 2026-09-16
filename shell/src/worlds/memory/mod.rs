@@ -215,6 +215,7 @@ impl Host for MemoryHost {
             "bytes" => Ok(cell::tape(&self.bytes)),
             "links" => Ok(cell::tape(&self.links)),
             "rows" => Ok(self.rows.clone()),
+            "table-body" => Ok(self.rows.clone()),
             other => Err(cell::unknown_query(other)),
         }
     }
@@ -270,7 +271,13 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Re
                 if r.label.chars().count() > 40 {
                     label.push_str("..");
                 }
-                cell::button(&label, &format!("particle:{}", hex32(&r.hash)))
+                cell::tr(&[
+                    &label,
+                    &format!("{:.3}", r.focus),
+                    &size_text(r.size),
+                    &date_text(r.created),
+                    &format!("particle:{}", hex32(&r.hash)),
+                ])
             })
             .collect(),
     );

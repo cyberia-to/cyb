@@ -59,6 +59,14 @@ pub fn button(label: &str, target: &str) -> Noun {
     )
 }
 
+pub fn tr(cells: &[&str]) -> Noun {
+    let mut n = Noun::Atom(0);
+    for s in cells.iter().rev() {
+        n = Noun::cell(tape(s), n);
+    }
+    Noun::cell(Noun::Atom(tag::TR), n)
+}
+
 pub fn query_name(args: &Noun) -> String {
     String::from_utf8_lossy(&rune_prysm::noun_to_bytes(args)).into_owned()
 }

@@ -4,5 +4,8 @@ col(
     stat(query("bytes"), "bytes"),
     stat(query("links"), "links")
   ),
-  query("rows")
+  table(
+    tr("name", "focus", "size", "when"),
+    query("table-body")
+  )
 )
