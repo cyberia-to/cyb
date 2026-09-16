@@ -7,7 +7,7 @@
 # asserts on the artifacts every subsystem leaves behind:
 #
 #   boot      the body renders (self-shot exists, non-trivial size)
-#   identity  each body minted its own mnemonic; all distinct
+#   identity  each body minted its own spell; all distinct
 #   graph     attention casting grew a real graph.log
 #   networks  every body reached the chain; netstate holds its height
 #   beacon    bodies agree on the chain (same root observed)
@@ -137,7 +137,7 @@ else
 fi
 
 ROOTS="$WORK/roots.txt"; : > "$ROOTS"
-MNEMOS="$WORK/mnemos.txt"; : > "$MNEMOS"
+SPELLS="$WORK/spells.txt"; : > "$SPELLS"
 
 for i in $(seq 1 "$N"); do
   ENV="$WORK/env-$i"; C="$ENV/cyb"
@@ -149,13 +149,13 @@ for i in $(seq 1 "$N"); do
     bad "env-$i boot: no usable self-shot"
   fi
 
-  # identity: a mnemonic was minted
-  if [ -s "$C/mnemonic" ]; then
-    ok "env-$i identity: mnemonic minted"
-    # mnemonic files carry no trailing newline; add one or they merge
-    cat "$C/mnemonic" >> "$MNEMOS"; echo >> "$MNEMOS"
+  # identity: a spell was minted
+  if [ -s "$C/spell" ]; then
+    ok "env-$i identity: spell minted"
+    # spell files carry no trailing newline; add one or they merge
+    cat "$C/spell" >> "$SPELLS"; echo >> "$SPELLS"
   else
-    bad "env-$i identity: no mnemonic"
+    bad "env-$i identity: no spell"
   fi
 
   # graph: attention casting produced a chain
@@ -187,10 +187,10 @@ for i in $(seq 1 "$N"); do
 done
 
 # identities are distinct beings
-if [ "$(sort -u "$MNEMOS" | wc -l | tr -d ' ')" = "$N" ]; then
-  ok "fleet identity: $N distinct mnemonics"
+if [ "$(sort -u "$SPELLS" | wc -l | tr -d ' ')" = "$N" ]; then
+  ok "fleet identity: $N distinct spells"
 else
-  bad "fleet identity: mnemonics collide"
+  bad "fleet identity: spells collide"
 fi
 
 # beacon truth: every recorded (height, root) must be the chain's own

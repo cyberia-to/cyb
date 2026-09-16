@@ -1,8 +1,8 @@
 //! The vault's disk form: one sealed file, opened by the owner's words.
 //!
 //! `~/cyb/vault.enc` is XChaCha20-Poly1305 over a JSON list of entries.
-//! The key is derived from the same mnemonic that is the cyb identity
-//! (`SHA-256("cyb-vault-v1" || BIP-39 seed)`) — the twelve words ARE the
+//! The key is derived from the same spell that is the cyb identity
+//! (`SHA-256("cyb-vault-v1" || 64-byte derived spell material)`) — the words ARE the
 //! vault key, so the same words open the same vault on any body, and
 //! there is no second secret to back up. A random 24-byte nonce is drawn
 //! fresh on every save; nonce reuse under a fixed key is the one way this
@@ -20,7 +20,7 @@ const NONCE_LEN: usize = 24;
 /// What kind of secret an entry holds. The kind decides how the vault
 /// page treats it: an `otp` entry renders a live code, everything else
 /// copies its value.
-pub const KINDS: [&str; 5] = ["password", "key", "seed", "otp", "custom"];
+pub const KINDS: [&str; 5] = ["password", "key", "spell", "otp", "custom"];
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Entry {
@@ -36,23 +36,18 @@ fn vault_path() -> std::path::PathBuf {
     std::path::Path::new(&home).join("cyb").join("vault.enc")
 }
 
-fn mnemonic_path() -> std::path::PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    std::path::Path::new(&home).join("cyb").join("mnemonic")
-}
-
-/// The vault key, derived from the identity mnemonic. `None` when this
+/// The vault key, derived from the identity spell. `None` when this
 /// body has no identity file — the vault cannot exist without an owner.
 pub fn key() -> Option<[u8; 32]> {
-    let mnemonic = std::fs::read_to_string(mnemonic_path()).ok()?;
-    let mnemonic = mnemonic.trim();
-    if mnemonic.is_empty() {
+    let spell = std::fs::read_to_string(super::super::identity::spell_path()).ok()?;
+    let spell = spell.trim();
+    if spell.is_empty() {
         return None;
     }
-    let seed = mudra::seed::seed(mnemonic, "").ok()?;
+    let spell = mudra::spell::derive(spell, "").ok()?;
     let mut h = Sha256::new();
     h.update(b"cyb-vault-v1");
-    h.update(seed);
+    h.update(spell);
     Some(h.finalize().into())
 }
 
@@ -130,7 +125,10 @@ fn parse(plain: &[u8]) -> Result<Vec<Entry>, String> {
         .iter()
         .map(|o| Entry {
             name: field(o, "name"),
-            kind: field(o, "kind"),
+            kind: match field(o, "kind").as_str() {
+                "seed" => "spell".into(), // Read the original serialized kind.
+                kind => kind.into(),
+            },
             value: field(o, "value"),
             created: o.get("created").and_then(|v| v.as_u64()).unwrap_or(0),
         })
@@ -170,13 +168,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn legacy_root_kind_loads_as_spell_without_changing_the_value() {
+        let entries = parse(br#"[{"name":"root","kind":"seed","value":"synthetic words","created":1}]"#).unwrap();
+        assert_eq!(entries[0].kind, "spell");
+        assert_eq!(entries[0].value, "synthetic words");
+        assert!(serialize(&entries).contains("\"kind\":\"spell\""));
+    }
+
+    #[test]
     fn seal_and_open_round_trips() {
         let key = [7u8; 32];
         let entries = vec![
             Entry { name: "gh".into(), kind: "password".into(), value: "hunter2".into(), created: 1 },
             Entry {
                 name: "hot".into(),
-                kind: "seed".into(),
+                kind: "spell".into(),
                 value: "abandon abandon about".into(),
                 created: 2,
             },

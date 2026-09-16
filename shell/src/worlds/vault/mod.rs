@@ -1,6 +1,6 @@
 //! vault — the secrets this body carries, sealed under the owner's words.
 //!
-//! Passwords, private keys, seed phrases, one-time codes, anything the
+//! Passwords, private keys, spell phrases, one-time codes, anything the
 //! owner would rather the graph never learn. Entries arrive through the
 //! commander (`vault add <name> <kind> <secret...>`) on a path that is
 //! intercepted BEFORE com's history cast — the raw line is never echoed,
@@ -67,8 +67,8 @@ fn unseal(mut commands: Commands, mut view: ResMut<VaultView>) {
 }
 
 /// (Re)read the vault into the view. The FIRST entry is always the
-/// identity seed — the twelve words behind the pussy address and every
-/// testpussy it earned. It is read from `~/cyb/mnemonic`, never copied
+/// identity spell — the twelve words behind the pussy address and every
+/// testpussy it earned. It is read from `~/cyb/spell`, never copied
 /// into vault.enc: one truth, one file, surfaced where secrets live.
 fn load_view(view: &mut VaultView) {
     view.key = store::key();
@@ -82,17 +82,17 @@ fn load_view(view: &mut VaultView) {
             }
         },
         None => {
-            view.error = Some("no identity aboard - the vault needs ~/cyb/mnemonic".into());
+            view.error = Some("no identity aboard - the vault needs ~/cyb/spell".into());
             Vec::new()
         }
     };
-    if let Some(mnemonic) = identity_mnemonic() {
+    if let Some(spell) = identity_spell() {
         entries.insert(
             0,
             store::Entry {
                 name: "identity".into(),
-                kind: "seed".into(),
-                value: mnemonic,
+                kind: "spell".into(),
+                value: spell,
                 created: 0,
             },
         );
@@ -102,9 +102,8 @@ fn load_view(view: &mut VaultView) {
 }
 
 /// The twelve words, straight from the identity file.
-fn identity_mnemonic() -> Option<String> {
-    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-    std::fs::read_to_string(std::path::Path::new(&home).join("cyb").join("mnemonic"))
+fn identity_spell() -> Option<String> {
+    std::fs::read_to_string(super::identity::spell_path())
         .map(|s| s.trim().to_string())
         .ok()
         .filter(|s| !s.is_empty())
@@ -244,7 +243,7 @@ fn build_page(commands: &mut Commands, view: &VaultView) {
             commands,
             page,
             "empty - seal something:  vault add <name> <kind> <secret>   \
-             kinds: password key seed otp custom"
+             kinds: password key spell otp custom"
                 .into(),
             theme::BODY,
             theme::TEXT_DIM,
@@ -301,7 +300,7 @@ fn build_page(commands: &mut Commands, view: &VaultView) {
             commands,
             left,
             if is_identity {
-                "seed - the key behind your address and every PUSSY it earned".into()
+                "spell - the key behind your address and every PUSSY it earned".into()
             } else {
                 entry.kind.clone()
             },
@@ -463,17 +462,17 @@ pub fn handle_command(rest: &str) -> String {
     if let Some(spec) = rest.strip_prefix("add ") {
         let mut it = spec.splitn(3, char::is_whitespace);
         let (Some(name), Some(kind), Some(value)) = (it.next(), it.next(), it.next()) else {
-            return "vault add <name> <kind> <secret>   kinds: password key seed otp custom".into();
+            return "vault add <name> <kind> <secret>   kinds: password key spell otp custom".into();
         };
         if !store::KINDS.contains(&kind) {
-            return format!("vault: unknown kind {kind} - use password key seed otp custom");
+            return format!("vault: unknown kind {kind} - use password key spell otp custom");
         }
         if name == "identity" {
-            return "vault: identity is the built-in root entry - it lives in ~/cyb/mnemonic"
+            return "vault: identity is the built-in root entry - it lives in ~/cyb/spell"
                 .into();
         }
         let Some(key) = store::key() else {
-            return "vault: no identity aboard (~/cyb/mnemonic missing)".into();
+            return "vault: no identity aboard (~/cyb/spell missing)".into();
         };
         let mut entries = match store::load(&key) {
             Ok(e) => e,

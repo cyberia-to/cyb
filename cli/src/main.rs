@@ -968,18 +968,20 @@ struct Id {
 }
 
 /// Load this cyb's identity, creating one on first run. The identity is a BIP-39
-/// mnemonic stored next to the graph; the neuron is `Hemera(pubkey)` of the key
+/// spell stored next to the graph; the neuron is `Hemera(pubkey)` of the key
 /// derived at the Cosmos path — the *same* key that owns the matching pussy
 /// account, so a neuron can migrate its own legacy identity to itself.
 fn identity() -> Id {
     let dir = cyb_dir();
     let _ = std::fs::create_dir_all(&dir);
-    let file = dir.join("mnemonic");
+    // Preserve an existing identity under its legacy filename.
+    let legacy = dir.join("mnemonic");
+    let file = if legacy.try_exists().unwrap_or(true) { legacy } else { dir.join("spell") };
 
-    let mnemonic = match std::fs::read_to_string(&file) {
+    let spell = match std::fs::read_to_string(&file) {
         Ok(m) if !m.trim().is_empty() => m.trim().to_string(),
         _ => {
-            let m = mudra::seed::generate_mnemonic().expect("generate mnemonic");
+            let m = mudra::spell::generate().expect("generate spell");
             let _ = std::fs::write(&file, format!("{m}\n"));
             #[cfg(unix)]
             {
@@ -993,13 +995,13 @@ fn identity() -> Id {
             );
             eprintln!(
                 "  {}",
-                dim("back up this mnemonic — it is the only key to this neuron")
+                dim("back up this spell — it is the only key to this neuron")
             );
             m
         }
     };
 
-    let key = mudra::seed::cosmos_key(&mnemonic, "").expect("derive key from mnemonic");
+    let key = mudra::spell::cosmos_key(&spell, "").expect("derive key from spell");
     let pubkey = mudra::cosmos::compressed(key.verifying_key());
     let neuron = mudra::claim::neuron_of(&pubkey);
     let address = mudra::cosmos::address(&pubkey, mudra::cosmos::PUSSY).unwrap_or_default();

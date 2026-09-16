@@ -17,7 +17,7 @@ pub mod worlds;
 #[unsafe(no_mangle)]
 fn android_main(android_app: bevy::android::android_activity::AndroidApp) {
     // Android never sets HOME, and everything durable in cyb — the graph
-    // log, the mnemonic, the content store, the models — lives under
+    // log, the spell, the content store, the models — lives under
     // `~/cyb` and `~/llm`. Unset, those paths resolved to `/` and every
     // write silently failed: the cell ran ephemeral and the identity was
     // re-minted each launch. The app's internal data dir is the body's own
