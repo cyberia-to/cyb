@@ -31,7 +31,8 @@ cyb://<world>/<path>?<query>
 | `terminal` | sugarloaf running an optional shell | `cyb://terminal/?cmd=nu` |
 | `graph` | mir focused at a graph location | `cyb://graph/ai/safety/alignment` |
 | `app` | a named sugarloaf-hosted cyb app | `cyb://app/oracle` |
-| `particle` | particle viewer (renderer dispatched by content type) | `cyb://particle/bafyrei...` |
+| `particle` | identity page — hash, rank, axons; no spark | `cyb://particle/<hemera hex>` |
+| `file` | particle + data through a [[cyb/reference/spark|spark]] | `cyb://file/<hemera hex>` |
 | `neuron` | conversation with a peer | `cyb://neuron/bostrom...` |
 | `session` | replay a recorded byte stream | `cyb://session/bafyrei...` |
 | `web` | wry loading an external url | `cyb://web/https://wikipedia.org/...` |

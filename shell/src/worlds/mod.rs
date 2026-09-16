@@ -3,11 +3,13 @@ pub mod body;
 pub mod cell;
 pub mod com;
 pub mod content;
+pub mod file;
 pub mod graph;
 pub mod identity;
 pub mod memory;
 pub mod models;
 pub mod oracle;
+pub mod particle_page;
 pub mod robot;
 pub mod sigma;
 pub mod snapshot;
@@ -231,10 +233,19 @@ pub fn reveal_world(here: WorldState, q: &mut Query<(&WorldUi, &mut Visibility)>
     found
 }
 
-fn hide_foreign_worlds(state: Res<State<WorldState>>, mut q: Query<(&WorldUi, &mut Visibility)>) {
+fn hide_foreign_worlds(
+    state: Res<State<WorldState>>,
+    now: Option<Res<crate::now::Now>>,
+    mut q: Query<(&WorldUi, &mut Visibility)>,
+) {
+    let filling = now
+        .map(|n| n.kind != crate::now::NowKind::World)
+        .unwrap_or(false);
     let here = *state.get();
     for (tag, mut vis) in &mut q {
-        let want = if tag.0 == here {
+        let want = if filling {
+            Visibility::Hidden
+        } else if tag.0 == here {
             Visibility::Visible
         } else {
             Visibility::Hidden

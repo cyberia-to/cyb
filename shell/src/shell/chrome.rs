@@ -703,24 +703,35 @@ fn sync_commander_prompt(prompt: Res<ComPrompt>, mut q: Query<&mut Text, With<Co
 
 fn update_address_bar(
     world_state: Res<State<WorldState>>,
+    now: Res<crate::now::Now>,
     mut q: Query<&mut Text, With<AddressBarText>>,
 ) {
-    if !world_state.is_changed() {
+    if !world_state.is_changed() && !now.is_changed() {
         return;
     }
-    let uri = match world_state.get() {
-        WorldState::Body => "cyb://body",
-        WorldState::Graph => "cyb://brain",
-        WorldState::Com => "cyb://log",
-        WorldState::Robot => "cyb://robot",
-        WorldState::Sigma => "cyb://sigma",
-        WorldState::Models => "cyb://models",
-        WorldState::Vault => "cyb://vault",
-        WorldState::Memory => "cyb://memory",
-        WorldState::Oracle => "cyb://oracle",
+    let uri = match now.kind {
+        crate::now::NowKind::Meta => now
+            .hash
+            .map(|p| format!("cyb://particle/{}", p.to_hex()))
+            .unwrap_or_else(|| "cyb://particle".into()),
+        crate::now::NowKind::File => now
+            .hash
+            .map(|p| format!("cyb://file/{}", p.to_hex()))
+            .unwrap_or_else(|| "cyb://file".into()),
+        crate::now::NowKind::World => match world_state.get() {
+            WorldState::Body => "cyb://body".into(),
+            WorldState::Graph => "cyb://brain".into(),
+            WorldState::Com => "cyb://log".into(),
+            WorldState::Robot => "cyb://robot".into(),
+            WorldState::Sigma => "cyb://sigma".into(),
+            WorldState::Models => "cyb://models".into(),
+            WorldState::Vault => "cyb://vault".into(),
+            WorldState::Memory => "cyb://memory".into(),
+            WorldState::Oracle => "cyb://oracle".into(),
+        },
     };
     for mut text in &mut q {
-        **text = uri.to_string();
+        **text = uri.clone();
     }
 }
 
@@ -1104,7 +1115,32 @@ pub fn handle_chrome_input(world: &mut World) {
             _ => None,
         };
         if let Some(t) = target {
+            if let Some(mut now) = world.get_resource_mut::<crate::now::Now>() {
+                now.kind = crate::now::NowKind::World;
+            }
             world.resource_mut::<NextState<WorldState>>().set(t);
+        } else if let Some(rest) = cmd
+            .strip_prefix("cyb://particle/")
+            .or_else(|| cmd.strip_prefix("particle/"))
+        {
+            if let Some(p) = particle::Particle::from_hex(rest) {
+                if let Some(mut now) = world.get_resource_mut::<crate::now::Now>() {
+                    now.stand(*p.as_bytes(), None);
+                    now.kind = crate::now::NowKind::Meta;
+                }
+            }
+        } else if let Some(rest) = cmd
+            .strip_prefix("cyb://file/")
+            .or_else(|| cmd.strip_prefix("file/"))
+        {
+            if let Some(p) = particle::Particle::from_hex(rest) {
+                if let Some(mut now) = world.get_resource_mut::<crate::now::Now>() {
+                    now.stand(*p.as_bytes(), None);
+                    if now.kind == crate::now::NowKind::Meta {
+                        // explicit file URL without a spark still shows meta
+                    }
+                }
+            }
         } else if !cmd.is_empty() {
             // Anything that is not a world name is a shell line: com runs it
             // and holds the history, so submitting from any world lands there.

@@ -7,6 +7,6 @@ crystal-domain: cyb
 ---
 # memory
 
-particles rendered as a file system — a table or tiles, tap to read. the same knowledge [[cyb/parts/brain|brain]] shows as space, memory shows as shelf. the doctrine of the graph-as-filesystem is [[cyb/parts/fs|fs]]; tap-to-read particle pages exist in the app today.
+particles rendered as a file system — a table or tiles. a tap **stands** [[cyb/parts/now|now]] on that particle (`cyb://particle/` or glide to `cyb://file/` if a spark resolves). it does not jump to brain. the doctrine of the graph-as-filesystem is [[cyb/parts/fs|fs]].
 
 part of the [[cyb/anatomy|anatomy]] (mind)

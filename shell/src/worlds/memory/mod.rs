@@ -416,8 +416,7 @@ fn finger(
     rows: Query<(&Interaction, &ActionButton)>,
     index: Option<Res<BrainIndex>>,
     mut scroll: Query<(&mut ScrollPosition, &ComputedNode), With<MemoryScroll>>,
-    mut commands: Commands,
-    mut next: ResMut<NextState<WorldState>>,
+    mut now: ResMut<crate::now::Now>,
     warp: Option<ResMut<WarpTarget>>,
 ) {
     let dt = time.delta_secs().max(1.0 / 240.0);
@@ -526,8 +525,7 @@ fn finger(
         if let Some(mut warp) = warp {
             warp.particle_idx = Some(idx as u32);
         }
-        super::viewer::open(&mut commands, idx, hash);
-        next.set(WorldState::Graph);
+        now.stand(hash, Some(idx));
     } else if down_pos.is_none() {
         *g = None;
     }

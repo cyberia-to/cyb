@@ -6,6 +6,7 @@
 
 pub mod agent;
 pub mod app;
+pub mod now;
 pub mod shell;
 pub mod worlds;
 

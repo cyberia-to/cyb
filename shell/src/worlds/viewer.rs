@@ -20,8 +20,8 @@ use mir::bevy::resources::{GpuBuffers, GraphCamera, WarpTarget};
 use prysm::theme;
 
 use super::graph::BrainIndex;
-use super::{content, identity::Identity, ComInbox, ComSay, SharedCell, WorldState};
-use crate::shell::chrome::{ChromeState, CHROME_BOTTOM_H, CHROME_TOP_H};
+use super::{ComInbox, ComSay, SharedCell, WorldState, content, identity::Identity};
+use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ChromeState};
 
 pub struct ViewerPlugin;
 
@@ -39,7 +39,11 @@ struct Viewed {
 /// own state gates every viewer system) — this only stages what to show
 /// once it does.
 pub fn open(commands: &mut Commands, idx: usize, hash: [u8; 32]) {
-    commands.insert_resource(Viewed { idx, hash, since: Instant::now() });
+    commands.insert_resource(Viewed {
+        idx,
+        hash,
+        since: Instant::now(),
+    });
 }
 
 #[derive(Component)]
@@ -61,12 +65,7 @@ struct PressState(Option<(Vec2, Instant)>);
 
 impl Plugin for ViewerPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(
-            Update,
-            (detect_tap, open_viewer, handle_close, handle_neighbors, scroll_viewer)
-                .run_if(in_state(WorldState::Graph)),
-        )
-        .add_systems(OnExit(WorldState::Graph), close_on_leave);
+        app.add_systems(Update, detect_tap.run_if(in_state(WorldState::Graph)));
 
         // `CYB_TAP="512,400@10"` taps that logical point that many seconds
         // in — the scripted finger, same family as CYB_SHOT and CYB_TOUR.
@@ -79,11 +78,12 @@ impl Plugin for ViewerPlugin {
                     }),
                     at.trim().parse::<f32>(),
                 ) {
-                    app.insert_resource(TapScript { pos: Vec2::new(x, y), at, done: false });
-                    app.add_systems(
-                        Update,
-                        scripted_tap.run_if(in_state(WorldState::Graph)),
-                    );
+                    app.insert_resource(TapScript {
+                        pos: Vec2::new(x, y),
+                        at,
+                        done: false,
+                    });
+                    app.add_systems(Update, scripted_tap.run_if(in_state(WorldState::Graph)));
                 }
             }
         }
@@ -105,13 +105,15 @@ fn scripted_tap(
     gpu: Option<Res<GpuBuffers>>,
     cam: Option<Res<GraphCamera>>,
     warp: Option<ResMut<WarpTarget>>,
-    mut commands: Commands,
+    mut now: ResMut<crate::now::Now>,
 ) {
     if script.done || time.elapsed_secs() < script.at {
         return;
     }
     script.done = true;
-    let (Some(index), Some(gpu), Some(cam)) = (index, gpu, cam) else { return };
+    let (Some(index), Some(gpu), Some(cam)) = (index, gpu, cam) else {
+        return;
+    };
     let in_view = Vec2::new(script.pos.x, script.pos.y - CHROME_TOP_H);
     let picked = pick(&index, &gpu, &cam, in_view);
     info!("viewer: scripted tap at {in_view:?} -> {picked:?}");
@@ -119,7 +121,7 @@ fn scripted_tap(
         if let Some(mut warp) = warp {
             warp.particle_idx = Some(idx as u32);
         }
-        commands.insert_resource(Viewed { idx, hash: index.hashes[idx], since: Instant::now() });
+        now.stand(index.hashes[idx], Some(idx));
     }
 }
 
@@ -135,18 +137,18 @@ fn detect_tap(
     mouse: Res<ButtonInput<MouseButton>>,
     touches: Res<Touches>,
     windows: Query<&Window>,
-    viewer_open: Option<Res<Viewed>>,
     index: Option<Res<BrainIndex>>,
     gpu: Option<Res<GpuBuffers>>,
     cam: Option<Res<GraphCamera>>,
     warp: Option<ResMut<WarpTarget>>,
-    mut commands: Commands,
+    mut now: ResMut<crate::now::Now>,
 ) {
-    // The page over the graph owns the pointer while it is open.
-    if viewer_open.is_some() {
+    if now.kind != crate::now::NowKind::World {
         return;
     }
-    let (Some(index), Some(gpu), Some(cam)) = (index, gpu, cam) else { return };
+    let (Some(index), Some(gpu), Some(cam)) = (index, gpu, cam) else {
+        return;
+    };
 
     let mut tap: Option<Vec2> = None;
 
@@ -158,9 +160,7 @@ fn detect_tap(
     if mouse.just_released(MouseButton::Left) {
         if let (Some((start, at)), Ok(w)) = (press.0.take(), windows.single()) {
             if let Some(now) = w.cursor_position() {
-                if (now - start).length() < TAP_SLOP_PX
-                    && at.elapsed().as_secs_f32() < TAP_MAX_S
-                {
+                if (now - start).length() < TAP_SLOP_PX && at.elapsed().as_secs_f32() < TAP_MAX_S {
                     tap = Some(now);
                 }
             }
@@ -188,7 +188,7 @@ fn detect_tap(
             // The camera flies to what you chose to read.
             warp.particle_idx = Some(idx as u32);
         }
-        commands.insert_resource(Viewed { idx, hash, since: Instant::now() });
+        now.stand(hash, Some(idx));
     }
 }
 
@@ -205,7 +205,11 @@ fn pick(index: &BrainIndex, gpu: &GpuBuffers, cam: &GraphCamera, at: Vec2) -> Op
         if base + 2 >= gpu.pos_cpu.len() {
             break;
         }
-        let (x, y, z) = (gpu.pos_cpu[base], gpu.pos_cpu[base + 1], gpu.pos_cpu[base + 2]);
+        let (x, y, z) = (
+            gpu.pos_cpu[base],
+            gpu.pos_cpu[base + 1],
+            gpu.pos_cpu[base + 2],
+        );
         let w = m[0][3] * x + m[1][3] * y + m[2][3] * z + m[3][3];
         if w <= 0.0 {
             continue;
@@ -244,7 +248,9 @@ fn open_viewer(
     for e in &roots {
         commands.entity(e).despawn();
     }
-    let (Some(index), Some(gpu)) = (index, gpu) else { return };
+    let (Some(index), Some(gpu)) = (index, gpu) else {
+        return;
+    };
 
     let sidecar = content::load();
     let title = index
@@ -308,9 +314,15 @@ fn open_viewer(
         .id();
     commands.spawn((
         Text::new(title),
-        TextFont { font_size: theme::H3, ..default() },
+        TextFont {
+            font_size: theme::H3,
+            ..default()
+        },
         TextColor(theme::TEXT_PRIMARY),
-        Node { max_width: Val::Percent(85.0), ..default() },
+        Node {
+            max_width: Val::Percent(85.0),
+            ..default()
+        },
         ChildOf(head),
     ));
     let close = commands
@@ -329,7 +341,10 @@ fn open_viewer(
         .id();
     commands.spawn((
         Text::new("x"),
-        TextFont { font_size: theme::BODY, ..default() },
+        TextFont {
+            font_size: theme::BODY,
+            ..default()
+        },
         TextColor(theme::TEXT_DIM),
         ChildOf(close),
     ));
@@ -348,7 +363,10 @@ fn open_viewer(
             focus,
             degree
         )),
-        TextFont { font_size: theme::CAPTION, ..default() },
+        TextFont {
+            font_size: theme::CAPTION,
+            ..default()
+        },
         TextColor(theme::TEXT_DIM),
         ChildOf(page),
     ));
@@ -358,9 +376,15 @@ fn open_viewer(
         Some(text) => {
             commands.spawn((
                 Text::new(text),
-                TextFont { font_size: theme::BODY, ..default() },
+                TextFont {
+                    font_size: theme::BODY,
+                    ..default()
+                },
                 TextColor(theme::TEXT_PRIMARY),
-                Node { max_width: Val::Percent(100.0), ..default() },
+                Node {
+                    max_width: Val::Percent(100.0),
+                    ..default()
+                },
                 ChildOf(page),
             ));
         }
@@ -370,7 +394,10 @@ fn open_viewer(
                     "no text aboard for this particle - the hash is known, \
                      the content has not landed here",
                 ),
-                TextFont { font_size: theme::BODY, ..default() },
+                TextFont {
+                    font_size: theme::BODY,
+                    ..default()
+                },
                 TextColor(theme::TEXT_DIM),
                 ChildOf(page),
             ));
@@ -384,9 +411,15 @@ fn open_viewer(
             rows.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
             commands.spawn((
                 Text::new("axons"),
-                TextFont { font_size: theme::CAPTION, ..default() },
+                TextFont {
+                    font_size: theme::CAPTION,
+                    ..default()
+                },
                 TextColor(theme::TEXT_DIM),
-                Node { margin: UiRect::top(Val::Px(theme::G)), ..default() },
+                Node {
+                    margin: UiRect::top(Val::Px(theme::G)),
+                    ..default()
+                },
                 ChildOf(page),
             ));
             for (n_idx, weight) in rows.into_iter().take(24) {
@@ -418,13 +451,19 @@ fn open_viewer(
                     .id();
                 commands.spawn((
                     Text::new(name),
-                    TextFont { font_size: theme::BODY, ..default() },
+                    TextFont {
+                        font_size: theme::BODY,
+                        ..default()
+                    },
                     TextColor(theme::TEXT_PRIMARY),
                     ChildOf(row),
                 ));
                 commands.spawn((
                     Text::new(format!("{weight:.2}")),
-                    TextFont { font_size: theme::CAPTION, ..default() },
+                    TextFont {
+                        font_size: theme::CAPTION,
+                        ..default()
+                    },
                     TextColor(theme::TEXT_DIM),
                     ChildOf(row),
                 ));
@@ -439,8 +478,12 @@ fn neighbors(csr: &mir::graph::Csr, idx: usize) -> impl Iterator<Item = (usize, 
         csr.row_ptr.get(idx).copied().unwrap_or(0) as usize,
         csr.row_ptr.get(idx + 1).copied().unwrap_or(0) as usize,
     );
-    (a..b.min(csr.col_idx.len()))
-        .map(|e| (csr.col_idx[e] as usize, csr.values.get(e).copied().unwrap_or(0.0)))
+    (a..b.min(csr.col_idx.len())).map(|e| {
+        (
+            csr.col_idx[e] as usize,
+            csr.values.get(e).copied().unwrap_or(0.0),
+        )
+    })
 }
 
 fn short_hex(hash: &[u8; 32]) -> String {
@@ -483,12 +526,16 @@ fn handle_neighbors(
     who: Option<Res<Identity>>,
     inbox: Option<ResMut<ComInbox>>,
 ) {
-    let (Some(index), Some(mut viewed)) = (index, viewed) else { return };
+    let (Some(index), Some(mut viewed)) = (index, viewed) else {
+        return;
+    };
     for (i, b) in &interactions {
         if *i != Interaction::Pressed {
             continue;
         }
-        let Some(&hash) = index.hashes.get(b.0) else { continue };
+        let Some(&hash) = index.hashes.get(b.0) else {
+            continue;
+        };
         cast_reading(&viewed, shared, who, inbox);
         viewed.idx = b.0;
         viewed.hash = hash;
@@ -507,18 +554,26 @@ fn cast_reading(
     who: Option<Res<Identity>>,
     inbox: Option<ResMut<ComInbox>>,
 ) {
-    let (Some(shared), Some(who)) = (shared, who) else { return };
+    let (Some(shared), Some(who)) = (shared, who) else {
+        return;
+    };
     let secs = viewed.since.elapsed().as_secs().max(1);
     content::remember("brain");
     let cast = {
         let mut cell = shared.cell.lock().expect("shared cell poisoned");
-        cell.cast_weighted(who.neuron, [(content::particle_of("brain"), viewed.hash, secs)])
+        cell.cast_weighted(
+            who.neuron,
+            [(content::particle_of("brain"), viewed.hash, secs)],
+        )
     };
     match cast {
         Ok(_) => {
             shared.bump();
             if let Some(mut inbox) = inbox {
-                inbox.0.push(ComSay::Note(format!("read {} ({secs}s)", short_hex(&viewed.hash))));
+                inbox.0.push(ComSay::Note(format!(
+                    "read {} ({secs}s)",
+                    short_hex(&viewed.hash)
+                )));
             }
         }
         Err(e) => warn!("viewer: cast failed: {e:?}"),
