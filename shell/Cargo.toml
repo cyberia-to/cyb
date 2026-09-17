@@ -1,6 +1,6 @@
 [package]
 name = "cyb"
-version = "0.13.1"
+version = "0.14.0"
 edition = "2024"
 description = "cyb — immortal robot GUI (Bevy shell)"
 license-file = "LICENSE"
