@@ -19,12 +19,7 @@ use std::path::PathBuf;
 /// A particle is the canonical hash of its content — hemera, like everywhere
 /// else in cyber. The same text is the same particle on every machine.
 pub fn particle_of(text: &str) -> [u8; 32] {
-    let h = hemera::hash(text.as_bytes());
-    let b = h.as_bytes();
-    let mut out = [0u8; 32];
-    let n = b.len().min(32);
-    out[..n].copy_from_slice(&b[..n]);
-    out
+    *file::Particle::hash(text.as_bytes()).as_bytes()
 }
 
 /// The well-known particle com's own casts hang off: everything you typed,
@@ -67,7 +62,11 @@ fn append(text: &str) {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs())
         .unwrap_or(0);
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&path) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
         let _ = writeln!(
             f,
             "{{\"particle\":\"{hex}\",\"text\":\"{escaped}\",\"created\":{created}}}"
@@ -90,10 +89,16 @@ pub struct FileRecord {
 /// its most recent remembering, not its first.
 pub fn load_with_meta() -> HashMap<[u8; 32], FileRecord> {
     let mut map = HashMap::new();
-    let Ok(body) = std::fs::read_to_string(store_path()) else { return map };
+    let Ok(body) = std::fs::read_to_string(store_path()) else {
+        return map;
+    };
     for line in body.lines() {
-        let Some(hex) = json_field(line, "particle") else { continue };
-        let Some(text) = json_field(line, "text") else { continue };
+        let Some(hex) = json_field(line, "particle") else {
+            continue;
+        };
+        let Some(text) = json_field(line, "text") else {
+            continue;
+        };
         if hex.len() != 64 {
             continue;
         }
@@ -125,7 +130,9 @@ fn json_u64_field(line: &str, name: &str) -> Option<u64> {
     let key = format!("\"{name}\":");
     let start = line.find(&key)? + key.len();
     let rest = &line[start..];
-    let end = rest.find(|c: char| !c.is_ascii_digit()).unwrap_or(rest.len());
+    let end = rest
+        .find(|c: char| !c.is_ascii_digit())
+        .unwrap_or(rest.len());
     if end == 0 {
         return None;
     }
