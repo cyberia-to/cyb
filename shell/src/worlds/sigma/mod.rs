@@ -59,8 +59,12 @@ impl SigmaState {
     /// and balance are read out of the same graph everyone else writes.
     fn new(shared: &SharedCell, neuron: [u8; 32]) -> Self {
         let cell = shared.cell.lock().expect("shared cell poisoned");
-        let mut wallet = MoneyWallet::new(neuron).with_tip_prover();
-        wallet.sync_tip_local(&cell);
+        let wallet = MoneyWallet::new(neuron).with_tip_prover();
+        // Do not `sync_tip_local` here. That reads `bbg.state.root()`, which
+        // Brakedown-commits every dimension. A lived-in `~/cyb/graph.log`
+        // either panics (`Brakedown variable limit`) or freezes the splash
+        // on the tensor-Merkle. The local tip is filled on first sigma
+        // enter; on-chain money (ChainMoney) does not need it to boot.
         // PUSSY, not CYB: the nearest chain this cyb will actually join —
         // small state, no financial stakes, halted with its snapshot in hand.
         let token = label_particle("PUSSY");
@@ -93,7 +97,7 @@ impl Plugin for SigmaWorldPlugin {
         app.init_resource::<chain::ChainMoney>();
         app.add_systems(
             OnEnter(WorldState::Sigma),
-            (setup_sigma, refresh_chain_on_enter),
+            (sync_local_tip, setup_sigma, refresh_chain_on_enter),
         )
         .add_systems(
             Update,
@@ -104,6 +108,24 @@ impl Plugin for SigmaWorldPlugin {
         // number everywhere — coherent by construction.
         .add_systems(Update, poll_chain);
     }
+}
+
+/// Fill the local BBG tip now that the window is up. Never at plugin
+/// build: `state.root()` is what killed 0.14.0 on a lived-in graph.log.
+fn sync_local_tip(mut sigma: ResMut<SigmaState>, shared: Res<SharedCell>) {
+    let cell = shared.cell.lock().expect("shared cell poisoned");
+    let neuron = sigma.wallet.neuron;
+    let ok = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        sigma.wallet.sync_tip_local(&cell);
+    }))
+    .is_ok();
+    if !ok {
+        warn!("sigma: local tip skipped — graph exceeds the commitment cap");
+        return;
+    }
+    sigma.tip_h = sigma.wallet.tip().height;
+    sigma.grade4 = sigma.wallet.grade4();
+    sigma.balance = sigma.wallet.balance(&cell, &neuron, &sigma.token);
 }
 
 fn setup_sigma(
