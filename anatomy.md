@@ -47,7 +47,7 @@ the robot is one organism with **21 parts in six layers**. every surface — the
 
 | part | is | today |
 |---|---|---|
-| **[[cyb/parts/log|log]]** | the history of every interaction | live in substance: the durable tade `~/cyb/graph.log` *is* the log |
+| **[[cyb/parts/log|log]]** | the history of every interaction | live: `~/cyb/graph.log` *is* the log; the world is a rune census + numbers table over the chain |
 | **[[cyb/parts/now|now]]** | the context — the file the robot stands on, and the hinge of everything: what [[cyb/parts/com|com]] acts on by default, what [[cyb/parts/soma|soma]] packs into the model's window, where casts attach, where [[cyb/parts/brain|brain]] and [[cyb/parts/memory|memory]] stand, the center [[cyb/parts/time|time]] pivots on | partial — the app tracks a current particle; the organ with its many functions is to build |
 | **[[cyb/parts/plan|plan]]** | the schedule: standing orders, deferred intents | seed exists (mining standing order); generalizes |
 | **[[cyb/parts/time|time]]** | one screen: log ← **now** → plan, the present in the middle | to build; the flagship view |
@@ -56,7 +56,7 @@ the robot is one organism with **21 parts in six layers**. every surface — the
 
 | part | is | today |
 |---|---|---|
-| **[[cyb/parts/body|body]]** | the physical body: silicon, sensors, energy, mining — telemetry and resources of the machine the robot lives on | live (default world: telemetry, erga child, PUSSY/day) |
+| **[[cyb/parts/body|body]]** | the physical body: silicon, sensors, energy, mining — telemetry and resources of the machine the robot lives on | live (default world: telemetry, zheng + seer miners, PUSSY/day) |
 | **[[cyb/parts/cells|cell]]** | an organ-extension: a live-loaded program that grows the robot a new ability | live (rune cell runtime). ⚠ distinct from the protocol's [[cell]] (a 4D particle group) — the robot grows *cells as organs* |
 | **[[cyb/parts/radio|radio]]** | the physical layer of communication with external networks; [[sense]] speaks over radio | live — the cyber-radio transport; the wire obeys the graph: follow/antenna/socket are cyberlinks |
 
