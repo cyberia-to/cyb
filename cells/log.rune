@@ -1,0 +1,11 @@
+col(
+  row(
+    stat(query("signals"), "signals"),
+    stat(query("links"), "links"),
+    stat(query("weight"), "weight")
+  ),
+  table(
+    row("signal", "step", "n", "wt"),
+    query("table-body")
+  )
+)

@@ -58,6 +58,8 @@ cells resolve through `cell://<name>`:
 
 P1 hardwires `cyb/cells/landing.rune`. memory is `cyb/cells/memory.rune` —
 the first world authored in rune, fed by `query("particles"|"bytes"|"links"|"rows")`.
+log is `cyb/cells/log.rune` — census + numbers table over the signal chain
+(`query("signals"|"links"|"weight"|"table-body")`).
 the name→file and name→hash resolvers come in P2/P4 behind the same `load(name)` seam.
 
 ## button semantics (MVP)

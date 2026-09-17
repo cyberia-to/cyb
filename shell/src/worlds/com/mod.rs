@@ -1,3 +1,4 @@
+mod chronicle;
 pub mod nushell_to_stream;
 use nushell_to_stream::{StreamMsg, pipeline_to_chunks};
 
@@ -41,6 +42,7 @@ impl Plugin for ComWorldPlugin {
             // are looking at them, and the record has to be waiting when you
             // arrive. com's tree is hidden between visits, never torn down.
             .add_systems(Update, drain_com_inbox)
+            .add_systems(Update, chronicle::refresh.run_if(in_state(WorldState::Com)))
             // `CYB_RUN="..."` submits one line through the same path typing
             // does — commander, routing, echo, cast — for scripted runs.
             .add_systems(
@@ -957,7 +959,6 @@ fn setup_terminal(world: &mut World) {
         .id();
     // Build the UI tree
     let (root_entity, scroll_area_entity) = spawn_terminal_ui(world, scrollback_entity);
-    replay_from_graph(world, scrollback_entity);
 
     world.insert_non_send_resource(TerminalNonSendState {
         nu_engine: Some(nu_engine),
@@ -984,6 +985,8 @@ fn spawn_terminal_ui(world: &mut World, scrollback_entity: Entity) -> (Entity, E
     let root = world
         .spawn((
             ContentRoot,
+            crate::worlds::WorldUi(WorldState::Com),
+            Visibility::Visible,
             Node {
                 position_type: PositionType::Absolute,
                 top: Val::Px(CHROME_TOP_H),
@@ -1021,6 +1024,21 @@ fn spawn_terminal_ui(world: &mut World, scrollback_entity: Entity) -> (Entity, E
         ))
         .id();
 
+    // Chronicle first: census + numbers table over the signal chain.
+    // Live session (nushell, inbox) stays below and is never torn down.
+    world.spawn((
+        chronicle::LogSlot,
+        Node {
+            width: Val::Percent(100.0),
+            flex_direction: FlexDirection::Column,
+            row_gap: Val::Px(G),
+            flex_shrink: 0.0,
+            padding: UiRect::bottom(Val::Px(G * 2.0)),
+            ..default()
+        },
+        ChildOf(scroll_area),
+    ));
+
     // Attach scrollback entity into scroll area
     world
         .entity_mut(scrollback_entity)
@@ -1053,123 +1071,6 @@ fn persist_log_line(world: &mut World, text: &str) {
         Ok(_) => shared.bump(),
         Err(e) => warn!("com: log persist failed: {e:?}"),
     }
-}
-
-fn replay_from_graph(world: &mut World, scrollback: Entity) {
-    use crate::worlds::content;
-
-    let shared = world.resource::<crate::worlds::SharedCell>().clone();
-    let texts = content::load();
-    let com_anchor = content::com_anchor();
-
-    // Collect renderable rows first: the cell lock must not be held while
-    // spawning UI, and classification needs no world access.
-    enum Row {
-        Cmd(String),
-        Said(Speaker, String),
-        Note(String),
-    }
-    let mut rows: Vec<Row> = Vec::new();
-    {
-        let cell = shared.cell.lock().expect("shared cell poisoned");
-        // Two chains, one record: the pre-keypair neuron's history first (the
-        // older era), then the identity's own. The past does not vanish
-        // because the signer grew up.
-        let me = world.resource::<crate::worlds::identity::Identity>().neuron;
-        let eras = [crate::worlds::local_neuron(), me];
-        let mut signals: Vec<&_> = Vec::new();
-        for neuron in eras.iter() {
-            if let Some(chain) = cell.graph.chains.get(neuron) {
-                signals.extend(chain.entries.values());
-            }
-        }
-        // The worlds' own particles, for recognising attention casts.
-        let world_particles: std::collections::HashMap<[u8; 32], &'static str> = [
-            WorldState::Graph,
-            WorldState::Com,
-            WorldState::Robot,
-            WorldState::Sigma,
-            WorldState::Models,
-        ]
-        .into_iter()
-        .map(|w| {
-            let name = crate::worlds::attention::world_name(w);
-            (content::particle_of(name), name)
-        })
-        .collect();
-        for sig in signals.into_iter() {
-            let links = &sig.links;
-            // A command: one link off com's anchor.
-            if links.len() == 1 && links[0].from == com_anchor {
-                if let Some(text) = texts.get(&links[0].to) {
-                    rows.push(Row::Cmd(text.clone()));
-                }
-                continue;
-            }
-            // Attention: one weighted link between two worlds.
-            if links.len() == 1 {
-                if let (Some(from), Some(to)) = (
-                    world_particles.get(&links[0].from),
-                    world_particles.get(&links[0].to),
-                ) {
-                    rows.push(Row::Note(format!("-> {to}  ({from} {}s)", links[0].amount)));
-                    continue;
-                }
-            }
-            // A soma exchange: thread → question, question → answer, weave.
-            if links.len() >= 2 && links[1].from == links[0].to {
-                if let (Some(q), Some(a)) = (texts.get(&links[0].to), texts.get(&links[1].to)) {
-                    rows.push(Row::Said(Speaker::User, q.clone()));
-                    rows.push(Row::Said(Speaker::System, a.clone()));
-                }
-                continue;
-            }
-            // Anything else on the chain — money and whatever comes after —
-            // is graph, not conversation; brain shows it.
-        }
-    }
-
-    if rows.is_empty() {
-        return;
-    }
-    let n = rows.len();
-    for row in rows {
-        match row {
-            Row::Cmd(text) => {
-                world.spawn((
-                    Text::new(format!("> {text}")),
-                    TextFont {
-                        font_size: theme::BODY,
-                        ..default()
-                    },
-                    TextColor(theme::TEXT_DIM),
-                    Node {
-                        margin: UiRect::vertical(Val::Px(2.0)),
-                        ..default()
-                    },
-                    ChildOf(scrollback),
-                ));
-            }
-            Row::Said(who, text) => {
-                spawn_said_row(world, scrollback, who, text);
-            }
-            Row::Note(text) => {
-                spawn_note_row(world, scrollback, text);
-            }
-        }
-    }
-    // A quiet seam between then and now.
-    world.spawn((
-        Node {
-            width: Val::Percent(100.0),
-            height: Val::Px(1.0),
-            margin: UiRect::vertical(Val::Px(theme::G)),
-            ..default()
-        },
-        BackgroundColor(theme::BORDER),
-        ChildOf(scrollback),
-    ));
-    info!("com: replayed {n} rows from the cybergraph");
 }
 
 /// A quiet, dim, full-width line: session facts that are part of the record
@@ -1366,7 +1267,7 @@ fn terminal_update(world: &mut World) {
 /// detached to survive — which left those three in `bevy_ui`'s taffy tree
 /// pointing at nodes the despawn had just removed. The next layout pass then
 /// panicked with `invalid SlotMap key used` and took the whole process down.
-/// Hiding costs nothing (`Display::None` is skipped by layout) and keeps every
+/// Visibility::Hidden keeps layout (Display::None does not) and every
 /// entity, and its taffy node, valid.
 fn destroy_terminal(world: &mut World) {
     let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() else {
@@ -1378,11 +1279,13 @@ fn destroy_terminal(world: &mut World) {
 }
 
 fn set_terminal_visible(world: &mut World, root: Entity, visible: bool) {
-    if let Some(mut node) = world.get_mut::<Node>(root) {
-        node.display = if visible {
-            Display::Flex
+    // Visibility, not Display::None: None drops layout and the next show
+    // spends a frame at size zero — the remaining flash on Android.
+    if let Some(mut vis) = world.get_mut::<Visibility>(root) {
+        *vis = if visible {
+            Visibility::Visible
         } else {
-            Display::None
+            Visibility::Hidden
         };
     }
 }

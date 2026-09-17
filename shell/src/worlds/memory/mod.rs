@@ -14,11 +14,9 @@ use super::cell;
 use super::graph::BrainIndex;
 use super::{SharedCell, WorldState, content};
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
-use prysm::dispatch;
 use prysm::molecules::action::ActionButton;
 use rune_ast::Noun;
 use rune_interp::{Host, InterpError};
-use tade::{self, render, sigil};
 
 pub struct MemoryWorldPlugin;
 
@@ -102,7 +100,6 @@ fn refresh_on_index(
 /// this particle (the graph's own label-only guesses, or lines soma-kernel
 /// wrote before the field existed).
 struct Row {
-    idx: usize,
     hash: [u8; 32],
     label: String,
     focus: f32,
@@ -123,7 +120,6 @@ fn ranked_rows(index: &BrainIndex) -> Vec<Row> {
                 .or_else(|| index.labels.get(idx).cloned().flatten())
                 .unwrap_or_else(|| short_hex(hash));
             Row {
-                idx,
                 hash: *hash,
                 label,
                 focus: index.focus.get(idx).copied().unwrap_or(0.0),
@@ -175,16 +171,6 @@ fn date_text(created: Option<u64>) -> String {
         format!("{}w", ago / (86_400 * 7))
     } else {
         format!("{}y", ago / (86_400 * 365))
-    }
-}
-
-fn compact(n: u64) -> String {
-    if n >= 1_000_000 {
-        format!("{:.1}M", n as f64 / 1e6)
-    } else if n >= 10_000 {
-        format!("{:.1}k", n as f64 / 1e3)
-    } else {
-        n.to_string()
     }
 }
 
@@ -293,9 +279,9 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Re
             .collect(),
     );
     let mut host = MemoryHost {
-        particles: compact(particles),
+        particles: cell::compact(particles),
         bytes: bytes_text(bytes),
-        links: compact(links),
+        links: cell::compact(links),
         rows,
     };
     let chunks = match cell::load("memory").and_then(|src| cell::eval(&src, &mut host)) {
@@ -313,14 +299,6 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Re
             return;
         }
     };
-
-    let mut rest = chunks.as_slice();
-    if let Some(first) = rest.first() {
-        if first.sigil == tade::sigil::LUS && first.render == tade::render::COMPONENT {
-            dispatch(&mut commands, root, first);
-            rest = &rest[1..];
-        }
-    }
 
     let page = commands
         .spawn((
@@ -345,9 +323,7 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Re
         ))
         .id();
 
-    for chunk in rest {
-        dispatch(&mut commands, page, chunk);
-    }
+    cell::dispatch_page(&mut commands, page, &chunks);
 }
 
 /// A tap is a press that did not travel. Drag is scroll. Opening used to

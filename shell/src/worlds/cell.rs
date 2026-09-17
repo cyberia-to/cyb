@@ -3,13 +3,16 @@
 //! Load source → parse/lower/eval (with a host) → prysm chunks. The binary
 //! stays a frozen shell; the page is the cell.
 
+use bevy::prelude::*;
+use prysm::dispatch;
 use rune_ast::{Noun, act, tag};
 use rune_interp::{Host, InterpError};
-use tade::Chunk;
+use tade::{Chunk, render, sigil};
 
 const BUILTIN: &[(&str, &str)] = &[
     ("landing", include_str!("../../../cells/landing.rune")),
     ("memory", include_str!("../../../cells/memory.rune")),
+    ("log", include_str!("../../../cells/log.rune")),
 ];
 
 pub fn load(name: &str) -> Result<String, String> {
@@ -79,4 +82,30 @@ pub fn unknown_query(name: &str) -> InterpError {
 
 pub fn act_is_query(act: u64) -> bool {
     act == act::QUERY
+}
+
+/// Compact census numbers: 12, 12.4k, 1.2M.
+pub fn compact(n: u64) -> String {
+    if n >= 1_000_000 {
+        format!("{:.1}M", n as f64 / 1e6)
+    } else if n >= 10_000 {
+        format!("{:.1}k", n as f64 / 1e3)
+    } else {
+        n.to_string()
+    }
+}
+
+/// Dispatch a cell's chunks into `parent`. A wrapping component chunk
+/// (the whole page) is one dispatch; otherwise each child is.
+pub fn dispatch_page(commands: &mut Commands, parent: Entity, chunks: &[Chunk]) {
+    let mut rest = chunks;
+    if let Some(first) = rest.first() {
+        if first.sigil == sigil::LUS && first.render == render::COMPONENT {
+            dispatch(commands, parent, first);
+            rest = &rest[1..];
+        }
+    }
+    for chunk in rest {
+        dispatch(commands, parent, chunk);
+    }
 }
