@@ -2,13 +2,15 @@
 //!
 //! The main page of cyb: what this body is doing with its cores, its GPU,
 //! its memory and its wire, and what that work earns. Telemetry is the
-//! OS's own counters. Proving is zheng. The only declared (not measured)
+//! OS's own counters. Proving is zheng. Seer is the structure miner —
+//! existing files, never new ones. The only declared (not measured)
 //! number on the page, the PUSSY rate, says so out loud.
 
 pub mod chainsync;
 pub mod networks;
 pub mod prover;
 pub mod relay;
+pub mod seer;
 pub mod telemetry;
 
 use bevy::prelude::*;
@@ -29,6 +31,7 @@ pub struct BodyLinkHub(pub networks::NetHub);
 struct BodyLink {
     telemetry: telemetry::Telemetry,
     prover: prover::Prover,
+    seer: seer::Seer,
     pub(crate) nets: networks::NetHub,
     relay: relay::Relay,
     chainsync: chainsync::ChainSync,
@@ -41,6 +44,8 @@ struct BodyView {
     vitals: telemetry::Vitals,
     prover: prover::ProverStat,
     prover_intensity: String,
+    seer: seer::SeerStat,
+    seer_intensity: String,
     checkpoint_in: Option<u64>,
     chain: crate::worlds::sigma::chain::ChainMoneyState,
     nets: Vec<networks::NetState>,
@@ -56,6 +61,12 @@ struct BodyRoot;
 #[derive(Component)]
 struct ProveButton;
 
+#[derive(Component)]
+struct SeerButton;
+
+#[derive(Component)]
+struct SeerIntensityButton(&'static str);
+
 /// The prover fleet's duty lever: max (all cores) / eco (half) / min (one).
 #[derive(Component)]
 struct ProverIntensityButton(&'static str);
@@ -70,6 +81,7 @@ impl Plugin for BodyWorldPlugin {
         app.insert_resource(BodyLink {
             telemetry: telemetry::Telemetry::start(),
             prover: prover::Prover::start(),
+            seer: seer::Seer::start(),
             relay: relay::Relay::start(shared.clone(), nets.clone()),
             chainsync: chainsync::ChainSync::start(shared, nets.clone()),
             nets,
@@ -82,13 +94,16 @@ impl Plugin for BodyWorldPlugin {
             (
                 tick_view,
                 paint_live,
+                paint_seer,
                 rebuild_on_change,
                 handle_prove_press,
                 handle_prover_intensity_press,
+                handle_seer_press,
+                handle_seer_intensity_press,
             )
                 .run_if(in_state(WorldState::Body)),
         );
-        app.add_systems(Startup, resume_proving);
+        app.add_systems(Startup, (resume_proving, resume_seer));
         // Checkpoints tick in every world — proving does not stop when
         // the body page is closed, and neither does its meter.
         app.add_systems(Update, proof_checkpoint);
@@ -115,6 +130,20 @@ fn resume_proving(
         let axons = shared.cell.lock().expect("shared cell poisoned").axons();
         link.prover.prove(axons, link.nets.clone());
         cast_prove_start(&mut meter, &link, &shared, &who, &mut inbox);
+    }
+}
+
+fn resume_seer(
+    link: Res<BodyLink>,
+    shared: Res<super::SharedCell>,
+    who: Res<super::identity::Identity>,
+    mut inbox: ResMut<super::ComInbox>,
+) {
+    if seer::wanted() && !link.seer.is_running() {
+        link.seer.mine(shared.clone(), who.neuron);
+        inbox.0.push(super::ComSay::Note(
+            "seer began - linking existing files".into(),
+        ));
     }
 }
 
@@ -245,6 +274,8 @@ fn tick_view(
         .map(|s| s.clone())
         .unwrap_or_default();
     view.prover_intensity = prover::intensity();
+    view.seer = link.seer.stat.lock().map(|s| s.clone()).unwrap_or_default();
+    view.seer_intensity = seer::intensity();
     view.checkpoint_in = meter.armed.then(|| meter.next_in());
     if let Some(money) = money {
         view.chain = money.snapshot();
@@ -289,10 +320,11 @@ fn cpu_line(view: &BodyView) -> String {
     } else {
         String::new()
     };
-    let cpu_task = if view.prover.running {
-        "   zheng (proving)"
-    } else {
-        ""
+    let cpu_task = match (view.prover.running, view.seer.running) {
+        (true, true) => "   zheng + seer",
+        (true, false) => "   zheng (proving)",
+        (false, true) => "   seer (linking)",
+        (false, false) => "",
     };
     format!(
         "cpu     {}  {:>3.0}%{}{}",
@@ -368,11 +400,11 @@ fn rebuild_on_change(
     view: Res<BodyView>,
     link: Res<BodyLink>,
     roots: Query<Entity, With<BodyRoot>>,
-    mut last: Local<Option<(usize, bool)>>,
+    mut last: Local<Option<(usize, bool, bool)>>,
 ) {
     // Numbers tick every second; tearing the tree down to rewrite them
     // is the jerk on the phone. Only rebuild when the page's shape moves.
-    let key = (view.nets.len(), view.prover.running);
+    let key = (view.nets.len(), view.prover.running, view.seer.running);
     if last.is_none() && !roots.is_empty() {
         *last = Some(key);
         return;
@@ -677,6 +709,7 @@ fn build_page(mut commands: Commands, view: Res<BodyView>, _link: Res<BodyLink>)
 
     // ── work: every way this body earns ─────────────────────────────────
     let pussy_day = build_prover_card(&mut commands, page, &view);
+    build_seer_card(&mut commands, page, &view);
 
     if pussy_day > 0.0 {
         text(
@@ -930,5 +963,228 @@ fn handle_prover_intensity_press(
         }
         prover::set_intensity(b.0);
         notice.show(format!("prover fleet -> {} (live)", b.0));
+    }
+}
+
+#[derive(Component)]
+enum SeerLive {
+    State,
+    Detail,
+}
+
+fn seer_state_line(view: &BodyView) -> (String, Color) {
+    let s = &view.seer;
+    if !s.running {
+        ("idle".into(), theme::TEXT_DIM)
+    } else if s.idle {
+        ("watching - no pair in reach".into(), theme::ACID_YELLOW)
+    } else {
+        (
+            format!("linking - {:.0} casts/min", s.casts_per_min()),
+            theme::ACID_GREEN,
+        )
+    }
+}
+
+fn seer_detail_line(view: &BodyView) -> String {
+    let s = &view.seer;
+    let pair = match &s.last_pair {
+        Some((a, b)) => format!("  last {a} -> {b}  {:.3}", s.last_score),
+        None => String::new(),
+    };
+    format!("casts {}  proposals {}{pair}", s.casts, s.proposals)
+}
+
+fn paint_seer(view: Res<BodyView>, mut q: Query<(&SeerLive, &mut Text, &mut TextColor)>) {
+    if !view.is_changed() {
+        return;
+    }
+    for (kind, mut t, mut c) in &mut q {
+        match kind {
+            SeerLive::State => {
+                let (s, color) = seer_state_line(&view);
+                **t = s;
+                c.0 = color;
+            }
+            SeerLive::Detail => **t = seer_detail_line(&view),
+        }
+    }
+}
+
+/// The seer card: structure mining — unlinked pairs of files that already
+/// exist. Never creates a file. Inverse-degree prior until tru φ* is wired.
+fn build_seer_card(commands: &mut Commands, page: Entity, view: &BodyView) {
+    let text = |commands: &mut Commands, parent: Entity, s: String, size: f32, color: Color| {
+        commands.spawn((
+            Text::new(s),
+            TextFont {
+                font_size: size,
+                ..default()
+            },
+            TextColor(color),
+            ChildOf(parent),
+        ));
+    };
+
+    let card = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::all(Val::Px(theme::G * 1.5)),
+                border: UiRect::all(Val::Px(1.0)),
+                row_gap: Val::Px(theme::G * 0.75),
+                ..default()
+            },
+            BackgroundColor(theme::DARK_BASE),
+            BorderColor::all(theme::BORDER),
+            ChildOf(page),
+        ))
+        .id();
+
+    let (state, color) = seer_state_line(view);
+    let head = commands
+        .spawn((
+            Node {
+                width: Val::Percent(100.0),
+                justify_content: JustifyContent::SpaceBetween,
+                ..default()
+            },
+            ChildOf(card),
+        ))
+        .id();
+    text(
+        commands,
+        head,
+        "seer - links among existing files".into(),
+        theme::BODY,
+        theme::TEXT_PRIMARY,
+    );
+    commands.spawn((
+        SeerLive::State,
+        Text::new(state),
+        TextFont {
+            font_size: theme::BODY,
+            ..default()
+        },
+        TextColor(color),
+        ChildOf(head),
+    ));
+
+    commands.spawn((
+        SeerLive::Detail,
+        Text::new(seer_detail_line(view)),
+        TextFont {
+            font_size: theme::CAPTION,
+            ..default()
+        },
+        TextColor(theme::TEXT_DIM),
+        ChildOf(card),
+    ));
+
+    let levers = commands
+        .spawn((
+            Node {
+                flex_direction: FlexDirection::Row,
+                column_gap: Val::Px(theme::G),
+                align_items: AlignItems::Center,
+                ..default()
+            },
+            ChildOf(card),
+        ))
+        .id();
+    let lever = |commands: &mut Commands, parent: Entity, label: String, active: bool| -> Entity {
+        let b = commands
+            .spawn((
+                Button,
+                Node {
+                    padding: UiRect::axes(Val::Px(theme::G * 1.5), Val::Px(theme::G * 0.5)),
+                    border: UiRect::all(Val::Px(1.0)),
+                    ..default()
+                },
+                BackgroundColor(theme::DARK_BASE),
+                BorderColor::all(if active {
+                    theme::ACID_GREEN
+                } else {
+                    theme::BORDER
+                }),
+                ChildOf(parent),
+            ))
+            .id();
+        commands.spawn((
+            Text::new(label),
+            TextFont {
+                font_size: theme::CAPTION,
+                ..default()
+            },
+            TextColor(if active {
+                theme::ACID_GREEN
+            } else {
+                theme::TEXT_PRIMARY
+            }),
+            ChildOf(b),
+        ));
+        b
+    };
+    let running = view.seer.running;
+    let b = lever(
+        commands,
+        levers,
+        if running { "stop" } else { "mine" }.into(),
+        running,
+    );
+    commands.entity(b).insert(SeerButton);
+    text(
+        commands,
+        levers,
+        "pace".into(),
+        theme::CAPTION,
+        theme::TEXT_DIM,
+    );
+    for mode in ["max", "eco", "min"] {
+        let b = lever(commands, levers, mode.into(), view.seer_intensity == mode);
+        commands.entity(b).insert(SeerIntensityButton(mode));
+    }
+
+    text(
+        commands,
+        card,
+        "never creates a file  -  inverse-degree prior, not φ*".into(),
+        theme::CAPTION,
+        theme::TEXT_DIM,
+    );
+}
+
+fn handle_seer_press(
+    interactions: Query<&Interaction, (Changed<Interaction>, With<SeerButton>)>,
+    link: Res<BodyLink>,
+    shared: Res<super::SharedCell>,
+    who: Res<super::identity::Identity>,
+    mut notice: ResMut<super::Notice>,
+) {
+    for i in &interactions {
+        if *i != Interaction::Pressed {
+            continue;
+        }
+        if link.seer.is_running() {
+            link.seer.stop();
+            notice.show("seer stopped");
+        } else {
+            link.seer.mine(shared.clone(), who.neuron);
+            notice.show("seer linking existing files");
+        }
+    }
+}
+
+fn handle_seer_intensity_press(
+    interactions: Query<(&Interaction, &SeerIntensityButton), Changed<Interaction>>,
+    mut notice: ResMut<super::Notice>,
+) {
+    for (i, b) in &interactions {
+        if *i != Interaction::Pressed {
+            continue;
+        }
+        seer::set_intensity(b.0);
+        notice.show(format!("seer pace -> {} (live)", b.0));
     }
 }
