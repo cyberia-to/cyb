@@ -1,4 +1,5 @@
 pub mod attention;
+pub mod availability;
 pub mod body;
 pub mod cell;
 pub mod com;

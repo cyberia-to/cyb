@@ -295,8 +295,9 @@ fn shorten(text: &str) -> String {
 }
 
 /// sigma names particles by padding ASCII with zeros ("PUSSY", "bob"); those
-/// hashes *are* their labels, no sidecar needed.
-fn decode_ascii_particle(hash: &[u8; 32]) -> Option<String> {
+/// hashes *are* their labels, no sidecar needed. `pub(crate)` so the
+/// availability audit resolves the same way brain's labels do.
+pub(crate) fn decode_ascii_particle(hash: &[u8; 32]) -> Option<String> {
     let end = hash.iter().position(|&b| b == 0)?;
     if end == 0 || !hash[end..].iter().all(|&b| b == 0) {
         return None;
