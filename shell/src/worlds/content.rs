@@ -99,21 +99,27 @@ pub fn load_with_meta() -> HashMap<[u8; 32], FileRecord> {
         let Some(text) = json_field(line, "text") else {
             continue;
         };
-        if hex.len() != 64 {
+        let Some(hash) = parse_particle_hex(&hex) else {
             continue;
-        }
-        let mut hash = [0u8; 32];
-        let ok = (0..32).all(|i| {
-            u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16)
-                .map(|b| hash[i] = b)
-                .is_ok()
-        });
-        if ok {
-            let created = json_u64_field(line, "created");
-            map.insert(hash, FileRecord { text, created });
-        }
+        };
+        let created = json_u64_field(line, "created");
+        map.insert(hash, FileRecord { text, created });
     }
     map
+}
+
+/// Decode a 64-char hex particle. Any line the store holds must come back
+/// intact, never panic — a corrupted or foreign-written line (soma-kernel
+/// is the second writer) is just skipped, not fatal to the read.
+fn parse_particle_hex(hex: &str) -> Option<[u8; 32]> {
+    if hex.len() != 64 || !hex.is_ascii() {
+        return None;
+    }
+    let mut hash = [0u8; 32];
+    for i in 0..32 {
+        hash[i] = u8::from_str_radix(&hex[i * 2..i * 2 + 2], 16).ok()?;
+    }
+    Some(hash)
 }
 
 /// Everything the store holds, particle → text.
@@ -159,4 +165,35 @@ pub fn json_field(line: &str, name: &str) -> Option<String> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_particle_hex_round_trips() {
+        let hex: String = particle_of("hello")
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect();
+        assert_eq!(parse_particle_hex(&hex), Some(particle_of("hello")));
+    }
+
+    #[test]
+    fn parse_particle_hex_rejects_non_ascii_without_panicking() {
+        // "a" + a 3-byte '中' + 60 more ASCII bytes = 64 bytes, but the
+        // even byte-index slicing this used to run unguarded (`&hex[0..2]`)
+        // lands inside '中' — a byte index that is not a char boundary —
+        // and panics instead of returning None.
+        let s = format!("a中{}", "a".repeat(60));
+        assert_eq!(s.len(), 64);
+        assert_eq!(parse_particle_hex(&s), None);
+    }
+
+    #[test]
+    fn parse_particle_hex_rejects_wrong_length_and_bad_digits() {
+        assert_eq!(parse_particle_hex("00"), None);
+        assert_eq!(parse_particle_hex(&"zz".repeat(32)), None);
+    }
 }

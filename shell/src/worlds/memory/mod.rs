@@ -189,7 +189,7 @@ fn hex32(h: &[u8; 32]) -> String {
 }
 
 fn unhex32(s: &str) -> Option<[u8; 32]> {
-    if s.len() != 64 {
+    if s.len() != 64 || !s.is_ascii() {
         return None;
     }
     let mut out = [0u8; 32];
@@ -504,5 +504,34 @@ fn finger(
         now.stand(hash, Some(idx));
     } else if down_pos.is_none() {
         *g = None;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn unhex32_round_trips_hex32() {
+        let hash = [7u8; 32];
+        assert_eq!(unhex32(&hex32(&hash)), Some(hash));
+    }
+
+    #[test]
+    fn unhex32_rejects_non_ascii_without_panicking() {
+        // "a" + a 3-byte '中' + 60 more ASCII bytes = 64 bytes, but the
+        // even byte-index slicing this used to run unguarded (`&s[0..2]`)
+        // lands inside '中' — a byte index that is not a char boundary —
+        // and panics instead of returning None. A tapped row's
+        // `target_ref` reaches this parser directly (line 497).
+        let s = format!("a中{}", "a".repeat(60));
+        assert_eq!(s.len(), 64);
+        assert_eq!(unhex32(&s), None);
+    }
+
+    #[test]
+    fn unhex32_rejects_wrong_length_and_bad_digits() {
+        assert_eq!(unhex32("00"), None);
+        assert_eq!(unhex32(&"zz".repeat(32)), None);
     }
 }
