@@ -1,10 +1,5 @@
-col(
-  table(
-    row("resource", "used", "of", "note"),
-    query("resources")
-  ),
-  table(
-    row("process", "cpu", "rss"),
-    query("processes")
-  )
+table(
+  row("name", "used", "of", "note"),
+  query("rows")
 )
+

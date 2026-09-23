@@ -34,10 +34,11 @@ fn index_of_hash(hash: &[u8; 32], index: Option<&BrainIndex>) -> usize {
 
 impl Plugin for MemoryWorldPlugin {
     fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(WorldState::Memory), enter)
+        app.init_resource::<MemoryList>()
+            .add_systems(OnEnter(WorldState::Memory), enter)
             .add_systems(
                 Update,
-                (refresh_on_index, finger).run_if(in_state(WorldState::Memory)),
+                (refresh_on_index, slide_memory, finger).run_if(in_state(WorldState::Memory)),
             );
     }
 }
@@ -99,6 +100,7 @@ fn refresh_on_index(
 /// remembered — `None` when the store never carried a `created` stamp for
 /// this particle (the graph's own label-only guesses, or lines soma-kernel
 /// wrote before the field existed).
+#[derive(Clone)]
 struct Row {
     hash: [u8; 32],
     label: String,
@@ -107,27 +109,39 @@ struct Row {
     created: Option<u64>,
 }
 
-fn ranked_rows(index: &BrainIndex) -> Vec<Row> {
+fn ranked_rows(index: Option<&BrainIndex>) -> Vec<Row> {
     let meta = content::load_with_meta();
-    let mut rows: Vec<Row> = index
-        .hashes
-        .iter()
-        .enumerate()
-        .map(|(idx, hash)| {
+    let mut seen = std::collections::HashSet::new();
+    let mut rows = Vec::new();
+    if let Some(index) = index {
+        for (idx, hash) in index.hashes.iter().enumerate() {
+            seen.insert(*hash);
             let m = meta.get(hash);
             let label = m
                 .map(|m| m.text.clone())
                 .or_else(|| index.labels.get(idx).cloned().flatten())
                 .unwrap_or_else(|| short_hex(hash));
-            Row {
+            rows.push(Row {
                 hash: *hash,
                 label,
                 focus: index.focus.get(idx).copied().unwrap_or(0.0),
                 size: m.map(|m| m.text.len()).unwrap_or(0),
                 created: m.and_then(|m| m.created),
-            }
-        })
-        .collect();
+            });
+        }
+    }
+    for (hash, m) in meta.iter() {
+        if seen.contains(hash) {
+            continue;
+        }
+        rows.push(Row {
+            hash: *hash,
+            label: m.text.clone(),
+            focus: 0.0,
+            size: m.text.len(),
+            created: m.created,
+        });
+    }
     rows.sort_by(|a, b| {
         b.focus
             .partial_cmp(&a.focus)
@@ -233,20 +247,7 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Re
         ))
         .id();
 
-    let Some(index) = index else {
-        commands.spawn((
-            Text::new("the graph has not opened yet"),
-            TextFont {
-                font_size: theme::CAPTION,
-                ..default()
-            },
-            TextColor(theme::TEXT_DIM),
-            ChildOf(root),
-        ));
-        return;
-    };
-
-    let ranked = ranked_rows(&index);
+    let ranked = ranked_rows(index.as_deref());
     let bytes: u64 = ranked.iter().map(|r| r.size as u64).sum();
     let particles = ranked.len() as u64;
     let links = shared
@@ -254,25 +255,11 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Re
         .lock()
         .map(|c| c.axons().len() as u64)
         .unwrap_or(0);
-    let rows = cell::list(
-        ranked
-            .iter()
-            .map(|r| {
-                cell::row(&[
-                    &r.label,
-                    &format!("{:.3}", r.focus),
-                    &size_text(r.size),
-                    &date_text(r.created),
-                    &format!("particle:{}", hex32(&r.hash)),
-                ])
-            })
-            .collect(),
-    );
     let mut host = MemoryHost {
         particles: cell::exact(particles),
         bytes: cell::exact(bytes),
         links: cell::exact(links),
-        rows,
+        rows: Noun::Atom(0),
     };
     let chunks = match cell::load("memory").and_then(|src| cell::eval(&src, &mut host)) {
         Ok(c) => c,
@@ -293,6 +280,7 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Re
     let page = commands
         .spawn((
             MemoryScroll,
+            crate::worlds::scroll::PersistScroll("memory"),
             Node {
                 width: Val::Percent(100.0),
                 max_width: Val::Px(theme::MEASURE),
@@ -314,6 +302,120 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Re
         .id();
 
     cell::dispatch_page(&mut commands, page, &chunks);
+    commands.insert_resource(MemoryList {
+        rows: ranked.clone(),
+    });
+    spawn_memory_table(&mut commands, page, &ranked, 0);
+}
+
+const MEM_ROW_H: f32 = 34.0;
+const MEM_WINDOW: usize = 64;
+
+#[derive(Resource, Default)]
+struct MemoryList {
+    rows: Vec<Row>,
+}
+
+#[derive(Component)]
+struct MemoryWindow;
+
+struct MemoryWindowHost {
+    rows: Noun,
+}
+
+impl Host for MemoryWindowHost {
+    fn perform(&mut self, act: u64, args: &Noun, _caps: &Noun) -> Result<Noun, InterpError> {
+        if cell::act_is_query(act) && cell::query_name(args) == "table-body" {
+            return Ok(self.rows.clone());
+        }
+        Ok(Noun::Atom(0))
+    }
+}
+
+fn slide_memory(
+    mut commands: Commands,
+    list: Res<MemoryList>,
+    page: Query<Entity, With<MemoryScroll>>,
+    window: Query<Entity, With<MemoryWindow>>,
+    scroll: Query<&ScrollPosition, With<MemoryScroll>>,
+    mut last: Local<Option<usize>>,
+) {
+    let Ok(page) = page.single() else {
+        return;
+    };
+    let n = list.rows.len();
+    if n == 0 {
+        return;
+    }
+    let y = scroll.single().map(|p| p.y).unwrap_or(0.0);
+    let start = (y.max(0.0) / MEM_ROW_H).floor() as usize;
+    let start = start.min(n.saturating_sub(1));
+    if Some(start) == *last && !list.is_changed() {
+        return;
+    }
+    *last = Some(start);
+    for e in &window {
+        commands.entity(e).despawn();
+    }
+    spawn_memory_table(&mut commands, page, &list.rows, start);
+}
+
+fn spawn_memory_table(commands: &mut Commands, page: Entity, rows: &[Row], start: usize) {
+    let n = rows.len();
+    let start = start.min(n);
+    let end = (start + MEM_WINDOW).min(n);
+    let window = commands
+        .spawn((
+            MemoryWindow,
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                flex_shrink: 0.0,
+                ..default()
+            },
+            ChildOf(page),
+        ))
+        .id();
+    commands.spawn((
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Px(start as f32 * MEM_ROW_H),
+            flex_shrink: 0.0,
+            ..default()
+        },
+        ChildOf(window),
+    ));
+    let mut host = MemoryWindowHost {
+        rows: cell::list(
+            rows[start..end]
+                .iter()
+                .map(|r| {
+                    cell::row(&[
+                        &r.label,
+                        &format!("{:.3}", r.focus),
+                        &size_text(r.size),
+                        &date_text(r.created),
+                        &format!("particle:{}", hex32(&r.hash)),
+                    ])
+                })
+                .collect(),
+        ),
+    };
+    if let Ok(chunks) = cell::eval(
+        r#"table(row("name","focus","size","when"), query("table-body"))"#,
+        &mut host,
+    ) {
+        cell::dispatch_page(commands, window, &chunks);
+    }
+    commands.spawn((
+        Node {
+            width: Val::Percent(100.0),
+            height: Val::Px((n.saturating_sub(end)) as f32 * MEM_ROW_H),
+            flex_shrink: 0.0,
+            ..default()
+        },
+        ChildOf(window),
+    ));
 }
 
 /// A tap is a press that did not travel. Drag is scroll. Opening used to

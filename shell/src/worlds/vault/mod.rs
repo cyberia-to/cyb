@@ -42,6 +42,9 @@ struct VaultView {
 #[derive(Component)]
 struct VaultRoot;
 
+#[derive(Component)]
+struct SpellPage;
+
 /// Tap the row: the secret (or the live code) goes to the clipboard.
 #[derive(Component)]
 struct CopyRow(usize);
@@ -133,11 +136,15 @@ fn seal_page(
     mut commands: Commands,
     mut view: ResMut<VaultView>,
     roots: Query<Entity, With<VaultRoot>>,
+    spells: Query<Entity, With<SpellPage>>,
 ) {
     view.entries.clear();
     view.key = None;
     view.revealed = None;
     for e in &roots {
+        commands.entity(e).despawn();
+    }
+    for e in &spells {
         commands.entity(e).despawn();
     }
 }
@@ -222,6 +229,7 @@ fn build_page(commands: &mut Commands, view: &VaultView) {
                 ..default()
             },
             ScrollPosition::default(),
+            crate::worlds::scroll::PersistScroll("vault"),
             ChildOf(root),
         ))
         .id();
@@ -288,7 +296,12 @@ fn build_page(commands: &mut Commands, view: &VaultView) {
                 } else {
                     mask(&entry.value)
                 };
-                cell::row(&[&entry.name, &entry.kind, &value, &format!("vault:{i}")])
+                let target = if entry.name == "identity" || entry.kind == "spell" {
+                    "vault:spell".into()
+                } else {
+                    format!("vault:{i}")
+                };
+                cell::row(&[&entry.name, &entry.kind, &value, &target])
             })
             .collect(),
     );
@@ -299,6 +312,57 @@ fn build_page(commands: &mut Commands, view: &VaultView) {
     }
 }
 
+fn spawn_spell_page(commands: &mut Commands, spell: String) {
+    let root = commands
+        .spawn((
+            SpellPage,
+            ContentRoot,
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(CHROME_TOP_H),
+                bottom: Val::Px(CHROME_BOTTOM_H),
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                padding: UiRect::all(Val::Px(theme::G * 4.0)),
+                row_gap: Val::Px(theme::G * 2.0),
+                ..default()
+            },
+            BackgroundColor(theme::DARK_BASE),
+            GlobalZIndex(12),
+        ))
+        .id();
+    commands.spawn((
+        Text::new("spell"),
+        TextFont {
+            font_size: theme::CAPTION,
+            ..default()
+        },
+        TextColor(theme::TEXT_DIM),
+        ChildOf(root),
+    ));
+    commands.spawn((
+        Text::new(spell),
+        TextFont {
+            font_size: theme::H2,
+            ..default()
+        },
+        TextColor(theme::ACID_GREEN),
+        ChildOf(root),
+    ));
+    commands.spawn((
+        Text::new("the twelve words behind this body. tap a world tab to leave."),
+        TextFont {
+            font_size: theme::CAPTION,
+            ..default()
+        },
+        TextColor(theme::TEXT_DIM),
+        ChildOf(root),
+    ));
+}
+
 fn mask(value: &str) -> String {
     "*".repeat(value.chars().count().min(12))
 }
@@ -306,7 +370,9 @@ fn mask(value: &str) -> String {
 /// Tap a row: its secret (or the code of the moment) goes to the clipboard
 /// with a 30-second fuse.
 fn handle_table_copy(
+    mut commands: Commands,
     interactions: Query<(&Interaction, &ActionButton), Changed<Interaction>>,
+    pages: Query<Entity, With<SpellPage>>,
     mut view: ResMut<VaultView>,
     mut notice: ResMut<super::Notice>,
 ) {
@@ -317,6 +383,15 @@ fn handle_table_copy(
         let Some(idx) = btn.target_ref.strip_prefix("vault:") else {
             continue;
         };
+        if idx == "spell" {
+            if let Some(spell) = identity_spell() {
+                for e in &pages {
+                    commands.entity(e).despawn();
+                }
+                spawn_spell_page(&mut commands, spell);
+            }
+            continue;
+        }
         let Ok(n) = idx.parse::<usize>() else {
             continue;
         };

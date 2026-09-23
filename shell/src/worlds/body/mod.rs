@@ -19,6 +19,7 @@ use prysm::theme;
 use super::WorldState;
 use super::cell;
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
+use prysm::molecules::action::ActionButton;
 use rune_ast::Noun;
 use rune_interp::{Host, InterpError};
 
@@ -107,6 +108,7 @@ impl Plugin for BodyWorldPlugin {
                 handle_prover_intensity_press,
                 handle_seer_press,
                 handle_seer_intensity_press,
+                handle_work_row,
             )
                 .run_if(in_state(WorldState::Body)),
         );
@@ -389,8 +391,7 @@ fn net_io_line(view: &BodyView) -> String {
 }
 
 struct BodyHost {
-    resources: Noun,
-    processes: Noun,
+    rows: Noun,
 }
 
 impl Host for BodyHost {
@@ -399,8 +400,7 @@ impl Host for BodyHost {
             return Ok(Noun::Atom(0));
         }
         match cell::query_name(args).as_str() {
-            "resources" => Ok(self.resources.clone()),
-            "processes" => Ok(self.processes.clone()),
+            "rows" => Ok(self.rows.clone()),
             other => Err(cell::unknown_query(other)),
         }
     }
@@ -408,8 +408,8 @@ impl Host for BodyHost {
 
 fn body_host(view: &BodyView) -> BodyHost {
     let v = &view.vitals;
-    let mut resources = Vec::new();
-    resources.push(cell::row(&[
+    let mut rows = Vec::new();
+    rows.push(cell::row(&[
         "cpu",
         &format!("{:.0}%", v.cpu_pct),
         "100",
@@ -420,7 +420,7 @@ fn body_host(view: &BodyView) -> BodyHost {
         },
     ]));
     if v.gpu_pct >= 0.0 {
-        resources.push(cell::row(&[
+        rows.push(cell::row(&[
             "gpu",
             &format!("{:.0}%", v.gpu_pct),
             "100",
@@ -432,33 +432,71 @@ fn body_host(view: &BodyView) -> BodyHost {
         ]));
     }
     if v.mem_total > 0 {
-        resources.push(cell::row(&[
+        rows.push(cell::row(&[
             "memory",
             &cell::exact(v.mem_used),
             &cell::exact(v.mem_total),
             "B",
         ]));
     }
-    resources.push(cell::row(&[
+    rows.push(cell::row(&[
         "network",
         &format!("{:.0}", v.net_rx_bps),
         &format!("{:.0}", v.net_tx_bps),
-        "B/s down / up",
+        "B/s ↓ / ↑",
     ]));
-    let processes = v
-        .top
-        .iter()
-        .map(|t| {
-            cell::row(&[
-                &t.name,
-                &format!("{:.0}%", t.cpu_pct),
-                &format!("{:.0} MB", t.rss_mb),
-            ])
-        })
-        .collect();
+    for t in &v.top {
+        rows.push(cell::row(&[
+            &t.name,
+            &format!("{:.0}%", t.cpu_pct),
+            &format!("{:.0} MB", t.rss_mb),
+            "os",
+        ]));
+    }
+    let p = &view.prover;
+    let zheng_used = if p.running {
+        format!("{:.0}/min", p.tickets_per_min())
+    } else {
+        "off".into()
+    };
+    rows.push(cell::row(&[
+        "zheng",
+        &zheng_used,
+        &view.prover_intensity,
+        if p.running { "proving" } else { "idle" },
+        "work:zheng",
+    ]));
+    let s = &view.seer;
+    let seer_used = if s.running {
+        format!("{:.0}/min", s.casts_per_min())
+    } else {
+        "off".into()
+    };
+    rows.push(cell::row(&[
+        "seer",
+        &seer_used,
+        &view.seer_intensity,
+        if s.running {
+            if s.idle { "watching" } else { "linking" }
+        } else {
+            "idle"
+        },
+        "work:seer",
+    ]));
+    for n in &view.nets {
+        let used = if n.height > 0 {
+            format!("h={}", n.height)
+        } else {
+            "—".into()
+        };
+        let of = n
+            .last_sync
+            .map(|t| format!("{}s", t.elapsed().as_secs()))
+            .unwrap_or_else(|| "—".into());
+        rows.push(cell::row(&[&n.name, &used, &of, "net"]));
+    }
     BodyHost {
-        resources: cell::list(resources),
-        processes: cell::list(processes),
+        rows: cell::list(rows),
     }
 }
 
@@ -647,6 +685,7 @@ fn build_page(mut commands: Commands, view: Res<BodyView>, _link: Res<BodyLink>)
                 ..default()
             },
             ScrollPosition::default(),
+            crate::worlds::scroll::PersistScroll("body"),
             ChildOf(root),
         ))
         .id();
@@ -765,10 +804,14 @@ fn build_page(mut commands: Commands, view: Res<BodyView>, _link: Res<BodyLink>)
         );
     }
 
-    // ── work: every way this body earns ─────────────────────────────────
-    let pussy_day = build_prover_card(&mut commands, page, &view);
-    build_seer_card(&mut commands, page, &view);
-
+    // zheng and seer sit in the same table as cpu and the os processes.
+    // Tap a work row to cycle off → min → eco → max → off.
+    let per_proof = declared_rate("per_proof", 1.0);
+    let pussy_day = if view.prover.running {
+        view.prover.tickets_per_min() * 60.0 * 24.0 * per_proof
+    } else {
+        0.0
+    };
     if pussy_day > 0.0 {
         text(
             &mut commands,
@@ -782,6 +825,7 @@ fn build_page(mut commands: Commands, view: Res<BodyView>, _link: Res<BodyLink>)
 
 /// The zheng card: PUSSY earned by proving — sumcheck sampling over this
 /// cyb's own graph, HyperNova folding, a verified ticket or nothing.
+#[allow(dead_code)]
 fn build_prover_card(commands: &mut Commands, page: Entity, view: &BodyView) -> f64 {
     let text = |commands: &mut Commands, parent: Entity, s: String, size: f32, color: Color| {
         commands.spawn((
@@ -1071,6 +1115,7 @@ fn paint_seer(view: Res<BodyView>, mut q: Query<(&SeerLive, &mut Text, &mut Text
 
 /// The seer card: structure mining — unlinked pairs of files that already
 /// exist. Never creates a file. Inverse-degree prior until tru φ* is wired.
+#[allow(dead_code)]
 fn build_seer_card(commands: &mut Commands, page: Entity, view: &BodyView) {
     let text = |commands: &mut Commands, parent: Entity, s: String, size: f32, color: Color| {
         commands.spawn((
@@ -1244,5 +1289,74 @@ fn handle_seer_intensity_press(
         }
         seer::set_intensity(b.0);
         notice.show(format!("seer pace -> {} (live)", b.0));
+    }
+}
+
+/// One lever per miner in the table: off → min → eco → max → off.
+fn handle_work_row(
+    interactions: Query<(&Interaction, &ActionButton), Changed<Interaction>>,
+    link: Res<BodyLink>,
+    shared: Res<super::SharedCell>,
+    mut notice: ResMut<super::Notice>,
+    mut meter: ResMut<ProofMeter>,
+    who: Res<super::identity::Identity>,
+    mut inbox: ResMut<super::ComInbox>,
+) {
+    for (i, btn) in &interactions {
+        if *i != Interaction::Pressed {
+            continue;
+        }
+        match btn.target_ref.as_str() {
+            "work:zheng" => {
+                if !link.prover.is_running() {
+                    prover::set_intensity("min");
+                    let axons = shared.cell.lock().expect("shared cell poisoned").axons();
+                    link.prover.prove(axons, link.nets.clone());
+                    let _ = std::fs::write(proving_wanted_file(), "on");
+                    cast_prove_start(&mut meter, &link, &shared, &who, &mut inbox);
+                    notice.show("zheng min");
+                } else {
+                    match prover::intensity().as_str() {
+                        "min" => {
+                            prover::set_intensity("eco");
+                            notice.show("zheng eco");
+                        }
+                        "eco" => {
+                            prover::set_intensity("max");
+                            notice.show("zheng max");
+                        }
+                        _ => {
+                            link.prover.stop();
+                            meter.armed = false;
+                            let _ = std::fs::write(proving_wanted_file(), "off");
+                            notice.show("zheng off");
+                        }
+                    }
+                }
+            }
+            "work:seer" => {
+                if !link.seer.is_running() {
+                    seer::set_intensity("min");
+                    link.seer.mine(shared.clone(), who.neuron);
+                    notice.show("seer min");
+                } else {
+                    match seer::intensity().as_str() {
+                        "min" => {
+                            seer::set_intensity("eco");
+                            notice.show("seer eco");
+                        }
+                        "eco" => {
+                            seer::set_intensity("max");
+                            notice.show("seer max");
+                        }
+                        _ => {
+                            link.seer.stop();
+                            notice.show("seer off");
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 }

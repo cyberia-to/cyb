@@ -1,11 +1,5 @@
-col(
-  row(
-    stat(query("particles"), "particles"),
-    stat(query("bytes"), "bytes"),
-    stat(query("links"), "links")
-  ),
-  table(
-    row("name", "focus", "size", "when"),
-    query("table-body")
-  )
+row(
+  stat(query("particles"), "particles"),
+  stat(query("bytes"), "bytes"),
+  stat(query("links"), "links")
 )

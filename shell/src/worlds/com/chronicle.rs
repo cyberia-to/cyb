@@ -11,7 +11,7 @@ use rune_interp::{Host, InterpError};
 use super::super::{SharedCell, cell, content, identity::Identity};
 
 const ROW_H: f32 = 34.0;
-const WINDOW: usize = 48;
+const WINDOW: usize = 64;
 const HEAD_H: f32 = 108.0;
 
 #[derive(Component)]
@@ -28,9 +28,9 @@ struct LogSpacerBot;
 
 #[derive(Clone)]
 struct LogRow {
-    label: String,
+    from: String,
+    to: String,
     step: String,
-    n: String,
     wt: String,
 }
 
@@ -59,23 +59,11 @@ impl Host for LogHost {
     }
 }
 
-fn label_of(sig: &cyb_core::Signal, texts: &std::collections::HashMap<[u8; 32], String>) -> String {
-    let Some(first) = sig.links.first() else {
-        return format!("step {}", sig.step);
-    };
-    let name = |p: &[u8; 32]| {
-        texts
-            .get(p)
-            .cloned()
-            .unwrap_or_else(|| file::Particle::from_bytes(*p).short_hex())
-    };
-    let a = name(&first.from);
-    let b = name(&first.to);
-    if sig.links.len() == 1 {
-        format!("{a} → {b}")
-    } else {
-        format!("{a} → {b} +{}", sig.links.len() - 1)
-    }
+fn name_of(p: &[u8; 32], texts: &std::collections::HashMap<[u8; 32], String>) -> String {
+    texts
+        .get(p)
+        .cloned()
+        .unwrap_or_else(|| file::Particle::from_bytes(*p).short_hex())
 }
 
 fn collect(shared: &SharedCell, who: [u8; 32]) -> (u64, u64, u64, Vec<LogRow>) {
@@ -83,29 +71,45 @@ fn collect(shared: &SharedCell, who: [u8; 32]) -> (u64, u64, u64, Vec<LogRow>) {
     let Ok(cell) = shared.cell.lock() else {
         return (0, 0, 0, Vec::new());
     };
-    let mut links = 0u64;
+    let mut n_signals = 0u64;
+    let mut n_links = 0u64;
     let mut weight = 0u64;
     let mut rows = Vec::new();
+    // One row per cyberlink — a signal with three links used to hide two
+    // of them behind "+2". Newest of this neuron first, then everyone else.
     for sig in cell.signals() {
-        let n = sig.links.len();
-        let wt: u64 = sig.links.iter().map(|l| l.amount).sum();
-        links += n as u64;
-        weight += wt;
-        rows.push((
-            sig.neuron == who,
-            sig.step,
-            LogRow {
-                label: label_of(sig, &texts),
-                step: sig.step.to_string(),
-                n: n.to_string(),
-                wt: wt.to_string(),
-            },
-        ));
+        n_signals += 1;
+        if sig.links.is_empty() {
+            rows.push((
+                sig.neuron == who,
+                sig.step,
+                LogRow {
+                    from: "—".into(),
+                    to: "—".into(),
+                    step: sig.step.to_string(),
+                    wt: "0".into(),
+                },
+            ));
+            continue;
+        }
+        for link in &sig.links {
+            n_links += 1;
+            weight += link.amount;
+            rows.push((
+                sig.neuron == who,
+                sig.step,
+                LogRow {
+                    from: name_of(&link.from, &texts),
+                    to: name_of(&link.to, &texts),
+                    step: sig.step.to_string(),
+                    wt: link.amount.to_string(),
+                },
+            ));
+        }
     }
-    let signals = rows.len() as u64;
     rows.sort_by(|a, b| b.0.cmp(&a.0).then(b.1.cmp(&a.1)));
     let rows = rows.into_iter().map(|(_, _, r)| r).collect();
-    (signals, links, weight, rows)
+    (n_signals, n_links, weight, rows)
 }
 
 /// Rebuild the chronicle when the cell moves. The slot stays put so the
@@ -187,12 +191,12 @@ fn spawn_table(commands: &mut Commands, slot: Entity, rows: &[LogRow], start: us
         rows: cell::list(
             slice
                 .iter()
-                .map(|r| cell::row(&[&r.label, &r.step, &r.n, &r.wt]))
+                .map(|r| cell::row(&[&r.from, &r.to, &r.step, &r.wt]))
                 .collect(),
         ),
     };
     if let Ok(chunks) = cell::eval(
-        r#"table(row("signal","step","n","wt"), query("table-body"))"#,
+        r#"table(row("from","to","step","wt"), query("table-body"))"#,
         &mut host,
     ) {
         cell::dispatch_page(commands, window, &chunks);
