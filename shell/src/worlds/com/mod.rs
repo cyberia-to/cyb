@@ -1024,6 +1024,7 @@ fn spawn_terminal_ui(world: &mut World, scrollback_entity: Entity) -> (Entity, E
                 ..default()
             },
             ScrollPosition::default(),
+            crate::worlds::scroll::PersistScroll("log"),
             ChildOf(root),
         ))
         .id();
