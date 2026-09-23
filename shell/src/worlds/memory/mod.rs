@@ -174,16 +174,6 @@ fn date_text(created: Option<u64>) -> String {
     }
 }
 
-fn bytes_text(n: u64) -> String {
-    if n >= 1_000_000 {
-        format!("{:.1} MB", n as f64 / 1e6)
-    } else if n >= 1000 {
-        format!("{:.1} KB", n as f64 / 1e3)
-    } else {
-        format!("{n} B")
-    }
-}
-
 fn hex32(h: &[u8; 32]) -> String {
     h.iter().map(|b| format!("{b:02x}")).collect()
 }
@@ -279,9 +269,9 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Re
             .collect(),
     );
     let mut host = MemoryHost {
-        particles: cell::compact(particles),
-        bytes: bytes_text(bytes),
-        links: cell::compact(links),
+        particles: cell::exact(particles),
+        bytes: cell::exact(bytes),
+        links: cell::exact(links),
         rows,
     };
     let chunks = match cell::load("memory").and_then(|src| cell::eval(&src, &mut host)) {

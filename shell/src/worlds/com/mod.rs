@@ -42,7 +42,11 @@ impl Plugin for ComWorldPlugin {
             // are looking at them, and the record has to be waiting when you
             // arrive. com's tree is hidden between visits, never torn down.
             .add_systems(Update, drain_com_inbox)
-            .add_systems(Update, chronicle::refresh.run_if(in_state(WorldState::Com)))
+            .init_resource::<chronicle::Chronicle>()
+            .add_systems(
+                Update,
+                (chronicle::refresh, chronicle::slide_window).run_if(in_state(WorldState::Com)),
+            )
             // `CYB_RUN="..."` submits one line through the same path typing
             // does — commander, routing, echo, cast — for scripted runs.
             .add_systems(
@@ -1189,14 +1193,16 @@ fn scroll_extent(world: &mut World) -> (f32, f32) {
     let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() else {
         return (0.0, 0.0);
     };
-    let (sb, sa) = (state.scrollback_entity, state.scroll_area_entity);
-    let logical = |e: Entity| -> f32 {
-        world
-            .get::<ComputedNode>(e)
-            .map(|cn| cn.size().y * cn.inverse_scale_factor())
-            .unwrap_or(0.0)
-    };
-    (logical(sb), logical(sa))
+    let sa = state.scroll_area_entity;
+    // Content size of the scroll area — census + every signal (via spacers)
+    // + the session. Measuring only the session left the table unscrolled.
+    world
+        .get::<ComputedNode>(sa)
+        .map(|cn| {
+            let s = cn.inverse_scale_factor();
+            (cn.content_size().y * s, cn.size().y * s)
+        })
+        .unwrap_or((0.0, 0.0))
 }
 
 fn apply_scroll_offset(world: &mut World) {
