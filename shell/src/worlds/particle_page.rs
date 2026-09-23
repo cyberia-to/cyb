@@ -103,6 +103,7 @@ fn sync_page(
                 ..default()
             },
             ScrollPosition::default(),
+            crate::worlds::scroll::PersistScroll("particle"),
             ChildOf(root),
         ))
         .id();

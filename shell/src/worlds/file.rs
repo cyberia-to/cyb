@@ -91,6 +91,7 @@ fn sync_page(
                 ..default()
             },
             ScrollPosition::default(),
+            crate::worlds::scroll::PersistScroll("file"),
             ChildOf(root),
         ))
         .id();
@@ -108,8 +109,14 @@ fn sync_page(
     );
     match surface {
         Some(Surface::Text(body)) => {
+            const CAP: usize = 8_000;
+            let shown = if body.len() > CAP {
+                format!("{}…", &body[..CAP])
+            } else {
+                body
+            };
             commands.spawn((
-                Text::new(body),
+                Text::new(shown),
                 TextFont {
                     font_size: theme::BODY,
                     ..default()

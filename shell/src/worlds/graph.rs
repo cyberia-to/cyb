@@ -38,16 +38,21 @@ fn insert_graph_config(
     mut stats: ResMut<BrainStats>,
     mut seen: Local<Option<u64>>,
     mut last: Local<Option<Instant>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    touches: Res<Touches>,
 ) {
+    // A finger on the graph is a camera move. tru+CSR on this thread is
+    // a frame hitch; wait until the finger lifts.
+    if mouse.pressed(MouseButton::Left) || touches.iter().next().is_some() {
+        return;
+    }
     let ver = shared.version.load(std::sync::atomic::Ordering::Relaxed);
     if Some(ver) == *seen {
         return;
     }
-    // Seer (and anything else that casts) bumps the cell every few hundred
-    // ms. Re-running tru + rebuilding the CSR at that rate is what made
-    // brain crawl. Coalesce: first build is immediate, then at most ~1.2 Hz.
+    // Seer casts often. tru on a lived-in graph is tens of ms — coalesce.
     let due = last
-        .map(|t| t.elapsed() >= Duration::from_millis(800))
+        .map(|t| t.elapsed() >= Duration::from_millis(2500))
         .unwrap_or(true);
     if !due && seen.is_some() {
         return;

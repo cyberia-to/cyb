@@ -127,10 +127,10 @@ fn scripted_tap(
 
 /// A tap is a press that neither travelled nor lingered. Everything else
 /// belongs to the camera.
-const TAP_SLOP_PX: f32 = 8.0;
-const TAP_MAX_S: f32 = 0.4;
+const TAP_SLOP_PX: f32 = 22.0;
+const TAP_MAX_S: f32 = 0.8;
 /// How close (logical px) the tap must land to a particle's center.
-const PICK_RADIUS_PX: f32 = 18.0;
+const PICK_RADIUS_PX: f32 = 42.0;
 
 fn detect_tap(
     mut press: Local<PressState>,
@@ -199,6 +199,7 @@ fn pick(index: &BrainIndex, gpu: &GpuBuffers, cam: &GraphCamera, at: Vec2) -> Op
     let m = cam.view_proj();
     let [lw, lh] = cam.input_viewport;
     let mut best: Option<(usize, f32)> = None;
+    let mut nearest: Option<(usize, f32)> = None;
 
     for i in 0..index.hashes.len() {
         let base = i * 3;
@@ -226,11 +227,15 @@ fn pick(index: &BrainIndex, gpu: &GpuBuffers, cam: &GraphCamera, at: Vec2) -> Op
         let screen_r = (rad * m[1][1] / w) * (lh * 0.5);
         let reach = PICK_RADIUS_PX.max(screen_r);
 
+        if nearest.map(|(_, nd)| d < nd).unwrap_or(true) {
+            nearest = Some((i, d));
+        }
         if d < reach && best.map(|(_, bd)| d < bd).unwrap_or(true) {
             best = Some((i, d));
         }
     }
-    best.map(|(i, _)| i)
+    best.or_else(|| nearest.filter(|(_, d)| *d < 64.0))
+        .map(|(i, _)| i)
 }
 
 /// Build (or rebuild, when the viewed particle changes) the reading page.
