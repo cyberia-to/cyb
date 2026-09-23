@@ -34,6 +34,7 @@ struct SigmaBalanceLabel;
 struct SigmaStatusLabel;
 
 #[derive(Component)]
+#[allow(dead_code)]
 enum SigmaBtn {
     Fund,
     Send,
@@ -150,40 +151,21 @@ fn setup_sigma(
                 top: Val::Px(top),
                 bottom: Val::Px(bottom),
                 flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(12.0),
-                padding: UiRect::all(Val::Px(16.0)),
-                // The root's bottom edge is the chrome's top edge, so clipping
-                // here is what makes the page pass under the bars instead of
-                // drawing over them.
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(theme::G),
                 overflow: Overflow::clip(),
                 ..default()
             },
             BackgroundColor(theme::DARK_BASE),
         ))
         .with_children(|root| {
-            root.spawn((
-                Text::new("sigma / money"),
-                TextFont {
-                    font_size: 22.0,
-                    ..default()
-                },
-                TextColor(Color::srgb(0.7, 0.95, 0.8)),
-            ));
-
-            // ── the chain: earned by proving, spendable now ────────────
-            root.spawn((
-                Text::new("on the chain (pussy) - earned by proven work"),
-                TextFont {
-                    font_size: 13.0,
-                    ..default()
-                },
-                TextColor(Color::srgb(0.55, 0.6, 0.65)),
-            ));
+            // Balance only. Send / receive live in the commander (`pay`).
             root.spawn((
                 ChainMoneyLabel,
-                Text::new("querying the chain..."),
+                Text::new("…"),
                 TextFont {
-                    font_size: 28.0,
+                    font_size: 48.0,
                     ..default()
                 },
                 TextColor(Color::srgb(0.4, 0.95, 0.6)),
@@ -192,69 +174,11 @@ fn setup_sigma(
                 ChainReceiptLabel,
                 Text::new(""),
                 TextFont {
-                    font_size: 13.0,
+                    font_size: theme::CAPTION,
                     ..default()
                 },
-                TextColor(Color::srgb(0.55, 0.6, 0.65)),
+                TextColor(theme::TEXT_DIM),
             ));
-            // One lever: send. It folds the commander into a pay form
-            // (recipient + amount). Everything else is automatic — the
-            // balance polls itself, every pay finalizes in its own block.
-            root.spawn(Node {
-                flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(8.0),
-                ..default()
-            })
-            .with_children(|row| {
-                row.spawn((
-                    ChainSendBtn,
-                    Button,
-                    Node {
-                        padding: UiRect::axes(Val::Px(22.0), Val::Px(8.0)),
-                        border: UiRect::all(Val::Px(1.0)),
-                        ..default()
-                    },
-                    BackgroundColor(theme::DARK_BASE),
-                    BorderColor::all(Color::srgb(0.2, 0.5, 0.35)),
-                ))
-                .with_children(|inner| {
-                    inner.spawn((
-                        Text::new("send"),
-                        TextFont {
-                            font_size: 14.0,
-                            ..default()
-                        },
-                        TextColor(Color::srgb(0.8, 0.9, 0.85)),
-                    ));
-                });
-                row.spawn((
-                    ChainAddrBtn,
-                    Button,
-                    Node {
-                        padding: UiRect::axes(Val::Px(14.0), Val::Px(8.0)),
-                        border: UiRect::all(Val::Px(1.0)),
-                        ..default()
-                    },
-                    BackgroundColor(theme::DARK_BASE),
-                    BorderColor::all(theme::BORDER),
-                ))
-                .with_children(|inner| {
-                    inner.spawn((
-                        Text::new("receive"),
-                        TextFont {
-                            font_size: 14.0,
-                            ..default()
-                        },
-                        TextColor(Color::srgb(0.6, 0.65, 0.7)),
-                    ));
-                });
-            });
-
-            // No event list here. Everything this page does is said in com,
-            // where it can be scrolled back through; repeating the last twelve
-            // lines beside the buttons was two records and one of them always
-            // stale. What is left on the page is the state — balance, tip —
-            // and what just happened arrives as a notice under the address bar.
         });
 }
 

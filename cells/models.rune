@@ -1,0 +1,10 @@
+col(
+  table(
+    row("model", "size", "speed", "on"),
+    query("installed")
+  ),
+  table(
+    row("get", "download"),
+    query("catalog")
+  )
+)

@@ -15,7 +15,11 @@ use bevy::prelude::*;
 use prysm::theme;
 
 use super::WorldState;
+use super::cell;
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
+use prysm::molecules::action::ActionButton;
+use rune_ast::Noun;
+use rune_interp::{Host, InterpError};
 
 pub struct ModelsWorldPlugin;
 
@@ -129,6 +133,24 @@ fn speed_hint(bytes: u64) -> String {
     }
 }
 
+struct ModelsHost {
+    installed: Noun,
+    catalog: Noun,
+}
+
+impl Host for ModelsHost {
+    fn perform(&mut self, act: u64, args: &Noun, _caps: &Noun) -> Result<Noun, InterpError> {
+        if !cell::act_is_query(act) {
+            return Ok(Noun::Atom(0));
+        }
+        match cell::query_name(args).as_str() {
+            "installed" => Ok(self.installed.clone()),
+            "catalog" => Ok(self.catalog.clone()),
+            other => Err(cell::unknown_query(other)),
+        }
+    }
+}
+
 impl Plugin for ModelsWorldPlugin {
     fn build(&self, app: &mut App) {
         // The status is a value, not a discovery — resolve it at build so the
@@ -144,7 +166,12 @@ impl Plugin for ModelsWorldPlugin {
             .add_systems(Update, (poll_fetch, tick_fetch_progress))
             .add_systems(
                 Update,
-                (rebuild_on_change, handle_model_press, handle_fetch_press)
+                (
+                    rebuild_on_change,
+                    handle_model_press,
+                    handle_fetch_press,
+                    handle_table_press,
+                )
                     .run_if(in_state(WorldState::Models)),
             );
     }
@@ -218,8 +245,10 @@ fn build_page(mut commands: Commands, status: Res<MindStatus>, fetch: Res<FetchS
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(theme::G),
                 padding: UiRect::all(Val::Px(theme::G * 2.0)),
+                overflow: Overflow::scroll_y(),
                 ..default()
             },
+            ScrollPosition::default(),
             ChildOf(root),
         ))
         .id();
@@ -252,141 +281,52 @@ fn build_page(mut commands: Commands, status: Res<MindStatus>, fetch: Res<FetchS
     let active = status.model.clone();
     let list = models_on_disk(active.as_deref());
     let installed_labels: Vec<String> = list.iter().map(|(p, _)| file_label(p)).collect();
-    if list.is_empty() {
-        commands.spawn((
-            Text::new("no .model files in ~/llm - glia import builds them"),
-            TextFont {
-                font_size: theme::BODY,
-                ..default()
-            },
-            TextColor(theme::TEXT_DIM),
-            ChildOf(page),
-        ));
-    }
-    for (path, size) in list {
-        let is_active = active.as_deref() == Some(path.as_path());
-        let row = commands
-            .spawn((
-                ModelRow(path.clone()),
-                Button,
-                Node {
-                    width: Val::Percent(100.0),
-                    justify_content: JustifyContent::SpaceBetween,
-                    padding: UiRect::axes(Val::Px(theme::G * 1.5), Val::Px(theme::G)),
-                    border: UiRect::all(Val::Px(1.0)),
-                    ..default()
-                },
-                BackgroundColor(theme::DARK_BASE),
-                BorderColor::all(if is_active {
-                    theme::ACID_GREEN
+    let installed = cell::list(
+        list.iter()
+            .map(|(path, size)| {
+                let on = if active.as_deref() == Some(path.as_path()) {
+                    "active"
                 } else {
-                    theme::BORDER
-                }),
-            ))
-            .insert(ChildOf(page))
-            .id();
-        commands.spawn((
-            Text::new(file_label(&path)),
-            TextFont {
-                font_size: theme::BODY,
-                ..default()
-            },
-            TextColor(if is_active {
-                theme::ACID_GREEN
-            } else {
-                theme::TEXT_PRIMARY
-            }),
-            ChildOf(row),
-        ));
-        commands.spawn((
-            Text::new(if is_active {
-                format!("{}  /  {}  /  active", human_size(size), speed_hint(size))
-            } else {
-                format!("{}  /  {}", human_size(size), speed_hint(size))
-            }),
-            TextFont {
-                font_size: theme::CAPTION,
-                ..default()
-            },
-            TextColor(theme::TEXT_DIM),
-            ChildOf(row),
-        ));
-    }
-
-    // ── the catalog: minds not yet aboard ───────────────────────────────
-    let fetchable: Vec<(usize, &FetchEntry)> = CATALOG
-        .iter()
-        .enumerate()
-        .filter(|(_, e)| !installed_labels.contains(&e.label.to_string()))
-        .collect();
-    if !fetchable.is_empty() {
-        commands.spawn((
-            Text::new("available"),
-            TextFont {
-                font_size: theme::CAPTION,
-                ..default()
-            },
-            TextColor(theme::TEXT_DIM),
-            Node {
-                margin: UiRect::top(Val::Px(theme::G * 2.0)),
-                ..default()
-            },
-            ChildOf(page),
-        ));
-        for (i, entry) in fetchable {
-            let busy = fetch.rx.is_some();
-            let row = commands
-                .spawn((
-                    FetchRow(i),
-                    Button,
-                    Node {
-                        width: Val::Percent(100.0),
-                        justify_content: JustifyContent::SpaceBetween,
-                        padding: UiRect::axes(Val::Px(theme::G * 1.5), Val::Px(theme::G)),
-                        border: UiRect::all(Val::Px(1.0)),
-                        ..default()
-                    },
-                    BackgroundColor(theme::DARK_BASE),
-                    BorderColor::all(theme::BORDER),
-                ))
-                .insert(ChildOf(page))
-                .id();
-            let fetching_this = busy && fetch.label == entry.label;
+                    ""
+                };
+                cell::row(&[
+                    &file_label(path),
+                    &human_size(*size),
+                    &speed_hint(*size),
+                    on,
+                    &format!("model:{}", path.display()),
+                ])
+            })
+            .collect(),
+    );
+    let catalog = cell::list(
+        CATALOG
+            .iter()
+            .enumerate()
+            .filter(|(_, e)| !installed_labels.contains(&e.label.to_string()))
+            .map(|(i, entry)| {
+                let fetching = fetch.rx.is_some() && fetch.label == entry.label;
+                let dl = if fetching && !fetch.progress.is_empty() {
+                    fetch.progress.as_str()
+                } else {
+                    entry.download
+                };
+                cell::row(&[entry.label, dl, &format!("fetch:{i}")])
+            })
+            .collect(),
+    );
+    let mut host = ModelsHost { installed, catalog };
+    match cell::load("models").and_then(|src| cell::eval(&src, &mut host)) {
+        Ok(chunks) => cell::dispatch_page(&mut commands, page, &chunks),
+        Err(e) => {
             commands.spawn((
-                Text::new(if fetching_this {
-                    format!("{}  (fetching...)", entry.label)
-                } else {
-                    entry.label.to_string()
-                }),
-                TextFont {
-                    font_size: theme::BODY,
-                    ..default()
-                },
-                TextColor(if fetching_this {
-                    theme::ACID_YELLOW
-                } else {
-                    theme::TEXT_PRIMARY
-                }),
-                ChildOf(row),
-            ));
-            // The right column is the row's state: size when idle, live
-            // progress while the fetch runs.
-            commands.spawn((
-                Text::new(if fetching_this && !fetch.progress.is_empty() {
-                    fetch.progress.clone()
-                } else {
-                    entry.download.to_string()
-                }),
+                Text::new(e),
                 TextFont {
                     font_size: theme::CAPTION,
                     ..default()
                 },
-                TextColor(if fetching_this {
-                    theme::ACID_YELLOW
-                } else {
-                    theme::TEXT_DIM
-                }),
-                ChildOf(row),
+                TextColor(theme::ACID_RED),
+                ChildOf(page),
             ));
         }
     }
@@ -409,6 +349,81 @@ fn rebuild_on_change(
         commands.entity(e).despawn();
     }
     build_page(commands, status.into(), fetch.into());
+}
+
+#[cfg_attr(not(target_os = "macos"), allow(unused_variables, unused_mut))]
+fn handle_table_press(
+    interactions: Query<(&Interaction, &ActionButton), Changed<Interaction>>,
+    mut status: ResMut<MindStatus>,
+    mut fetch: ResMut<FetchState>,
+    mut notice: ResMut<super::Notice>,
+    soma: NonSend<soma_kernel::Soma>,
+) {
+    for (interaction, btn) in &interactions {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        if let Some(path) = btn.target_ref.strip_prefix("model:") {
+            let path = std::path::PathBuf::from(path);
+            if let Some(dir) = soma_kernel::chosen_model_file().parent() {
+                let _ = std::fs::create_dir_all(dir);
+            }
+            let _ = std::fs::write(
+                soma_kernel::chosen_model_file(),
+                path.to_string_lossy().as_bytes(),
+            );
+            soma.use_model(&path);
+            let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
+            notice.show(format!(
+                "mind: {} - wakes on the next question",
+                file_label(&path)
+            ));
+            let _ = size;
+            status.model = Some(path);
+            status.last_tok_per_s = None;
+        }
+        if let Some(idx) = btn.target_ref.strip_prefix("fetch:") {
+            let Ok(i) = idx.parse::<usize>() else {
+                continue;
+            };
+            if i >= CATALOG.len() {
+                continue;
+            }
+            #[cfg(target_os = "macos")]
+            {
+                if fetch.rx.is_some() {
+                    notice.show(format!("already fetching {}", fetch.label));
+                    continue;
+                }
+                let entry = &CATALOG[i];
+                let (tx, rx) = std::sync::mpsc::channel();
+                let (label, hf_id) = (entry.label.to_string(), entry.hf_id.to_string());
+                notice.show(format!("fetching {} ({})...", entry.label, entry.download));
+                fetch.rx = Some(std::sync::Mutex::new(rx));
+                fetch.label = label.clone();
+                let st = std::sync::Arc::new(glia_import::hf::DownloadStatus::default());
+                fetch.status = Some(st.clone());
+                fetch.progress = "connecting...".to_string();
+                std::thread::Builder::new()
+                    .name("model-fetch".into())
+                    .spawn(move || {
+                        let result = glia_import::hf::download_model_observed(&hf_id, Some(st))
+                            .and_then(|dl| {
+                                let dir = dl
+                                    .snapshot_dir()
+                                    .ok_or_else(|| "download produced no directory".to_string())?
+                                    .to_string_lossy()
+                                    .to_string();
+                                glia_import::pipeline::import_snapshot(&dir, &label)
+                            });
+                        let _ = tx.send(result);
+                    })
+                    .expect("spawn fetch thread");
+            }
+            #[cfg(not(target_os = "macos"))]
+            notice.show("this body carries no mind yet");
+        }
+    }
 }
 
 fn handle_model_press(

@@ -1,0 +1,4 @@
+table(
+  row("name", "kind", "value"),
+  query("table-body")
+)

@@ -17,7 +17,10 @@ use bevy::prelude::*;
 use prysm::theme;
 
 use super::WorldState;
+use super::cell;
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
+use rune_ast::Noun;
+use rune_interp::{Host, InterpError};
 
 pub struct BodyWorldPlugin;
 
@@ -57,6 +60,9 @@ struct BodyView {
 #[derive(Component)]
 struct BodyRoot;
 
+#[derive(Component)]
+struct BodyTables;
+
 /// The prove/stop lever on the zheng card.
 #[derive(Component)]
 struct ProveButton;
@@ -94,6 +100,7 @@ impl Plugin for BodyWorldPlugin {
             (
                 tick_view,
                 paint_live,
+                paint_tables,
                 paint_seer,
                 rebuild_on_change,
                 handle_prove_press,
@@ -305,6 +312,7 @@ fn enter_body(
 }
 
 #[derive(Component, Clone, Copy)]
+#[allow(dead_code)]
 enum BodyStat {
     Cpu,
     CpuTop,
@@ -378,6 +386,118 @@ fn net_io_line(view: &BodyView) -> String {
         rate(v.net_rx_bps),
         rate(v.net_tx_bps)
     )
+}
+
+struct BodyHost {
+    resources: Noun,
+    processes: Noun,
+}
+
+impl Host for BodyHost {
+    fn perform(&mut self, act: u64, args: &Noun, _caps: &Noun) -> Result<Noun, InterpError> {
+        if !cell::act_is_query(act) {
+            return Ok(Noun::Atom(0));
+        }
+        match cell::query_name(args).as_str() {
+            "resources" => Ok(self.resources.clone()),
+            "processes" => Ok(self.processes.clone()),
+            other => Err(cell::unknown_query(other)),
+        }
+    }
+}
+
+fn body_host(view: &BodyView) -> BodyHost {
+    let v = &view.vitals;
+    let mut resources = Vec::new();
+    resources.push(cell::row(&[
+        "cpu",
+        &format!("{:.0}%", v.cpu_pct),
+        "100",
+        &if v.cpu_mw > 0 {
+            format!("{:.1} W", v.cpu_mw as f32 / 1000.0)
+        } else {
+            String::new()
+        },
+    ]));
+    if v.gpu_pct >= 0.0 {
+        resources.push(cell::row(&[
+            "gpu",
+            &format!("{:.0}%", v.gpu_pct),
+            "100",
+            &if v.gpu_mw > 0 {
+                format!("{:.1} W", v.gpu_mw as f32 / 1000.0)
+            } else {
+                String::new()
+            },
+        ]));
+    }
+    if v.mem_total > 0 {
+        resources.push(cell::row(&[
+            "memory",
+            &cell::exact(v.mem_used),
+            &cell::exact(v.mem_total),
+            "B",
+        ]));
+    }
+    resources.push(cell::row(&[
+        "network",
+        &format!("{:.0}", v.net_rx_bps),
+        &format!("{:.0}", v.net_tx_bps),
+        "B/s down / up",
+    ]));
+    let processes = v
+        .top
+        .iter()
+        .map(|t| {
+            cell::row(&[
+                &t.name,
+                &format!("{:.0}%", t.cpu_pct),
+                &format!("{:.0} MB", t.rss_mb),
+            ])
+        })
+        .collect();
+    BodyHost {
+        resources: cell::list(resources),
+        processes: cell::list(processes),
+    }
+}
+
+fn fill_body_tables(commands: &mut Commands, slot: Entity, view: &BodyView) {
+    let mut host = body_host(view);
+    match cell::load("body").and_then(|src| cell::eval(&src, &mut host)) {
+        Ok(chunks) => cell::dispatch_page(commands, slot, &chunks),
+        Err(e) => {
+            commands.spawn((
+                Text::new(e),
+                TextFont {
+                    font_size: theme::CAPTION,
+                    ..default()
+                },
+                TextColor(theme::ACID_RED),
+                ChildOf(slot),
+            ));
+        }
+    }
+}
+
+fn paint_tables(
+    mut commands: Commands,
+    view: Res<BodyView>,
+    slot: Query<Entity, With<BodyTables>>,
+    children: Query<&Children>,
+) {
+    if !view.is_changed() {
+        return;
+    }
+    let Ok(slot) = slot.single() else {
+        return;
+    };
+    if let Ok(kids) = children.get(slot) {
+        for c in kids.iter() {
+            commands.entity(c).despawn();
+        }
+    }
+    fill_body_tables(&mut commands, slot, &view);
 }
 
 fn paint_live(view: Res<BodyView>, mut q: Query<(&BodyStat, &mut Text)>) {
@@ -523,8 +643,10 @@ fn build_page(mut commands: Commands, view: Res<BodyView>, _link: Res<BodyLink>)
                 flex_direction: FlexDirection::Column,
                 padding: UiRect::all(Val::Px(theme::G * 3.0)),
                 row_gap: Val::Px(theme::G),
+                overflow: Overflow::scroll_y(),
                 ..default()
             },
+            ScrollPosition::default(),
             ChildOf(root),
         ))
         .id();
@@ -549,83 +671,19 @@ fn build_page(mut commands: Commands, view: Res<BodyView>, _link: Res<BodyLink>)
         theme::TEXT_PRIMARY,
     );
 
-    // ── resources ───────────────────────────────────────────────────────
-    text(
-        &mut commands,
-        page,
-        "resources".into(),
-        theme::CAPTION,
-        theme::TEXT_DIM,
-    );
-
-    let v = &view.vitals;
-    let stat = |commands: &mut Commands,
-                parent: Entity,
-                kind: BodyStat,
-                s: String,
-                size: f32,
-                color: Color| {
-        commands.spawn((
-            kind,
-            Text::new(s),
-            TextFont {
-                font_size: size,
+    let tables = commands
+        .spawn((
+            BodyTables,
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(theme::G),
                 ..default()
             },
-            TextColor(color),
-            ChildOf(parent),
-        ));
-    };
-
-    stat(
-        &mut commands,
-        page,
-        BodyStat::Cpu,
-        cpu_line(&view),
-        theme::BODY,
-        theme::TEXT_PRIMARY,
-    );
-    if !v.top.is_empty() {
-        stat(
-            &mut commands,
-            page,
-            BodyStat::CpuTop,
-            cpu_top_line(&view),
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
-    }
-
-    if v.gpu_pct >= 0.0 {
-        stat(
-            &mut commands,
-            page,
-            BodyStat::Gpu,
-            gpu_line(&view),
-            theme::BODY,
-            theme::TEXT_PRIMARY,
-        );
-    }
-
-    if v.mem_total > 0 {
-        stat(
-            &mut commands,
-            page,
-            BodyStat::Mem,
-            mem_line(&view),
-            theme::BODY,
-            theme::TEXT_PRIMARY,
-        );
-    }
-
-    stat(
-        &mut commands,
-        page,
-        BodyStat::NetIo,
-        net_io_line(&view),
-        theme::BODY,
-        theme::TEXT_PRIMARY,
-    );
+            ChildOf(page),
+        ))
+        .id();
+    fill_body_tables(&mut commands, tables, &view);
 
     // ── networks: the chains this body follows ──────────────────────────
     if !view.nets.is_empty() {

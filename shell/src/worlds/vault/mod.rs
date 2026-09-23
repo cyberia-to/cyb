@@ -19,7 +19,11 @@ use bevy::prelude::*;
 use prysm::theme;
 
 use super::WorldState;
+use super::cell;
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
+use prysm::molecules::action::ActionButton;
+use rune_ast::Noun;
+use rune_interp::{Host, InterpError};
 
 pub struct VaultWorldPlugin;
 
@@ -46,6 +50,19 @@ struct CopyRow(usize);
 #[derive(Component)]
 struct RevealChip(usize);
 
+struct VaultHost {
+    rows: Noun,
+}
+
+impl Host for VaultHost {
+    fn perform(&mut self, act: u64, args: &Noun, _caps: &Noun) -> Result<Noun, InterpError> {
+        if cell::act_is_query(act) && cell::query_name(args) == "table-body" {
+            return Ok(self.rows.clone());
+        }
+        Ok(Noun::Atom(0))
+    }
+}
+
 impl Plugin for VaultWorldPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<VaultView>()
@@ -54,7 +71,8 @@ impl Plugin for VaultWorldPlugin {
             .add_systems(Update, forget_clipboard)
             .add_systems(
                 Update,
-                (tick_page, handle_copy, handle_reveal).run_if(in_state(WorldState::Vault)),
+                (tick_page, handle_copy, handle_reveal, handle_table_copy)
+                    .run_if(in_state(WorldState::Vault)),
             );
     }
 }
@@ -175,6 +193,7 @@ fn build_page(commands: &mut Commands, view: &VaultView) {
     let root = commands
         .spawn((
             VaultRoot,
+            crate::worlds::WorldUi(WorldState::Vault),
             ContentRoot,
             Node {
                 position_type: PositionType::Absolute,
@@ -199,8 +218,10 @@ fn build_page(commands: &mut Commands, view: &VaultView) {
                 flex_direction: FlexDirection::Column,
                 padding: UiRect::all(Val::Px(theme::G * 3.0)),
                 row_gap: Val::Px(theme::G),
+                overflow: Overflow::scroll_y(),
                 ..default()
             },
+            ScrollPosition::default(),
             ChildOf(root),
         ))
         .id();
@@ -252,133 +273,29 @@ fn build_page(commands: &mut Commands, view: &VaultView) {
     }
 
     let unix = store::now();
-    for (i, entry) in view.entries.iter().enumerate() {
-        let row = commands
-            .spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    justify_content: JustifyContent::SpaceBetween,
-                    align_items: AlignItems::Center,
-                    padding: UiRect::axes(Val::Px(theme::G * 1.5), Val::Px(theme::G)),
-                    border: UiRect::all(Val::Px(1.0)),
-                    column_gap: Val::Px(theme::G),
-                    ..default()
-                },
-                BackgroundColor(theme::DARK_BASE),
-                BorderColor::all(theme::BORDER),
-                ChildOf(page),
-            ))
-            .id();
-
-        let left = commands
-            .spawn((
-                CopyRow(i),
-                Button,
-                Node {
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(theme::G * 1.5),
-                    flex_grow: 1.0,
-                    ..default()
-                },
-                ChildOf(row),
-            ))
-            .id();
-        let is_identity = i == 0 && entry.name == "identity" && entry.created == 0;
-        text(
-            commands,
-            left,
-            entry.name.clone(),
-            theme::BODY,
-            if is_identity {
-                theme::ACID_GREEN
-            } else {
-                theme::TEXT_PRIMARY
-            },
-        );
-        text(
-            commands,
-            left,
-            if is_identity {
-                "spell - the key behind your address and every PUSSY it earned".into()
-            } else {
-                entry.kind.clone()
-            },
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
-
-        let right = commands
-            .spawn((
-                Node {
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(theme::G * 1.5),
-                    ..default()
-                },
-                ChildOf(row),
-            ))
-            .id();
-
-        if entry.kind == "otp" {
-            match store::totp(&entry.value, unix) {
-                Some((code, left_s)) => {
-                    text(commands, right, code, theme::H3, theme::ACID_GREEN);
-                    text(
-                        commands,
-                        right,
-                        format!("{left_s}s"),
-                        theme::CAPTION,
-                        theme::TEXT_DIM,
-                    );
-                }
-                None => text(
-                    commands,
-                    right,
-                    "bad otp secret".into(),
-                    theme::CAPTION,
-                    theme::ACID_RED,
-                ),
-            }
-        } else if view.revealed == Some(i) {
-            text(
-                commands,
-                right,
-                entry.value.clone(),
-                theme::BODY,
-                theme::ACID_YELLOW,
-            );
-        } else {
-            text(
-                commands,
-                right,
-                mask(&entry.value),
-                theme::BODY,
-                theme::TEXT_DIM,
-            );
-        }
-
-        let chip = commands
-            .spawn((
-                RevealChip(i),
-                Button,
-                Node {
-                    padding: UiRect::axes(Val::Px(theme::G), Val::Px(theme::G * 0.5)),
-                    border: UiRect::all(Val::Px(1.0)),
-                    ..default()
-                },
-                BackgroundColor(theme::DARK_BASE),
-                BorderColor::all(theme::BORDER),
-                ChildOf(right),
-            ))
-            .id();
-        text(
-            commands,
-            chip,
-            "show".into(),
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
+    let rows = cell::list(
+        view.entries
+            .iter()
+            .enumerate()
+            .map(|(i, entry)| {
+                let value = if entry.kind == "otp" {
+                    match store::totp(&entry.value, unix) {
+                        Some((code, left_s)) => format!("{code}  {left_s}s"),
+                        None => "bad otp".into(),
+                    }
+                } else if view.revealed == Some(i) {
+                    entry.value.clone()
+                } else {
+                    mask(&entry.value)
+                };
+                cell::row(&[&entry.name, &entry.kind, &value, &format!("vault:{i}")])
+            })
+            .collect(),
+    );
+    let mut host = VaultHost { rows };
+    match cell::load("vault").and_then(|src| cell::eval(&src, &mut host)) {
+        Ok(chunks) => cell::dispatch_page(commands, page, &chunks),
+        Err(e) => text(commands, page, e, theme::CAPTION, theme::ACID_RED),
     }
 }
 
@@ -388,6 +305,47 @@ fn mask(value: &str) -> String {
 
 /// Tap a row: its secret (or the code of the moment) goes to the clipboard
 /// with a 30-second fuse.
+fn handle_table_copy(
+    interactions: Query<(&Interaction, &ActionButton), Changed<Interaction>>,
+    mut view: ResMut<VaultView>,
+    mut notice: ResMut<super::Notice>,
+) {
+    for (i, btn) in &interactions {
+        if *i != Interaction::Pressed {
+            continue;
+        }
+        let Some(idx) = btn.target_ref.strip_prefix("vault:") else {
+            continue;
+        };
+        let Ok(n) = idx.parse::<usize>() else {
+            continue;
+        };
+        let Some(entry) = view.entries.get(n) else {
+            continue;
+        };
+        let payload = if entry.kind == "otp" {
+            match store::totp(&entry.value, store::now()) {
+                Some((code, _)) => code,
+                None => continue,
+            }
+        } else {
+            entry.value.clone()
+        };
+        match crate::shell::clipboard::write_clipboard(&payload) {
+            Ok(()) => {
+                notice.show(format!("{} copied - clears in 30s", entry.name));
+                view.copied = Some((payload, Instant::now()));
+                view.revealed = if view.revealed == Some(n) {
+                    None
+                } else {
+                    Some(n)
+                };
+            }
+            Err(e) => notice.show(format!("clipboard: {e}")),
+        }
+    }
+}
+
 fn handle_copy(
     interactions: Query<(&Interaction, &CopyRow), Changed<Interaction>>,
     mut view: ResMut<VaultView>,
@@ -462,14 +420,14 @@ pub fn handle_command(rest: &str) -> String {
     if let Some(spec) = rest.strip_prefix("add ") {
         let mut it = spec.splitn(3, char::is_whitespace);
         let (Some(name), Some(kind), Some(value)) = (it.next(), it.next(), it.next()) else {
-            return "vault add <name> <kind> <secret>   kinds: password key spell otp custom".into();
+            return "vault add <name> <kind> <secret>   kinds: password key spell otp custom"
+                .into();
         };
         if !store::KINDS.contains(&kind) {
             return format!("vault: unknown kind {kind} - use password key spell otp custom");
         }
         if name == "identity" {
-            return "vault: identity is the built-in root entry - it lives in ~/cyb/spell"
-                .into();
+            return "vault: identity is the built-in root entry - it lives in ~/cyb/spell".into();
         }
         let Some(key) = store::key() else {
             return "vault: no identity aboard (~/cyb/spell missing)".into();
