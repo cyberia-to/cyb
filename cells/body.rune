@@ -1,5 +1,15 @@
-table(
-  row("name", "used", "of", "note"),
-  query("rows")
+col(
+  table(
+    row("resource", "used", "of", "note"),
+    query("resources")
+  ),
+  table(
+    row("process", "cpu", "rss", "note"),
+    query("processes")
+  ),
+  table(
+    row("network", "height", "ago", "note"),
+    query("networks")
+  )
 )
 

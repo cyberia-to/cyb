@@ -92,6 +92,9 @@ struct CommanderText;
 #[derive(Component)]
 struct CommanderSubmit;
 
+#[derive(Component)]
+struct BackButton;
+
 /// The second field of the pay form (amount), hidden in normal mode.
 #[derive(Component)]
 struct PayAmountBox;
@@ -116,6 +119,7 @@ impl Plugin for ChromePlugin {
                     clear_chrome_submitted, // must be first
                     handle_commander_click,
                     handle_commander_submit,
+                    handle_back_button,
                     handle_world_buttons,
                     handle_chrome_input,
                     update_address_bar,
@@ -308,6 +312,31 @@ fn spawn_chrome(mut commands: Commands) {
                     })
                     .with_children(|row| {
                         row.spawn((
+                            BackButton,
+                            Button,
+                            Node {
+                                height: Val::Px(COMMANDER_H),
+                                padding: UiRect::axes(Val::Px(16.0), Val::Px(0.0)),
+                                border: UiRect::all(Val::Px(1.0)),
+                                border_radius: BorderRadius::all(Val::Px(COMMANDER_H / 2.0)),
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                ..default()
+                            },
+                            BackgroundColor(theme::DARK_BASE),
+                            BorderColor::all(theme::BORDER),
+                        ))
+                        .with_children(|b| {
+                            b.spawn((
+                                Text::new("back"),
+                                TextFont {
+                                    font_size: 14.0,
+                                    ..default()
+                                },
+                                TextColor(theme::ACID_GREEN),
+                            ));
+                        });
+                        row.spawn((
                             CommanderContainer,
                             Node {
                                 flex_grow: 1.0,
@@ -484,14 +513,27 @@ fn handle_commander_submit(
     }
 }
 
+fn handle_back_button(
+    q: Query<&Interaction, (Changed<Interaction>, With<BackButton>)>,
+    mut now: ResMut<crate::now::Now>,
+) {
+    for i in &q {
+        if *i == Interaction::Pressed {
+            now.back();
+        }
+    }
+}
+
 fn handle_world_buttons(
     mut q: Query<(&Interaction, &WorldNavButton, &mut BackgroundColor), Changed<Interaction>>,
     current: Res<State<WorldState>>,
     mut next: ResMut<NextState<WorldState>>,
+    mut now: ResMut<crate::now::Now>,
 ) {
     for (interaction, button, mut bg) in &mut q {
         match interaction {
             Interaction::Pressed => {
+                now.dismiss();
                 if *current.get() != button.0 {
                     next.set(button.0);
                 }

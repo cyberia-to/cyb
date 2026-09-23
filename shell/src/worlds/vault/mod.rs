@@ -313,6 +313,7 @@ fn build_page(commands: &mut Commands, view: &VaultView) {
 }
 
 fn spawn_spell_page(commands: &mut Commands, spell: String) {
+    let words: Vec<&str> = spell.split_whitespace().collect();
     let root = commands
         .spawn((
             SpellPage,
@@ -327,40 +328,59 @@ fn spawn_spell_page(commands: &mut Commands, spell: String) {
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
                 padding: UiRect::all(Val::Px(theme::G * 4.0)),
-                row_gap: Val::Px(theme::G * 2.0),
+                row_gap: Val::Px(theme::G * 2.5),
                 ..default()
             },
             BackgroundColor(theme::DARK_BASE),
             GlobalZIndex(12),
         ))
         .id();
-    commands.spawn((
-        Text::new("spell"),
-        TextFont {
-            font_size: theme::CAPTION,
-            ..default()
-        },
-        TextColor(theme::TEXT_DIM),
-        ChildOf(root),
-    ));
-    commands.spawn((
-        Text::new(spell),
-        TextFont {
-            font_size: theme::H2,
-            ..default()
-        },
-        TextColor(theme::ACID_GREEN),
-        ChildOf(root),
-    ));
-    commands.spawn((
-        Text::new("the twelve words behind this body. tap a world tab to leave."),
-        TextFont {
-            font_size: theme::CAPTION,
-            ..default()
-        },
-        TextColor(theme::TEXT_DIM),
-        ChildOf(root),
-    ));
+    for (row_i, chunk) in words.chunks(4).enumerate() {
+        let row = commands
+            .spawn((
+                Node {
+                    flex_direction: FlexDirection::Row,
+                    column_gap: Val::Px(theme::G * 3.0),
+                    width: Val::Px(520.0),
+                    justify_content: JustifyContent::SpaceBetween,
+                    ..default()
+                },
+                ChildOf(root),
+            ))
+            .id();
+        for (col, w) in chunk.iter().enumerate() {
+            let idx = row_i * 4 + col + 1;
+            let cell = commands
+                .spawn((
+                    Node {
+                        flex_direction: FlexDirection::Column,
+                        row_gap: Val::Px(4.0),
+                        flex_grow: 1.0,
+                        ..default()
+                    },
+                    ChildOf(row),
+                ))
+                .id();
+            commands.spawn((
+                Text::new(format!("{idx}")),
+                TextFont {
+                    font_size: theme::CAPTION,
+                    ..default()
+                },
+                TextColor(theme::TEXT_DIM),
+                ChildOf(cell),
+            ));
+            commands.spawn((
+                Text::new(*w),
+                TextFont {
+                    font_size: theme::H2,
+                    ..default()
+                },
+                TextColor(theme::ACID_GREEN),
+                ChildOf(cell),
+            ));
+        }
+    }
 }
 
 fn mask(value: &str) -> String {
@@ -388,6 +408,8 @@ fn handle_table_copy(
                 for e in &pages {
                     commands.entity(e).despawn();
                 }
+                let _ = crate::shell::clipboard::write_clipboard(&spell);
+                view.copied = Some((spell.clone(), Instant::now()));
                 spawn_spell_page(&mut commands, spell);
             }
             continue;

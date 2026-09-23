@@ -423,10 +423,10 @@ fn spawn_memory_table(commands: &mut Commands, page: Entity, rows: &[Row], start
 /// the list never moved.
 const TAP_SLOP_PX: f32 = 12.0;
 /// Finger delta multiplier — the list should outrun the thumb a little.
-const DRAG_GAIN: f32 = 2.45;
-const FRICTION: f32 = 2.05;
-const FLING_MIN: f32 = 40.0;
-const V_MAX: f32 = 24_000.0;
+const DRAG_GAIN: f32 = 0.95;
+const FRICTION: f32 = 3.4;
+const FLING_MIN: f32 = 28.0;
+const V_MAX: f32 = 5_500.0;
 
 struct Gesture {
     start: Vec2,

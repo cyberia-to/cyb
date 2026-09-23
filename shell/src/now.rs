@@ -15,6 +15,9 @@ pub struct Now {
     pub hash: Option<Particle>,
     pub idx: Option<usize>,
     pub kind: NowKind,
+    /// Previous stands. Back walks this; it never dumps you into brain
+    /// just because you tapped another particle.
+    stack: Vec<(Particle, Option<usize>, NowKind)>,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
@@ -30,15 +33,39 @@ impl Now {
     /// UI thread — a text spark of a lived-in particle is megabytes of
     /// Bevy `Text` and hangs the process. The file page is a later door.
     pub fn stand(&mut self, hash: [u8; 32], idx: Option<usize>) {
-        self.hash = Some(Particle::from_bytes(hash));
+        let p = Particle::from_bytes(hash);
+        if self.kind != NowKind::World {
+            if let Some(cur) = self.hash {
+                if cur != p {
+                    self.stack.push((cur, self.idx, self.kind));
+                }
+            }
+        }
+        self.hash = Some(p);
         self.idx = idx;
         self.kind = NowKind::Meta;
+    }
+
+    pub fn can_back(&self) -> bool {
+        self.kind != NowKind::World || !self.stack.is_empty()
+    }
+
+    /// Pop the last stand, or sit down if the stack is empty.
+    pub fn back(&mut self) {
+        if let Some((h, i, k)) = self.stack.pop() {
+            self.hash = Some(h);
+            self.idx = i;
+            self.kind = k;
+        } else {
+            self.dismiss();
+        }
     }
 
     pub fn dismiss(&mut self) {
         self.kind = NowKind::World;
         self.hash = None;
         self.idx = None;
+        self.stack.clear();
     }
 }
 
@@ -53,47 +80,6 @@ impl Plugin for NowPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Now>()
             .add_plugins(crate::worlds::particle_page::ParticlePagePlugin)
-            .add_plugins(crate::worlds::file::FilePagePlugin)
-            .add_systems(Update, dismiss_overlay);
+            .add_plugins(crate::worlds::file::FilePagePlugin);
     }
-}
-
-/// A tap that did not hit a button, while standing on a particle, sits down.
-fn dismiss_overlay(
-    mut now: ResMut<Now>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    touches: Res<Touches>,
-    windows: Query<&Window>,
-    buttons: Query<&Interaction, With<Button>>,
-    mut press: Local<Option<Vec2>>,
-) {
-    if now.kind == NowKind::World {
-        *press = None;
-        return;
-    }
-    let pos = windows.single().ok().and_then(|w| w.cursor_position());
-    if mouse.just_pressed(MouseButton::Left) {
-        *press = pos;
-    }
-    for t in touches.iter_just_pressed() {
-        *press = Some(t.position());
-    }
-    let released =
-        mouse.just_released(MouseButton::Left) || touches.iter_just_released().next().is_some();
-    if !released {
-        return;
-    }
-    let Some(start) = press.take() else {
-        return;
-    };
-    let end = pos
-        .or_else(|| touches.iter_just_released().next().map(|t| t.position()))
-        .unwrap_or(start);
-    if (end - start).length() > 22.0 {
-        return;
-    }
-    if buttons.iter().any(|i| *i == Interaction::Pressed) {
-        return;
-    }
-    now.dismiss();
 }

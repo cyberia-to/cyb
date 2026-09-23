@@ -391,7 +391,9 @@ fn net_io_line(view: &BodyView) -> String {
 }
 
 struct BodyHost {
-    rows: Noun,
+    resources: Noun,
+    processes: Noun,
+    networks: Noun,
 }
 
 impl Host for BodyHost {
@@ -400,7 +402,9 @@ impl Host for BodyHost {
             return Ok(Noun::Atom(0));
         }
         match cell::query_name(args).as_str() {
-            "rows" => Ok(self.rows.clone()),
+            "resources" => Ok(self.resources.clone()),
+            "processes" => Ok(self.processes.clone()),
+            "networks" => Ok(self.networks.clone()),
             other => Err(cell::unknown_query(other)),
         }
     }
@@ -408,8 +412,8 @@ impl Host for BodyHost {
 
 fn body_host(view: &BodyView) -> BodyHost {
     let v = &view.vitals;
-    let mut rows = Vec::new();
-    rows.push(cell::row(&[
+    let mut resources = Vec::new();
+    resources.push(cell::row(&[
         "cpu",
         &format!("{:.0}%", v.cpu_pct),
         "100",
@@ -420,7 +424,7 @@ fn body_host(view: &BodyView) -> BodyHost {
         },
     ]));
     if v.gpu_pct >= 0.0 {
-        rows.push(cell::row(&[
+        resources.push(cell::row(&[
             "gpu",
             &format!("{:.0}%", v.gpu_pct),
             "100",
@@ -432,49 +436,41 @@ fn body_host(view: &BodyView) -> BodyHost {
         ]));
     }
     if v.mem_total > 0 {
-        rows.push(cell::row(&[
+        resources.push(cell::row(&[
             "memory",
             &cell::exact(v.mem_used),
             &cell::exact(v.mem_total),
             "B",
         ]));
     }
-    rows.push(cell::row(&[
-        "network",
+    resources.push(cell::row(&[
+        "net io",
         &format!("{:.0}", v.net_rx_bps),
         &format!("{:.0}", v.net_tx_bps),
         "B/s ↓ / ↑",
     ]));
-    for t in &v.top {
-        rows.push(cell::row(&[
-            &t.name,
-            &format!("{:.0}%", t.cpu_pct),
-            &format!("{:.0} MB", t.rss_mb),
-            "os",
-        ]));
-    }
+
+    let mut processes = Vec::new();
     let p = &view.prover;
-    let zheng_used = if p.running {
-        format!("{:.0}/min", p.tickets_per_min())
-    } else {
-        "off".into()
-    };
-    rows.push(cell::row(&[
+    processes.push(cell::row(&[
         "zheng",
-        &zheng_used,
+        &if p.running {
+            format!("{:.0}/min", p.tickets_per_min())
+        } else {
+            "off".into()
+        },
         &view.prover_intensity,
         if p.running { "proving" } else { "idle" },
         "work:zheng",
     ]));
     let s = &view.seer;
-    let seer_used = if s.running {
-        format!("{:.0}/min", s.casts_per_min())
-    } else {
-        "off".into()
-    };
-    rows.push(cell::row(&[
+    processes.push(cell::row(&[
         "seer",
-        &seer_used,
+        &if s.running {
+            format!("{:.0}/min", s.casts_per_min())
+        } else {
+            "off".into()
+        },
         &view.seer_intensity,
         if s.running {
             if s.idle { "watching" } else { "linking" }
@@ -483,20 +479,36 @@ fn body_host(view: &BodyView) -> BodyHost {
         },
         "work:seer",
     ]));
-    for n in &view.nets {
-        let used = if n.height > 0 {
-            format!("h={}", n.height)
-        } else {
-            "—".into()
-        };
-        let of = n
-            .last_sync
-            .map(|t| format!("{}s", t.elapsed().as_secs()))
-            .unwrap_or_else(|| "—".into());
-        rows.push(cell::row(&[&n.name, &used, &of, "net"]));
+    for t in &v.top {
+        processes.push(cell::row(&[
+            &t.name,
+            &format!("{:.0}%", t.cpu_pct),
+            &format!("{:.0} MB", t.rss_mb),
+            "os",
+        ]));
     }
+
+    let networks = view
+        .nets
+        .iter()
+        .map(|n| {
+            let height = if n.height > 0 {
+                format!("{}", n.height)
+            } else {
+                "—".into()
+            };
+            let ago = n
+                .last_sync
+                .map(|t| format!("{}s", t.elapsed().as_secs()))
+                .unwrap_or_else(|| "—".into());
+            cell::row(&[&n.name, &height, &ago, if n.ok { "ok" } else { "down" }])
+        })
+        .collect();
+
     BodyHost {
-        rows: cell::list(rows),
+        resources: cell::list(resources),
+        processes: cell::list(processes),
+        networks: cell::list(networks),
     }
 }
 

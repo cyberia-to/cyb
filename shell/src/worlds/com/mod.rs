@@ -803,65 +803,28 @@ fn drain_com_inbox(world: &mut World) {
 
     // com may not have been opened yet, in which case there is nowhere to put
     // these. Hold them rather than drop them.
-    let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() else {
+    if world
+        .get_non_send_resource::<TerminalNonSendState>()
+        .is_none()
+    {
         world.resource_mut::<ComInbox>().0 = lines;
         return;
-    };
-    let scrollback = state.scrollback_entity;
+    }
 
     for say in lines {
         match say {
-            ComSay::Line(who, text) => {
+            // The table is the log. Session rows beside it were the
+            // "fresh events render outside the table" bug.
+            ComSay::Line(_, text) | ComSay::Note(text) | ComSay::StreamEnd(text) => {
                 persist_log_line(world, &text);
-                spawn_said_row(world, scrollback, who, text);
             }
-            ComSay::Note(text) => {
-                persist_log_line(world, &text);
-                spawn_note_row(world, scrollback, text);
-            }
-            // A streamed reply is one system row whose text grows as the
-            // model writes. The row exists from the first instant, so the
-            // reply visibly *starts* — the difference between a mind at work
-            // and a frozen app.
-            ComSay::StreamStart => {
-                let entity = spawn_said_row(world, scrollback, Speaker::System, String::new());
-                let state = world
-                    .get_non_send_resource_mut::<TerminalNonSendState>()
-                    .unwrap()
-                    .into_inner();
-                state.stream_row = entity.into();
-            }
-            ComSay::StreamDelta(delta) => {
-                let row = world
-                    .get_non_send_resource::<TerminalNonSendState>()
-                    .and_then(|s| s.stream_row);
-                match row.and_then(|e| world.get_mut::<Text>(e)) {
-                    Some(mut text) => text.0.push_str(&delta),
-                    // A delta with no open row (com opened mid-answer):
-                    // better a plain line than a lost piece.
-                    None => {
-                        spawn_said_row(world, scrollback, Speaker::System, delta);
-                    }
-                }
-            }
-            ComSay::StreamEnd(fin) => {
-                persist_log_line(world, &fin);
-                let row = world
-                    .get_non_send_resource_mut::<TerminalNonSendState>()
-                    .unwrap()
-                    .into_inner()
-                    .stream_row
-                    .take();
-                if let Some(mut text) = row.and_then(|e| world.get_mut::<Text>(e)) {
-                    text.0 = fin;
-                }
-            }
+            ComSay::StreamStart | ComSay::StreamDelta(_) => {}
         }
     }
 
-    // A line arriving is news; follow it.
+    // Newest rows sit at the top of the table, not the session tail.
     if let Some(state) = world.get_non_send_resource_mut::<TerminalNonSendState>() {
-        state.into_inner().stick_to_bottom = true;
+        state.into_inner().stick_to_bottom = false;
     }
 }
 
@@ -1149,7 +1112,7 @@ fn process_scroll(world: &mut World) {
             .unwrap()
             .into_inner();
         state.wheel_cursor = cursor;
-        dy * 40.0
+        dy * 18.0
     };
 
     // A single finger dragging up sends the text up: content follows the
@@ -1158,7 +1121,7 @@ fn process_scroll(world: &mut World) {
         let touches = world.resource::<bevy::input::touch::Touches>();
         let live: Vec<&bevy::input::touch::Touch> = touches.iter().collect();
         if live.len() == 1 {
-            -live[0].delta().y
+            -live[0].delta().y * 0.55
         } else {
             0.0
         }

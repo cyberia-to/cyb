@@ -118,12 +118,13 @@ pub fn refresh(
     mut commands: Commands,
     shared: Res<SharedCell>,
     who: Res<Identity>,
-    slot: Query<Entity, With<LogSlot>>,
+    slot: Query<(Entity, &ChildOf), With<LogSlot>>,
     children: Query<&Children>,
     mut chronicle: ResMut<Chronicle>,
+    mut scroll: Query<&mut ScrollPosition>,
     mut last: Local<Option<u64>>,
 ) {
-    let Ok(slot) = slot.single() else {
+    let Ok((slot, parent)) = slot.single() else {
         return;
     };
     let v = shared.version();
@@ -131,6 +132,9 @@ pub fn refresh(
         return;
     }
     *last = Some(v);
+    if let Ok(mut pos) = scroll.get_mut(parent.parent()) {
+        pos.y = 0.0;
+    }
     if let Ok(kids) = children.get(slot) {
         for c in kids.iter() {
             commands.entity(c).despawn();
@@ -243,8 +247,12 @@ pub fn slide_window(
         return;
     }
     let y = scroll.get(parent.parent()).map(|p| p.y).unwrap_or(0.0);
-    let start = ((y - HEAD_H).max(0.0) / ROW_H).floor() as usize;
-    let start = start.min(n.saturating_sub(1));
+    let start = if chronicle.is_changed() {
+        0
+    } else {
+        let s = ((y - HEAD_H).max(0.0) / ROW_H).floor() as usize;
+        s.min(n.saturating_sub(1))
+    };
     if Some(start) == *last && !chronicle.is_changed() {
         return;
     }
