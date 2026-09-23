@@ -427,10 +427,11 @@ fn apply(nets: &[(String, String)], hub: &NetHub, ok: String) -> String {
 }
 
 pub fn short_root(root: &str) -> String {
-    if root.len() <= 8 {
+    if root.chars().count() <= 8 {
         root.to_string()
     } else {
-        format!("{}..", &root[..8])
+        let head: String = root.chars().take(8).collect();
+        format!("{head}..")
     }
 }
 
@@ -501,5 +502,36 @@ mod tests {
         eprintln!("pussy: h={h} root={root} ({bytes} bytes)");
         assert!(h >= 1);
         assert!(!root.is_empty());
+    }
+
+    #[test]
+    fn short_root_passes_through_at_or_under_eight() {
+        assert_eq!(short_root("abcd1234"), "abcd1234");
+        assert_eq!(short_root("abcd"), "abcd");
+    }
+
+    #[test]
+    fn short_root_truncates_ascii() {
+        assert_eq!(short_root("abcd1234ef567890"), "abcd1234..");
+    }
+
+    #[test]
+    fn short_root_does_not_panic_on_multibyte_head() {
+        // A char straddling byte offset 8: byte-index slicing at
+        // `root[..8]` would land mid-character and panic before this fix
+        // ("123456" is 6 ASCII bytes, then a 3-byte char occupies bytes
+        // 6..9, so byte offset 8 falls inside it). `root` is parsed
+        // straight out of an untrusted peer's plaintext status response
+        // (`field("bbg-root")` above), so a relay can pick this input.
+        let root = "123456中789";
+        let _ = short_root(root);
+    }
+
+    #[test]
+    fn short_root_does_not_panic_on_short_multibyte() {
+        // Fewer than 8 chars but more than 8 bytes: the old `root.len() <= 8`
+        // byte-length check would miss this and fall into the slicing branch.
+        let root = "中中中";
+        assert_eq!(short_root(root), root);
     }
 }
