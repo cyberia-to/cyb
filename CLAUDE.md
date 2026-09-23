@@ -68,10 +68,22 @@ make dev                           # cargo run -p cyb
 
 ## Релизы
 
-- **`make ship`** — каждая версия уходит релизом на GitHub (как erga):
-  бамп версии, коммит через fleet-ворота, тег, dmg чистого дерева
-  (без `*` в маркере версии), notes из git log, установка локально.
-  `V=0.3.0 T="headline"` для явных значений. ship сам пушит master+tags.
+Релизный поезд (правила: `~/cyber/cyberia/dev.md` § release train):
+
+- кандидат режется каждую пятницу 12:00 UTC агентом только из
+  `origin/master`; рабочее дерево никогда не вход. `candidate-YYYYMMDD.N`,
+  черновой pre-release: dmg (arm64, x64), apk, `SHA256SUMS`,
+  `sources.json`, `candidate.json`, `release-validation.json`.
+- гейты кандидата: `cargo check --tests --locked`, `cargo test`,
+  `make fleet` GREEN, `make dmg`, `make android-apk`. Красный гейт
+  публикуется красным с уликами, руками артефакт не чинится.
+- бамп версии — один PR `chore: cyb <version>` (Cargo.toml, CHANGELOG,
+  пины сиблингов в cyber и soft3), ничего больше.
+- **`make ship`** — рука владельца: бамп, коммит через fleet-ворота, тег,
+  dmg чистого дерева, notes из git log, push master+tags. Агент `ship`
+  не запускает, тег не пушит, кандидат в релиз не продвигает.
+- квитанции в `audit/release-<date>/`; одна строка в work log
+  `cyber/launch.md` на кандидат.
 
 ## Git
 
