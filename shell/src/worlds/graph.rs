@@ -1,5 +1,6 @@
 use bevy::prelude::*;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use mir::bevy::resources::{GpuBuffers, GraphCamera, GraphWorldConfig};
 use mir::bevy::world::GraphWorldState;
@@ -36,12 +37,23 @@ fn insert_graph_config(
     mut index: ResMut<BrainIndex>,
     mut stats: ResMut<BrainStats>,
     mut seen: Local<Option<u64>>,
+    mut last: Local<Option<Instant>>,
 ) {
     let ver = shared.version.load(std::sync::atomic::Ordering::Relaxed);
     if Some(ver) == *seen {
         return;
     }
+    // Seer (and anything else that casts) bumps the cell every few hundred
+    // ms. Re-running tru + rebuilding the CSR at that rate is what made
+    // brain crawl. Coalesce: first build is immediate, then at most ~1.2 Hz.
+    let due = last
+        .map(|t| t.elapsed() >= Duration::from_millis(800))
+        .unwrap_or(true);
+    if !due && seen.is_some() {
+        return;
+    }
     *seen = Some(ver);
+    *last = Some(Instant::now());
     let axons = shared.cell.lock().expect("shared cell poisoned").axons();
     let mut values: Option<std::sync::Arc<mir::epoch::GraphValues>> = None;
     *stats = BrainStats::default();
@@ -235,6 +247,9 @@ pub(crate) struct BrainIndex {
     /// The particles themselves, CSR row order — the viewer's way from a
     /// node index back to the thing the node stands for.
     pub(crate) hashes: Vec<[u8; 32]>,
+    /// The LABEL_BUDGET particles that actually wear names, pre-ranked.
+    /// `place_labels` walks only this, not the whole graph.
+    pub(crate) named: Vec<usize>,
 }
 
 /// Longest label drawn in the graph. Enough to recognise the sentence you
@@ -256,28 +271,21 @@ impl BrainIndex {
             });
             focus.push(focus_by_hash.get(hash).copied().unwrap_or(0.0));
         }
+        let mut ranked: Vec<(usize, f32)> = labels
+            .iter()
+            .enumerate()
+            .filter(|(_, l)| l.is_some())
+            .map(|(i, _)| (i, focus.get(i).copied().unwrap_or(0.0)))
+            .collect();
+        ranked.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+        ranked.truncate(LABEL_BUDGET);
+        let named = ranked.into_iter().map(|(i, _)| i).collect();
         Self {
             labels,
             focus,
             hashes: vocab.anchor().to_vec(),
+            named,
         }
-    }
-
-    /// The φ* floor a particle must clear for its label to be drawn: the
-    /// K-th highest focus among particles that have text at all.
-    fn label_floor(&self, k: usize) -> f32 {
-        let mut ranked: Vec<f32> = self
-            .labels
-            .iter()
-            .zip(self.focus.iter())
-            .filter(|(l, _)| l.is_some())
-            .map(|(_, f)| *f)
-            .collect();
-        if ranked.len() <= k {
-            return f32::NEG_INFINITY;
-        }
-        ranked.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
-        ranked[k - 1]
     }
 }
 
@@ -416,6 +424,8 @@ struct ParticleLabel(usize);
 /// pixels because that is what UI nodes are measured in.
 fn place_labels(
     mut commands: Commands,
+    time: Res<Time>,
+    mut acc: Local<f32>,
     index: Res<BrainIndex>,
     gpu: Option<Res<GpuBuffers>>,
     cam: Option<Res<GraphCamera>>,
@@ -444,22 +454,24 @@ fn place_labels(
     let (Some(gpu), Some(cam)) = (gpu, cam) else {
         return;
     };
+    // The layout sim writes GpuBuffers every frame. Reprojecting and
+    // dirtying UI at 60 Hz is the remaining stutter. 12 Hz is enough
+    // for words to follow the spheres.
+    *acc += time.delta_secs();
+    if *acc < 1.0 / 12.0 && !index.is_changed() {
+        return;
+    }
+    *acc = 0.0;
     let m = cam.view_proj();
     let [lw, lh] = cam.input_viewport;
 
     // Where each labelled particle lands on screen this frame.
-    let floor = index.label_floor(LABEL_BUDGET);
     let mut spots: std::collections::HashMap<usize, Option<(f32, f32)>> =
         std::collections::HashMap::new();
-    for (i, label) in index.labels.iter().enumerate() {
-        if label.is_none() {
+    for &i in &index.named {
+        let Some(Some(_)) = index.labels.get(i) else {
             continue;
-        }
-        // Focus decides who speaks. tru ranked this graph; the label budget
-        // goes to the particles attention actually flows through.
-        if index.focus.get(i).copied().unwrap_or(0.0) < floor {
-            continue;
-        }
+        };
         let base = i * 3;
         if base + 2 >= gpu.pos_cpu.len() {
             spots.insert(i, None);
