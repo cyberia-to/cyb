@@ -41,11 +41,7 @@ fn sync_page(
     index: Option<Res<BrainIndex>>,
     gpu: Option<Res<GpuBuffers>>,
     pages: Query<Entity, With<ParticlePage>>,
-    mut worlds: Query<&mut Visibility, With<crate::worlds::WorldUi>>,
 ) {
-    for mut v in &mut worlds {
-        *v = Visibility::Hidden;
-    }
     if !now.is_changed() && !pages.is_empty() {
         return;
     }
@@ -61,7 +57,7 @@ fn sync_page(
                 .as_ref()
                 .and_then(|ix| ix.labels.get(i).cloned().flatten())
         })
-        .or_else(|| content::load().get(&hash).cloned())
+        .or_else(|| content::lookup(&hash))
         .unwrap_or_else(|| p.short_hex());
     let focus = idx
         .and_then(|i| index.as_ref().and_then(|ix| ix.focus.get(i).copied()))
@@ -122,7 +118,12 @@ fn sync_page(
     let Some(gpu) = gpu else { return };
     let Some(csr) = gpu.csr.as_ref() else { return };
     let Some(index) = index else { return };
-    for (n_idx, weight) in neighbors(csr, i) {
+    // A hub particle can have thousands of axons. Spawning a button for
+    // each one hangs the UI thread — the click that opened this page.
+    const AXON_CAP: usize = 32;
+    let all: Vec<(usize, f32)> = neighbors(csr, i).collect();
+    let extra = all.len().saturating_sub(AXON_CAP);
+    for (n_idx, weight) in all.into_iter().take(AXON_CAP) {
         let name = index
             .labels
             .get(n_idx)
@@ -168,6 +169,17 @@ fn sync_page(
                     TextColor(theme::TEXT_DIM),
                 ));
             });
+    }
+    if extra > 0 {
+        commands.spawn((
+            Text::new(format!("{extra} more axons")),
+            TextFont {
+                font_size: theme::CAPTION,
+                ..default()
+            },
+            TextColor(theme::TEXT_DIM),
+            ChildOf(page),
+        ));
     }
 }
 

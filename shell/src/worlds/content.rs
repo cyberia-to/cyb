@@ -15,6 +15,7 @@
 use std::collections::HashMap;
 use std::io::Write as _;
 use std::path::PathBuf;
+use std::sync::{Arc, Mutex, OnceLock};
 
 /// A particle is the canonical hash of its content — hemera, like everywhere
 /// else in cyber. The same text is the same particle on every machine.
@@ -71,6 +72,7 @@ fn append(text: &str) {
             f,
             "{{\"particle\":\"{hex}\",\"text\":\"{escaped}\",\"created\":{created}}}"
         );
+        invalidate();
     }
 }
 
@@ -79,15 +81,29 @@ fn append(text: &str) {
 /// `created` is `None` for lines soma-kernel wrote before this field
 /// existed, or ever writes without it — an unknown date stays unknown,
 /// never a fabricated one.
+#[derive(Clone)]
 pub struct FileRecord {
     pub text: String,
     pub created: Option<u64>,
 }
 
-/// Everything the store holds, with its metadata. The store keeps the last
-/// line for a given particle, so a re-remembered particle's `created` is
-/// its most recent remembering, not its first.
-pub fn load_with_meta() -> HashMap<[u8; 32], FileRecord> {
+struct StoreCache {
+    len: u64,
+    meta: Arc<HashMap<[u8; 32], FileRecord>>,
+}
+
+fn cache() -> &'static Mutex<Option<StoreCache>> {
+    static CACHE: OnceLock<Mutex<Option<StoreCache>>> = OnceLock::new();
+    CACHE.get_or_init(|| Mutex::new(None))
+}
+
+fn invalidate() {
+    if let Ok(mut g) = cache().lock() {
+        *g = None;
+    }
+}
+
+fn read_store() -> HashMap<[u8; 32], FileRecord> {
     let mut map = HashMap::new();
     let Ok(body) = std::fs::read_to_string(store_path()) else {
         return map;
@@ -116,11 +132,43 @@ pub fn load_with_meta() -> HashMap<[u8; 32], FileRecord> {
     map
 }
 
+fn meta_arc() -> Arc<HashMap<[u8; 32], FileRecord>> {
+    let len = std::fs::metadata(store_path())
+        .map(|m| m.len())
+        .unwrap_or(0);
+    if let Ok(mut g) = cache().lock() {
+        if let Some(c) = g.as_ref() {
+            if c.len == len {
+                return c.meta.clone();
+            }
+        }
+        let meta = Arc::new(read_store());
+        *g = Some(StoreCache {
+            len,
+            meta: meta.clone(),
+        });
+        return meta;
+    }
+    Arc::new(read_store())
+}
+
+/// Everything the store holds, with its metadata. The store keeps the last
+/// line for a given particle, so a re-remembered particle's `created` is
+/// its most recent remembering, not its first.
+pub fn load_with_meta() -> HashMap<[u8; 32], FileRecord> {
+    (*meta_arc()).clone()
+}
+
+/// One particle's text, if this body holds it. Does not clone the store.
+pub fn lookup(hash: &[u8; 32]) -> Option<String> {
+    meta_arc().get(hash).map(|m| m.text.clone())
+}
+
 /// Everything the store holds, particle → text.
 pub fn load() -> HashMap<[u8; 32], String> {
-    load_with_meta()
-        .into_iter()
-        .map(|(k, v)| (k, v.text))
+    meta_arc()
+        .iter()
+        .map(|(k, v)| (*k, v.text.clone()))
         .collect()
 }
 

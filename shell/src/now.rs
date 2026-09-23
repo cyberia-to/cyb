@@ -41,7 +41,7 @@ impl Now {
 }
 
 pub fn load_file(hash: [u8; 32]) -> Option<File> {
-    let text = content::load().remove(&hash)?;
+    let text = content::lookup(&hash)?;
     Some(File::bind(Particle::from_bytes(hash), text.into_bytes()))
 }
 

@@ -39,11 +39,7 @@ fn sync_page(
     now: Res<Now>,
     index: Option<Res<BrainIndex>>,
     pages: Query<Entity, With<FilePage>>,
-    mut worlds: Query<&mut Visibility, With<crate::worlds::WorldUi>>,
 ) {
-    for mut v in &mut worlds {
-        *v = Visibility::Hidden;
-    }
     if !now.is_changed() && !pages.is_empty() {
         return;
     }
@@ -59,7 +55,7 @@ fn sync_page(
                 .as_ref()
                 .and_then(|ix| ix.labels.get(i).cloned().flatten())
         })
-        .or_else(|| content::load().get(&hash).cloned())
+        .or_else(|| content::lookup(&hash))
         .unwrap_or_else(|| p.short_hex());
     let surface = load_file(hash).and_then(|f| spark::open(&f).ok().flatten());
 
