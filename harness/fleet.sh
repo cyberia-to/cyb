@@ -20,6 +20,14 @@
 #
 # Env knobs: FLEET_N (bodies, default 3), FLEET_SECS (run time, default 30),
 # FLEET_SKIP_BUILD=1 (trust the existing binary).
+#
+# Machine-wide lock: two fleets running at once on the same box (e.g. two
+# launch-worker lanes, or a lane racing the pre-commit hook) contend for
+# CPU and can blow the RUN_SECS budget on every body at once, which reads
+# as a mass failure indistinguishable from a real regression. fleet runs
+# hold LOCK for their whole lifetime so only one runs at a time; a second
+# invocation waits rather than fails. FLEET_LOCK_TIMEOUT (default 600s)
+# bounds the wait.
 
 set -u
 cd "$(dirname "$0")/.."
@@ -28,14 +36,32 @@ T="$HOME/.rustup/toolchains/stable-aarch64-apple-darwin/bin"
 BIN="$ROOT/target/debug/cyb"
 N="${FLEET_N:-3}"
 RUN_SECS="${FLEET_SECS:-45}"
+LOCK="/tmp/cyb-fleet.lock"
+LOCK_TIMEOUT="${FLEET_LOCK_TIMEOUT:-600}"
 PORT=$((20000 + RANDOM % 10000))
 WORK="$(mktemp -d /tmp/cyb-fleet.XXXXXX)"
 PASS=0; FAIL=0
 PIDS=()
+HAVE_LOCK=0
 
 say()  { printf '%s\n' "$*"; }
 ok()   { PASS=$((PASS+1)); say "  ok    $*"; }
 bad()  { FAIL=$((FAIL+1)); say "  FAIL  $*"; }
+
+waited=0
+while ! mkdir "$LOCK" 2>/dev/null; do
+  if [ "$waited" = 0 ]; then
+    say "fleet: waiting on $LOCK (held by $(cat "$LOCK/pid" 2>/dev/null || echo "?"))..."
+  fi
+  sleep 2
+  waited=$((waited + 2))
+  if [ "$waited" -ge "$LOCK_TIMEOUT" ]; then
+    say "fleet: gave up waiting on $LOCK after ${LOCK_TIMEOUT}s"
+    exit 1
+  fi
+done
+HAVE_LOCK=1
+echo "$$" > "$LOCK/pid"
 
 cleanup() {
   for pid in "${PIDS[@]:-}"; do kill "$pid" 2>/dev/null; done
@@ -44,6 +70,7 @@ cleanup() {
   # The fleet must leave no machinery running, ours or spawned-by-ours.
   pkill -f "cyb-fleet" 2>/dev/null
   [ "${FLEET_KEEP:-0}" = "1" ] || rm -rf "$WORK"
+  [ "$HAVE_LOCK" = 1 ] && rm -rf "$LOCK"
 }
 trap cleanup EXIT INT TERM
 
