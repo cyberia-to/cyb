@@ -290,10 +290,13 @@ fn handle_row_press(
 }
 
 fn short_hex(hex: &str) -> String {
-    if hex.len() <= 12 {
+    let total = hex.chars().count();
+    if total <= 12 {
         hex.to_string()
     } else {
-        format!("{}..{}", &hex[..8], &hex[hex.len() - 4..])
+        let head: String = hex.chars().take(8).collect();
+        let tail: String = hex.chars().skip(total - 4).collect();
+        format!("{}..{}", head, tail)
     }
 }
 
@@ -555,5 +558,39 @@ fn scroll_page(
         let view = computed.size().y * computed.inverse_scale_factor();
         let max = (content - view).max(0.0);
         pos.y = (pos.y + dy).clamp(0.0, max);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::short_hex;
+
+    #[test]
+    fn short_hex_passes_through_at_or_under_twelve() {
+        assert_eq!(short_hex("abcd1234"), "abcd1234");
+        assert_eq!(short_hex("abcd1234efgh"), "abcd1234efgh");
+    }
+
+    #[test]
+    fn short_hex_truncates_ascii() {
+        assert_eq!(short_hex("abcd1234ef567890"), "abcd1234..7890");
+    }
+
+    #[test]
+    fn short_hex_does_not_panic_on_multibyte_head() {
+        // a multi-byte char inside the first 8 bytes: byte-index slicing at
+        // `hex[..8]` would land mid-character and panic before this fix.
+        let hex = "中234567890abcdef";
+        let _ = short_hex(hex);
+    }
+
+    #[test]
+    fn short_hex_does_not_panic_on_multibyte_tail() {
+        // a multi-byte char inside the trailing 4 bytes: byte-index slicing
+        // at `hex[hex.len() - 4..]` would land mid-character and panic
+        // before this fix. `d.neuron` (oracle/mod.rs:505) is parsed
+        // straight out of an untrusted hub HTTP response body.
+        let hex = "abcdef1234567890中";
+        let _ = short_hex(hex);
     }
 }
