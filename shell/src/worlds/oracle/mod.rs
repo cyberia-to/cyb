@@ -290,10 +290,13 @@ fn handle_row_press(
 }
 
 fn short_hex(hex: &str) -> String {
-    if hex.len() <= 12 {
+    let total = hex.chars().count();
+    if total <= 12 {
         hex.to_string()
     } else {
-        format!("{}..{}", &hex[..8], &hex[hex.len() - 4..])
+        let head: String = hex.chars().take(8).collect();
+        let tail: String = hex.chars().skip(total - 4).collect();
+        format!("{}..{}", head, tail)
     }
 }
 
@@ -380,11 +383,7 @@ fn build_page(mut commands: Commands, snap: &OracleState, ui: &OracleUi) {
     );
 
     if snap.height > 0 {
-        let root = if snap.root.len() > 12 {
-            format!("{}..{}", &snap.root[..8], &snap.root[snap.root.len() - 4..])
-        } else {
-            snap.root.clone()
-        };
+        let root = short_hex(&snap.root);
         text(
             &mut commands,
             page,
@@ -555,5 +554,37 @@ fn scroll_page(
         let view = computed.size().y * computed.inverse_scale_factor();
         let max = (content - view).max(0.0);
         pos.y = (pos.y + dy).clamp(0.0, max);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::short_hex;
+
+    #[test]
+    fn short_hex_passes_through_at_or_under_twelve() {
+        assert_eq!(short_hex("abcd1234"), "abcd1234");
+        assert_eq!(short_hex("abcd1234efgh"), "abcd1234efgh");
+    }
+
+    #[test]
+    fn short_hex_truncates_ascii() {
+        assert_eq!(short_hex("abcd1234ef567890"), "abcd1234..7890");
+    }
+
+    #[test]
+    fn short_hex_does_not_panic_on_multibyte_head() {
+        // build_page (oracle/mod.rs) calls short_hex on snap.root, parsed
+        // straight out of an untrusted node's `/status` response body
+        // (`s.root = field("bbg-root:")`); byte-index slicing at
+        // `hex[..8]` would land mid-character and panic before this fix.
+        let hex = "中234567890abcdef";
+        let _ = short_hex(hex);
+    }
+
+    #[test]
+    fn short_hex_does_not_panic_on_multibyte_tail() {
+        let hex = "abcdef1234567890中";
+        let _ = short_hex(hex);
     }
 }
