@@ -1,6 +1,6 @@
 # Cyb candidate qualification — 2026-09-24
 
-Verdict: RED. [GitHub draft candidate](https://github.com/cyberia-to/cyb/releases/tag/untagged-fcf42f59f737fd27f947). This origin-only run covers macOS ARM64. The collector marks the
+Verdict: RED. [GitHub draft candidate](https://github.com/cyberia-to/cyb/releases). This origin-only run covers macOS ARM64. The collector marks the
 stack, other desktop targets and Android as missing. No executable was produced.
 The full CI matrix is implemented in [PR #1403](https://github.com/cyberia-to/cyb/pull/1403),
 whose merge is blocked by GitHub's required independent approval.
