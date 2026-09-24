@@ -19,9 +19,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   candidate:
-    uses: cyberia-to/soft3/.github/workflows/candidate.yml@79923c925c24d79be2e08e3720a18ee6d9a729de
+    uses: cyberia-to/soft3/.github/workflows/candidate.yml@c5cc2077df510610abb7b5bd69675af6048ed724
     with:
       component: cyb
-      manager_ref: 79923c925c24d79be2e08e3720a18ee6d9a729de
+      manager_ref: c5cc2077df510610abb7b5bd69675af6048ed724
       candidate: ${{ inputs.candidate || '' }}
       cut: ${{ github.event_name == 'schedule' || inputs.cut == true }}
