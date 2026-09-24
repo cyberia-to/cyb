@@ -1,0 +1,27 @@
+name: Release train
+on:
+  schedule:
+    - cron: '0 12 * * 5'
+  workflow_dispatch:
+    inputs:
+      candidate:
+        description: 'candidate-YYYYMMDD.N (empty selects today .1)'
+        default: ''
+        type: string
+      cut:
+        description: 'Create a draft candidate after recording all gates'
+        default: true
+        type: boolean
+permissions:
+  contents: write
+concurrency:
+  group: release-train
+  cancel-in-progress: false
+jobs:
+  candidate:
+    uses: cyberia-to/soft3/.github/workflows/candidate.yml@e4fcfab9682516c6e8b24e8016dc8897becf5d84
+    with:
+      component: cyb
+      manager_ref: e4fcfab9682516c6e8b24e8016dc8897becf5d84
+      candidate: ${{ inputs.candidate || '' }}
+      cut: ${{ github.event_name == 'schedule' || inputs.cut == true }}

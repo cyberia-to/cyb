@@ -94,3 +94,11 @@ make dev                           # cargo run -p cyb
 
 `.claude/plans/` — утверждённые планы.
 `reference/roadmap.md` — общий roadmap.
+
+The executable shared release contract is pinned in `release/soft3.toml` and
+`.github/workflows/release-train.yml`; see `specs/releases.md`. Soft3 owns stack
+qualification. Cyb adds `soft3-dependency`, `cyb-check`, `cyb-tests`, `cyb-fleet`,
+`cyb-dmg` / `cyb-release` / `android-build`, and `android-signature`. Candidate
+platforms include Linux ARM64/x64 as well as macOS ARM64/x64 and Android ARM64.
+Workflow changes are checked with actionlint; unavailable product prerequisites
+remain red in the shared candidate receipts.
