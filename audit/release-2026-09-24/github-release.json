@@ -1,0 +1,50 @@
+{
+  "assets": [
+    {
+      "digest": "sha256:58b85a29aa3850bd6eaabce37a80ff286bb23191c91b4129c3d1908c02c51710",
+      "name": "candidate.json",
+      "size": 1978
+    },
+    {
+      "digest": "sha256:edfb1be3d92b95957a73ac74e65b15452242281ed049ea6cd9d1660acd310074",
+      "name": "cyb-candidate-20260924.1-aarch64-apple-darwin.tar.gz",
+      "size": 10411
+    },
+    {
+      "digest": "sha256:e9864e10c457db3fa3b74e333bc6b80d4a486765ae52739fecca022319a945e2",
+      "name": "release-notes.md",
+      "size": 9765
+    },
+    {
+      "digest": "sha256:d05cbf9a5d91e9794b78f38a1d34a8d5a9c185d8b9e51bab5d1990b3b0341035",
+      "name": "release-validation.json",
+      "size": 3806
+    },
+    {
+      "digest": "sha256:d5161ec7d6af73d9164f5b48ab95cf4c0a289452abab5919c44ed10531da47b4",
+      "name": "SHA256SUMS",
+      "size": 630
+    },
+    {
+      "digest": "sha256:54450a4c39a50a91515af6e447a93980f1efcffdad43f9b79d7671f408fcf5e0",
+      "name": "soft3-dependencies.json",
+      "size": 50791
+    },
+    {
+      "digest": "sha256:5ff710c5c268634d0a161927334b01ffb1663b9fa3dab00c998417d22616ef43",
+      "name": "soft3-dependencies.md",
+      "size": 7327
+    },
+    {
+      "digest": "sha256:0da9ce0ac39d00bc9100012b8201e59408ad4d8e1cc35dc2fd6b08c793975ac0",
+      "name": "sources.json",
+      "size": 10417
+    }
+  ],
+  "draft": true,
+  "html_url": "https://github.com/cyberia-to/cyb/releases/tag/untagged-fcf42f59f737fd27f947",
+  "id": 395484218,
+  "prerelease": true,
+  "tag_name": "candidate-20260924.1",
+  "target_commitish": "6c20559206d90f0474379e48706ba00db9630a37"
+}
