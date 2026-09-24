@@ -44,6 +44,16 @@ same thing, and the doctrine behind both is `~/cyber/cyberia/dev.md`
 - Other people's working trees under `~/cyber/<repo>` may be dirty with
   their own work: never edit, stage or discard it; work in a worktree.
 
+## moving a page out of cyber
+
+Nothing is thrown away by default. Settled and implemented → the owner's spec
+or an existing explainer, with measured numbers. A projection with a named
+assumption and an open question → the owner's `roadmap/`, one file per
+question, with the registry's status words. A cross-component argument →
+`soft3/docs/` as an explainer with each projection marked measured, refuted
+or open. Delete only duplicates and refuted-and-rewritten claims. Remove the
+ledger row of a deleted page; keep old wiki-links resolving via `alias:`.
+
 ## reports
 
 Audits, benchmarks and release validation go to `<repo>/audit/`; contracts
