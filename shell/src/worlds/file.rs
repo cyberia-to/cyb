@@ -1,6 +1,8 @@
 //! Spacetime: `cyb://file/<hex>` — particle + spark surface.
 
+use bevy::asset::RenderAssetUsages;
 use bevy::prelude::*;
+use bevy::render::render_resource::{Extent3d, TextureDimension, TextureFormat};
 use prysm::molecules::file as file_frame;
 use prysm::theme;
 use spark::Surface;
@@ -39,6 +41,7 @@ fn sync_page(
     now: Res<Now>,
     index: Option<Res<BrainIndex>>,
     pages: Query<Entity, With<FilePage>>,
+    mut images: ResMut<Assets<Image>>,
 ) {
     if !now.is_changed() && !pages.is_empty() {
         return;
@@ -125,17 +128,89 @@ fn sync_page(
                 ChildOf(frame),
             ));
         }
-        Some(Surface::Image { kind, .. }) => {
-            commands.spawn((
-                Text::new(format!("image spark ({kind:?}) — pixels next")),
-                TextFont {
-                    font_size: theme::CAPTION,
-                    ..default()
-                },
-                TextColor(theme::TEXT_DIM),
-                ChildOf(frame),
-            ));
-        }
+        Some(Surface::Image { kind, bytes }) => match decode_rgba(&bytes) {
+            Some((width, height, rgba)) => {
+                let image = Image::new(
+                    Extent3d {
+                        width,
+                        height,
+                        depth_or_array_layers: 1,
+                    },
+                    TextureDimension::D2,
+                    rgba,
+                    TextureFormat::Rgba8UnormSrgb,
+                    RenderAssetUsages::RENDER_WORLD,
+                );
+                let handle = images.add(image);
+                commands.spawn((
+                    ImageNode {
+                        image: handle,
+                        ..default()
+                    },
+                    Node {
+                        max_width: Val::Percent(100.0),
+                        ..default()
+                    },
+                    ChildOf(frame),
+                ));
+            }
+            None => {
+                commands.spawn((
+                    Text::new(format!("image spark ({kind:?}) — could not decode")),
+                    TextFont {
+                        font_size: theme::CAPTION,
+                        ..default()
+                    },
+                    TextColor(theme::TEXT_DIM),
+                    ChildOf(frame),
+                ));
+            }
+        },
         None => {}
+    }
+}
+
+/// Decode raw encoded image bytes (png/jpeg/gif/webp) to an RGBA8 buffer.
+/// `None` on a malformed or empty image; the caller falls back to text.
+fn decode_rgba(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+    let img = image::load_from_memory(bytes).ok()?;
+    let rgba = img.to_rgba8();
+    let (width, height) = rgba.dimensions();
+    if width == 0 || height == 0 {
+        return None;
+    }
+    Some((width, height, rgba.into_raw()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn encode_png(width: u32, height: u32) -> Vec<u8> {
+        let img = image::RgbaImage::from_pixel(width, height, image::Rgba([12, 34, 56, 255]));
+        let mut out = Vec::new();
+        image::DynamicImage::ImageRgba8(img)
+            .write_to(&mut std::io::Cursor::new(&mut out), image::ImageFormat::Png)
+            .unwrap();
+        out
+    }
+
+    #[test]
+    fn decodes_a_valid_png_to_matching_dimensions() {
+        let bytes = encode_png(3, 2);
+        let (w, h, rgba) = decode_rgba(&bytes).expect("valid png decodes");
+        assert_eq!((w, h), (3, 2));
+        assert_eq!(rgba.len(), (3 * 2 * 4) as usize);
+        assert_eq!(&rgba[0..4], &[12, 34, 56, 255]);
+    }
+
+    #[test]
+    fn rejects_garbage_bytes() {
+        assert!(decode_rgba(&[0, 1, 2, 3, 4]).is_none());
+    }
+
+    #[test]
+    fn rejects_empty_bytes() {
+        assert!(decode_rgba(&[]).is_none());
     }
 }
