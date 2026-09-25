@@ -1,0 +1,116 @@
+{
+  "platforms": [
+    {
+      "error": "expected exactly one platform receipt archive",
+      "result": "red",
+      "target": "stack"
+    },
+    {
+      "archive": "cyb-candidate-20260924.1-aarch64-apple-darwin.tar.gz",
+      "archive_sha256": "edfb1be3d92b95957a73ac74e65b15452242281ed049ea6cd9d1660acd310074",
+      "artifacts": [],
+      "error": "qualification incomplete or binary unavailable",
+      "gates": [
+        {
+          "failures": [
+            {
+              "error": "git exited 128: remote: Repository not found.\nfatal: repository 'https://github.com/cyberia-to/nu.git/' not found",
+              "name": "nu",
+              "result": "red"
+            }
+          ],
+          "name": "origin-checkouts",
+          "result": "red"
+        },
+        {
+          "drift": [
+            "nu"
+          ],
+          "manifest_sha256": "edbff9a7de181ce0df103ec8ec0e1d93403d8a2c9c31fa54ff1f09b7b40d24af",
+          "name": "phase1-pins",
+          "result": "red"
+        },
+        {
+          "errors": [
+            {
+              "component": "cyb",
+              "error": "captured product HEAD has no merged pull request"
+            }
+          ],
+          "name": "release-notes-source",
+          "result": "red"
+        },
+        {
+          "error": "[Errno 2] No such file or directory: '/private/tmp/cyb-origin-candidate/sources/cyb/release/soft3.toml'",
+          "name": "soft3-dependency",
+          "result": "red"
+        },
+        {
+          "command": [
+            "cargo",
+            "check",
+            "--tests",
+            "--locked"
+          ],
+          "cwd": "/private/tmp/cyb-origin-candidate/sources/cyb",
+          "elapsed_seconds": 0.021,
+          "exit_code": 101,
+          "log": "logs/cyb-check.txt",
+          "log_sha256": "f20bcad8d24fcb0ee9091adcc13e8965086306ec62ef7579587919bfca54c438",
+          "name": "cyb-check",
+          "result": "red",
+          "warnings": false
+        },
+        {
+          "name": "cyb-tests",
+          "reason": "cyb check failed; see cyb-check log",
+          "result": "blocked"
+        },
+        {
+          "name": "cyb-fleet",
+          "reason": "cyb check failed; see cyb-check log",
+          "result": "blocked"
+        },
+        {
+          "name": "cyb-dmg",
+          "reason": "cyb check failed; see cyb-check log",
+          "result": "blocked"
+        },
+        {
+          "changed": [],
+          "name": "source-inputs-unchanged",
+          "result": "green"
+        },
+        {
+          "error": "cargo exited 101: error: failed to load manifest for workspace member `/private/tmp/cyb-origin-candidate/sources/cyb/shell`\nreferenced by workspace at `/private/tmp/cyb-origin-candidate/sources/cyb/Cargo.toml`\n\nCaused by:\n  failed to load manifest for dependency `nu-cli`\n\nCaused by:\n  failed to read `/private/tmp/cyb-origin-candidate/sources/nu/crates/nu-cli/Cargo.toml`\n\nCaused by:\n  No such file or directory (os error 2)",
+          "name": "package-resolution",
+          "result": "red"
+        }
+      ],
+      "result": "red",
+      "target": "aarch64-apple-darwin"
+    },
+    {
+      "error": "expected exactly one platform receipt archive",
+      "result": "red",
+      "target": "x86_64-apple-darwin"
+    },
+    {
+      "error": "expected exactly one platform receipt archive",
+      "result": "red",
+      "target": "aarch64-unknown-linux-gnu"
+    },
+    {
+      "error": "expected exactly one platform receipt archive",
+      "result": "red",
+      "target": "x86_64-unknown-linux-gnu"
+    },
+    {
+      "error": "expected exactly one platform receipt archive",
+      "result": "red",
+      "target": "aarch64-linux-android"
+    }
+  ],
+  "result": "red",
+  "source_snapshot_sha256": "0da9ce0ac39d00bc9100012b8201e59408ad4d8e1cc35dc2fd6b08c793975ac0"
+}

@@ -94,3 +94,10 @@ make dev                           # cargo run -p cyb
 
 `.claude/plans/` — утверждённые планы.
 `reference/roadmap.md` — общий roadmap.
+
+
+`release/soft3.toml` selects a concrete soft3 build by release ID and checksum
+manifest digest, with expected version/source identity. Component revisions and
+stack qualification are inherited; product jobs resolve only Cyb's origin HEAD.
+The engine revision is separately pinned in `.github/workflows/release-train.yml`.
+Nu libraries come from the selected assembly. `specs/releases.md` owns the contract.
