@@ -8,3 +8,4 @@ Measurements, implementation reviews and validation reports live here.
 The runtime contracts are indexed in [reference](../reference/README.md).
 
 - [Build benchmarks](benchmarks.md) — 2026-02-19 Webpack/Rspack measurements.
+- [Particle availability audit](particle-availability.md) — 2026-09-21, property 16 of [[cyber/launch]].
