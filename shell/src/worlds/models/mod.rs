@@ -36,6 +36,19 @@ struct ModelRow(std::path::PathBuf);
 pub struct MindStatus {
     pub model: Option<std::path::PathBuf>,
     pub last_tok_per_s: Option<f32>,
+    pub avg_tok_in_s: f32,
+    pub avg_tok_out_s: f32,
+    n_speed: u32,
+}
+
+impl MindStatus {
+    pub fn push_speed(&mut self, tok_in_s: f32, tok_out_s: f32) {
+        let n = self.n_speed as f32;
+        self.n_speed += 1;
+        let k = self.n_speed as f32;
+        self.avg_tok_in_s = (self.avg_tok_in_s * n + tok_in_s) / k;
+        self.avg_tok_out_s = (self.avg_tok_out_s * n + tok_out_s) / k;
+    }
 }
 
 /// Minds this cyb knows how to fetch: HF repo → glia import → `~/llm`.
@@ -134,6 +147,9 @@ fn speed_hint(bytes: u64) -> String {
 }
 
 struct ModelsHost {
+    n: String,
+    disk: String,
+    speed: String,
     installed: Noun,
     catalog: Noun,
 }
@@ -144,6 +160,9 @@ impl Host for ModelsHost {
             return Ok(Noun::Atom(0));
         }
         match cell::query_name(args).as_str() {
+            "n" => Ok(cell::tape(&self.n)),
+            "disk" => Ok(cell::tape(&self.disk)),
+            "speed" => Ok(cell::tape(&self.speed)),
             "installed" => Ok(self.installed.clone()),
             "catalog" => Ok(self.catalog.clone()),
             other => Err(cell::unknown_query(other)),
@@ -158,7 +177,7 @@ impl Plugin for ModelsWorldPlugin {
         // a machine that has one.
         let status = MindStatus {
             model: Some(soma_kernel::default_model_path()),
-            last_tok_per_s: None,
+            ..Default::default()
         };
         app.insert_resource(status)
             .init_resource::<FetchState>()
@@ -240,43 +259,12 @@ fn build_page(mut commands: Commands, status: Res<MindStatus>, fetch: Res<FetchS
     let page = commands
         .spawn((
             Node {
-                width: Val::Percent(100.0),
-                max_width: Val::Px(theme::MEASURE),
-                flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(theme::G),
-                padding: UiRect::all(Val::Px(theme::G * 2.0)),
-                overflow: Overflow::scroll_y(),
-                ..default()
+                ..super::page::scroll_column()
             },
             ScrollPosition::default(),
             ChildOf(root),
         ))
         .id();
-
-    commands.spawn((
-        Text::new("models"),
-        TextFont {
-            font_size: theme::H2,
-            ..default()
-        },
-        TextColor(Color::srgb(0.7, 0.95, 0.8)),
-        ChildOf(page),
-    ));
-
-    let status_line = match (&status.model, status.last_tok_per_s) {
-        (Some(m), Some(v)) => format!("mind: {}  /  last answer {v:.0} tok/s", file_label(m)),
-        (Some(m), None) => format!("mind: {}  /  wakes on the first question", file_label(m)),
-        (None, _) => "no model chosen".into(),
-    };
-    commands.spawn((
-        Text::new(status_line),
-        TextFont {
-            font_size: theme::CAPTION,
-            ..default()
-        },
-        TextColor(theme::TEXT_DIM),
-        ChildOf(page),
-    ));
 
     let active = status.model.clone();
     let list = models_on_disk(active.as_deref());
@@ -315,7 +303,30 @@ fn build_page(mut commands: Commands, status: Res<MindStatus>, fetch: Res<FetchS
             })
             .collect(),
     );
-    let mut host = ModelsHost { installed, catalog };
+    let catalog_left = CATALOG
+        .iter()
+        .filter(|e| !installed_labels.contains(&e.label.to_string()))
+        .count();
+    // Census is the pool, not the active row: every .model on disk plus
+    // every catalog mind not yet fetched, the bytes of all of them, and
+    // the measured prefill/decode rate — never the table's per-row guess.
+    let n = list.len() + catalog_left;
+    let disk: u64 = list.iter().map(|(_, s)| *s).sum();
+    let speed = if status.n_speed > 0 {
+        format!(
+            "{:.0} / {:.0}",
+            status.avg_tok_in_s, status.avg_tok_out_s
+        )
+    } else {
+        "— / —".into()
+    };
+    let mut host = ModelsHost {
+        n: n.to_string(),
+        disk: human_size(disk),
+        speed,
+        installed,
+        catalog,
+    };
     match cell::load("models").and_then(|src| cell::eval(&src, &mut host)) {
         Ok(chunks) => cell::dispatch_page(&mut commands, page, &chunks),
         Err(e) => {

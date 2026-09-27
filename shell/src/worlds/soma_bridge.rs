@@ -42,7 +42,7 @@
 
 use bevy::prelude::*;
 
-use super::{identity::Identity, ComInbox, ComSay, Notice, SharedCell, Speaker};
+use super::{ComInbox, ComSay, Notice, SharedCell, Speaker, identity::Identity};
 
 pub struct SomaBridgePlugin;
 
@@ -62,9 +62,7 @@ impl Plugin for SomaBridgePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SomaPending>();
         app.init_resource::<SomaThread>();
-        app.insert_non_send_resource(soma_kernel::Soma::spawn(
-            soma_kernel::SomaConfig::default(),
-        ));
+        app.insert_non_send_resource(soma_kernel::Soma::spawn(soma_kernel::SomaConfig::default()));
         app.add_systems(Update, poll_soma);
         // `SOMA_ASK="..."` asks the moment the app is up — the whole
         // pipeline (wake, think, answer, cast) exercised without a hand
@@ -117,7 +115,10 @@ pub fn ask(world: &mut World, question: &str) {
 
     let context = recall(world, question);
     let recalled = context.len();
-    world.resource_mut::<SomaPending>().0.push(question.to_string());
+    world
+        .resource_mut::<SomaPending>()
+        .0
+        .push(question.to_string());
     world
         .non_send_resource::<soma_kernel::Soma>()
         .ask_grounded(question, context);
@@ -147,11 +148,10 @@ fn recall(world: &World, question: &str) -> Vec<String> {
     /// the essay it arrived in.
     const CLIP: usize = 400;
 
-    let q_concepts: std::collections::HashSet<[u8; 32]> =
-        soma_kernel::concepts_of(question, "")
-            .iter()
-            .map(|c| soma_kernel::particle_of(c))
-            .collect();
+    let q_concepts: std::collections::HashSet<[u8; 32]> = soma_kernel::concepts_of(question, "")
+        .iter()
+        .map(|c| soma_kernel::particle_of(c))
+        .collect();
     if q_concepts.is_empty() {
         return Vec::new();
     }
@@ -166,7 +166,9 @@ fn recall(world: &World, question: &str) -> Vec<String> {
     let mut hits: Vec<(usize, usize, String)> = Vec::new();
     let mut order = 0usize;
     for neuron in [super::local_neuron(), me] {
-        let Some(chain) = cell.graph.chains.get(&neuron) else { continue };
+        let Some(chain) = cell.graph.chains.get(&neuron) else {
+            continue;
+        };
         for sig in chain.entries.values() {
             let links = &sig.links;
             if links.len() < 2 || links[1].from != links[0].to {
@@ -180,8 +182,7 @@ fn recall(world: &World, question: &str) -> Vec<String> {
             if score == 0 {
                 continue;
             }
-            let (Some(q), Some(a)) = (texts.get(&links[0].to), texts.get(&links[1].to))
-            else {
+            let (Some(q), Some(a)) = (texts.get(&links[0].to), texts.get(&links[1].to)) else {
                 continue;
             };
             let mut a_clip = a.clone();
@@ -232,6 +233,8 @@ fn poll_soma(
                 concepts,
                 tokens,
                 tok_per_s,
+                tok_in_s,
+                tok_out_s,
             } => {
                 // The streamed text was raw generation; the final form is the
                 // cleaned answer, and it replaces the stream in place.
@@ -257,8 +260,9 @@ fn poll_soma(
                         shared.bump();
                         thread.0 = Some(a);
                         status.last_tok_per_s = Some(tok_per_s);
+                        status.push_speed(tok_in_s, tok_out_s);
                         notice.show(format!(
-                            "soma: answered ({tokens} tok, {tok_per_s:.0} tok/s) - {n_links} links"
+                            "soma: answered ({tokens} tok, in {tok_in_s:.0} / out {tok_out_s:.0} tok/s) - {n_links} links"
                         ));
                     }
                     Err(e) => {
@@ -288,5 +292,3 @@ fn poll_soma(
         }
     }
 }
-
-

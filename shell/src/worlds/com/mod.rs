@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use bevy::ecs::system::SystemState;
-use bevy::input::mouse::MouseWheel;
+use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 
 use nu_cli::{eval_source, gather_parent_env_vars};
@@ -25,8 +25,6 @@ use tade::Chunk;
 use super::{ComInbox, ComSay, Notice, Speaker, WorldState};
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
 
-const G: f32 = theme::G;
-
 const NU_ENV_SOURCE: &str = include_str!("../../../assets/nu-config/env.nu");
 const NU_CONFIG_SOURCE: &str = include_str!("../../../assets/nu-config/config.nu");
 
@@ -42,11 +40,8 @@ impl Plugin for ComWorldPlugin {
             // are looking at them, and the record has to be waiting when you
             // arrive. com's tree is hidden between visits, never torn down.
             .add_systems(Update, drain_com_inbox)
-            .init_resource::<chronicle::Chronicle>()
-            .add_systems(
-                Update,
-                (chronicle::refresh, chronicle::slide_window).run_if(in_state(WorldState::Com)),
-            )
+            .init_resource::<chronicle::LogFollowTop>()
+            .add_systems(Update, chronicle::refresh.run_if(in_state(WorldState::Com)))
             // `CYB_RUN="..."` submits one line through the same path typing
             // does — commander, routing, echo, cast — for scripted runs.
             .add_systems(
@@ -86,6 +81,7 @@ struct TerminalNonSendState {
     scrollback_entity: Entity,
     scroll_area_entity: Entity,
     scroll_offset: f32,
+    scroll_v: f32,
     /// Follow the tail: new output scrolls into view until the reader
     /// scrolls up, and resumes when they scroll back down to the end.
     stick_to_bottom: bool,
@@ -938,6 +934,7 @@ fn setup_terminal(world: &mut World) {
         scrollback_entity,
         scroll_area_entity,
         scroll_offset: 0.0,
+        scroll_v: 0.0,
         stick_to_bottom: true,
         last_cmd: String::new(),
         stream_row: None,
@@ -972,39 +969,46 @@ fn spawn_terminal_ui(world: &mut World, scrollback_entity: Entity) -> (Entity, E
         .id();
 
     // Scrollback area (flex-grow, scrolled via ScrollPosition)
+    let mut session = crate::worlds::page::scroll_column();
+    session.max_height = Val::Px(160.0);
+    session.flex_grow = 0.0;
+    session.flex_shrink = 0.0;
+    session.height = Val::Auto;
     let scroll_area = world
         .spawn((
-            Node {
-                flex_grow: 1.0,
-                width: Val::Percent(100.0),
-                max_width: Val::Px(theme::MEASURE),
-                flex_direction: FlexDirection::Column,
-                // Scroll, not clip: bevy_ui ignores ScrollPosition unless an axis
-                // is actually declared scrollable, so a clipping node stays fixed
-                // at the top however the position is set.
-                overflow: Overflow::scroll_y(),
-                padding: UiRect::all(Val::Px(G)),
-                ..default()
-            },
+            session,
+            ScrollPosition::default(),
+            crate::worlds::scroll::PersistScroll("log-session"),
+            ChildOf(root),
+        ))
+        .id();
+
+    // Same shape as memory: a bounded scroller (flex leftover under the
+    // session band) wrapping a slot that grows with the table track.
+    let mut log_scroll = crate::worlds::page::column();
+    log_scroll.flex_grow = 1.0;
+    log_scroll.flex_shrink = 1.0;
+    log_scroll.flex_basis = Val::Px(0.0);
+    log_scroll.min_height = Val::Px(0.0);
+    log_scroll.overflow = Overflow::scroll_y();
+    let log_scroll = world
+        .spawn((
+            log_scroll,
             ScrollPosition::default(),
             crate::worlds::scroll::PersistScroll("log"),
             ChildOf(root),
         ))
         .id();
-
-    // Chronicle first: census + numbers table over the signal chain.
-    // Live session (nushell, inbox) stays below and is never torn down.
     world.spawn((
         chronicle::LogSlot,
         Node {
             width: Val::Percent(100.0),
             flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(G),
+            row_gap: Val::Px(theme::G),
             flex_shrink: 0.0,
-            padding: UiRect::bottom(Val::Px(G * 2.0)),
             ..default()
         },
-        ChildOf(scroll_area),
+        ChildOf(log_scroll),
     ));
 
     // Attach scrollback entity into scroll area
@@ -1106,28 +1110,58 @@ fn process_scroll(world: &mut World) {
             state_ref.wheel_cursor.clone()
         };
         let messages = world.resource::<bevy::ecs::message::Messages<MouseWheel>>();
-        let dy: f32 = cursor.read(messages).map(|e| -e.y).sum();
+        let dy: f32 = cursor
+            .read(messages)
+            .map(|e| match e.unit {
+                MouseScrollUnit::Line => -e.y * 48.0,
+                MouseScrollUnit::Pixel => -e.y,
+            })
+            .sum();
         let state = world
             .get_non_send_resource_mut::<TerminalNonSendState>()
             .unwrap()
             .into_inner();
         state.wheel_cursor = cursor;
-        dy * 18.0
+        dy
     };
 
-    // A single finger dragging up sends the text up: content follows the
-    // finger, so the offset moves against it.
     let drag: f32 = {
         let touches = world.resource::<bevy::input::touch::Touches>();
         let live: Vec<&bevy::input::touch::Touch> = touches.iter().collect();
         if live.len() == 1 {
-            -live[0].delta().y * 0.55
+            -live[0].delta().y
         } else {
             0.0
         }
     };
 
+    let dt = world.resource::<Time>().delta_secs().max(1e-4);
     let delta_y = wheel + drag;
+    {
+        let state = world
+            .get_non_send_resource_mut::<TerminalNonSendState>()
+            .unwrap()
+            .into_inner();
+        if delta_y != 0.0 {
+            let inst = delta_y / dt;
+            state.scroll_v = (state.scroll_v * 0.35 + inst * 0.65).clamp(-12_000.0, 12_000.0);
+        } else if state.scroll_v.abs() > 80.0 {
+            state.scroll_v *= (-5.5 * dt).exp();
+        } else {
+            state.scroll_v = 0.0;
+        }
+    }
+    let coast = {
+        let state = world
+            .get_non_send_resource::<TerminalNonSendState>()
+            .unwrap();
+        if delta_y == 0.0 {
+            state.scroll_v * dt
+        } else {
+            0.0
+        }
+    };
+    let delta_y = delta_y + coast;
     if delta_y == 0.0 {
         return;
     }
@@ -1143,13 +1177,26 @@ fn process_scroll(world: &mut World) {
     let (scrollback_h, area_h) = scroll_extent(world);
 
     let max_scroll = (scrollback_h - area_h).max(0.0);
+    let pin = world
+        .get_resource::<chronicle::LogFollowTop>()
+        .map(|p| p.0)
+        .unwrap_or(false);
     let state = world
         .get_non_send_resource_mut::<TerminalNonSendState>()
         .unwrap()
         .into_inner();
-    state.scroll_offset = (state.scroll_offset + delta_y).clamp(0.0, max_scroll);
-    // Reaching the end re-arms the follow; leaving it hands control back.
-    state.stick_to_bottom = state.scroll_offset >= max_scroll - 1.0;
+    if pin {
+        state.scroll_offset = 0.0;
+        state.stick_to_bottom = false;
+    } else {
+        state.scroll_offset = (state.scroll_offset + delta_y).clamp(0.0, max_scroll);
+        state.stick_to_bottom = state.scroll_offset >= max_scroll - 1.0;
+    }
+    if pin {
+        if let Some(mut p) = world.get_resource_mut::<chronicle::LogFollowTop>() {
+            p.0 = false;
+        }
+    }
 }
 
 /// Content and viewport heights of the scrollback, in logical pixels.

@@ -149,6 +149,7 @@ pub fn build_app() -> App {
     .add_plugins(prysm::PrysmPlugin)
     .add_plugins(worlds::font::FontPlugin)
     .add_plugins(worlds::scroll::ScrollPlugin)
+    .add_plugins(worlds::nav::NavPlugin)
     .add_plugins(worlds::WorldsPlugin)
     .add_plugins(shell::chrome::ChromePlugin)
     .add_plugins(shell::platform::PlatformPlugin)

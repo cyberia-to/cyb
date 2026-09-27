@@ -96,6 +96,7 @@ impl Plugin for BodyWorldPlugin {
         .init_resource::<BodyView>()
         .init_resource::<ProofMeter>()
         .add_systems(OnEnter(WorldState::Body), enter_body)
+        .add_systems(OnExit(WorldState::Body), hide_body)
         .add_systems(
             Update,
             (
@@ -103,7 +104,6 @@ impl Plugin for BodyWorldPlugin {
                 paint_live,
                 paint_tables,
                 paint_seer,
-                rebuild_on_change,
                 handle_prove_press,
                 handle_prover_intensity_press,
                 handle_seer_press,
@@ -313,6 +313,14 @@ fn enter_body(
     build_page(commands, view, link);
 }
 
+fn hide_body(mut q: Query<(&crate::worlds::WorldUi, &mut Visibility)>) {
+    for (tag, mut vis) in &mut q {
+        if tag.0 == WorldState::Body {
+            *vis = Visibility::Hidden;
+        }
+    }
+}
+
 #[derive(Component, Clone, Copy)]
 #[allow(dead_code)]
 enum BodyStat {
@@ -391,6 +399,9 @@ fn net_io_line(view: &BodyView) -> String {
 }
 
 struct BodyHost {
+    cpu: String,
+    mem: String,
+    net: String,
     resources: Noun,
     processes: Noun,
     networks: Noun,
@@ -402,6 +413,9 @@ impl Host for BodyHost {
             return Ok(Noun::Atom(0));
         }
         match cell::query_name(args).as_str() {
+            "cpu" => Ok(cell::tape(&self.cpu)),
+            "mem" => Ok(cell::tape(&self.mem)),
+            "net" => Ok(cell::tape(&self.net)),
             "resources" => Ok(self.resources.clone()),
             "processes" => Ok(self.processes.clone()),
             "networks" => Ok(self.networks.clone()),
@@ -412,6 +426,15 @@ impl Host for BodyHost {
 
 fn body_host(view: &BodyView) -> BodyHost {
     let v = &view.vitals;
+    let mem = if v.mem_total > 0 {
+        format!(
+            "{:.0}%",
+            v.mem_used as f64 * 100.0 / v.mem_total.max(1) as f64
+        )
+    } else {
+        "—".into()
+    };
+
     let mut resources = Vec::new();
     resources.push(cell::row(&[
         "cpu",
@@ -438,9 +461,12 @@ fn body_host(view: &BodyView) -> BodyHost {
     if v.mem_total > 0 {
         resources.push(cell::row(&[
             "memory",
-            &cell::exact(v.mem_used),
+            &format!(
+                "{:.0}%",
+                v.mem_used as f64 * 100.0 / v.mem_total.max(1) as f64
+            ),
             &cell::exact(v.mem_total),
-            "B",
+            &format!("{} B", v.mem_used),
         ]));
     }
     resources.push(cell::row(&[
@@ -479,7 +505,7 @@ fn body_host(view: &BodyView) -> BodyHost {
         },
         "work:seer",
     ]));
-    for t in &v.top {
+    for t in v.top.iter().take(8) {
         processes.push(cell::row(&[
             &t.name,
             &format!("{:.0}%", t.cpu_pct),
@@ -506,6 +532,9 @@ fn body_host(view: &BodyView) -> BodyHost {
         .collect();
 
     BodyHost {
+        cpu: format!("{:.0}%", v.cpu_pct),
+        mem,
+        net: format!("{:.0}", v.net_rx_bps),
         resources: cell::list(resources),
         processes: cell::list(processes),
         networks: cell::list(networks),
@@ -691,36 +720,13 @@ fn build_page(mut commands: Commands, view: Res<BodyView>, _link: Res<BodyLink>)
                 width: Val::Percent(100.0),
                 max_width: Val::Px(theme::MEASURE),
                 flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(theme::G * 3.0)),
-                row_gap: Val::Px(theme::G),
-                overflow: Overflow::scroll_y(),
-                ..default()
+                ..super::page::scroll_column()
             },
             ScrollPosition::default(),
             crate::worlds::scroll::PersistScroll("body"),
             ChildOf(root),
         ))
         .id();
-
-    let text = |commands: &mut Commands, parent: Entity, s: String, size: f32, color: Color| {
-        commands.spawn((
-            Text::new(s),
-            TextFont {
-                font_size: size,
-                ..default()
-            },
-            TextColor(color),
-            ChildOf(parent),
-        ));
-    };
-
-    text(
-        &mut commands,
-        page,
-        "body".into(),
-        theme::H2,
-        theme::TEXT_PRIMARY,
-    );
 
     let tables = commands
         .spawn((
@@ -735,104 +741,6 @@ fn build_page(mut commands: Commands, view: Res<BodyView>, _link: Res<BodyLink>)
         ))
         .id();
     fill_body_tables(&mut commands, tables, &view);
-
-    // ── networks: the chains this body follows ──────────────────────────
-    if !view.nets.is_empty() {
-        commands.spawn((
-            Text::new("networks"),
-            TextFont {
-                font_size: theme::CAPTION,
-                ..default()
-            },
-            TextColor(theme::TEXT_DIM),
-            Node {
-                margin: UiRect::top(Val::Px(theme::G * 2.0)),
-                ..default()
-            },
-            ChildOf(page),
-        ));
-        for n in &view.nets {
-            let (line, color) = if n.height > 0 {
-                let step = n
-                    .last_sync
-                    .map(|t| format!("{}s", t.elapsed().as_secs()))
-                    .unwrap_or_default();
-                // The step is our probe; the block is the chain's pulse.
-                let block = match n.last_advance {
-                    Some(t) => format!("block {} ago", ago(t.elapsed().as_secs())),
-                    None => "no new block while watching".to_string(),
-                };
-                // Watchdog: a probe older than three cadences is a stall,
-                // whatever the last step said.
-                let probe_age = n
-                    .last_sync
-                    .map(|t| t.elapsed().as_secs())
-                    .unwrap_or(u64::MAX);
-                let stalled = probe_age > 45;
-                let stale = if !n.ok {
-                    format!("  ({})", n.last_step)
-                } else if stalled {
-                    format!("  (stalled {})", ago(probe_age))
-                } else {
-                    String::new()
-                };
-                (
-                    format!(
-                        "{:8} h={}  root {}  step {step}  {block}{stale}   in {}  out {}",
-                        n.name,
-                        n.height,
-                        networks::short_root(&n.root),
-                        human_size(n.rx),
-                        human_size(n.tx),
-                    ),
-                    if n.ok && !stalled {
-                        theme::TEXT_PRIMARY
-                    } else {
-                        theme::ACID_YELLOW
-                    },
-                )
-            } else {
-                (
-                    format!("{:8} {}  -  {}", n.name, n.url, n.last_step),
-                    theme::TEXT_DIM,
-                )
-            };
-            text(&mut commands, page, line, theme::BODY, color);
-        }
-        let stuck = if view.relay_pending > 0 {
-            format!("  ({} waiting)", view.relay_pending)
-        } else {
-            String::new()
-        };
-        text(
-            &mut commands,
-            page,
-            format!(
-                "relayed {} out, absorbed {} in this session{stuck}   -   net add <name> <url> | net set | net rm",
-                view.relayed, view.absorbed
-            ),
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
-    }
-
-    // zheng and seer sit in the same table as cpu and the os processes.
-    // Tap a work row to cycle off → min → eco → max → off.
-    let per_proof = declared_rate("per_proof", 1.0);
-    let pussy_day = if view.prover.running {
-        view.prover.tickets_per_min() * 60.0 * 24.0 * per_proof
-    } else {
-        0.0
-    };
-    if pussy_day > 0.0 {
-        text(
-            &mut commands,
-            page,
-            format!("total  {pussy_day:.0} PUSSY/day   -   rates declared in ~/cyb/rates.toml"),
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
-    }
 }
 
 /// The zheng card: PUSSY earned by proving — sumcheck sampling over this

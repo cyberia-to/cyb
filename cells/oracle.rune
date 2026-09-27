@@ -1,0 +1,11 @@
+col(
+  row(
+    stat(query("height"), "height"),
+    stat(query("supply"), "supply"),
+    stat(query("signals"), "signals")
+  ),
+  table(
+    row("block", "time", "supply", "wt"),
+    query("table-body")
+  )
+)

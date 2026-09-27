@@ -1,4 +1,9 @@
 col(
+  row(
+    stat(query("n"), "available"),
+    stat(query("disk"), "disk"),
+    stat(query("speed"), "in / out")
+  ),
   table(
     row("model", "size", "speed", "on"),
     query("installed")

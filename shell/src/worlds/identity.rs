@@ -49,6 +49,15 @@ impl Identity {
         )
     }
 
+    /// Short neuron id — what the chrome shows. Not the pussy bech32.
+    pub fn short_neuron(&self) -> String {
+        let h = self.hex();
+        if h.len() <= 12 {
+            return h;
+        }
+        format!("{}…{}", &h[..8], &h[h.len() - 4..])
+    }
+
     /// The neuron as lowercase hex — the id every wire call keys on.
     pub fn hex(&self) -> String {
         self.neuron.iter().map(|b| format!("{b:02x}")).collect()

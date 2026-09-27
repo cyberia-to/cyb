@@ -43,7 +43,7 @@ struct VaultView {
 struct VaultRoot;
 
 #[derive(Component)]
-struct SpellPage;
+pub struct SpellPage;
 
 /// Tap the row: the secret (or the live code) goes to the clipboard.
 #[derive(Component)]
@@ -120,6 +120,17 @@ fn load_view(view: &mut VaultView) {
     }
     view.entries = entries;
     view.revealed = None;
+}
+
+/// Checksum of the spell words — the id in `cyb://vault/spell/<id>`.
+pub fn spell_id(spell: &str) -> String {
+    file::Particle::hash(spell.trim().as_bytes()).short_hex()
+}
+
+pub fn spell_url() -> String {
+    identity_spell()
+        .map(|s| format!("cyb://vault/spell/{}", spell_id(&s)))
+        .unwrap_or_else(|| "cyb://vault/spell".into())
 }
 
 /// The twelve words, straight from the identity file.
@@ -220,13 +231,7 @@ fn build_page(commands: &mut Commands, view: &VaultView) {
     let page = commands
         .spawn((
             Node {
-                width: Val::Percent(100.0),
-                max_width: Val::Px(theme::MEASURE),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(theme::G * 3.0)),
-                row_gap: Val::Px(theme::G),
-                overflow: Overflow::scroll_y(),
-                ..default()
+                ..super::page::scroll_column()
             },
             ScrollPosition::default(),
             crate::worlds::scroll::PersistScroll("vault"),
@@ -246,26 +251,10 @@ fn build_page(commands: &mut Commands, view: &VaultView) {
         ));
     };
 
-    text(
-        commands,
-        page,
-        "vault".into(),
-        theme::H2,
-        theme::TEXT_PRIMARY,
-    );
-
     if let Some(err) = &view.error {
         text(commands, page, err.clone(), theme::BODY, theme::ACID_RED);
         return;
     }
-
-    text(
-        commands,
-        page,
-        "tap a name to copy (clears in 30s). tap show to read, tap again to hide".into(),
-        theme::CAPTION,
-        theme::TEXT_DIM,
-    );
 
     if view.entries.is_empty() {
         text(
@@ -340,9 +329,9 @@ fn spawn_spell_page(commands: &mut Commands, spell: String) {
             .spawn((
                 Node {
                     flex_direction: FlexDirection::Row,
-                    column_gap: Val::Px(theme::G * 3.0),
-                    width: Val::Px(520.0),
-                    justify_content: JustifyContent::SpaceBetween,
+                    width: Val::Percent(100.0),
+                    max_width: Val::Px(560.0),
+                    column_gap: Val::Px(theme::G * 2.0),
                     ..default()
                 },
                 ChildOf(root),
@@ -354,8 +343,9 @@ fn spawn_spell_page(commands: &mut Commands, spell: String) {
                 .spawn((
                     Node {
                         flex_direction: FlexDirection::Column,
+                        width: Val::Percent(25.0),
                         row_gap: Val::Px(4.0),
-                        flex_grow: 1.0,
+                        align_items: AlignItems::FlexStart,
                         ..default()
                     },
                     ChildOf(row),
@@ -395,6 +385,9 @@ fn handle_table_copy(
     pages: Query<Entity, With<SpellPage>>,
     mut view: ResMut<VaultView>,
     mut notice: ResMut<super::Notice>,
+    mut nav: ResMut<crate::worlds::nav::Nav>,
+    now: Res<crate::now::Now>,
+    world: Res<State<super::WorldState>>,
 ) {
     for (i, btn) in &interactions {
         if *i != Interaction::Pressed {
@@ -410,6 +403,11 @@ fn handle_table_copy(
                 }
                 let _ = crate::shell::clipboard::write_clipboard(&spell);
                 view.copied = Some((spell.clone(), Instant::now()));
+                nav.push(crate::worlds::nav::Place::capture(
+                    *world.get(),
+                    &now,
+                    false,
+                ));
                 spawn_spell_page(&mut commands, spell);
             }
             continue;

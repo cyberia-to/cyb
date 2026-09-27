@@ -142,6 +142,8 @@ fn detect_tap(
     cam: Option<Res<GraphCamera>>,
     warp: Option<ResMut<WarpTarget>>,
     mut now: ResMut<crate::now::Now>,
+    mut nav: ResMut<crate::worlds::nav::Nav>,
+    world: Res<State<crate::worlds::WorldState>>,
 ) {
     if now.kind != crate::now::NowKind::World {
         return;
@@ -188,7 +190,7 @@ fn detect_tap(
             // The camera flies to what you chose to read.
             warp.particle_idx = Some(idx as u32);
         }
-        now.stand(hash, Some(idx));
+        crate::worlds::nav::stand_from(&mut nav, &mut now, *world.get(), hash, Some(idx), false);
     }
 }
 

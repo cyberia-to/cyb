@@ -1,5 +1,5 @@
 row(
   stat(query("particles"), "particles"),
-  stat(query("bytes"), "bytes"),
-  stat(query("links"), "links")
+  stat(query("axons"), "axons"),
+  stat(query("graph"), "graph")
 )

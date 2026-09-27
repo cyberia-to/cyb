@@ -1,4 +1,9 @@
 col(
+  row(
+    stat(query("cpu"), "cpu"),
+    stat(query("mem"), "mem"),
+    stat(query("net"), "net")
+  ),
   table(
     row("resource", "used", "of", "note"),
     query("resources")

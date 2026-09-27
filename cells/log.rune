@@ -1,5 +1,5 @@
 row(
   stat(query("signals"), "signals"),
-  stat(query("links"), "links"),
-  stat(query("weight"), "weight")
+  stat(query("axons"), "axons"),
+  stat(query("stake"), "stake")
 )

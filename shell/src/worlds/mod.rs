@@ -9,7 +9,9 @@ pub mod graph;
 pub mod identity;
 pub mod memory;
 pub mod models;
+pub mod nav;
 pub mod oracle;
+pub mod page;
 pub mod particle_page;
 pub mod robot;
 pub mod scroll;
@@ -18,6 +20,7 @@ pub mod snapshot;
 pub mod soma_bridge;
 pub mod vault;
 pub mod viewer;
+pub mod windowed;
 
 use bevy::prelude::*;
 
@@ -210,10 +213,19 @@ impl Plugin for WorldsPlugin {
             .init_resource::<Notice>()
             .insert_resource(identity::load_or_mint())
             .insert_resource(SharedCell::open_default())
+            .init_resource::<windowed::TableBodies>()
             // Visibility, not Display::None: None drops layout, so the next
             // show spends a frame at size zero — the remaining flash on
             // Android. Hidden keeps the last layout and just skips draw.
-            .add_systems(Update, hide_foreign_worlds);
+            .add_systems(Update, hide_foreign_worlds)
+            .add_systems(
+                Update,
+                (
+                    windowed::measure_head,
+                    windowed::recycle,
+                    windowed::click_particle,
+                ),
+            );
     }
 }
 
@@ -236,15 +248,16 @@ pub fn reveal_world(here: WorldState, q: &mut Query<(&WorldUi, &mut Visibility)>
 }
 
 fn hide_foreign_worlds(
+    mut commands: Commands,
     state: Res<State<WorldState>>,
     now: Option<Res<crate::now::Now>>,
-    mut q: Query<(&WorldUi, &mut Visibility)>,
+    mut q: Query<(Entity, &WorldUi, &mut Visibility)>,
 ) {
     let filling = now
         .map(|n| n.kind != crate::now::NowKind::World)
         .unwrap_or(false);
     let here = *state.get();
-    for (tag, mut vis) in &mut q {
+    for (e, tag, mut vis) in &mut q {
         let want = if filling {
             Visibility::Hidden
         } else if tag.0 == here {
@@ -254,6 +267,15 @@ fn hide_foreign_worlds(
         };
         if *vis != want {
             *vis = want;
+            // Hidden worlds still sat in the pick set and delayed tab hover.
+            // Display::None is not used: it drops the taffy node and the next
+            // layout panics `invalid SlotMap key` — the whole process dies.
+            // Never despawn a WorldUi root to hide it.
+            if want == Visibility::Hidden {
+                commands.entity(e).insert(Pickable::IGNORE);
+            } else {
+                commands.entity(e).insert(Pickable::default());
+            }
         }
     }
 }

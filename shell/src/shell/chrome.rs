@@ -93,6 +93,12 @@ struct CommanderText;
 struct CommanderSubmit;
 
 #[derive(Component)]
+struct PaySend;
+
+#[derive(Component)]
+struct PayReceive;
+
+#[derive(Component)]
 struct BackButton;
 
 /// The second field of the pay form (amount), hidden in normal mode.
@@ -120,6 +126,8 @@ impl Plugin for ChromePlugin {
                     handle_commander_click,
                     handle_commander_submit,
                     handle_back_button,
+                    handle_pay_buttons,
+                    show_pay_buttons,
                     handle_world_buttons,
                     handle_chrome_input,
                     update_address_bar,
@@ -132,7 +140,11 @@ impl Plugin for ChromePlugin {
                     sync_commander_prompt,
                 )
                     .chain(),
-            );
+            )
+            // Hit-test the tab strip in PreUpdate from the pointer and the
+            // UI transform — Update picking walks every world node first and
+            // the shade arrived a beat late.
+            .add_systems(PreUpdate, hover_tabs);
     }
 }
 
@@ -240,6 +252,7 @@ fn spawn_chrome(mut commands: Commands) {
                 },
                 BackgroundColor(theme::DARK_BASE),
                 BorderColor::all(theme::BORDER),
+                GlobalZIndex(40),
             ))
             .with_children(|bar| {
                 bar.spawn((
@@ -291,8 +304,9 @@ fn spawn_chrome(mut commands: Commands) {
                     ..default()
                 },
                 // Opaque: whatever a world draws slides under this bar, never
-                // through it.
+                // through it. Above particle/file overlays so back is hittable.
                 BackgroundColor(theme::DARK_BASE),
+                GlobalZIndex(40),
             ))
             .with_children(|bottom| {
                 // Upper row: commander, full width beside the shortcut hint.
@@ -403,6 +417,57 @@ fn spawn_chrome(mut commands: Commands) {
                             ));
                         });
 
+                        row.spawn((
+                            PaySend,
+                            Button,
+                            Node {
+                                height: Val::Px(COMMANDER_H),
+                                padding: UiRect::axes(Val::Px(14.0), Val::Px(0.0)),
+                                border: UiRect::all(Val::Px(1.0)),
+                                border_radius: BorderRadius::all(Val::Px(COMMANDER_H / 2.0)),
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                ..default()
+                            },
+                            BackgroundColor(theme::DARK_BASE),
+                            BorderColor::all(theme::BORDER),
+                        ))
+                        .with_children(|b| {
+                            b.spawn((
+                                Text::new("send"),
+                                TextFont {
+                                    font_size: 14.0,
+                                    ..default()
+                                },
+                                TextColor(theme::ACID_GREEN),
+                            ));
+                        });
+                        row.spawn((
+                            PayReceive,
+                            Button,
+                            Node {
+                                height: Val::Px(COMMANDER_H),
+                                padding: UiRect::axes(Val::Px(14.0), Val::Px(0.0)),
+                                border: UiRect::all(Val::Px(1.0)),
+                                border_radius: BorderRadius::all(Val::Px(COMMANDER_H / 2.0)),
+                                align_items: AlignItems::Center,
+                                justify_content: JustifyContent::Center,
+                                ..default()
+                            },
+                            BackgroundColor(theme::DARK_BASE),
+                            BorderColor::all(theme::BORDER),
+                        ))
+                        .with_children(|b| {
+                            b.spawn((
+                                Text::new("receive"),
+                                TextFont {
+                                    font_size: 14.0,
+                                    ..default()
+                                },
+                                TextColor(theme::TEXT_PRIMARY),
+                            ));
+                        });
+
                         // Submit. On desktop Enter does this and the glyph is
                         // a hint; on Android the soft keyboard's "go" never
                         // reaches the app — GameTextInput consumes it — so
@@ -462,6 +527,7 @@ fn spawn_chrome(mut commands: Commands) {
                         ] {
                             tabs.spawn((
                                 WorldNavButton(world),
+                                Button,
                                 Node {
                                     flex_grow: 1.0,
                                     height: Val::Percent(100.0),
@@ -502,6 +568,44 @@ fn handle_commander_click(
     }
 }
 
+fn show_pay_buttons(
+    state: Res<State<WorldState>>,
+    mut q: Query<&mut Node, Or<(With<PaySend>, With<PayReceive>)>>,
+) {
+    let on = *state.get() == WorldState::Sigma;
+    let display = if on { Display::Flex } else { Display::None };
+    for mut node in &mut q {
+        if node.display != display {
+            node.display = display;
+        }
+    }
+}
+
+fn handle_pay_buttons(
+    sends: Query<&Interaction, (Changed<Interaction>, With<PaySend>)>,
+    recvs: Query<&Interaction, (Changed<Interaction>, With<PayReceive>)>,
+    mut chrome: ResMut<ChromeState>,
+    who: Option<Res<crate::worlds::identity::Identity>>,
+    mut notice: ResMut<crate::worlds::Notice>,
+) {
+    let send = sends.iter().any(|i| *i == Interaction::Pressed);
+    let recv = recvs.iter().any(|i| *i == Interaction::Pressed);
+    if send {
+        chrome.pay = Some(PayDraft::default());
+        chrome.focused = true;
+        return;
+    }
+    if recv {
+        if let Some(who) = who {
+            let hex = crate::worlds::sigma::chain::neuron_hex(&who);
+            match crate::shell::clipboard::write_clipboard(&hex) {
+                Ok(()) => notice.show("address copied"),
+                Err(e) => notice.show(format!("clipboard: {e}")),
+            }
+        }
+    }
+}
+
 fn handle_commander_submit(
     q: Query<&Interaction, (Changed<Interaction>, With<CommanderSubmit>)>,
     mut chrome: ResMut<ChromeState>,
@@ -515,34 +619,95 @@ fn handle_commander_submit(
 
 fn handle_back_button(
     q: Query<&Interaction, (Changed<Interaction>, With<BackButton>)>,
+    mut nav: ResMut<crate::worlds::nav::Nav>,
     mut now: ResMut<crate::now::Now>,
+    world: Res<State<WorldState>>,
+    mut next: ResMut<NextState<WorldState>>,
+    spells: Query<Entity, With<crate::worlds::vault::SpellPage>>,
+    mut commands: Commands,
+    mut block: ResMut<crate::worlds::oracle::OpenBlock>,
 ) {
     for i in &q {
         if *i == Interaction::Pressed {
-            now.back();
+            crate::worlds::nav::go_back(
+                &mut nav,
+                &mut now,
+                world.get(),
+                &mut next,
+                &spells,
+                &mut commands,
+            );
+            block.0 = None;
         }
     }
 }
 
 fn handle_world_buttons(
-    mut q: Query<(&Interaction, &WorldNavButton, &mut BackgroundColor), Changed<Interaction>>,
+    q: Query<(&Interaction, &WorldNavButton), Changed<Interaction>>,
     current: Res<State<WorldState>>,
     mut next: ResMut<NextState<WorldState>>,
     mut now: ResMut<crate::now::Now>,
+    mut nav: ResMut<crate::worlds::nav::Nav>,
+    spells: Query<Entity, With<crate::worlds::vault::SpellPage>>,
+    mut block: ResMut<crate::worlds::oracle::OpenBlock>,
 ) {
-    for (interaction, button, mut bg) in &mut q {
-        match interaction {
-            Interaction::Pressed => {
-                now.dismiss();
-                if *current.get() != button.0 {
-                    next.set(button.0);
+    for (interaction, button) in &q {
+        if *interaction != Interaction::Pressed {
+            continue;
+        }
+        let here = crate::worlds::nav::Place::capture(*current.get(), &now, !spells.is_empty());
+        if here.world != button.0 || here.kind != crate::now::NowKind::World || here.spell {
+            nav.push(here);
+        }
+        now.dismiss();
+        block.0 = None;
+        if *current.get() != button.0 {
+            next.set(button.0);
+        }
+    }
+}
+
+/// Pointer vs tab rect — same hit test Bevy uses for UI (`ComputedNode` +
+/// `UiGlobalTransform` + physical cursor). `GlobalTransform` is the 3D
+/// frame and lagged a frame behind layout, so the shade felt late.
+fn hover_tabs(
+    windows: Query<&Window>,
+    mut q: Query<
+        (
+            &ComputedNode,
+            &bevy::ui::UiGlobalTransform,
+            &Children,
+            &mut BackgroundColor,
+        ),
+        With<WorldNavButton>,
+    >,
+    mut colors: Query<&mut TextColor>,
+) {
+    let hot = Color::srgb(0.21, 0.84, 0.68);
+    let cold = Color::srgba(0.21, 0.84, 0.68, 0.55);
+    let hot_bg = Color::srgba(0.21, 0.84, 0.68, 0.18);
+    let cold_bg = Color::NONE;
+    let pointer = windows
+        .single()
+        .ok()
+        .and_then(|w| w.physical_cursor_position());
+    for (node, tf, kids, mut bg) in &mut q {
+        let hovered = pointer
+            .map(|p| node.contains_point(*tf, p))
+            .unwrap_or(false);
+        let (want, want_bg) = if hovered {
+            (hot, hot_bg)
+        } else {
+            (cold, cold_bg)
+        };
+        if bg.0 != want_bg {
+            bg.0 = want_bg;
+        }
+        for kid in kids {
+            if let Ok(mut c) = colors.get_mut(*kid) {
+                if c.0 != want {
+                    c.0 = want;
                 }
-            }
-            Interaction::Hovered => {
-                *bg = BackgroundColor(Color::srgba(0.21, 0.84, 0.68, 0.08));
-            }
-            Interaction::None => {
-                *bg = BackgroundColor(Color::NONE);
             }
         }
     }
@@ -644,7 +809,7 @@ fn show_identity(
         return;
     }
     for mut t in &mut q {
-        **t = who.short();
+        **t = who.short_neuron();
     }
 }
 
@@ -746,34 +911,41 @@ fn sync_commander_prompt(prompt: Res<ComPrompt>, mut q: Query<&mut Text, With<Co
 fn update_address_bar(
     world_state: Res<State<WorldState>>,
     now: Res<crate::now::Now>,
+    open: Res<crate::worlds::oracle::OpenBlock>,
+    spells: Query<(), With<crate::worlds::vault::SpellPage>>,
     mut q: Query<&mut Text, With<AddressBarText>>,
 ) {
-    if !world_state.is_changed() && !now.is_changed() {
-        return;
-    }
-    let uri = match now.kind {
-        crate::now::NowKind::Meta => now
-            .hash
-            .map(|p| format!("cyb://particle/{}", p.to_hex()))
-            .unwrap_or_else(|| "cyb://particle".into()),
-        crate::now::NowKind::File => now
-            .hash
-            .map(|p| format!("cyb://file/{}", p.to_hex()))
-            .unwrap_or_else(|| "cyb://file".into()),
-        crate::now::NowKind::World => match world_state.get() {
-            WorldState::Body => "cyb://body".into(),
-            WorldState::Graph => "cyb://brain".into(),
-            WorldState::Com => "cyb://log".into(),
-            WorldState::Robot => "cyb://robot".into(),
-            WorldState::Sigma => "cyb://sigma".into(),
-            WorldState::Models => "cyb://models".into(),
-            WorldState::Vault => "cyb://vault".into(),
-            WorldState::Memory => "cyb://memory".into(),
-            WorldState::Oracle => "cyb://oracle".into(),
-        },
+    let uri: String = if !spells.is_empty() {
+        crate::worlds::vault::spell_url()
+    } else if let Some(h) = open.0 {
+        format!("cyb://block/{h}")
+    } else {
+        match now.kind {
+            crate::now::NowKind::Meta => now
+                .hash
+                .map(|p| format!("cyb://particle/{}", p.to_hex()))
+                .unwrap_or_else(|| "cyb://particle".into()),
+            crate::now::NowKind::File => now
+                .hash
+                .map(|p| format!("cyb://file/{}", p.to_hex()))
+                .unwrap_or_else(|| "cyb://file".into()),
+            crate::now::NowKind::World => match world_state.get() {
+                WorldState::Body => "cyb://body".into(),
+                WorldState::Graph => "cyb://brain".into(),
+                WorldState::Com => "cyb://log".into(),
+                WorldState::Robot => "cyb://robot".into(),
+                WorldState::Sigma => "cyb://sigma".into(),
+                WorldState::Models => "cyb://models".into(),
+                WorldState::Vault => "cyb://vault".into(),
+                WorldState::Memory => "cyb://memory".into(),
+                WorldState::Oracle => "cyb://oracle".into(),
+            },
+        }
     };
     for mut text in &mut q {
-        **text = uri.clone();
+        if **text != uri {
+            **text = uri.clone();
+        }
     }
 }
 
@@ -1154,6 +1326,7 @@ pub fn handle_chrome_input(world: &mut World) {
             "vault" | "secrets" => Some(WorldState::Vault),
             "memory" | "files" => Some(WorldState::Memory),
             "oracle" | "blocks" | "explorer" => Some(WorldState::Oracle),
+            "spell" => Some(WorldState::Vault),
             _ => None,
         };
         if let Some(t) = target {
@@ -1183,6 +1356,27 @@ pub fn handle_chrome_input(world: &mut World) {
                     }
                 }
             }
+        } else if let Some(rest) = cmd
+            .strip_prefix("cyb://block/")
+            .or_else(|| cmd.strip_prefix("block/"))
+        {
+            if let Ok(h) = rest.parse::<u64>() {
+                world
+                    .resource_mut::<NextState<WorldState>>()
+                    .set(WorldState::Oracle);
+                if let Some(mut open) = world.get_resource_mut::<crate::worlds::oracle::OpenBlock>()
+                {
+                    open.0 = Some(h);
+                }
+            }
+        } else if cmd.starts_with("cyb://vault/spell")
+            || cmd.starts_with("vault/spell")
+            || cmd == "cyb://spell"
+            || cmd == "spell"
+        {
+            world
+                .resource_mut::<NextState<WorldState>>()
+                .set(WorldState::Vault);
         } else if !cmd.is_empty() {
             // Anything that is not a world name is a shell line: com runs it
             // and holds the history, so submitting from any world lands there.

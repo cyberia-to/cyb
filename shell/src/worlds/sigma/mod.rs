@@ -98,11 +98,16 @@ impl Plugin for SigmaWorldPlugin {
         app.init_resource::<chain::ChainMoney>();
         app.add_systems(
             OnEnter(WorldState::Sigma),
-            (sync_local_tip, setup_sigma, refresh_chain_on_enter),
+            (setup_sigma, refresh_chain_on_enter),
         )
         .add_systems(
             Update,
-            (handle_chain_buttons, refresh_chain_labels).run_if(in_state(WorldState::Sigma)),
+            (
+                sync_local_tip_once,
+                handle_chain_buttons,
+                refresh_chain_labels,
+            )
+                .run_if(in_state(WorldState::Sigma)),
         )
         // The balance poll runs in EVERY world: sigma and the body's
         // zheng card read the same ChainMoney, so the money is one
@@ -113,6 +118,17 @@ impl Plugin for SigmaWorldPlugin {
 
 /// Fill the local BBG tip now that the window is up. Never at plugin
 /// build: `state.root()` is what killed 0.14.0 on a lived-in graph.log.
+fn sync_local_tip_once(mut frames: Local<u8>, sigma: ResMut<SigmaState>, shared: Res<SharedCell>) {
+    if *frames > 2 {
+        return;
+    }
+    *frames += 1;
+    if *frames < 2 {
+        return;
+    }
+    sync_local_tip(sigma, shared);
+}
+
 fn sync_local_tip(mut sigma: ResMut<SigmaState>, shared: Res<SharedCell>) {
     let cell = shared.cell.lock().expect("shared cell poisoned");
     let neuron = sigma.wallet.neuron;
@@ -137,8 +153,6 @@ fn setup_sigma(
     if crate::worlds::reveal_world(WorldState::Sigma, &mut worlds) {
         return;
     }
-    let top = CHROME_TOP_H + 12.0;
-    let bottom = CHROME_BOTTOM_H + 12.0;
     commands
         .spawn((
             SigmaRoot,
@@ -146,10 +160,10 @@ fn setup_sigma(
             crate::shell::chrome::ContentRoot,
             Node {
                 position_type: PositionType::Absolute,
-                left: Val::Px(16.0),
-                right: Val::Px(16.0),
-                top: Val::Px(top),
-                bottom: Val::Px(bottom),
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                top: Val::Px(CHROME_TOP_H),
+                bottom: Val::Px(CHROME_BOTTOM_H),
                 flex_direction: FlexDirection::Column,
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,

@@ -92,16 +92,7 @@ fn sync_page(
         .id();
     let page = commands
         .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                max_width: Val::Px(theme::MEASURE),
-                height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(theme::G * 3.0)),
-                row_gap: Val::Px(theme::G * 1.5),
-                overflow: Overflow::scroll_y(),
-                ..default()
-            },
+            crate::worlds::page::scroll_column(),
             ScrollPosition::default(),
             crate::worlds::scroll::PersistScroll("particle"),
             ChildOf(root),
@@ -188,6 +179,8 @@ fn walk_axon(
     interactions: Query<(&Interaction, &AxonRow), Changed<Interaction>>,
     index: Option<Res<BrainIndex>>,
     mut now: ResMut<Now>,
+    mut nav: ResMut<crate::worlds::nav::Nav>,
+    world: Res<State<crate::worlds::WorldState>>,
     warp: Option<ResMut<WarpTarget>>,
 ) {
     let Some(index) = index else { return };
@@ -198,7 +191,7 @@ fn walk_axon(
         let Some(&hash) = index.hashes.get(row.0) else {
             continue;
         };
-        now.stand(hash, Some(row.0));
+        crate::worlds::nav::stand_from(&mut nav, &mut now, *world.get(), hash, Some(row.0), false);
         if let Some(mut warp) = warp {
             warp.particle_idx = Some(row.0 as u32);
         }

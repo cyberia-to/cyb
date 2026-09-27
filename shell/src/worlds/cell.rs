@@ -16,6 +16,7 @@ const BUILTIN: &[(&str, &str)] = &[
     ("body", include_str!("../../../cells/body.rune")),
     ("models", include_str!("../../../cells/models.rune")),
     ("vault", include_str!("../../../cells/vault.rune")),
+    ("oracle", include_str!("../../../cells/oracle.rune")),
 ];
 
 pub fn load(name: &str) -> Result<String, String> {
@@ -71,6 +72,11 @@ pub fn row(cells: &[&str]) -> Noun {
         n = Noun::cell(tape(s), n);
     }
     Noun::cell(Noun::Atom(tag::ROW), n)
+}
+
+pub fn row_strings(cells: &[String]) -> Noun {
+    let refs: Vec<&str> = cells.iter().map(String::as_str).collect();
+    row(&refs)
 }
 
 pub fn query_name(args: &Noun) -> String {

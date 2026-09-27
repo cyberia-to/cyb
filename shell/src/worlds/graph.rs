@@ -23,8 +23,67 @@ impl Plugin for GraphBridgePlugin {
             .add_systems(Update, refresh_hud.run_if(in_state(WorldState::Graph)))
             .add_systems(Update, place_labels.run_if(in_state(WorldState::Graph)))
             .add_systems(OnExit(WorldState::Graph), hide_labels)
-            .add_systems(OnEnter(WorldState::Graph), insert_graph_config)
+            .add_systems(
+                Update,
+                insert_graph_config.run_if(in_state(WorldState::Graph)),
+            )
+            .add_systems(OnEnter(WorldState::Memory), insert_graph_config)
+            .add_systems(Update, tick_census.run_if(not(in_state(WorldState::Graph))))
             .add_systems(Update, (sync_graph_state, sync_camera_inset));
+    }
+}
+
+fn graph_bytes() -> u64 {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    std::fs::metadata(std::path::Path::new(&home).join("cyb").join("graph.log"))
+        .map(|m| m.len())
+        .unwrap_or(0)
+}
+
+/// Cheap census for every world except brain: unique nodes, unique axons,
+/// file size. No tru — that is a main-thread hitch and froze oracle clicks.
+fn tick_census(
+    shared: Res<SharedCell>,
+    mut stats: ResMut<BrainStats>,
+    mut index: ResMut<BrainIndex>,
+    mut seen: Local<Option<u64>>,
+    mouse: Res<ButtonInput<MouseButton>>,
+    touches: Res<Touches>,
+) {
+    if mouse.pressed(MouseButton::Left) || touches.iter().next().is_some() {
+        return;
+    }
+    let ver = shared.version.load(std::sync::atomic::Ordering::Relaxed);
+    if Some(ver) == *seen {
+        return;
+    }
+    *seen = Some(ver);
+    let Ok(cell) = shared.cell.lock() else { return };
+    let nodes = cell.nodes();
+    let axons = cell.axons();
+    stats.particles = nodes.len();
+    stats.axons = axons.len();
+    stats.stake = axons.iter().map(|(_, _, w)| *w).sum();
+    stats.graph_bytes = graph_bytes();
+    let hashes: Vec<[u8; 32]> = nodes.into_iter().map(|(p, _)| p).collect();
+    if hashes != index.hashes {
+        let old: std::collections::HashMap<[u8; 32], f32> = index
+            .hashes
+            .iter()
+            .zip(index.focus.iter())
+            .map(|(h, f)| (*h, *f))
+            .collect();
+        let focus: Vec<f32> = hashes
+            .iter()
+            .map(|h| old.get(h).copied().unwrap_or(0.0))
+            .collect();
+        let n = hashes.len();
+        *index = BrainIndex {
+            hashes,
+            focus,
+            labels: vec![None; n],
+            named: index.named.clone(),
+        };
     }
 }
 
@@ -40,10 +99,14 @@ fn insert_graph_config(
     mut last: Local<Option<Instant>>,
     mouse: Res<ButtonInput<MouseButton>>,
     touches: Res<Touches>,
+    world: Res<State<WorldState>>,
 ) {
     // A finger on the graph is a camera move. tru+CSR on this thread is
-    // a frame hitch; wait until the finger lifts.
-    if mouse.pressed(MouseButton::Left) || touches.iter().next().is_some() {
+    // a frame hitch; wait until the finger lifts. Opening memory still
+    // needs φ* even though the tab click holds the mouse down.
+    if *world.get() == WorldState::Graph
+        && (mouse.pressed(MouseButton::Left) || touches.iter().next().is_some())
+    {
         return;
     }
     let ver = shared.version.load(std::sync::atomic::Ordering::Relaxed);
@@ -62,6 +125,7 @@ fn insert_graph_config(
     let axons = shared.cell.lock().expect("shared cell poisoned").axons();
     let mut values: Option<std::sync::Arc<mir::epoch::GraphValues>> = None;
     *stats = BrainStats::default();
+    stats.graph_bytes = graph_bytes();
     let csr = if axons.is_empty() {
         // Nothing yet — and honestly nothing, not a demo constellation. The
         // graph seeds itself from use: the first world switch casts the
@@ -164,11 +228,6 @@ fn insert_graph_config(
             let total = (d + sp + h).max(1e-12);
             [(d / total) as f32, (sp / total) as f32, (h / total) as f32]
         };
-        let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
-        stats.graph_bytes =
-            std::fs::metadata(std::path::Path::new(&home).join("cyb").join("graph.log"))
-                .map(|m| m.len())
-                .unwrap_or(0);
         // Top particles by focus, with the words behind them when known.
         let texts = super::content::load();
         let mut ranked: Vec<([u8; 32], f32)> =
@@ -320,51 +379,109 @@ fn decode_ascii_particle(hash: &[u8; 32]) -> Option<String> {
         .then(|| String::from_utf8_lossy(head).into_owned())
 }
 
-// ── the HUD ─────────────────────────────────────────────────────────────────
+// ── census bands ────────────────────────────────────────────────────────────
 
 #[derive(Component)]
 struct HudRoot;
 
 #[derive(Component)]
-struct HudText;
-
-/// An ASCII bar, `width` characters at `frac` full. The font has no blocks
-/// worth trusting; `=` and `.` are everywhere and read instantly.
-fn bar(frac: f32, width: usize) -> String {
-    let filled = ((frac.clamp(0.0, 1.0) * width as f32).round() as usize).min(width);
-    format!("{}{}", "=".repeat(filled), ".".repeat(width - filled))
+enum BrainStat {
+    Particles,
+    Axons,
+    Bytes,
+    Stake,
+    Attention,
+    Syntropy,
 }
 
-fn hud_text(stats: &BrainStats) -> String {
-    let mut out = String::new();
-    out.push_str(&format!(
-        "{} particles   {} axons   {:.1} KB\n",
-        stats.particles,
-        stats.axons,
-        stats.graph_bytes as f64 / 1024.0
-    ));
-    out.push_str(&format!(
-        "stake {}   attention {}s   J {:.3}\n",
-        stats.stake, stats.attention_secs, stats.syntropy
-    ));
-    let [d, s_, h] = stats.kernel_split;
-    out.push_str(&format!(
-        "D {} {:>2.0}%   S {} {:>2.0}%   H {} {:>2.0}%\n",
-        bar(d, 8),
-        d * 100.0,
-        bar(s_, 8),
-        s_ * 100.0,
-        bar(h, 8),
-        h * 100.0
-    ));
-    if !stats.top.is_empty() {
-        out.push('\n');
-        let max = stats.top.first().map(|(_, f)| *f).unwrap_or(1.0).max(1e-9);
-        for (name, f) in &stats.top {
-            out.push_str(&format!("{} {:<20}\n", bar(f / max, 10), name));
-        }
+fn spawn_census_row(commands: &mut Commands, stats: &BrainStats, top: bool) {
+    let band = commands
+        .spawn((
+            HudRoot,
+            crate::worlds::WorldUi(WorldState::Graph),
+            super::page::overlay_band(top),
+            GlobalZIndex(5),
+            Pickable::IGNORE,
+        ))
+        .id();
+    let band = commands
+        .spawn((super::page::overlay_inner(), ChildOf(band)))
+        .id();
+    let items: [(BrainStat, String, &'static str); 3] = if top {
+        [
+            (
+                BrainStat::Particles,
+                super::cell::exact(stats.particles as u64),
+                "particles",
+            ),
+            (
+                BrainStat::Axons,
+                super::cell::exact(stats.axons as u64),
+                "axons",
+            ),
+            (
+                BrainStat::Bytes,
+                format!("{:.0} KB", stats.graph_bytes as f64 / 1024.0),
+                "graph",
+            ),
+        ]
+    } else {
+        [
+            (
+                BrainStat::Stake,
+                super::cell::exact(stats.stake as u64),
+                "stake",
+            ),
+            (
+                BrainStat::Attention,
+                format!("{}s", stats.attention_secs),
+                "attention",
+            ),
+            (
+                BrainStat::Syntropy,
+                format!("{:.3}", stats.syntropy),
+                "syntropy",
+            ),
+        ]
+    };
+    for (kind, value, cap) in items {
+        let card = commands
+            .spawn((
+                Node {
+                    flex_grow: 1.0,
+                    flex_basis: Val::Px(0.0),
+                    flex_direction: FlexDirection::Column,
+                    align_items: AlignItems::Center,
+                    justify_content: JustifyContent::Center,
+                    padding: UiRect::axes(Val::Px(theme::G), Val::Px(theme::G)),
+                    border: UiRect::all(Val::Px(1.0)),
+                    ..default()
+                },
+                BackgroundColor(theme::DARK_BASE),
+                BorderColor::all(theme::BORDER),
+                ChildOf(band),
+            ))
+            .id();
+        commands.spawn((
+            kind,
+            Text::new(value),
+            TextFont {
+                font_size: theme::H3,
+                ..default()
+            },
+            TextColor(theme::TEXT_PRIMARY),
+            ChildOf(card),
+        ));
+        commands.spawn((
+            Text::new(cap),
+            TextFont {
+                font_size: theme::MICRO,
+                ..default()
+            },
+            TextColor(theme::TEXT_DIM),
+            ChildOf(card),
+        ));
     }
-    out
 }
 
 fn spawn_hud(
@@ -379,29 +496,8 @@ fn spawn_hud(
         }
         return;
     }
-    commands
-        .spawn((
-            HudRoot,
-            Node {
-                position_type: PositionType::Absolute,
-                left: Val::Px(12.0),
-                top: Val::Px(CHROME_TOP_H + 10.0),
-                padding: UiRect::all(Val::Px(8.0)),
-                ..default()
-            },
-            GlobalZIndex(5),
-        ))
-        .with_children(|hud| {
-            hud.spawn((
-                HudText,
-                Text::new(hud_text(&stats)),
-                TextFont {
-                    font_size: 11.0,
-                    ..default()
-                },
-                TextColor(prysm::theme::TEXT_DIM),
-            ));
-        });
+    spawn_census_row(&mut commands, &stats, true);
+    spawn_census_row(&mut commands, &stats, false);
 }
 
 fn despawn_hud(mut q: Query<&mut Visibility, With<HudRoot>>) {
@@ -410,12 +506,19 @@ fn despawn_hud(mut q: Query<&mut Visibility, With<HudRoot>>) {
     }
 }
 
-fn refresh_hud(stats: Res<BrainStats>, mut q: Query<&mut Text, With<HudText>>) {
+fn refresh_hud(stats: Res<BrainStats>, mut q: Query<(&BrainStat, &mut Text)>) {
     if !stats.is_changed() {
         return;
     }
-    for mut t in &mut q {
-        **t = hud_text(&stats);
+    for (kind, mut t) in &mut q {
+        **t = match kind {
+            BrainStat::Particles => super::cell::exact(stats.particles as u64),
+            BrainStat::Axons => super::cell::exact(stats.axons as u64),
+            BrainStat::Bytes => format!("{:.0} KB", stats.graph_bytes as f64 / 1024.0),
+            BrainStat::Stake => super::cell::exact(stats.stake as u64),
+            BrainStat::Attention => format!("{}s", stats.attention_secs),
+            BrainStat::Syntropy => format!("{:.3}", stats.syntropy),
+        };
     }
 }
 
@@ -541,12 +644,14 @@ fn place_labels(
         let Some((sx, sy)) = spot else { continue };
         commands.spawn((
             ParticleLabel(i),
+            crate::worlds::WorldUi(WorldState::Graph),
             Text::new(label.clone()),
             TextFont {
                 font_size: 11.0,
                 ..default()
             },
             TextColor(theme::TEXT_DIM),
+            Pickable::IGNORE,
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px((sx + 8.0).round()),

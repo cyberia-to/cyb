@@ -15,38 +15,39 @@
 //!   on screen today — and tru's ranking has honest attention data to chew
 //!   on the day it lands.
 //!
-//! The unit is seconds, floor one: a glance still happened. This is the
-//! smallest version of "time on page as a link parameter" — worlds are the
-//! only pages cyb has today; when robot grows real pages, the same cast
-//! works per page.
+//! Seconds count only while the window is visible and focused. Closing to
+//! the tray, or another app in front, pauses the clock — overnight in the
+//! tray must not become 28 000 seconds of "attention".
 
 use std::time::Instant;
 
 use bevy::prelude::*;
 use bevy::state::state::StateTransitionEvent;
+use bevy::window::PrimaryWindow;
 
-use super::{content, identity::Identity, ComInbox, ComSay, SharedCell, WorldState};
+use super::{ComInbox, ComSay, SharedCell, WorldState, content, identity::Identity};
 
 pub struct AttentionPlugin;
 
-/// Where the attention currently rests, and since when.
+/// Where attention rests, and how much visible focused time it has accrued.
 #[derive(Resource)]
 struct Dwell {
     world: WorldState,
-    since: Instant,
+    /// Whole seconds already banked while the window was live.
+    accrued: u64,
+    /// `Some` only while the window is visible and focused.
+    running_since: Option<Instant>,
 }
 
 impl Plugin for AttentionPlugin {
     fn build(&self, app: &mut App) {
-        let world = *app
-            .world()
-            .resource::<State<WorldState>>()
-            .get();
+        let world = *app.world().resource::<State<WorldState>>().get();
         app.insert_resource(Dwell {
             world,
-            since: Instant::now(),
+            accrued: 0,
+            running_since: Some(Instant::now()),
         })
-        .add_systems(Update, observe_transitions);
+        .add_systems(Update, (gate_dwell, observe_transitions).chain());
 
         // `CYB_TOUR="log:3,brain:5,sigma:2,log:4"` walks the worlds on a
         // timer — the scripted stand-in for a hand on the tabs. It exists to
@@ -72,7 +73,11 @@ impl Plugin for AttentionPlugin {
                 })
                 .collect();
             if !stops.is_empty() {
-                app.insert_resource(Tour { stops, at: 0, wait: 0.0 });
+                app.insert_resource(Tour {
+                    stops,
+                    at: 0,
+                    wait: 0.0,
+                });
                 app.add_systems(Update, run_tour);
             }
         }
@@ -86,11 +91,7 @@ struct Tour {
     wait: f32,
 }
 
-fn run_tour(
-    time: Res<Time>,
-    mut tour: ResMut<Tour>,
-    mut next: ResMut<NextState<WorldState>>,
-) {
+fn run_tour(time: Res<Time>, mut tour: ResMut<Tour>, mut next: ResMut<NextState<WorldState>>) {
     if tour.at >= tour.stops.len() {
         return;
     }
@@ -120,13 +121,37 @@ pub fn world_name(w: WorldState) -> &'static str {
     }
 }
 
+fn window_live(window: &Window) -> bool {
+    window.visible && window.focused
+}
+
+/// Pause the clock when the window is gone or not in front. Resume on show.
+fn gate_dwell(window: Query<&Window, With<PrimaryWindow>>, mut dwell: ResMut<Dwell>) {
+    let Ok(window) = window.single() else {
+        return;
+    };
+    let live = window_live(window);
+    match (live, dwell.running_since) {
+        (false, Some(since)) => {
+            dwell.accrued = dwell.accrued.saturating_add(since.elapsed().as_secs());
+            dwell.running_since = None;
+        }
+        (true, None) => {
+            dwell.running_since = Some(Instant::now());
+        }
+        _ => {}
+    }
+}
+
 fn observe_transitions(
     mut transitions: MessageReader<StateTransitionEvent<WorldState>>,
     mut dwell: ResMut<Dwell>,
     shared: Res<SharedCell>,
     who: Res<Identity>,
     mut inbox: ResMut<ComInbox>,
+    window: Query<&Window, With<PrimaryWindow>>,
 ) {
+    let live = window.single().ok().is_some_and(window_live);
     for t in transitions.read() {
         let (Some(exited), Some(entered)) = (t.exited, t.entered) else {
             continue;
@@ -134,10 +159,21 @@ fn observe_transitions(
         if exited == entered {
             continue;
         }
-        // Seconds of attention the old world actually received.
-        let secs = dwell.since.elapsed().as_secs().max(1);
+        let mut secs = dwell.accrued;
+        if let Some(since) = dwell.running_since {
+            secs = secs.saturating_add(since.elapsed().as_secs());
+        }
         dwell.world = entered;
-        dwell.since = Instant::now();
+        dwell.accrued = 0;
+        dwell.running_since = if live { Some(Instant::now()) } else { None };
+        // A glance while looking still counts as one second. A hop while
+        // the window was closed casts nothing.
+        if secs == 0 {
+            if !live {
+                continue;
+            }
+            secs = 1;
+        }
 
         let from = world_name(exited);
         let to = world_name(entered);
@@ -154,7 +190,9 @@ fn observe_transitions(
         match cast {
             Ok(_) => {
                 shared.bump();
-                inbox.0.push(ComSay::Note(format!("-> {to}  ({from} {secs}s)")));
+                inbox
+                    .0
+                    .push(ComSay::Note(format!("-> {to}  ({from} {secs}s)")));
             }
             Err(e) => warn!("attention: cast failed: {e:?}"),
         }

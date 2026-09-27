@@ -80,16 +80,7 @@ fn sync_page(
         .id();
     let page = commands
         .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                max_width: Val::Px(theme::MEASURE),
-                height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(theme::G * 3.0)),
-                row_gap: Val::Px(theme::G * 2.0),
-                overflow: Overflow::scroll_y(),
-                ..default()
-            },
+            crate::worlds::page::scroll_column(),
             ScrollPosition::default(),
             crate::worlds::scroll::PersistScroll("file"),
             ChildOf(root),
