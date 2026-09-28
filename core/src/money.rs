@@ -5,7 +5,9 @@
 
 use std::collections::VecDeque;
 
-use bbg::{NeuronRecord, Particle, QueryProof, balance_key, prove_balances, verify_query};
+use bbg::{NeuronRecord, Particle, QueryProof, balance_key};
+use bbg::proof::prove_public_balance;
+use bbg::query_auth::verify_public_balance;
 use cyber_hemera::hash as hemera_hash;
 use cybergraph::{ApiError, NeuronId, Signal};
 use foculus::{
@@ -268,7 +270,12 @@ impl MoneyWallet {
             .unwrap_or(0)
     }
 
-    /// WP2: open balance against grade-4 tip.
+    /// WP2: open balance against grade-4 tip. Balances are private in bbg's
+    /// exact-context table (`prove_balances`/`verify_query` never disclose
+    /// them — `authenticated` rejects any contextless proof by design), so a
+    /// light client that wants a provable balance must go through the
+    /// opt-in public-disclosure pair `prove_public_balance` /
+    /// `verify_public_balance`, pinned to the trusted tip root.
     pub fn open_balance(
         &self,
         cell: &Cell,
@@ -278,12 +285,11 @@ impl MoneyWallet {
         if !self.tip.grade4() {
             return Err(MoneyError::TipNotTrusted);
         }
-        let proof =
-            prove_balances(&cell.graph.bbg.state, owner, token).ok_or(MoneyError::OpeningFailed)?;
-        if !verify_query(&proof) {
-            return Err(MoneyError::OpeningUnverified);
-        }
-        Ok((self.balance(cell, owner, token), proof))
+        let proof = prove_public_balance(&cell.graph.bbg.state, owner, token)
+            .ok_or(MoneyError::OpeningFailed)?;
+        let amount = verify_public_balance(&proof, &self.tip.root, owner, token)
+            .ok_or(MoneyError::OpeningUnverified)?;
+        Ok((amount, proof))
     }
 
     /// Genesis fund (tests / bootstrap).
@@ -928,6 +934,7 @@ fn cell_tip(cell: &Cell, neuron: &NeuronId) -> (u64, Particle) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bbg::query_auth::verify_query;
     use foculus::{TipTrust, join_with_demo_fold};
 
     fn token() -> Particle {
