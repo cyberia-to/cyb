@@ -14,6 +14,6 @@ what survives, and where it lives now:
 
 - a live-loaded rune program is a neuron program: data IDs, independent state, no second signing identity ([[neuron]]).
 - a rune expression that evaluates to a chunk-noun and renders as a page is the terminal's own pipeline, `rune → chunks → prysm → mir`; the robot keeps it as a way to paint, not as an organ.
-- `cell://<name>` addressing, file-watched reload and radio-backed publishing were the cell roadmap's P2–P4; their home is the neuron program lifecycle and [[cyb/parts/memory|memory]] for what is rendered.
+- `cell://<name>` addressing, file-watched reload and radio-backed publishing were the cell roadmap's P2–P4; their home is the neuron program lifecycle and [[cy/specs/memory|memory]] for what is rendered.
 
 the word *cell* in the protocol ([[cell]], a 4D particle group; the [[cell]] ladder of [[aos]] and [[oikos]]) is a different thing and is unaffected.

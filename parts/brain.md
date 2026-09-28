@@ -9,4 +9,4 @@ crystal-domain: cyb
 
 the rendered graph — everything the robot knows, painted live at 100+ fps by [[mir]], flown through like a world. today this is the world still named *graph* in the app; the anatomy renames it brain.
 
-part of the [[cyb/anatomy|anatomy]] (mind). one key flips brain ⇄ [[cyb/parts/memory|memory]] — the same knowledge as space or as shelf
+part of the [[cyb/anatomy|anatomy]] (mind). one key flips brain ⇄ [[cy/specs/memory|memory]] — the same knowledge as space or as shelf

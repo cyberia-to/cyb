@@ -5,13 +5,9 @@ alias: cyb parts, organs
 ---
 # parts — the organ shelf
 
-one page per organ of the [[cyb/anatomy|anatomy]] — all 21:
+the body's organs, one page each. the agent's organs moved to [[cy/specs/README|cy]] on 2026-09-28: [[cy/specs/soma|soma]] · [[cy/specs/soul|soul]] · [[cy/specs/ward|ward]] · [[cy/specs/com|com]] · [[cy/specs/voice|voice]] · [[cy/specs/sense|sense]] · [[cy/specs/state|state]] · [[cy/specs/now|now]] · [[cy/specs/log|log]] · [[cy/specs/plan|plan]] · [[cy/specs/memory|memory]] · [[cy/specs/vault|vault]] · [[cy/specs/body|body]] (sigma follows).
 
-**identity**: [[cyb/parts/name|name]] · [[cyb/parts/avatar|avatar]] · [[cyb/parts/soul|soul]] · [[cyb/parts/ward|ward]]
-**mind**: [[cyb/parts/soma|soma]] · [[cyb/parts/brain|brain]] · [[cyb/parts/memory|memory]] (doctrine: [[cyb/parts/fs|fs]])
-**senses**: [[cyb/parts/com|com]] · [[cyb/parts/sense|sense]] · [[cyb/parts/voice|voice]] · [[cyb/parts/vision|vision]] · [[cyb/parts/state|state]]
-**value**: [[cyb/parts/sigma|sigma]] · [[cyb/parts/vault|vault]]
-**time**: [[cyb/parts/log|log]] · [[cyb/parts/now|now]] · [[cyb/parts/plan|plan]] · [[cyb/parts/time|time]]
-**flesh**: [[cyb/parts/body|body]] · [[cyb/parts/radio|radio]] — [[cyb/parts/cells|cells]] merged into [[neuron]] 2026-09-12
+**body**: [[cyb/parts/avatar|avatar]] · [[cyb/parts/brain|brain]] · [[cyb/parts/vision|vision]] · [[cyb/parts/time|time]]
+**not yet placed**: [[cyb/parts/name|name]] · [[cyb/parts/radio|radio]] · [[cyb/parts/fs|fs]] · [[cyb/parts/sigma|sigma]] — [[cyb/parts/cells|cells]] merged into [[neuron]] 2026-09-12
 
 **doctrine**: [[cyb/parts/live|live]] — paint last known, fetch in the dark, never hold the frame

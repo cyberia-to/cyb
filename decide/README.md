@@ -16,5 +16,5 @@ nothing here is deleted; each file carries one open question. answer a question 
 | [[cyb/decide/runtime|runtime]] · [[cyb/decide/hardware|hardware]] | inference-stack matter — move to [[honeycrisp]]? |
 | [[cyb/decide/order|order]] | execution unit — move to [[nox]]? |
 | [[cyb/decide/multiproof|multiproof]] | proof architecture — move to [[zheng]]? |
-| [[cyb/decide/wire|wire]] | transport frames — move to [[cybergraph spec|cybergraph]], or is this [[cyb/parts/state|state]]/radio doctrine now? |
+| [[cyb/decide/wire|wire]] | transport frames — move to [[cybergraph spec|cybergraph]], or is this [[cy/specs/state|state]]/radio doctrine now? |
 | [[cyb/decide/pipeline|pipeline]] | the full intelligence cycle — soft3-level page or cyb product page? |
