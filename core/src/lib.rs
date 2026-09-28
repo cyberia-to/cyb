@@ -13,6 +13,8 @@
 //! `hemera`, `zheng`, `nebu`). Does **not** depend on bevy, wgpu, or
 //! any rendering layer — those plug in above this crate.
 
+#[cfg(feature = "blobs")]
+pub mod blob;
 pub mod cell;
 pub mod chroma;
 pub mod intent;

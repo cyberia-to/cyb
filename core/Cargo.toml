@@ -5,6 +5,11 @@ edition = "2024"
 description = "Minimal cyb runtime core — chroma graph, signal bus, well-known particles"
 license = "Cyber"
 
+[features]
+# verified-streaming decode via the radio family's BAO crate — synchronous,
+# no networking (not the iroh/radio transport, see the `foculus` note below)
+blobs = ["dep:cyber-bao"]
+
 [dependencies]
 cybergraph = { path = "../../cybergraph" }
 bbg = { path = "../../bbg/rs" }
@@ -15,3 +20,5 @@ foculus = { path = "../../foculus", default-features = false }
 tru = { package = "cyber-tru", path = "../../tru/rs" }
 # PLUMB conservation mint ledger
 tok = { package = "cyber-tok", path = "../../tok/rs" }
+# optional: BAO verified-streaming decode, no transport
+cyber-bao = { path = "../../radio/cyber-bao", optional = true }
