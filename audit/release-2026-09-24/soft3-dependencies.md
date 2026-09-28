@@ -1,0 +1,36 @@
+## soft3 source inventory
+
+| component | source revision | pin | packages |
+|---|---|---|---|
+| bbg | [a3c9a0c22bfb78ef891265f9e2cd25838ef77c2d](https://github.com/cyberia-to/bbg/commit/a3c9a0c22bfb78ef891265f9e2cd25838ef77c2d) | matches | unresolved; declared: bbg-cli@0.1.0, bbg@0.2.1 |
+| cyb | [6c20559206d90f0474379e48706ba00db9630a37](https://github.com/cyberia-to/cyb/commit/6c20559206d90f0474379e48706ba00db9630a37) | product | unresolved; declared: cyb-portal@0.1.0, cy@0.1.0, cyb-core@0.1.0, cyb@0.2.1, cyb@0.0.1, cyb@0.15.1 |
+| cyber | [083871d20d30adfd1e31615b1615940ed4b9141f](https://github.com/cyberia-to/cyber/commit/083871d20d30adfd1e31615b1615940ed4b9141f) | product | unresolved; declared: true-cyber@0.8.0 |
+| cybergraph | [aa374ced57eed6bbf42de0b77d29b4c5412fd30d](https://github.com/cyberia-to/cybergraph/commit/aa374ced57eed6bbf42de0b77d29b4c5412fd30d) | matches | unresolved; declared: cybergraph@0.1.1, cybergraph-cli@0.1.0 |
+| evy | [2f23bfb97fe2904e3bcba3f116b473ed6cbec483](https://github.com/cyberia-to/evy/commit/2f23bfb97fe2904e3bcba3f116b473ed6cbec483) | matches | unresolved; declared: bevy_animation@0.18.1, bevy_anti_alias@0.18.1, bevy_core_pipeline@0.18.1, bevy_diagnostic@0.18.1, bevy_ecs@0.18.1, bevy_gizmos@0.18.1, bevy_gizmos_render@0.18.1, bevy_image@0.18.1, bevy_mesh@0.18.1, bevy_pbr@0.18.1, bevy_post_process@0.18.1, bevy_render@0.18.1, bevy_sprite@0.18.1, bevy_sprite_render@0.18.1, bevy_tasks@0.18.1, bevy_transform@0.18.1, naga@24.0.0 |
+| file | [fc666a5880ff874adae655150414b3a45832baf0](https://github.com/cyberia-to/file/commit/fc666a5880ff874adae655150414b3a45832baf0) | matches | unresolved; declared: cyber-file@0.1.0 |
+| foculus | [177fad4c614a8e002aac28c9ca2a8196ce69b6cb](https://github.com/cyberia-to/foculus/commit/177fad4c614a8e002aac28c9ca2a8196ce69b6cb) | matches | unresolved; declared: foculus@0.1.3 |
+| glia | [89adc925c47205ba8ce0438ffb984f3e1466a92a](https://github.com/cyberia-to/glia/commit/89adc925c47205ba8ce0438ffb984f3e1466a92a) | matches | unresolved; declared: import@0.1.0, run@0.1.0 |
+| hemera | [23f3bbcff910ea6d504ceb505680a539260869da](https://github.com/cyberia-to/hemera/commit/23f3bbcff910ea6d504ceb505680a539260869da) | matches | unresolved; declared: hemera-bench@0.3.0, hemera-cli@0.3.0, cyber-hemera@0.3.1, cyber-hemera-wgsl@0.3.0 |
+| honeycrisp | [9593c7218e14e2b5b816d9008b45ab60b9580cf3](https://github.com/cyberia-to/honeycrisp/commit/9593c7218e14e2b5b816d9008b45ab60b9580cf3) | matches | unresolved; declared: dext_contiguous_client@0.1.0, cybmem-client@0.1.0, hyp_probe@0.1.0, iosurface_probe@0.1.0 |
+| inf | [bf379879b60d724cb34fead91d703e0090acc08e](https://github.com/cyberia-to/inf/commit/bf379879b60d724cb34fead91d703e0090acc08e) | matches | unresolved; declared: inf-ast@0.1.0, inf-cli@0.1.0, inf-eval@0.1.0, inf-lex@0.1.0, inf-lower@0.1.0, inf-oracle@0.1.0, inf-parse@0.1.0, inf-plan@0.1.0, inf-source@0.1.0, inf-value@0.1.0 |
+| lens | [392abe752793c3e0b98f2d1d57245ba1e3173673](https://github.com/cyberia-to/lens/commit/392abe752793c3e0b98f2d1d57245ba1e3173673) | matches | unresolved; declared: cyber-lens-assayer@0.1.1, cyber-lens-binius@0.1.1, cyber-lens-brakedown@0.1.1, cyber-lens-ikat@0.1.1, cyber-lens-porphyry@0.1.1, cyber-lens@0.1.3 |
+| mir | [b9c832d5011d5a719bec6021afef123be35490ab](https://github.com/cyberia-to/mir/commit/b9c832d5011d5a719bec6021afef123be35490ab) | matches | unresolved; declared: mir@0.1.0 |
+| mudra | [e2d1a63bccd760b96ba55f448ef338b7ab027c37](https://github.com/cyberia-to/mudra/commit/e2d1a63bccd760b96ba55f448ef338b7ab027c37) | matches | unresolved; declared: cyber-mudra@0.1.0, mudra-quantus-mldsa-crosscheck@0.0.0, xnt-predicate-check@0.1.0 |
+| neuron | [c87541120caae4fb5d5bb401653d1cbcbeffeb7d](https://github.com/cyberia-to/neuron/commit/c87541120caae4fb5d5bb401653d1cbcbeffeb7d) | matches | unresolved; declared: neuron-id@0.1.0 |
+| nox | [2612673cae64239cb3511b13027d9ffaba77f48e](https://github.com/cyberia-to/nox/commit/2612673cae64239cb3511b13027d9ffaba77f48e) | matches | unresolved; declared: nox-cli@0.1.0, cyber-nox@0.2.0 |
+| nu | unavailable | RED | unresolved |
+| optica | [9f0c352cfea30e1ac8ce0feb0d735ffb9fa47ace](https://github.com/cyberia-to/optica/commit/9f0c352cfea30e1ac8ce0feb0d735ffb9fa47ace) | matches | unresolved; declared: optica@0.2.0 |
+| prysm | [f66cbd82cada5f5e6315b674818bce705b962eb6](https://github.com/cyberia-to/prysm/commit/f66cbd82cada5f5e6315b674818bce705b962eb6) | matches | unresolved; declared: prysm@0.1.0 |
+| radio | [db1d62e2cd1e4b2f309fa19bcc158bd29b44753d](https://github.com/cyberia-to/radio/commit/db1d62e2cd1e4b2f309fa19bcc158bd29b44753d) | matches | unresolved; declared: cyber-bao@0.1.0, cyber-radio@0.1.0, iroh-bench@0.96.1, cyber-radio-base@0.1.1, iroh-blobs@0.98.0, iroh-car@0.5.0, iroh-dns-server@0.96.1, iroh-docs@0.96.0, iroh-ffi@0.35.0, number0_iroh@0.35.0, iroh-gossip@0.96.0, cyber-radio-relay@0.1.0, iroh-willow@0.28.0, cyber-radio-netwatch@0.1.0, cyber-radio-portmapper@0.1.0, particle@0.1.0, bench@0.1.0, book@0.1.0, fuzz@0.1.0, perf@0.1.0, cyber-radio-quinn@0.1.0, cyber-radio-quinn-proto@0.1.0, cyber-radio-quinn-udp@0.1.0, radio-cli@0.1.0, radio-integration-tests@0.1.0 |
+| rune | [67281db727070c1160c12be341c6fd85e39e5380](https://github.com/cyberia-to/rune/commit/67281db727070c1160c12be341c6fd85e39e5380) | matches | unresolved; declared: cyber-rune@0.1.0, rune-ast@0.1.0, rune-compile@0.1.0, rune-interp@0.1.0, rune-lex@0.1.0, rune-lower@0.1.0, rune-mold@0.1.0, rune-parse@0.1.0, rune-parse-pure@0.1.0, rune-prysm@0.1.0, rune-subject@0.1.0 |
+| soft3 | [c5cc2077df510610abb7b5bd69675af6048ed724](https://github.com/cyberia-to/soft3/commit/c5cc2077df510610abb7b5bd69675af6048ed724) | product | unresolved; declared: cyber-conformance@0.1.0, soft3@0.10.0 |
+| soma | [7cfa6f8a602367ceedf45e0bd7e120884c9a6ae3](https://github.com/cyberia-to/soma/commit/7cfa6f8a602367ceedf45e0bd7e120884c9a6ae3) | matches | unresolved |
+| spark | [400cd9a178792d02ec577ae74fc728fe6ee49ecd](https://github.com/cyberia-to/spark/commit/400cd9a178792d02ec577ae74fc728fe6ee49ecd) | matches | unresolved; declared: cyber-spark@0.1.0 |
+| strata | [56aedb2d12b3126c601eb333419136d403614dbb](https://github.com/cyberia-to/strata/commit/56aedb2d12b3126c601eb333419136d403614dbb) | matches | unresolved; declared: cyber-strata@0.1.1 |
+| tade | [b1f1c2ca70cb4d65d32272f8ee15cf0657c9d485](https://github.com/cyberia-to/tade/commit/b1f1c2ca70cb4d65d32272f8ee15cf0657c9d485) | matches | unresolved; declared: tade@0.1.0 |
+| tok | [e27da0dff72b948418a5e40a5ed6290c0fd167f3](https://github.com/cyberia-to/plumb/commit/e27da0dff72b948418a5e40a5ed6290c0fd167f3) | matches | unresolved; declared: cyber-tok@0.1.1 |
+| tru | [89416291dd4cc993a79d63cbd3e2445294b173d3](https://github.com/cyberia-to/tru/commit/89416291dd4cc993a79d63cbd3e2445294b173d3) | matches | unresolved; declared: cyber-tru@0.1.1 |
+| vault | [c980557471184a78d43366e1c52fc978a3e82444](https://github.com/cyberia-to/vault/commit/c980557471184a78d43366e1c52fc978a3e82444) | matches | unresolved; declared: cyber-vault@0.1.0 |
+| zheng | [44bd5bfec5cb6764123ea513a33a26c0877a488c](https://github.com/cyberia-to/zheng/commit/44bd5bfec5cb6764123ea513a33a26c0877a488c) | matches | unresolved; declared: zheng-cli@0.1.0, zheng@0.3.3 |
+
+Package resolution: red. See sources.json for the exact result.

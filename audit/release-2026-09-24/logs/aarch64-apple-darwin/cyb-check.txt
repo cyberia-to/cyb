@@ -1,0 +1,13 @@
+command: ["cargo", "check", "--tests", "--locked"]
+cwd: /private/tmp/cyb-origin-candidate/sources/cyb
+error: failed to load manifest for workspace member `/private/tmp/cyb-origin-candidate/sources/cyb/shell`
+referenced by workspace at `/private/tmp/cyb-origin-candidate/sources/cyb/Cargo.toml`
+
+Caused by:
+  failed to load manifest for dependency `nu-cli`
+
+Caused by:
+  failed to read `/private/tmp/cyb-origin-candidate/sources/nu/crates/nu-cli/Cargo.toml`
+
+Caused by:
+  No such file or directory (os error 2)

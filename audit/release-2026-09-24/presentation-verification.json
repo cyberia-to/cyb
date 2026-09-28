@@ -1,0 +1,86 @@
+{
+  "verified_at": "2026-09-24T09:28:41.846588+00:00",
+  "renderer_revision": "0650cb7596033adefb0c7b754f15a4cd12e81e41",
+  "candidate_source": "6c20559206d90f0474379e48706ba00db9630a37",
+  "release_url": "https://github.com/cyberia-to/cyb/releases/tag/untagged-71ee8c7f2c86a765092b",
+  "release_id": 395484218,
+  "command": [
+    "gh",
+    "api",
+    "--method",
+    "PATCH",
+    "repos/cyberia-to/cyb/releases/395484218",
+    "--input",
+    "/tmp/cyb-draft-presentation.json"
+  ],
+  "changed_fields": [
+    "name",
+    "body"
+  ],
+  "preserved_fields": [
+    "tag_name",
+    "target_commitish",
+    "draft",
+    "prerelease"
+  ],
+  "body_sha256": "c8ef054382e34ed25e0c8ff026709fb361d4f3e651513cc9c0d4cd0fb3200c06",
+  "github_markdown_render": "6 tables and 1 expandable section verified through POST /markdown",
+  "component_inputs_sha256": "6003c230e1405ebad721ffba3f070bce05f8ca0aa661a9f46817a3d1d2dcb12b",
+  "component_count": 25,
+  "product_scoped_components_verified": true,
+  "draft_preserved": true,
+  "source_and_tag_preserved": true,
+  "git_tag_exists": false,
+  "asset_identity_and_bytes_unchanged": true,
+  "original_checksums_verified": true,
+  "asset_fingerprints": [
+    {
+      "id": 585510299,
+      "name": "release-notes.md",
+      "size": 9765,
+      "digest": "sha256:e9864e10c457db3fa3b74e333bc6b80d4a486765ae52739fecca022319a945e2"
+    },
+    {
+      "id": 585510301,
+      "name": "candidate.json",
+      "size": 1978,
+      "digest": "sha256:58b85a29aa3850bd6eaabce37a80ff286bb23191c91b4129c3d1908c02c51710"
+    },
+    {
+      "id": 585510304,
+      "name": "release-validation.json",
+      "size": 3806,
+      "digest": "sha256:d05cbf9a5d91e9794b78f38a1d34a8d5a9c185d8b9e51bab5d1990b3b0341035"
+    },
+    {
+      "id": 585510306,
+      "name": "SHA256SUMS",
+      "size": 630,
+      "digest": "sha256:d5161ec7d6af73d9164f5b48ab95cf4c0a289452abab5919c44ed10531da47b4"
+    },
+    {
+      "id": 585510308,
+      "name": "cyb-candidate-20260924.1-aarch64-apple-darwin.tar.gz",
+      "size": 10411,
+      "digest": "sha256:edfb1be3d92b95957a73ac74e65b15452242281ed049ea6cd9d1660acd310074"
+    },
+    {
+      "id": 585510323,
+      "name": "soft3-dependencies.json",
+      "size": 50791,
+      "digest": "sha256:54450a4c39a50a91515af6e447a93980f1efcffdad43f9b79d7671f408fcf5e0"
+    },
+    {
+      "id": 585510324,
+      "name": "sources.json",
+      "size": 10417,
+      "digest": "sha256:0da9ce0ac39d00bc9100012b8201e59408ad4d8e1cc35dc2fd6b08c793975ac0"
+    },
+    {
+      "id": 585510325,
+      "name": "soft3-dependencies.md",
+      "size": 7327,
+      "digest": "sha256:5ff710c5c268634d0a161927334b01ffb1663b9fa3dab00c998417d22616ef43"
+    }
+  ]
+}

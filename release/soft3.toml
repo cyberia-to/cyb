@@ -1,0 +1,7 @@
+[soft3]
+repository = "cyberia-to/soft3"
+version = "0.10.0"
+revision = "c5cc2077df510610abb7b5bd69675af6048ed724"
+build = "candidate-20260924.1"
+release_id = 395482953
+checksums_sha256 = "ae01a7b5edb8aef5cc194f7cf0095d3eac39653de26647daf1b1d998f1a36baf"
