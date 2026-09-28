@@ -12,4 +12,6 @@ one page per organ of the [[cyb/anatomy|anatomy]] — all 21:
 **senses**: [[cyb/parts/com|com]] · [[cyb/parts/sense|sense]] · [[cyb/parts/voice|voice]] · [[cyb/parts/vision|vision]] · [[cyb/parts/state|state]]
 **value**: [[cyb/parts/sigma|sigma]] · [[cyb/parts/vault|vault]]
 **time**: [[cyb/parts/log|log]] · [[cyb/parts/now|now]] · [[cyb/parts/plan|plan]] · [[cyb/parts/time|time]]
-**flesh**: [[cyb/parts/body|body]] · [[cyb/parts/cells|cell]] · [[cyb/parts/radio|radio]]
+**flesh**: [[cyb/parts/body|body]] · [[cyb/parts/radio|radio]] — [[cyb/parts/cells|cells]] merged into [[neuron]] 2026-09-12
+
+**doctrine**: [[cyb/parts/live|live]] — paint last known, fetch in the dark, never hold the frame
