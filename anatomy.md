@@ -57,7 +57,7 @@ the robot is one organism with **21 parts in six layers**. every surface — the
 | part | is | today |
 |---|---|---|
 | **[[cyb/parts/body|body]]** | the physical body: silicon, sensors, energy, mining — telemetry and resources of the machine the robot lives on | live (default world: telemetry, zheng + seer miners, PUSSY/day) |
-| **[[cyb/parts/cells|cell]]** | an organ-extension: a live-loaded program that grows the robot a new ability | live (rune cell runtime). ⚠ distinct from the protocol's [[cell]] (a 4D particle group) — the robot grows *cells as organs* |
+| **[[cyb/parts/cells|cells]]** | merged into [[neuron]] on 2026-09-12: a live-loaded rune program is a neuron program; the robot grows abilities as programs of its neuron, not as a separate organ | folded — [[soft3/roadmap/neuron-cell-convergence|neuron + cell]]; the page stays as the record. ⚠ distinct from the protocol's [[cell]] (a 4D particle group) |
 | **[[cyb/parts/radio|radio]]** | the physical layer of communication with external networks; [[sense]] speaks over radio | live — the cyber-radio transport; the wire obeys the graph: follow/antenna/socket are cyberlinks |
 
 ## deliberately absent

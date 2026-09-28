@@ -9,4 +9,4 @@ crystal-domain: cyb
 
 the physical body: silicon, sensors, energy, mining — the telemetry and resources of the machine the robot lives on. live today as the default world: real telemetry, two miners (zheng proving, seer linking existing files), earnings per day.
 
-part of the [[cyb/anatomy|anatomy]] (flesh). [[cyb/parts/cells|cells]] are the organs it grows; [[cyb/parts/radio|radio]] is its antennas
+part of the [[cyb/anatomy|anatomy]] (flesh). the abilities it grows are programs of its [[neuron]] (the former [[cyb/parts/cells|cells]]); [[cyb/parts/radio|radio]] is its antennas
