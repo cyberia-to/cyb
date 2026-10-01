@@ -17,6 +17,10 @@ ifeq ($(RUSTUP_RUSTC),)
 $(error cannot resolve the rustup toolchain — is rustup installed?)
 endif
 
+# The app version is the shell crate's version. The bundle carries it so
+# "About" and `defaults read` show the release number, not a placeholder.
+VERSION := $(shell sed -n 's/^version *= *"\(.*\)"/\1/p' shell/Cargo.toml | head -1)
+
 # Development: debug build (fastest iteration, no opt)
 dev:
 	$(CARGO) run -p cyb
@@ -73,8 +77,8 @@ dmg: release apps
 	/usr/libexec/PlistBuddy -c "Add :CFBundleDisplayName string cyb" target/release/cyb.app/Contents/Info.plist
 	/usr/libexec/PlistBuddy -c "Add :CFBundleExecutable string cyb" target/release/cyb.app/Contents/Info.plist
 	/usr/libexec/PlistBuddy -c "Add :CFBundleIdentifier string ai.cyb.app" target/release/cyb.app/Contents/Info.plist
-	/usr/libexec/PlistBuddy -c "Add :CFBundleVersion string 0.1.0" target/release/cyb.app/Contents/Info.plist
-	/usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string 0.1.0" target/release/cyb.app/Contents/Info.plist
+	/usr/libexec/PlistBuddy -c "Add :CFBundleVersion string $(VERSION)" target/release/cyb.app/Contents/Info.plist
+	/usr/libexec/PlistBuddy -c "Add :CFBundleShortVersionString string $(VERSION)" target/release/cyb.app/Contents/Info.plist
 	/usr/libexec/PlistBuddy -c "Add :CFBundlePackageType string APPL" target/release/cyb.app/Contents/Info.plist
 	/usr/libexec/PlistBuddy -c "Add :LSMinimumSystemVersion string 13.0" target/release/cyb.app/Contents/Info.plist
 	/usr/libexec/PlistBuddy -c "Add :NSHighResolutionCapable bool true" target/release/cyb.app/Contents/Info.plist
