@@ -85,6 +85,23 @@ pub fn money_to_sense(audience: NeuronId, events: &[MoneyEvent]) -> Vec<SenseNot
                     clock: Some(ClockKind::A),
                 });
             }
+            MoneyEvent::ReferralAccrued {
+                referrer,
+                token,
+                amount,
+                referee,
+                ..
+            } if *referrer == audience => {
+                out.push(SenseNotify {
+                    audience,
+                    intent: NOTIFY,
+                    kind: "referral",
+                    reason: *referee,
+                    amount: *amount,
+                    token: *token,
+                    clock: Some(ClockKind::B),
+                });
+            }
             MoneyEvent::Finalized { signal, .. } => {
                 out.push(SenseNotify {
                     audience,

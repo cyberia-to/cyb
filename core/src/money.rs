@@ -20,6 +20,7 @@ use tru::{Context, FocusingParams, Fx, Link as TruLink};
 const SIGNAL_VDF_T: u64 = 16;
 
 use crate::cell::Cell;
+use crate::referral::Referral;
 use crate::signal::SignalBuilder;
 
 /// Certainty grade (money-loop §3).
@@ -67,6 +68,14 @@ pub enum MoneyEvent {
         token: Particle,
         reason: Particle,
         clock: ClockKind,
+    },
+    /// Referrer cut of a referee's settled reward (specs/referral.md).
+    ReferralAccrued {
+        referrer: NeuronId,
+        referee: NeuronId,
+        token: Particle,
+        amount: u64,
+        share_micros: u64,
     },
     FinalityFailed {
         signal: Particle,
@@ -137,6 +146,8 @@ pub struct MoneyWallet {
     pub auto_settle: bool,
     /// Per-signal VDF proofs collected at link time (S_E entropy for beacon).
     signal_vdfs: Vec<VdfProof>,
+    /// Referral registry — Dunbar-decay referrer share (specs/referral.md).
+    pub referral: Referral,
 }
 
 /// Owned private note (local wallet material).
@@ -204,6 +215,7 @@ impl MoneyWallet {
             signal_vdfs: Vec::new(),
             tok_ledger: Some(tok::MintLedger::new()),
             emission_scale: foculus::DEFAULT_EMISSION_SCALE,
+            referral: Referral::new(),
         }
     }
 
@@ -650,8 +662,10 @@ impl MoneyWallet {
         Ok(())
     }
 
-    /// Apply a foculus [`SettleReceipt`]: verify hash, mint this neuron's share
-    /// with clock-B escrow. `reason` defaults to receipt_hash.
+    /// Apply a foculus [`SettleReceipt`]: verify hash, split the referral
+    /// cut when a referrer is bound (specs/referral.md), mint this neuron's
+    /// net share with clock-B escrow, credit the referrer's balance.
+    /// `reason` defaults to receipt_hash. Returns the net share minted.
     pub fn apply_settle_receipt(
         &mut self,
         cell: &mut Cell,
@@ -668,12 +682,38 @@ impl MoneyWallet {
         if amount == 0 {
             return Ok(0);
         }
-        // Tok PLUMB ledger: this neuron's mint leg only (multi-wallet safe).
+        // A settled reward is the activity mark for the referral window.
+        self.referral.mark_active(self.neuron, self.reward_epoch);
+        let referral = self
+            .referral
+            .split(&self.neuron, self.reward_epoch, amount)
+            .filter(|c| c.cut > 0);
+        let net = referral.map_or(amount, |c| c.net);
+        // Tok PLUMB ledger: mint legs for this neuron and its referrer
+        // (conservation: net + cut = amount; multi-wallet safe).
         if let Some(led) = self.tok_ledger.as_mut() {
-            let _ = led.mint_batch(token, &[(self.neuron, amount)]);
+            match referral {
+                Some(c) => {
+                    let _ = led.mint_batch(token, &[(self.neuron, net), (c.referrer, c.cut)]);
+                }
+                None => {
+                    let _ = led.mint_batch(token, &[(self.neuron, net)]);
+                }
+            }
         }
-        self.mint_settle_reward(cell, token, amount, receipt.receipt_hash)?;
-        Ok(amount)
+        if let Some(c) = referral {
+            let key = balance_key(&c.referrer, &token);
+            *cell.graph.bbg.state.balances.entry(key).or_insert(0) += c.cut;
+            self.events.push_back(MoneyEvent::ReferralAccrued {
+                referrer: c.referrer,
+                referee: self.neuron,
+                token,
+                amount: c.cut,
+                share_micros: c.share_micros,
+            });
+        }
+        self.mint_settle_reward(cell, token, net, receipt.receipt_hash)?;
+        Ok(net)
     }
 
     /// Seed the base graph used by settle (existing structure before claims).
@@ -1118,6 +1158,78 @@ mod tests {
         assert!(ev.verify(w.tip()));
         // content-bound finality includes empty nullifier set
         assert_eq!(ev.signal_id, cid);
+    }
+
+    #[test]
+    fn settle_splits_referral_cut_to_referrer() {
+        use tru::Link;
+
+        fn h(b: u8) -> [u8; 32] {
+            let mut x = [0u8; 32];
+            x[0] = b;
+            x
+        }
+        let mut cell = Cell::ephemeral();
+        let mut w = MoneyWallet::new(alice());
+        w.fund_for_test(&mut cell, token(), 0);
+        w.settle_depth = 1;
+        w.reward_budget = 400;
+        w.reward_token = token();
+        w.set_reward_base(vec![
+            Link::stake(h(1), h(2), 100),
+            Link::stake(h(2), h(3), 100),
+            Link::stake(h(3), h(1), 100),
+        ]);
+        // Bob refers alice; bob is witnessed — full Dunbar curve.
+        w.referral.bind(alice(), bob()).unwrap();
+        w.referral.attest_witness(bob());
+
+        let (_, _, minted) = w
+            .link_and_settle(&mut cell, h(2), h(1), 8000, 1)
+            .expect("link_and_settle");
+        // Alice is bob's single active referee: s(1) = 94_339 micros,
+        // cut = 400 · s / 1e6 = 37, net = 363.
+        assert_eq!(minted, 363);
+        assert_eq!(w.balance(&cell, &bob(), &token()), 37);
+        assert_eq!(w.balance(&cell, &alice(), &token()), 363);
+        assert!(w.drain_events().iter().any(|e| matches!(
+            e,
+            MoneyEvent::ReferralAccrued {
+                amount: 37,
+                share_micros: 94_339,
+                ..
+            }
+        )));
+    }
+
+    #[test]
+    fn unwitnessed_referrer_earns_floor() {
+        use tru::Link;
+
+        fn h(b: u8) -> [u8; 32] {
+            let mut x = [0u8; 32];
+            x[0] = b;
+            x
+        }
+        let mut cell = Cell::ephemeral();
+        let mut w = MoneyWallet::new(alice());
+        w.fund_for_test(&mut cell, token(), 0);
+        w.settle_depth = 1;
+        w.reward_budget = 400;
+        w.reward_token = token();
+        w.set_reward_base(vec![
+            Link::stake(h(1), h(2), 100),
+            Link::stake(h(2), h(3), 100),
+            Link::stake(h(3), h(1), 100),
+        ]);
+        w.referral.bind(alice(), bob()).unwrap();
+
+        let (_, _, minted) = w
+            .link_and_settle(&mut cell, h(2), h(1), 8000, 1)
+            .expect("link_and_settle");
+        // Floor share 10_000 micros: cut = 400 / 100 = 4, net = 396.
+        assert_eq!(minted, 396);
+        assert_eq!(w.balance(&cell, &bob(), &token()), 4);
     }
 
     #[test]
