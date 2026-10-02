@@ -20,6 +20,10 @@ coverage
 # Netlify
 .netlify
 
+# local scratch — never a release input
+shots/
+/cyb
+
 # Misc
 *.xml
 !shell/gen/android/**/*.xml
