@@ -15,6 +15,8 @@ thinks, an android body that keeps its graph and its weights.
 - android HOME, FUSE-to-internal model copy, IME, one-line header
 - sigma paints last-known; chrome uses Visibility, never Display::None
   on a live world tree
+- bodies: apple silicon dmg, android apk, ubuntu x86_64. windows msvc
+  is red this cut (glia `run` / memmap2).
 
 ## 0.15.1
 

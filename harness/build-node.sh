@@ -35,7 +35,8 @@ mkdir -p "$OUT"
 
 if [ "$WHAT" = "linux" ] || [ "$WHAT" = "all" ]; then
   echo "build-node: linux build..."
-  ssh "$HOST" "cd cyber-build/cyb && nice -n 10 ~/.cargo/bin/cargo build --release -p cyb 2>&1 | tail -3"
+  ssh "$HOST" "cd cyber-build/cyb && nice -n 10 ~/.cargo/bin/cargo build --release -p cyb > /tmp/cyb-linux-build.log 2>&1"
+  ssh "$HOST" "tail -5 /tmp/cyb-linux-build.log"
   ssh "$HOST" "cd cyber-build/cyb/target/release && tar czf cyb-$V-linux-x86_64.tar.gz cyb"
   scp -q "$HOST:cyber-build/cyb/target/release/cyb-$V-linux-x86_64.tar.gz" "$OUT/"
   echo "build-node: linux artifact home"
@@ -43,7 +44,11 @@ fi
 
 if [ "$WHAT" = "windows" ] || [ "$WHAT" = "all" ]; then
   echo "build-node: windows build (cargo-xwin)..."
-  ssh "$HOST" "cd cyber-build/cyb && nice -n 10 ~/.cargo/bin/cargo xwin build --release -p cyb --target x86_64-pc-windows-msvc 2>&1 | tail -3"
+  # Do not pipe cargo into tail: the pipeline exit was tail's, and a failed
+  # build still zipped whatever cyb.exe was left in target/ (a 0.16 zip
+  # carrying a September binary).
+  ssh "$HOST" "cd cyber-build/cyb && nice -n 10 ~/.cargo/bin/cargo xwin build --release -p cyb --target x86_64-pc-windows-msvc > /tmp/cyb-windows-build.log 2>&1"
+  ssh "$HOST" "tail -20 /tmp/cyb-windows-build.log"
   ssh "$HOST" "cd cyber-build/cyb/target/x86_64-pc-windows-msvc/release && zip -q cyb-$V-windows-x86_64.zip cyb.exe"
   scp -q "$HOST:cyber-build/cyb/target/x86_64-pc-windows-msvc/release/cyb-$V-windows-x86_64.zip" "$OUT/"
   echo "build-node: windows artifact home"
