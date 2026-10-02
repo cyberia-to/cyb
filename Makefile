@@ -147,7 +147,7 @@ android-debug: android-rust android-jnilibs
 
 # Source to running app on a plugged-in phone, one command
 android-run: android-debug
-	$(ADB) install -r shell/gen/android/app/build/outputs/apk/debug/app-debug.apk
+	$(ADB) install -r -d shell/gen/android/app/build/outputs/apk/debug/app-debug.apk
 	$(ADB) shell am start -n ai.cyb.app/.MainActivity
 	@echo "logs: make android-log"
 

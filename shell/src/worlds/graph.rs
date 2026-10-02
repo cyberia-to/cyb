@@ -20,6 +20,7 @@ impl Plugin for GraphBridgePlugin {
             .add_systems(Startup, insert_graph_config)
             .add_systems(OnEnter(WorldState::Graph), spawn_hud)
             .add_systems(OnExit(WorldState::Graph), despawn_hud)
+            .add_systems(Update, (place_hud, sync_hud_visibility))
             .add_systems(Update, refresh_hud.run_if(in_state(WorldState::Graph)))
             .add_systems(Update, place_labels.run_if(in_state(WorldState::Graph)))
             .add_systems(OnExit(WorldState::Graph), hide_labels)
@@ -382,7 +383,9 @@ fn decode_ascii_particle(hash: &[u8; 32]) -> Option<String> {
 // ── census bands ────────────────────────────────────────────────────────────
 
 #[derive(Component)]
-struct HudRoot;
+struct HudRoot {
+    top: bool,
+}
 
 #[derive(Component)]
 enum BrainStat {
@@ -397,7 +400,7 @@ enum BrainStat {
 fn spawn_census_row(commands: &mut Commands, stats: &BrainStats, top: bool) {
     let band = commands
         .spawn((
-            HudRoot,
+            HudRoot { top },
             crate::worlds::WorldUi(WorldState::Graph),
             super::page::overlay_band(top),
             GlobalZIndex(5),
@@ -506,6 +509,40 @@ fn despawn_hud(mut q: Query<&mut Visibility, With<HudRoot>>) {
     }
 }
 
+/// Chrome grows by the system insets; these bands were spawned against the
+/// desktop chrome height and sat under the address bar / on the commander.
+fn place_hud(safe: Res<SafeArea>, mut q: Query<(&HudRoot, &mut Node)>) {
+    let top = Val::Px(CHROME_TOP_H + safe.top + 8.0);
+    let bot = Val::Px(CHROME_BOTTOM_H + safe.bottom + 8.0);
+    for (hud, mut node) in &mut q {
+        if hud.top {
+            if node.top != top {
+                node.top = top;
+            }
+        } else if node.bottom != bot {
+            node.bottom = bot;
+        }
+    }
+}
+
+/// Census bands are their own top-level nodes (GlobalZIndex 5). If they stay
+/// Visible after leaving brain they paint on top of log/com.
+fn sync_hud_visibility(
+    state: Res<State<WorldState>>,
+    mut q: Query<&mut Visibility, With<HudRoot>>,
+) {
+    let want = if *state.get() == WorldState::Graph {
+        Visibility::Visible
+    } else {
+        Visibility::Hidden
+    };
+    for mut vis in &mut q {
+        if *vis != want {
+            *vis = want;
+        }
+    }
+}
+
 fn refresh_hud(stats: Res<BrainStats>, mut q: Query<(&BrainStat, &mut Text)>) {
     if !stats.is_changed() {
         return;
@@ -562,11 +599,15 @@ fn place_labels(
     let (Some(gpu), Some(cam)) = (gpu, cam) else {
         return;
     };
-    // The layout sim writes GpuBuffers every frame. Reprojecting and
-    // dirtying UI at 60 Hz is the remaining stutter. 12 Hz is enough
-    // for words to follow the spheres.
+    // Reprojecting hundreds of label Nodes dirties taffy and the chrome
+    // jerks with them. Phone: 2 Hz, 32 labels. Desktop: 12 Hz, all named.
     *acc += time.delta_secs();
-    if *acc < 1.0 / 12.0 && !index.is_changed() {
+    let hz = if cfg!(target_os = "android") {
+        2.0
+    } else {
+        12.0
+    };
+    if *acc < 1.0 / hz && !index.is_changed() {
         return;
     }
     *acc = 0.0;
@@ -576,7 +617,12 @@ fn place_labels(
     // Where each labelled particle lands on screen this frame.
     let mut spots: std::collections::HashMap<usize, Option<(f32, f32)>> =
         std::collections::HashMap::new();
-    for &i in &index.named {
+    let named = if cfg!(target_os = "android") {
+        index.named.get(..32).unwrap_or(&index.named)
+    } else {
+        index.named.as_slice()
+    };
+    for &i in named {
         let Some(Some(_)) = index.labels.get(i) else {
             continue;
         };

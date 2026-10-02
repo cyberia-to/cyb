@@ -34,7 +34,10 @@ impl Plugin for PlatformPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SafeArea>()
             .init_resource::<SoftInput>()
-            .add_systems(Update, (track_safe_area, drive_soft_input));
+            .add_systems(
+                Update,
+                (track_safe_area, sync_android_window, drive_soft_input),
+            );
     }
 }
 
@@ -46,6 +49,10 @@ static SYSTEM_INSETS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU3
 /// How far the soft keyboard reaches up the screen, physical pixels.
 #[cfg(target_os = "android")]
 static IME_INSET: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// `DisplayMetrics.density * 1000`. 0 until Kotlin has spoken.
+#[cfg(target_os = "android")]
+static DISPLAY_DENSITY_MILLI: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
 
 /// Called from Kotlin on every insets change. Both values are physical pixels
 /// and comfortably under 16 bits on any real display.
@@ -67,20 +74,41 @@ pub extern "C" fn Java_ai_cyb_app_MainActivity_nativeSetInsets(
     IME_INSET.store(ime.max(0) as u32, std::sync::atomic::Ordering::Relaxed);
 }
 
+/// # Safety
+/// Same JNI prologue as [`Java_ai_cyb_app_MainActivity_nativeSetInsets`].
 #[cfg(target_os = "android")]
-fn track_safe_area(mut safe: ResMut<SafeArea>, windows: Query<&Window>) {
-    let Ok(window) = windows.single() else { return };
+#[unsafe(no_mangle)]
+pub extern "C" fn Java_ai_cyb_app_MainActivity_nativeSetDensity(
+    _env: *mut core::ffi::c_void,
+    _this: *mut core::ffi::c_void,
+    milli: i32,
+) {
+    DISPLAY_DENSITY_MILLI.store(milli.max(1000) as u32, std::sync::atomic::Ordering::Relaxed);
+}
+
+#[cfg(target_os = "android")]
+fn track_safe_area(mut safe: ResMut<SafeArea>, windows: Query<&Window>, input: Res<SoftInput>) {
+    let Ok(window) = windows.single() else {
+        return;
+    };
     let packed = SYSTEM_INSETS.load(std::sync::atomic::Ordering::Relaxed);
     let scale = window.scale_factor().max(1.0);
-    // The keyboard is a bottom inset like any other: while it is up the
-    // chrome rides above it instead of hiding underneath.
-    let ime = IME_INSET.load(std::sync::atomic::Ordering::Relaxed);
-    let next = SafeArea {
-        top: (packed >> 16) as f32 / scale,
-        bottom: (packed & 0xffff).max(ime) as f32 / scale,
+    // IME only counts while the commander wants it. Counting it always made
+    // the bottom inset twitch and the whole UI relayout every frame.
+    let ime = if input.wanted {
+        IME_INSET.load(std::sync::atomic::Ordering::Relaxed)
+    } else {
+        0
     };
-    if *safe != next {
-        info!("platform: safe area top {:.0} bottom {:.0}", next.top, next.bottom);
+    let next = SafeArea {
+        top: ((packed >> 16) as f32 / scale).round(),
+        bottom: ((packed & 0xffff).max(ime) as f32 / scale).round(),
+    };
+    if (safe.top - next.top).abs() >= 1.0 || (safe.bottom - next.bottom).abs() >= 1.0 {
+        info!(
+            "platform: safe area top {:.0} bottom {:.0}",
+            next.top, next.bottom
+        );
         *safe = next;
     }
 }
@@ -88,9 +116,58 @@ fn track_safe_area(mut safe: ResMut<SafeArea>, windows: Query<&Window>) {
 #[cfg(not(target_os = "android"))]
 fn track_safe_area(_safe: ResMut<SafeArea>, _windows: Query<&Window>) {}
 
+/// GameActivity starts at the desktop WindowPlugin size (1280×800). Until the
+/// Bevy window matches the real surface, layout is a 760px column in a
+/// landscape box, touch hits miss the tab strip, and resize fights flicker.
+#[cfg(target_os = "android")]
+fn sync_android_window(mut windows: Query<&mut Window>) {
+    let Some(app) = bevy::android::ANDROID_APP.get() else {
+        return;
+    };
+    let Some(nw) = app.native_window() else {
+        return;
+    };
+    let w = nw.width() as u32;
+    let h = nw.height() as u32;
+    if w < 2 || h < 2 {
+        return;
+    }
+    let milli = DISPLAY_DENSITY_MILLI.load(std::sync::atomic::Ordering::Relaxed);
+    let density = if milli >= 1000 {
+        milli as f32 / 1000.0
+    } else {
+        (w as f32 / 412.0).clamp(1.0, 4.0)
+    };
+    let Ok(mut window) = windows.single_mut() else {
+        return;
+    };
+    let res = &mut window.resolution;
+    let (cw, ch) = (res.physical_width(), res.physical_height());
+    // Native window size wobbles by a pixel on some frames; chasing it
+    // rebuilds the swapchain and the graph image — the whole screen flashes.
+    if cw.abs_diff(w) > 2 || ch.abs_diff(h) > 2 {
+        info!("platform: surface {w}x{h} density {density:.2}");
+        res.set_physical_resolution(w, h);
+    }
+    let current = res.scale_factor_override().unwrap_or(0.0);
+    if (current - density).abs() > 0.05 {
+        info!(
+            "platform: scale {density:.2} logical {:.0}x{:.0}",
+            w as f32 / density,
+            h as f32 / density
+        );
+        res.set_scale_factor_override(Some(density));
+    }
+}
+
+#[cfg(not(target_os = "android"))]
+fn sync_android_window(_windows: Query<&mut Window>) {}
+
 #[cfg(target_os = "android")]
 fn drive_soft_input(mut input: ResMut<SoftInput>, mut hz_set: Local<bool>) {
-    let Some(app) = bevy::android::ANDROID_APP.get() else { return };
+    let Some(app) = bevy::android::ANDROID_APP.get() else {
+        return;
+    };
 
     // Ask the compositor for the panel's fast mode once the surface exists.
     // Without this the adaptive display idles at 60 Hz and vsync caps the
@@ -101,15 +178,21 @@ fn drive_soft_input(mut input: ResMut<SoftInput>, mut hz_set: Local<bool>) {
         if let Some(window) = app.native_window() {
             unsafe {
                 let lib = libc::dlopen(c"libnativewindow.so".as_ptr(), libc::RTLD_NOW);
-                let sym = if lib.is_null() { std::ptr::null_mut() }
-                          else { libc::dlsym(lib, c"ANativeWindow_setFrameRate".as_ptr()) };
+                let sym = if lib.is_null() {
+                    std::ptr::null_mut()
+                } else {
+                    libc::dlsym(lib, c"ANativeWindow_setFrameRate".as_ptr())
+                };
                 if sym.is_null() {
                     warn!("platform: ANativeWindow_setFrameRate unavailable");
                 } else {
                     let set_rate: extern "C" fn(*mut core::ffi::c_void, f32, i8) -> i32 =
                         std::mem::transmute(sym);
-                    let rc = set_rate(window.ptr().as_ptr().cast(), 120.0, 0);
-                    info!("platform: requested 120 Hz (rc {rc})");
+                    // Paint+UI is ~32 fps on this Pixel. Asking 120 made the
+                    // LTPO panel hunt and the whole screen strobe. 60 with
+                    // FIXED_SOURCE (1) locks the rate to what we can fill.
+                    let rc = set_rate(window.ptr().as_ptr().cast(), 60.0, 1);
+                    info!("platform: requested 60 Hz fixed (rc {rc})");
                 }
             }
             *hz_set = true;

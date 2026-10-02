@@ -100,6 +100,7 @@ pub fn key_for(world: WorldState, now: Option<&Now>) -> &'static str {
         WorldState::Body => "body",
         WorldState::Graph => "brain",
         WorldState::Com => "log",
+        WorldState::Chat => "chat",
         WorldState::Robot => "robot",
         WorldState::Sigma => "sigma",
         WorldState::Models => "models",

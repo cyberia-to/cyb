@@ -54,7 +54,9 @@ impl Plugin for ComWorldPlugin {
                     }
                 },
             )
-            .add_systems(Update, terminal_update.run_if(in_state(WorldState::Com)));
+            // Pending lines are routed here from every world — the
+            // commander is one mouth. Eval output still only paints on log.
+            .add_systems(Update, terminal_update);
     }
 }
 
@@ -705,20 +707,36 @@ fn run_pending_command(world: &mut World) {
     // goes there too. Typing `privet` into a box whose placeholder says
     // "ask, search, transact" should get an answer, not
     // `External command failed` in a red bar.
+    if world
+        .get_non_send_resource::<TerminalNonSendState>()
+        .is_none()
+    {
+        setup_terminal(world);
+    }
     let to_soma = crate::worlds::soma_bridge::parse_ask(&cmd)
         .map(str::to_string)
         .or_else(|| {
             let state = world.get_non_send_resource::<TerminalNonSendState>()?;
             let engine = state.nu_engine.as_ref()?;
-            (!resolves_in_shell(&engine.engine_state, &cmd)).then(|| cmd.clone())
+            talk_not_shell(&engine.engine_state, &cmd)
         });
     if let Some(q) = to_soma {
+        info!("com: {cmd:?} -> soma");
         crate::worlds::soma_bridge::ask(world, &q);
         return;
     }
 
+    info!("com: {cmd:?} -> nu");
+    world
+        .resource_mut::<bevy::prelude::NextState<crate::worlds::WorldState>>()
+        .set(crate::worlds::WorldState::Com);
+    world
+        .resource_mut::<crate::worlds::Notice>()
+        .show(format!("nu: {cmd}"));
+
     let (scrollback_entity, busy) = {
         let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() else {
+            warn!("com: no engine after setup — dropped {cmd:?}");
             return;
         };
         (state.scrollback_entity, state.eval_in_progress)
@@ -814,7 +832,7 @@ fn drain_com_inbox(world: &mut World) {
             ComSay::Line(_, text) | ComSay::Note(text) | ComSay::StreamEnd(text) => {
                 persist_log_line(world, &text);
             }
-            ComSay::StreamStart | ComSay::StreamDelta(_) => {}
+            ComSay::StreamStart | ComSay::StreamStatus(_) | ComSay::StreamDelta(_) => {}
         }
     }
 
@@ -822,6 +840,84 @@ fn drain_com_inbox(world: &mut World) {
     if let Some(state) = world.get_non_send_resource_mut::<TerminalNonSendState>() {
         state.into_inner().stick_to_bottom = false;
     }
+}
+
+fn shell_names(world: &World) -> Vec<String> {
+    let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() else {
+        return Vec::new();
+    };
+    let Some(engine) = state.nu_engine.as_ref() else {
+        return Vec::new();
+    };
+    engine
+        .engine_state
+        .get_decls_sorted(false)
+        .into_iter()
+        .filter_map(|(b, _)| String::from_utf8(b).ok())
+        .filter(|n| n.len() <= 24 && !n.starts_with('_'))
+        .collect()
+}
+
+/// Names the shell currently knows, for soma's standing prompt. Empty
+/// until com has been opened once (the engine lives there). Capped so a
+/// 0.6B prefill still fits.
+pub fn shell_catalog(world: &World) -> String {
+    let mut names = shell_names(world);
+    names.truncate(80);
+    if names.is_empty() {
+        return String::new();
+    }
+    format!("Commands on this body: {}.", names.join(", "))
+}
+
+/// The index that `help` / `nu` print in chat — type any of these to run it.
+pub fn shell_index(world: &World) -> String {
+    let names = shell_names(world);
+    if names.is_empty() {
+        return "nushell is on this commander. Type a command to run it. Open log once if this list is empty.".into();
+    }
+    let mut out = String::from("nushell on this commander — type a command to run it.\n");
+    let mut line = String::new();
+    for n in &names {
+        if !line.is_empty() && line.len() + n.len() > 52 {
+            out.push_str(&line);
+            out.push('\n');
+            line.clear();
+        }
+        if !line.is_empty() {
+            line.push(' ');
+        }
+        line.push_str(n);
+    }
+    if !line.is_empty() {
+        out.push_str(&line);
+    }
+    out
+}
+
+/// `help` and `nu` are builtins / PATH binaries. Running them dumps a
+/// session pane at the top of log. Bare, they are talk — the index
+/// belongs in chat. `help ls` stays nushell help for that command.
+fn talk_not_shell(engine_state: &EngineState, line: &str) -> Option<String> {
+    let t = line.trim();
+    let mut words = t.split_whitespace();
+    let Some(head) = words.next() else {
+        return None;
+    };
+    if head.eq_ignore_ascii_case("help") || head.eq_ignore_ascii_case("nu") {
+        match words.next() {
+            None => return Some(t.to_string()),
+            Some(topic)
+                if head.eq_ignore_ascii_case("help")
+                    && words.next().is_none()
+                    && resolves_in_shell(engine_state, topic) =>
+            {
+                return None;
+            }
+            _ => return Some(t.to_string()),
+        }
+    }
+    (!resolves_in_shell(engine_state, t)).then(|| t.to_string())
 }
 
 /// Would nushell recognise this line's head word as something it can run?
@@ -1261,6 +1357,11 @@ fn apply_scroll_offset(world: &mut World) {
 // ── Update ────────────────────────────────────────────────────────────────────
 
 fn terminal_update(world: &mut World) {
+    run_pending_command(world);
+    let here = *world.resource::<State<WorldState>>().get();
+    if here != WorldState::Com {
+        return;
+    }
     if world
         .get_non_send_resource::<TerminalNonSendState>()
         .is_none()
@@ -1268,8 +1369,6 @@ fn terminal_update(world: &mut World) {
         setup_terminal(world);
         return;
     }
-
-    run_pending_command(world);
     publish_prompt(world);
     poll_eval_results(world);
     process_scroll(world);

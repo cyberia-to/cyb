@@ -35,6 +35,10 @@ fn main() {
     // release can never drift apart.
     let release = std::env::var("CARGO_PKG_VERSION").unwrap_or_default();
     println!("cargo:rustc-env=CYB_VERSION=v{release}  {hash}{mark} {stamp}");
+    // Phone chrome: one row. Keep the full x.y.z so local 0.15.8 / 0.15.9
+    // read apart; drop the git hash (the neuron is the id) and the date.
+    let time = stamp.split_whitespace().last().unwrap_or(stamp.as_str());
+    println!("cargo:rustc-env=CYB_VERSION_SHORT=v{release}{mark} {time}");
     // Re-stamp whenever HEAD moves.
     println!("cargo:rerun-if-changed=../.git/HEAD");
     println!("cargo:rerun-if-changed=../.git/index");

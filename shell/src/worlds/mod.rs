@@ -1,6 +1,7 @@
 pub mod attention;
 pub mod body;
 pub mod cell;
+pub mod chat;
 pub mod com;
 pub mod content;
 pub mod file;
@@ -31,8 +32,10 @@ pub enum WorldState {
     Body,
     /// The cybergraph itself, rendered by mir.
     Graph,
-    /// The commander's own world: nushell, rune, the prompt.
+    /// The commander's own world: nushell, rune, the prompt. The table.
     Com,
+    /// Conversation with soma — asks and answers, not the chain table.
+    Chat,
     /// The robot: live-loaded prysm cells (its landing and other pages).
     Robot,
     /// Money: balance, send, events, sense (MoneyWallet).
@@ -75,6 +78,10 @@ pub enum ComSay {
     Note(String),
     /// A reply is about to arrive in pieces; open a row for it.
     StreamStart,
+    /// Status of work that has not produced tokens yet (load, prefill).
+    /// Replaces the placeholder on the open stream; ignored once tokens
+    /// have started arriving.
+    StreamStatus(String),
     /// The next piece of the open reply.
     StreamDelta(String),
     /// The reply is complete. The final text replaces whatever streamed in,
@@ -112,6 +119,8 @@ pub struct Notice {
     pub text: String,
     /// Seconds left before it fades. Zero means nothing is showing.
     pub ttl: f32,
+    /// Live work holds the line until replaced by a fading `show`.
+    pub hold: bool,
 }
 
 impl Notice {
@@ -132,7 +141,15 @@ impl Notice {
         } else {
             text
         };
+        self.hold = false;
         self.ttl = Self::LIFETIME;
+    }
+
+    /// Keep the line up while the mind is still working. Prefill on a phone
+    /// is longer than [`Self::LIFETIME`]; a fading notice makes it look hung.
+    pub fn show_hold(&mut self, text: impl Into<String>) {
+        self.show(text);
+        self.hold = true;
     }
 }
 
@@ -196,6 +213,7 @@ impl Plugin for WorldsPlugin {
             Ok("body") => Some(WorldState::Body),
             Ok("brain") | Ok("graph") => Some(WorldState::Graph),
             Ok("log") | Ok("com") => Some(WorldState::Com),
+            Ok("chat") => Some(WorldState::Chat),
             Ok("robot") => Some(WorldState::Robot),
             Ok("sigma") => Some(WorldState::Sigma),
             Ok("models") => Some(WorldState::Models),
@@ -210,6 +228,7 @@ impl Plugin for WorldsPlugin {
         app.init_state::<WorldState>()
             .init_resource::<PendingShellCmd>()
             .init_resource::<ComInbox>()
+            .init_resource::<chat::ChatInbox>()
             .init_resource::<Notice>()
             .insert_resource(identity::load_or_mint())
             .insert_resource(SharedCell::open_default())
@@ -232,6 +251,7 @@ impl Plugin for WorldsPlugin {
 /// Marker on a world's root. Hidden when you leave, shown when you come
 /// back — the tree stays in the ECS so layout does not start from zero.
 #[derive(Component)]
+#[require(Pickable)]
 pub struct WorldUi(pub WorldState);
 
 /// Unhide an already-built world. OnEnter must call this before spawning
@@ -248,16 +268,15 @@ pub fn reveal_world(here: WorldState, q: &mut Query<(&WorldUi, &mut Visibility)>
 }
 
 fn hide_foreign_worlds(
-    mut commands: Commands,
     state: Res<State<WorldState>>,
     now: Option<Res<crate::now::Now>>,
-    mut q: Query<(Entity, &WorldUi, &mut Visibility)>,
+    mut q: Query<(&WorldUi, &mut Visibility, &mut Pickable)>,
 ) {
     let filling = now
         .map(|n| n.kind != crate::now::NowKind::World)
         .unwrap_or(false);
     let here = *state.get();
-    for (e, tag, mut vis) in &mut q {
+    for (tag, mut vis, mut pick) in &mut q {
         let want = if filling {
             Visibility::Hidden
         } else if tag.0 == here {
@@ -271,11 +290,11 @@ fn hide_foreign_worlds(
             // Display::None is not used: it drops the taffy node and the next
             // layout panics `invalid SlotMap key` — the whole process dies.
             // Never despawn a WorldUi root to hide it.
-            if want == Visibility::Hidden {
-                commands.entity(e).insert(Pickable::IGNORE);
+            *pick = if want == Visibility::Hidden {
+                Pickable::IGNORE
             } else {
-                commands.entity(e).insert(Pickable::default());
-            }
+                Pickable::default()
+            };
         }
     }
 }

@@ -102,12 +102,7 @@ impl Plugin for SigmaWorldPlugin {
         )
         .add_systems(
             Update,
-            (
-                sync_local_tip_once,
-                handle_chain_buttons,
-                refresh_chain_labels,
-            )
-                .run_if(in_state(WorldState::Sigma)),
+            (handle_chain_buttons, refresh_chain_labels).run_if(in_state(WorldState::Sigma)),
         )
         // The balance poll runs in EVERY world: sigma and the body's
         // zheng card read the same ChainMoney, so the money is one
@@ -118,6 +113,9 @@ impl Plugin for SigmaWorldPlugin {
 
 /// Fill the local BBG tip now that the window is up. Never at plugin
 /// build: `state.root()` is what killed 0.14.0 on a lived-in graph.log.
+/// Not on the enter path — that work froze the frame. Chain money paints
+/// without it.
+#[allow(dead_code)]
 fn sync_local_tip_once(mut frames: Local<u8>, sigma: ResMut<SigmaState>, shared: Res<SharedCell>) {
     if *frames > 2 {
         return;
@@ -129,6 +127,7 @@ fn sync_local_tip_once(mut frames: Local<u8>, sigma: ResMut<SigmaState>, shared:
     sync_local_tip(sigma, shared);
 }
 
+#[allow(dead_code)]
 fn sync_local_tip(mut sigma: ResMut<SigmaState>, shared: Res<SharedCell>) {
     let cell = shared.cell.lock().expect("shared cell poisoned");
     let neuron = sigma.wallet.neuron;
@@ -147,12 +146,13 @@ fn sync_local_tip(mut sigma: ResMut<SigmaState>, shared: Res<SharedCell>) {
 
 fn setup_sigma(
     mut commands: Commands,
-    _state: Res<SigmaState>,
+    money: Res<chain::ChainMoney>,
     mut worlds: Query<(&crate::worlds::WorldUi, &mut Visibility)>,
 ) {
     if crate::worlds::reveal_world(WorldState::Sigma, &mut worlds) {
         return;
     }
+    let cached = money.snapshot();
     commands
         .spawn((
             SigmaRoot,
@@ -174,10 +174,10 @@ fn setup_sigma(
             BackgroundColor(theme::DARK_BASE),
         ))
         .with_children(|root| {
-            // Balance only. Send / receive live in the commander (`pay`).
+            // Last known balance, immediately. The chain fetch is silent.
             root.spawn((
                 ChainMoneyLabel,
-                Text::new("…"),
+                Text::new(format!("{} PUSSY", cached.balance)),
                 TextFont {
                     font_size: 48.0,
                     ..default()
@@ -417,11 +417,7 @@ fn refresh_chain_labels(
     }
     *seen = s.version;
     for mut t in &mut balance_q {
-        **t = if s.busy && s.balance == 0 {
-            "querying the chain...".into()
-        } else {
-            format!("{} PUSSY", s.balance)
-        };
+        **t = format!("{} PUSSY", s.balance);
     }
     for mut t in &mut receipt_q {
         **t = if !s.error.is_empty() {

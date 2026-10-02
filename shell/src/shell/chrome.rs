@@ -14,6 +14,10 @@ const NOTICE_H: f32 = 26.0;
 /// Commander field height.
 const COMMANDER_H: f32 = 40.0;
 /// World-tab strip height — a thumb target, not a text link.
+/// Two rows on a phone: nine labels in one row are untappable.
+#[cfg(target_os = "android")]
+const TABS_H: f32 = 88.0;
+#[cfg(not(target_os = "android"))]
 const TABS_H: f32 = 48.0;
 /// Both bottom rows plus the gap between them.
 pub const CHROME_BOTTOM_H: f32 = COMMANDER_H + 6.0 + TABS_H;
@@ -123,6 +127,7 @@ impl Plugin for ChromePlugin {
                 Update,
                 (
                     clear_chrome_submitted, // must be first
+                    request_soft_input,     // IME → chrome.text before submit
                     handle_commander_click,
                     handle_commander_submit,
                     handle_back_button,
@@ -136,7 +141,6 @@ impl Plugin for ChromePlugin {
                     apply_safe_area,
                     show_notice,
                     show_identity,
-                    request_soft_input,
                     sync_commander_prompt,
                 )
                     .chain(),
@@ -165,7 +169,9 @@ fn spawn_chrome(mut commands: Commands) {
             Camera2d,
             Camera {
                 order: 100,
-                clear_color: ClearColorConfig::None,
+                // None showed the swapchain clear (black) on any missed UI
+                // frame — the flash on a 32 fps graph under vsync.
+                clear_color: ClearColorConfig::Custom(theme::DARK_BASE),
                 ..default()
             },
             IsDefaultUiCamera,
@@ -183,6 +189,7 @@ fn spawn_chrome(mut commands: Commands) {
         },
         BackgroundColor(theme::DARK_BASE),
         GlobalZIndex(-100),
+        Pickable::IGNORE,
         UiTargetCamera(cam),
     ));
 
@@ -238,16 +245,25 @@ fn spawn_chrome(mut commands: Commands) {
             });
 
             // ── Address Bar (top, full width) ───────────────────────────
+            // Phone: one row. URL keeps the leftover, never wraps; neuron
+            // is the id; the chip is version + minute, no git hash.
+            #[cfg(target_os = "android")]
+            let (pad, gap, chip) = (10.0, 8.0, env!("CYB_VERSION_SHORT"));
+            #[cfg(not(target_os = "android"))]
+            let (pad, gap, chip) = (16.0, 16.0, env!("CYB_VERSION"));
             root.spawn((
                 ChromeTopBar,
                 Node {
                     width: Val::Percent(100.0),
                     height: Val::Px(36.0),
                     flex_direction: FlexDirection::Row,
+                    flex_wrap: FlexWrap::NoWrap,
                     align_items: AlignItems::Center,
                     justify_content: JustifyContent::SpaceBetween,
-                    padding: UiRect::horizontal(Val::Px(16.0)),
+                    column_gap: Val::Px(gap),
+                    padding: UiRect::horizontal(Val::Px(pad)),
                     border: UiRect::bottom(Val::Px(1.0)),
+                    overflow: Overflow::clip(),
                     ..default()
                 },
                 BackgroundColor(theme::DARK_BASE),
@@ -263,10 +279,20 @@ fn spawn_chrome(mut commands: Commands) {
                         ..default()
                     },
                     TextColor(Color::srgba(0.55, 0.55, 0.70, 1.0)),
+                    TextLayout::new_with_no_wrap(),
+                    Node {
+                        flex_grow: 1.0,
+                        flex_shrink: 1.0,
+                        min_width: Val::Px(0.0),
+                        overflow: Overflow::clip(),
+                        ..default()
+                    },
                 ));
                 bar.spawn(Node {
                     flex_direction: FlexDirection::Row,
-                    column_gap: Val::Px(16.0),
+                    flex_wrap: FlexWrap::NoWrap,
+                    flex_shrink: 0.0,
+                    column_gap: Val::Px(gap),
                     ..default()
                 })
                 .with_children(|right| {
@@ -278,18 +304,19 @@ fn spawn_chrome(mut commands: Commands) {
                             ..default()
                         },
                         TextColor(Color::srgba(0.35, 0.35, 0.50, 0.8)),
+                        TextLayout::new_with_no_wrap(),
                     ));
-                    // Which cyb this window IS — hash + build minute, the
-                    // OUTERMOST top-right mark. Green enough to find at a
-                    // glance; the question "am I looking at the build I
-                    // just made?" should never need a terminal.
+                    // Which cyb this window IS. Desktop: hash + build
+                    // minute. Phone: version + minute — the neuron already
+                    // names the body, the hash does not need a second seat.
                     right.spawn((
-                        Text::new(env!("CYB_VERSION")),
+                        Text::new(chip),
                         TextFont {
                             font_size: 13.0,
                             ..default()
                         },
                         TextColor(Color::srgba(0.13, 0.72, 0.45, 1.0)),
+                        TextLayout::new_with_no_wrap(),
                     ));
                 });
             });
@@ -504,9 +531,7 @@ fn spawn_chrome(mut commands: Commands) {
                         Node {
                             width: Val::Percent(100.0),
                             height: Val::Px(TABS_H),
-                            flex_direction: FlexDirection::Row,
-                            align_items: AlignItems::Center,
-                            justify_content: JustifyContent::SpaceEvenly,
+                            flex_direction: FlexDirection::Column,
                             border: UiRect::top(Val::Px(1.0)),
                             ..default()
                         },
@@ -514,44 +539,87 @@ fn spawn_chrome(mut commands: Commands) {
                         BorderColor::all(theme::BORDER),
                     ))
                     .with_children(|tabs| {
-                        for (label, world) in [
-                            ("body", WorldState::Body),
-                            ("brain", WorldState::Graph),
-                            ("log", WorldState::Com),
-                            ("robot", WorldState::Robot),
-                            ("sigma", WorldState::Sigma),
-                            ("models", WorldState::Models),
-                            ("vault", WorldState::Vault),
-                            ("memory", WorldState::Memory),
-                            ("oracle", WorldState::Oracle),
-                        ] {
-                            tabs.spawn((
-                                WorldNavButton(world),
-                                Button,
-                                Node {
-                                    flex_grow: 1.0,
-                                    height: Val::Percent(100.0),
-                                    flex_direction: FlexDirection::Row,
-                                    align_items: AlignItems::Center,
-                                    justify_content: JustifyContent::Center,
-                                    ..default()
-                                },
-                                BackgroundColor(Color::NONE),
-                                Interaction::default(),
-                            ))
-                            .with_children(|btn| {
-                                btn.spawn((
-                                    Text::new(label),
-                                    TextFont {
-                                        font_size: 14.0,
-                                        ..default()
-                                    },
-                                    TextColor(Color::srgba(0.21, 0.84, 0.68, 0.55)),
-                                ));
-                            });
+                        #[cfg(target_os = "android")]
+                        {
+                            spawn_tab_row(
+                                tabs,
+                                &[
+                                    ("body", WorldState::Body),
+                                    ("brain", WorldState::Graph),
+                                    ("log", WorldState::Com),
+                                    ("chat", WorldState::Chat),
+                                    ("robot", WorldState::Robot),
+                                ],
+                            );
+                            spawn_tab_row(
+                                tabs,
+                                &[
+                                    ("sigma", WorldState::Sigma),
+                                    ("models", WorldState::Models),
+                                    ("vault", WorldState::Vault),
+                                    ("memory", WorldState::Memory),
+                                    ("oracle", WorldState::Oracle),
+                                ],
+                            );
                         }
+                        #[cfg(not(target_os = "android"))]
+                        spawn_tab_row(
+                            tabs,
+                            &[
+                                ("body", WorldState::Body),
+                                ("brain", WorldState::Graph),
+                                ("log", WorldState::Com),
+                                ("chat", WorldState::Chat),
+                                ("robot", WorldState::Robot),
+                                ("sigma", WorldState::Sigma),
+                                ("models", WorldState::Models),
+                                ("vault", WorldState::Vault),
+                                ("memory", WorldState::Memory),
+                                ("oracle", WorldState::Oracle),
+                            ],
+                        );
                     });
             });
+        });
+}
+
+fn spawn_tab_row(parent: &mut ChildSpawnerCommands, items: &[(&'static str, WorldState)]) {
+    parent
+        .spawn(Node {
+            width: Val::Percent(100.0),
+            flex_grow: 1.0,
+            flex_direction: FlexDirection::Row,
+            align_items: AlignItems::Center,
+            justify_content: JustifyContent::SpaceEvenly,
+            ..default()
+        })
+        .with_children(|row| {
+            for &(label, world) in items {
+                row.spawn((
+                    WorldNavButton(world),
+                    Button,
+                    Node {
+                        flex_grow: 1.0,
+                        height: Val::Percent(100.0),
+                        flex_direction: FlexDirection::Row,
+                        align_items: AlignItems::Center,
+                        justify_content: JustifyContent::Center,
+                        ..default()
+                    },
+                    BackgroundColor(Color::NONE),
+                    Interaction::default(),
+                ))
+                .with_children(|btn| {
+                    btn.spawn((
+                        Text::new(label),
+                        TextFont {
+                            font_size: 14.0,
+                            ..default()
+                        },
+                        TextColor(Color::srgba(0.21, 0.84, 0.68, 0.55)),
+                    ));
+                });
+            }
         });
 }
 
@@ -687,6 +755,11 @@ fn hover_tabs(
     let cold = Color::srgba(0.21, 0.84, 0.68, 0.55);
     let hot_bg = Color::srgba(0.21, 0.84, 0.68, 0.18);
     let cold_bg = Color::NONE;
+    // A phone has no cursor. Last-touch ghosts made the strip flash and
+    // the hit test ran in the wrong space while the window was still 1280×800.
+    if cfg!(target_os = "android") {
+        return;
+    }
     let pointer = windows
         .single()
         .ok()
@@ -831,7 +904,7 @@ fn show_notice(
     mut band: Query<&mut Node, With<NoticeBand>>,
     mut text: Query<&mut Text, With<NoticeText>>,
 ) {
-    if notice.ttl > 0.0 {
+    if notice.ttl > 0.0 && !notice.hold {
         notice.ttl = (notice.ttl - time.delta_secs()).max(0.0);
     }
     let showing = notice.ttl > 0.0;
@@ -933,6 +1006,7 @@ fn update_address_bar(
                 WorldState::Body => "cyb://body".into(),
                 WorldState::Graph => "cyb://brain".into(),
                 WorldState::Com => "cyb://log".into(),
+                WorldState::Chat => "cyb://chat".into(),
                 WorldState::Robot => "cyb://robot".into(),
                 WorldState::Sigma => "cyb://sigma".into(),
                 WorldState::Models => "cyb://models".into(),
@@ -942,11 +1016,28 @@ fn update_address_bar(
             },
         }
     };
+    let uri = compact_address(&uri);
     for mut text in &mut q {
         if **text != uri {
             **text = uri.clone();
         }
     }
+}
+
+/// Phone address bar is one row: a 64-hex particle would push the neuron
+/// off. Keep the scheme and a short hash; desktop keeps the full id.
+fn compact_address(uri: &str) -> String {
+    #[cfg(target_os = "android")]
+    {
+        for prefix in ["cyb://particle/", "cyb://file/"] {
+            if let Some(hex) = uri.strip_prefix(prefix) {
+                if hex.len() > 14 {
+                    return format!("{prefix}{}…{}", &hex[..8], &hex[hex.len() - 4..]);
+                }
+            }
+        }
+    }
+    uri.to_string()
 }
 
 fn update_commander_display(
@@ -1320,6 +1411,7 @@ pub fn handle_chrome_input(world: &mut World) {
             // The world is the log — the record. "com" stays as a spoken
             // alias: it names the commander, the input that feeds this world.
             "log" | "com" | "terminal" => Some(WorldState::Com),
+            "chat" | "ask" => Some(WorldState::Chat),
             "robot" | "cell" | "landing" => Some(WorldState::Robot),
             "sigma" | "money" => Some(WorldState::Sigma),
             "models" | "mind" => Some(WorldState::Models),
@@ -1378,11 +1470,9 @@ pub fn handle_chrome_input(world: &mut World) {
                 .resource_mut::<NextState<WorldState>>()
                 .set(WorldState::Vault);
         } else if !cmd.is_empty() {
-            // Anything that is not a world name is a shell line: com runs it
-            // and holds the history, so submitting from any world lands there.
-            world
-                .resource_mut::<NextState<WorldState>>()
-                .set(WorldState::Com);
+            // One commander, every world. The line is forwarded as-is;
+            // com's router decides nushell vs soma. Being on chat does
+            // not change the rule — `help` is still `help`.
             if let Some(mut p) = world.get_resource_mut::<crate::worlds::PendingShellCmd>() {
                 p.0 = Some(cmd);
             }

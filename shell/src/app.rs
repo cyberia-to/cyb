@@ -144,31 +144,40 @@ pub fn build_app() -> App {
                 ..default()
             }),
     )
-    .insert_resource(ClearColor(bevy::color::Color::BLACK))
-    .add_plugins(GpuBridgePlugin)
-    .add_plugins(prysm::PrysmPlugin)
-    .add_plugins(worlds::font::FontPlugin)
-    .add_plugins(worlds::scroll::ScrollPlugin)
-    .add_plugins(worlds::nav::NavPlugin)
-    .add_plugins(worlds::WorldsPlugin)
-    .add_plugins(shell::chrome::ChromePlugin)
-    .add_plugins(shell::platform::PlatformPlugin)
-    .add_plugins(shell::nav::NavPlugin)
-    .add_plugins(mir::bevy::GraphWorldPlugin)
-    .add_plugins(worlds::graph::GraphBridgePlugin)
-    .add_plugins(crate::now::NowPlugin)
-    .add_plugins(worlds::viewer::ViewerPlugin)
-    .add_plugins(worlds::com::ComWorldPlugin)
-    .add_plugins(worlds::soma_bridge::SomaBridgePlugin)
-    .add_plugins(worlds::attention::AttentionPlugin)
-    .add_plugins(worlds::body::BodyWorldPlugin)
-    .add_plugins(worlds::robot::RobotWorldPlugin)
-    .add_plugins(worlds::sigma::SigmaWorldPlugin)
-    .add_plugins(worlds::models::ModelsWorldPlugin)
-    .add_plugins(worlds::vault::VaultWorldPlugin)
-    .add_plugins(worlds::memory::MemoryWorldPlugin)
-    .add_plugins(worlds::oracle::OracleWorldPlugin)
-    .add_plugins(agent::AgentPlugin);
+    .insert_resource(ClearColor(bevy::color::Color::BLACK));
+
+    // A dead EntityCommands on Android used to panic the apply phase and
+    // take the whole GameActivity with it. Warn and keep the frame.
+    #[cfg(target_os = "android")]
+    {
+        app.set_error_handler(bevy::ecs::error::warn);
+    }
+
+    app.add_plugins(GpuBridgePlugin)
+        .add_plugins(prysm::PrysmPlugin)
+        .add_plugins(worlds::font::FontPlugin)
+        .add_plugins(worlds::scroll::ScrollPlugin)
+        .add_plugins(worlds::nav::NavPlugin)
+        .add_plugins(worlds::WorldsPlugin)
+        .add_plugins(shell::chrome::ChromePlugin)
+        .add_plugins(shell::platform::PlatformPlugin)
+        .add_plugins(shell::nav::NavPlugin)
+        .add_plugins(mir::bevy::GraphWorldPlugin)
+        .add_plugins(worlds::graph::GraphBridgePlugin)
+        .add_plugins(crate::now::NowPlugin)
+        .add_plugins(worlds::viewer::ViewerPlugin)
+        .add_plugins(worlds::com::ComWorldPlugin)
+        .add_plugins(worlds::chat::ChatWorldPlugin)
+        .add_plugins(worlds::soma_bridge::SomaBridgePlugin)
+        .add_plugins(worlds::attention::AttentionPlugin)
+        .add_plugins(worlds::body::BodyWorldPlugin)
+        .add_plugins(worlds::robot::RobotWorldPlugin)
+        .add_plugins(worlds::sigma::SigmaWorldPlugin)
+        .add_plugins(worlds::models::ModelsWorldPlugin)
+        .add_plugins(worlds::vault::VaultWorldPlugin)
+        .add_plugins(worlds::memory::MemoryWorldPlugin)
+        .add_plugins(worlds::oracle::OracleWorldPlugin)
+        .add_plugins(agent::AgentPlugin);
 
     // `CYB_SHOT=/path.png` (with optional `CYB_SHOT_AT=secs`, default 8)
     // saves one frame of the app's own framebuffer — UI included — and is how
