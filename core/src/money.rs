@@ -5,11 +5,13 @@
 
 use std::collections::VecDeque;
 
-use bbg::{NeuronRecord, Particle, QueryProof, balance_key, prove_balances, verify_query};
+use bbg::proof::prove_public_balance;
+use bbg::query_auth::verify_public_balance;
+use bbg::{NeuronRecord, Particle, QueryProof, balance_key};
 use cyber_hemera::hash as hemera_hash;
 use cybergraph::{ApiError, NeuronId, Signal};
 use foculus::{
-    BoxMoveRecord, EpochRunner, FinalityEvidence, GENESIS_PREV, PayStatement, RewardClaim,
+    BoxMoveRecord, EpochRunner, FinalityEvidence, GENESIS_PREV, RewardClaim,
     SELF_NETWORK, SettleReceipt, TicketPolicy, Tip, TipProver, VdfProof, challenge_from_hash,
     claim_from_links, prove_pay, settle_epoch, share_of, vdf_evaluate, verify_live_receipt,
     verify_pay, verify_receipt,
@@ -108,7 +110,7 @@ pub struct PayLeg {
 pub struct MoneyWallet {
     pub neuron: NeuronId,
     tip: Tip,
-    /// Optional prover that folds each block for light-export (WP1).
+    /// Optional tip chain recording each block for light export (WP1).
     tip_prover: Option<TipProver>,
     events: VecDeque<MoneyEvent>,
     /// Last finality evidence per signal (WP4).
@@ -225,7 +227,8 @@ impl MoneyWallet {
         self
     }
 
-    /// Enable TipProver so each finalize_block folds for light clients.
+    /// Enable TipProver so each finalize_block extends the tip chain light
+    /// clients join (hemera-linked steps, see `foculus::tip`).
     pub fn with_tip_prover(mut self) -> Self {
         self.tip_prover = Some(TipProver::new());
         self
@@ -280,7 +283,9 @@ impl MoneyWallet {
             .unwrap_or(0)
     }
 
-    /// WP2: open balance against grade-4 tip.
+    /// WP2: open balance against grade-4 tip. The opening is the public
+    /// balance certificate, authenticated under the tip's root: a root the
+    /// tip does not trust opens nothing.
     pub fn open_balance(
         &self,
         cell: &Cell,
@@ -290,12 +295,11 @@ impl MoneyWallet {
         if !self.tip.grade4() {
             return Err(MoneyError::TipNotTrusted);
         }
-        let proof =
-            prove_balances(&cell.graph.bbg.state, owner, token).ok_or(MoneyError::OpeningFailed)?;
-        if !verify_query(&proof) {
-            return Err(MoneyError::OpeningUnverified);
-        }
-        Ok((self.balance(cell, owner, token), proof))
+        let proof = prove_public_balance(&cell.graph.bbg.state, owner, token)
+            .ok_or(MoneyError::OpeningFailed)?;
+        let amount = verify_public_balance(&proof, &self.tip.root, owner, token)
+            .ok_or(MoneyError::OpeningUnverified)?;
+        Ok((amount, proof))
     }
 
     /// Genesis fund (tests / bootstrap).
@@ -372,17 +376,13 @@ impl MoneyWallet {
         sig.box_moves = box_moves.to_vec();
         sig.height = cell.graph.bbg.state.height;
 
-        // content_id before proof (proof not in content_id hash today)
+        // content_id before proof (the proof is not in the content_id hash)
         let content_id = sig.content_id();
-        let total_out: u64 = legs.iter().map(|l| l.amount).sum();
-        let pay_stmt = PayStatement {
-            content_id,
-            total_out,
-            leg_count: legs.len() as u32,
-        };
         if self.require_pay_proof {
-            let proof = prove_pay(&pay_stmt).map_err(|_| MoneyError::ProofFailed)?;
-            if !verify_pay(&proof, &pay_stmt) {
+            // σ over the signal itself: legs sum to the total, bound to
+            // content_id (zheng public certificate v3, foculus pay_proof).
+            let proof = prove_pay(&sig).map_err(|_| MoneyError::ProofFailed)?;
+            if !verify_pay(&proof, &sig) {
                 return Err(MoneyError::ProofInvalid);
             }
             sig.proof = Some(proof);
@@ -408,7 +408,7 @@ impl MoneyWallet {
             }
         };
 
-        // Advance tip; optional fold for light export.
+        // Advance tip; optional tip chain step for light export.
         self.after_state_change(cell);
 
         let evidence = FinalityEvidence::issue_local(content_id, &self.tip, &nullifiers);
@@ -905,7 +905,7 @@ impl MoneyWallet {
         !self.pending_settles.iter().any(|p| p.reason == *reason)
     }
 
-    /// Finalize a block: bump height, fold tip prover.
+    /// Finalize a block: bump height, extend the tip chain.
     /// When [`auto_settle`](Self::auto_settle) and claims are pending, settles.
     /// Call [`mature_settles`] afterward to harvest clock-B credits.
     pub fn finalize_block(&mut self, cell: &mut Cell) {
@@ -926,9 +926,9 @@ impl MoneyWallet {
         let root = cell.graph.bbg.state.root();
         let height = cell.graph.bbg.state.height;
         if let Some(prover) = self.tip_prover.as_mut() {
-            // Bind BBG root-leaves hash into the fold (production-shaped tip).
+            // Bind the BBG root-leaves hash into the chain step.
             let leaves = root_leaves_hash(cell);
-            let _ = prover.fold_block(height, root, leaves);
+            let _ = prover.push_block(height, root, leaves);
             if let Ok(t) = prover.seal_tip() {
                 self.tip = t;
             } else {
@@ -940,7 +940,7 @@ impl MoneyWallet {
     }
 }
 
-/// Hemera over zheng RootLeaves bytes — stable block identity for tip fold.
+/// Hemera over zheng RootLeaves bytes — stable block identity for a tip step.
 fn root_leaves_hash(cell: &Cell) -> Particle {
     use cyber_hemera::hash as hemera_hash;
     let leaves = cell.graph.bbg.state.root_leaves();
@@ -968,7 +968,7 @@ fn cell_tip(cell: &Cell, neuron: &NeuronId) -> (u64, Particle) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use foculus::{TipTrust, join_with_demo_fold};
+    use foculus::{TipTrust, join_with_demo_chain};
 
     fn token() -> Particle {
         [7u8; 32]
@@ -978,6 +978,24 @@ mod tests {
     }
     fn bob() -> NeuronId {
         [2u8; 32]
+    }
+
+    /// The pay signal carries a pay proof of itself; the cell's admission
+    /// (cybergraph) verified it, and a tampered copy no longer verifies.
+    #[test]
+    fn pay_signal_carries_a_verified_pay_proof() {
+        let mut cell = Cell::ephemeral();
+        let mut w = MoneyWallet::new(alice());
+        w.fund_for_test(&mut cell, token(), 500);
+        let leg = |amount| PayLeg { from: alice(), to: bob(), token: token(), amount, valence: 0 };
+        w.pay(&mut cell, &[leg(120), leg(30)], &[]).unwrap();
+        let chain = &cell.graph.chains[&alice()];
+        let (_, signal) = chain.entries.last_key_value().unwrap();
+        let proof = signal.proof.as_ref().expect("pay attaches σ");
+        assert!(verify_pay(proof, signal));
+        let mut moved = signal.clone();
+        moved.links[1].amount = 31;
+        assert!(!verify_pay(proof, &moved));
     }
 
     #[test]
@@ -1068,18 +1086,29 @@ mod tests {
     }
 
     #[test]
-    fn light_fold_tip_open_and_advance() {
+    fn light_chain_tip_open_and_advance() {
         let mut cell = Cell::ephemeral();
         let mut w = MoneyWallet::new(alice()).with_tip_prover();
         w.fund_for_test(&mut cell, token(), 42);
         w.finalize_block(&mut cell);
         let light = w.export_light_tip().expect("light tip");
-        assert_eq!(light.trust, TipTrust::FoldDecided);
+        assert_eq!(light.trust, TipTrust::ChainVerified);
         let mut w2 = MoneyWallet::new(alice());
         w2.set_tip(light);
         let (amt, proof) = w2.open_balance(&cell, &alice(), &token()).unwrap();
         assert_eq!(amt, 42);
-        assert!(verify_query(&proof));
+        assert_eq!(
+            verify_public_balance(&proof, &w2.tip().root, &alice(), &token()),
+            Some(42)
+        );
+        // a tip at another root opens nothing
+        let mut stale = w2.tip().clone();
+        stale.root = [9; 32];
+        w2.set_tip(stale);
+        assert!(matches!(
+            w2.open_balance(&cell, &alice(), &token()),
+            Err(MoneyError::OpeningUnverified)
+        ));
     }
 
     #[test]
@@ -1145,7 +1174,7 @@ mod tests {
 
     #[test]
     fn demo_join_still_works() {
-        let tip = join_with_demo_fold([1u8; 32], 0);
+        let tip = join_with_demo_chain([1u8; 32], 0);
         assert!(tip.grade4());
     }
 
@@ -1264,11 +1293,11 @@ mod tests {
         assert!(verify_receipt(&rec));
         assert!(
             verify_live_receipt(&rec),
-            "live path must carry VDF beacon + HyperNova seals"
+            "live path must carry the VDF beacon and verified tickets"
         );
         assert!(rec.beacon_artifact.is_some());
-        assert!(rec.ticket_seal.is_some());
-        assert!(rec.fold_seal.is_some());
+        let settlement = rec.settlement.as_ref().expect("ticket path settles tickets");
+        assert!(!settlement.tickets.is_empty());
         assert_eq!(minted, 400);
         assert_eq!(w.balance(&cell, &alice(), &token()), 400);
         assert!(w.pending_claims().is_empty());
