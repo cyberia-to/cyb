@@ -2971,6 +2971,7 @@ dependencies = [
  "cyber-tru",
  "cybergraph",
  "foculus",
+ "strata-nebu",
 ]
 
 [[package]]
@@ -12239,7 +12240,9 @@ dependencies = [
  "cyber-hemera",
  "cyber-lens",
  "cyber-nox",
+ "getrandom 0.3.4",
  "strata-nebu",
+ "zeroize",
 ]
 
 [[package]]
