@@ -254,15 +254,18 @@ fn spawn_worker(
                     .map(|(_, h, root)| beacon_seed(*h, root))
                     .unwrap_or(0);
                 let ticket_no = counter.fetch_add(1, Ordering::Relaxed);
-                let ok = ticket::prove(&graph, root_seed, ticket_no)
-                    .is_some_and(|t| ticket::verify(&t, &graph));
+                let made = ticket::prove(&graph, root_seed, ticket_no);
+                let ok = made.is_some_and(|t| ticket::verify(&t, &graph));
+                // only one ticket in TICKET_DIFFICULTY counts toward the
+                // subsidy; the rest are honest work that did not win
+                let counted = ok && made.is_some_and(|t| ticket::counts(&t));
                 let ms = t0.elapsed().as_secs_f32() * 1000.0;
                 if let Ok(mut s) = stat.lock() {
-                    if ok {
+                    if !ok {
+                        s.failed += 1;
+                    } else if counted {
                         s.tickets += 1;
                         s.lifetime += 1;
-                    } else {
-                        s.failed += 1;
                     }
                     s.last_ms = ms;
                     s.beacon = beacon;

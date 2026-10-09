@@ -123,3 +123,15 @@ fn ticket_cost_by_graph_size() {
         );
     }
 }
+
+#[test]
+fn about_one_ticket_in_difficulty_counts() {
+    let graph = CommittedGraph::new(TicketGraph::from_axons(&[]));
+    let total = 170 * 200;
+    let counted = (0..total)
+        .filter(|&n| counts(&prove(&graph, 7, n).unwrap()))
+        .count() as f64;
+    let expected = total as f64 / TICKET_DIFFICULTY as f64;
+    // 200 expected wins; ±5 sigma
+    assert!((counted - expected).abs() < 5.0 * expected.sqrt(), "{counted} vs {expected}");
+}

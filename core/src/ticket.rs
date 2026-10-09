@@ -173,6 +173,21 @@ pub fn verify(ticket: &Ticket, graph: &CommittedGraph) -> bool {
         && prove(graph, ticket.seed, ticket.number).is_some_and(|t| t == *ticket)
 }
 
+/// One counted ticket in `TICKET_DIFFICULTY` computed ones. Calibrated so a
+/// counted ticket keeps the cost the retired zheng SpMV ticket had: 97.6 ms
+/// legacy against 0.58 ms recomputed on the default body graph (473 nodes,
+/// M4 Max, cyb#1407), ratio ≈ 170 — the subsidy a body earns per minute,
+/// and so PUSSY issuance on the test chain, stays where it was.
+pub const TICKET_DIFFICULTY: u64 = 170;
+
+/// Whether a ticket counts: its output digest, read as a little-endian u64,
+/// falls below `u64::MAX / TICKET_DIFFICULTY`. Public and recomputable.
+pub fn counts(ticket: &Ticket) -> bool {
+    let mut w = [0u8; 8];
+    w.copy_from_slice(&ticket.output[..8]);
+    u64::from_le_bytes(w) < u64::MAX / TICKET_DIFFICULTY
+}
+
 /// splitmix64 — the standard seed scrambler; deterministic vectors.
 pub fn splitmix64(mut z: u64) -> u64 {
     z = z.wrapping_add(0x9e3779b97f4a7c15);
