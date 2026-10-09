@@ -1,10 +1,14 @@
 //! The body earns PUSSY: proving, not hashing.
 //!
-//! One ticket = one proved SpMV over THIS cyb's own cybergraph: the outer
-//! sumcheck samples the claim across `log n` rounds, HyperNova folds the
-//! instance into an accumulator, SuperSpartan decides, Brakedown opens —
-//! zheng's whole pipeline, real Goldilocks arithmetic end to end, and the
-//! ticket only counts after `verify_spmv` passes. This is the stakeless
+//! One ticket = one SpMV step `y = A·x` over THIS cyb's own cybergraph,
+//! real Goldilocks arithmetic, with `x` drawn from the beacon and the
+//! ticket number. The ticket binds the graph commitment and a digest of
+//! `y`, and only counts after `cyb_core::ticket::verify` recomputes it.
+//! All inputs are public, so recomputation is the sound check: zheng's
+//! legacy `prove_spmv` / `verify_spmv` ran a HyperNova fold its verifier
+//! never checked (see `cyb_core::ticket` for the design and costs; a
+//! succinct ticket waits for the step relation of the proof repair's
+//! phase 3). This is the stakeless
 //! PoW onramp of tru/specs/rewards.md in its offline phase: the envelope
 //! (meter proven settlement work, pay pro-rata) is the spec's; the beacon,
 //! cluster and difficulty target arrive with the chain. Until then the
@@ -23,8 +27,7 @@ use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
-use nebu::Goldilocks;
-use zheng::{prove_spmv, spmv_native, verify_spmv, SparseGraph};
+use cyb_core::ticket::{self, CommittedGraph, TicketGraph};
 
 use super::networks::NetHub;
 
@@ -141,7 +144,8 @@ impl Prover {
         if self.run.swap(true, Ordering::SeqCst) {
             return;
         }
-        let (graph, n, nnz) = build_graph(&axons);
+        let graph = TicketGraph::from_axons(&axons);
+        let (n, nnz) = (graph.n, graph.edges.len());
         if let Ok(mut s) = self.stat.lock() {
             s.running = true;
             s.tickets = 0;
@@ -151,7 +155,8 @@ impl Prover {
             s.since = Some(Instant::now());
         }
 
-        let graph = std::sync::Arc::new(graph);
+        // Committed once: every ticket of this session binds the same graph.
+        let graph = std::sync::Arc::new(CommittedGraph::new(graph));
         // One counter names every ticket across the fleet — numbers stay
         // unique and the lifetime tally is their sum by construction.
         let counter = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(read_lifetime()));
@@ -219,7 +224,7 @@ impl Prover {
 #[allow(clippy::too_many_arguments)]
 fn spawn_worker(
     idx: usize,
-    graph: std::sync::Arc<SparseGraph>,
+    graph: std::sync::Arc<CommittedGraph>,
     hub: NetHub,
     stat: std::sync::Arc<std::sync::Mutex<ProverStat>>,
     run: std::sync::Arc<AtomicBool>,
@@ -249,17 +254,8 @@ fn spawn_worker(
                     .map(|(_, h, root)| beacon_seed(*h, root))
                     .unwrap_or(0);
                 let ticket_no = counter.fetch_add(1, Ordering::Relaxed);
-                let x: Vec<Goldilocks> = (0..graph.n)
-                    .map(|i| {
-                        Goldilocks::new(splitmix64(
-                            ticket_no.wrapping_mul(0x9e37) ^ root_seed ^ i as u64,
-                        ))
-                    })
-                    .collect();
-                let y = spmv_native(&graph, &x);
-                let ok = prove_spmv(&graph, &x, &y)
-                    .map(|proof| verify_spmv(&graph, &x, &y, &proof))
-                    .unwrap_or(false);
+                let ok = ticket::prove(&graph, root_seed, ticket_no)
+                    .is_some_and(|t| ticket::verify(&t, &graph));
                 let ms = t0.elapsed().as_secs_f32() * 1000.0;
                 if let Ok(mut s) = stat.lock() {
                     if ok {
@@ -276,36 +272,6 @@ fn spawn_worker(
         .expect("spawn prover worker");
 }
 
-/// The local cybergraph as zheng sees it: axon endpoints become row/col
-/// indices, weights ride as field elements. An empty graph (a cyb that has
-/// not lived yet) proves over a seeded ring instead — the arithmetic is
-/// just as real, and the label on the page says which one is running.
-fn build_graph(axons: &[([u8; 32], [u8; 32], u64)]) -> (SparseGraph, usize, usize) {
-    let mut index: std::collections::HashMap<[u8; 32], usize> = std::collections::HashMap::new();
-    let mut id = |index: &mut std::collections::HashMap<[u8; 32], usize>, p: [u8; 32]| {
-        let next = index.len();
-        *index.entry(p).or_insert(next)
-    };
-    let mut edges = Vec::new();
-    for (from, to, amount) in axons {
-        let (r, c) = (id(&mut index, *from), id(&mut index, *to));
-        edges.push((r, c, Goldilocks::new((*amount).max(1))));
-    }
-    let n = index.len().max(2);
-    let mut g = SparseGraph::empty(n);
-    if edges.is_empty() {
-        for i in 0..n {
-            g.add(i, (i + 1) % n, Goldilocks::new(splitmix64(i as u64) | 1));
-        }
-    } else {
-        for (r, c, w) in &edges {
-            g.add(*r, *c, *w);
-        }
-    }
-    let nnz = g.edges.len();
-    (g, n, nnz)
-}
-
 /// Fold the beacon into one seed word: height plus the leading 16 hex
 /// digits of the state root. Deterministic for everyone watching the
 /// same chain at the same height.
@@ -314,60 +280,14 @@ fn beacon_seed(height: u64, root: &str) -> u64 {
     u64::from_str_radix(hex, 16).unwrap_or(0) ^ height.rotate_left(32)
 }
 
-/// splitmix64 — the standard seed scrambler; deterministic x vectors.
-fn splitmix64(mut z: u64) -> u64 {
-    z = z.wrapping_add(0x9e3779b97f4a7c15);
-    z = (z ^ (z >> 30)).wrapping_mul(0xbf58476d1ce4e5b9);
-    z = (z ^ (z >> 27)).wrapping_mul(0x94d049bb133111eb);
-    z ^ (z >> 31)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    /// One real ticket over a graph the size of a lived-in cyb, timed.
-    /// Run with --nocapture to read the ms.
     #[test]
-    fn one_ticket_proves_and_verifies() {
-        let axons: Vec<([u8; 32], [u8; 32], u64)> = (0..255u64)
-            .map(|i| {
-                let mut a = [0u8; 32];
-                let mut b = [0u8; 32];
-                a[..8].copy_from_slice(&splitmix64(i).to_le_bytes());
-                b[..8].copy_from_slice(&splitmix64(i * 7 + 1).to_le_bytes());
-                (a, b, i + 1)
-            })
-            .collect();
-        let (g, n, nnz) = build_graph(&axons);
-        assert!(n > 100, "n={n}");
-        assert_eq!(nnz, 255);
-
-        let t0 = std::time::Instant::now();
-        let x: Vec<Goldilocks> = (0..g.n).map(|i| Goldilocks::new(splitmix64(i as u64))).collect();
-        let y = spmv_native(&g, &x);
-        let proof = prove_spmv(&g, &x, &y).expect("prove");
-        assert!(verify_spmv(&g, &x, &y, &proof), "verify");
-        eprintln!("ticket over n={n} nnz={nnz}: {:.1} ms", t0.elapsed().as_secs_f32() * 1000.0);
-    }
-
-    #[test]
-    fn empty_graph_falls_back_to_a_ring() {
-        let (g, n, nnz) = build_graph(&[]);
-        assert_eq!(n, 2);
-        assert_eq!(nnz, 2);
-        let x: Vec<Goldilocks> = (0..g.n).map(|i| Goldilocks::new(i as u64 + 3)).collect();
-        let y = spmv_native(&g, &x);
-        let proof = prove_spmv(&g, &x, &y).expect("prove");
-        assert!(verify_spmv(&g, &x, &y, &proof));
-    }
-
-    #[test]
-    fn tampered_answer_is_refused() {
-        let (g, _, _) = build_graph(&[]);
-        let x: Vec<Goldilocks> = (0..g.n).map(|i| Goldilocks::new(i as u64 + 3)).collect();
-        let mut y = spmv_native(&g, &x);
-        y[0] = y[0] + Goldilocks::ONE;
-        assert!(prove_spmv(&g, &x, &y).is_err(), "a wrong claim must not prove");
+    fn beacon_seed_reads_height_and_root_prefix() {
+        let root = "00000000000000ff".to_string() + &"0".repeat(48);
+        assert_eq!(beacon_seed(1, &root), 0xff ^ (1u64 << 32));
+        assert_eq!(beacon_seed(0, "zz"), 0, "unparsed root seeds zero");
     }
 }

@@ -21,8 +21,6 @@ path = "src/main.rs"
 
 [dependencies]
 ureq       = { version = "3", features = ["json"] }
-zheng      = { path = "../../zheng/rs" }
-nebu       = { package = "strata-nebu", path = "../../strata/nebu/rs" }
 # vault: encrypted-at-rest secrets (pure-rust, all platforms)
 chacha20poly1305 = "0.10"
 getrandom  = "0.2"

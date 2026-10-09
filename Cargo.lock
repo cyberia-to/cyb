@@ -2954,11 +2954,9 @@ dependencies = [
  "sha1",
  "sha2",
  "soma-kernel",
- "strata-nebu",
  "tade",
  "tray-icon",
  "ureq",
- "zheng",
 ]
 
 [[package]]
