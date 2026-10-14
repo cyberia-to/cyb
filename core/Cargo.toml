@@ -17,3 +17,7 @@ foculus = { path = "../../foculus", default-features = false }
 tru = { package = "cyber-tru", path = "../../tru/rs" }
 # PLUMB conservation mint ledger
 tok = { package = "cyber-tok", path = "../../tok/rs" }
+
+[dev-dependencies]
+# ticket_tests: the profile-1 alternative to recomputation, measured (zheng default features: no `legacy`)
+zheng = { path = "../../zheng/rs" }

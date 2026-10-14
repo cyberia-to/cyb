@@ -135,3 +135,87 @@ fn about_one_ticket_in_difficulty_counts() {
     // 200 expected wins; ±5 sigma
     assert!((counted - expected).abs() < 5.0 * expected.sqrt(), "{counted} vs {expected}");
 }
+
+/// The SpMV relation `y = A·x` as one CCS: row `r` is
+/// `(Σ_{(r,c,w)} w·x_c − y_r) · 1 = 0`, `x` pinned (public), `y` committed.
+fn spmv_relation(g: &TicketGraph, x: &[F]) -> (zheng::types::CCSInstance, Vec<F>, Vec<(usize, F)>) {
+    use zheng::types::{CCSInstance, SparseMatrix};
+    let n = g.n;
+    let rows = n.max(2).next_power_of_two();
+    let cols = (2 * n + 1).max(64).next_power_of_two();
+    let mut a = SparseMatrix::new(rows, cols);
+    let mut b = SparseMatrix::new(rows, cols);
+    for r in 0..n {
+        a.entries[r].push((1 + n + r, -F::ONE));
+        b.entries[r].push((0, F::ONE));
+    }
+    for &(r, c, w) in &g.edges {
+        a.entries[r].push((1 + c, w));
+    }
+    let instance = CCSInstance {
+        matrices: vec![a, b, SparseMatrix::new(rows, cols)],
+        multisets: vec![vec![0, 1], vec![2]],
+        coeffs: vec![F::ONE, -F::ONE],
+        num_rows: rows,
+        num_cols: cols,
+    };
+    let y = g.spmv(x).unwrap();
+    let mut z = vec![F::ZERO; cols];
+    z[0] = F::ONE;
+    z[1..=n].copy_from_slice(x);
+    z[1 + n..=2 * n].copy_from_slice(&y);
+    let pins = std::iter::once((0, F::ONE)).chain((0..n).map(|i| (1 + i, x[i]))).collect();
+    (instance, z, pins)
+}
+
+/// Would a profile-1 proof (zheng's user-device profile) be worth carrying
+/// for the subsidy instead of recomputation? A lower bound on its cost:
+/// the SpMV relation alone, `y` committed, `digest(y)` NOT bound in the
+/// circuit (binding it is ~2 hemera permutations per element of `y`, which
+/// exceeds zheng's 2^20 relation cap above a few hundred nodes). Its
+/// verifier still rebuilds the relation from the graph — it needs the
+/// graph, as recomputation does. Run with `--ignored --nocapture`;
+/// `ZHENG_BACKEND` is not read here (CPU). Recorded in
+/// `audit/body-ticket-profile-2026-10.md`.
+#[test]
+#[ignore = "measurement"]
+fn ticket_profile_one_lower_bound() {
+    use zheng::execution::succinct::{Whir, committed_vars, device_params, prove_relation, verify_relation};
+    for count in [255u64, 10_000] {
+        let g = TicketGraph::from_axons(&axons(count));
+        let c = committed(&g);
+        let x = challenge(42, 1, g.n);
+        let reps = 5;
+        let t0 = std::time::Instant::now();
+        for k in 0..reps {
+            assert!(prove(&c, 42, k).is_some());
+        }
+        let recompute_ms = t0.elapsed().as_secs_f64() * 1e3 / reps as f64;
+        let (instance, z, pins) = spmv_relation(&g, &x);
+        assert!(instance.is_satisfied_by(&zheng::types::CCSWitness { z: z.clone() }));
+        let vars = committed_vars(&instance, &pins).unwrap();
+        let params = device_params(vars);
+        let mut prove_ms = vec![];
+        let mut verify_ms = vec![];
+        let mut bytes = 0;
+        for _ in 0..reps {
+            let t0 = std::time::Instant::now();
+            let p = prove_relation::<Whir>(&params, &instance, &z, &pins, b"cyb-ticket-p1-bound").unwrap();
+            prove_ms.push(t0.elapsed().as_secs_f64() * 1e3);
+            let t0 = std::time::Instant::now();
+            verify_relation::<Whir>(&instance, &pins, b"cyb-ticket-p1-bound", &p).unwrap();
+            verify_ms.push(t0.elapsed().as_secs_f64() * 1e3);
+            bytes = zheng::envelope::succinct_proof_bytes(&p.into()).len();
+        }
+        prove_ms.sort_by(f64::total_cmp);
+        verify_ms.sort_by(f64::total_cmp);
+        eprintln!(
+            "ticket n={} nnz={}: recompute {recompute_ms:.2} ms, 80 B | profile 1 (relation only, 2^{vars}) \
+             prove {:.1} ms, verify {:.1} ms (+ the relation rebuild from the graph), {bytes} B",
+            g.n,
+            g.edges.len(),
+            prove_ms[reps as usize / 2],
+            verify_ms[reps as usize / 2],
+        );
+    }
+}
