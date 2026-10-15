@@ -590,14 +590,9 @@ fn run_pending_command(world: &mut World) {
             let who = world
                 .resource::<crate::worlds::identity::Identity>()
                 .clone();
-            match crate::worlds::sigma::chain::chain_url(&hub) {
-                Some(url) => {
-                    money.pay(
-                        url,
-                        crate::worlds::sigma::chain::neuron_hex(&who),
-                        words[0].to_string(),
-                        amount,
-                    );
+            match hub.first_chain() {
+                Some((_, url, chain_id, token)) => {
+                    money.pay(url, who.wallet(), chain_id, token, words[0].to_string(), amount);
                     format!("paying {amount} to {} - receipt lands in sigma", words[0])
                 }
                 None => "pay: no network configured".into(),

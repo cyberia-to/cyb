@@ -82,6 +82,13 @@ pub struct NetState {
     pub height: u64,
     /// Last seen state root (bbg-root), hex.
     pub root: String,
+    /// The tip block id (chain nodes publish it; the chaosnet does not).
+    pub tip: String,
+    /// The chain id (the `genesis` field of a chain node's /status) —
+    /// what every signed tx binds to. None until the chain says.
+    pub chain_id: Option<[u8; 32]>,
+    /// The chain's native token id, `token(denom)` — what a pay moves.
+    pub token: [u8; 32],
     /// What the last step did — "ok h=3" or the error, verbatim short.
     pub last_step: String,
     pub ok: bool,
@@ -107,6 +114,17 @@ pub struct NetHub {
 impl NetHub {
     pub fn snapshot(&self) -> Vec<NetState> {
         self.states.lock().map(|v| v.clone()).unwrap_or_default()
+    }
+
+    /// The first network as a wallet needs it: (name, url, chain id,
+    /// native token). The chain id is None until that node's /status
+    /// published one — nothing is signed against a guess.
+    pub fn first_chain(&self) -> Option<(String, String, Option<[u8; 32]>, [u8; 32])> {
+        self.states
+            .lock()
+            .ok()?
+            .first()
+            .map(|n| (n.name.clone(), n.url.clone(), n.chain_id, n.token))
     }
 
     /// The beacon: (name, height, root) of the first reachable network.
@@ -163,13 +181,17 @@ impl NetHub {
                         if let Some(n) = v.iter_mut().find(|n| n.name == name) {
                             n.tx += (url.len() + 16) as u64; // request line, honest floor
                             match &step {
-                                Ok((height, root, bytes)) => {
+                                Ok((status, bytes)) => {
+                                    let height = status.height;
                                     n.rx += *bytes as u64;
-                                    if *height != n.height {
+                                    if height != n.height {
                                         n.last_advance = Some(Instant::now());
                                     }
-                                    n.height = *height;
-                                    n.root = root.clone();
+                                    n.height = height;
+                                    n.root = status.root.clone();
+                                    n.tip = status.tip.clone();
+                                    n.chain_id = status.chain_id;
+                                    n.token = status.native_token();
                                     n.ok = true;
                                     n.last_step = format!("ok h={height}");
                                     n.last_sync = Some(Instant::now());
@@ -319,9 +341,13 @@ fn persist_state(states: &[NetState]) {
     let _ = std::fs::write(state_path(), text);
 }
 
-/// One sync step: GET `<url>/status`, parse the soft3 plain-text form.
-/// Returns (height, root, response_bytes).
-fn step_status_with(agent: &ureq::Agent, url: &str) -> Result<(u64, String, usize), String> {
+/// One sync step: GET `<url>/status`, parse the soft3 cybermark form
+/// (chain-wire §7: height, tip, bbg-root, genesis = chain id).
+/// Returns (status, response_bytes).
+fn step_status_with(
+    agent: &ureq::Agent,
+    url: &str,
+) -> Result<(soft3::wallet::Status, usize), String> {
     let full = format!("{url}/status");
     let mut res = agent
         .get(&full)
@@ -331,17 +357,8 @@ fn step_status_with(agent: &ureq::Agent, url: &str) -> Result<(u64, String, usiz
         .body_mut()
         .read_to_string()
         .map_err(|e| short_err(&e.to_string()))?;
-    let field = |key: &str| -> Option<String> {
-        body.lines()
-            .find(|l| l.trim_start().starts_with(key))
-            .and_then(|l| l.split_once(':'))
-            .map(|(_, v)| v.trim().to_string())
-    };
-    let height: u64 = field("height")
-        .and_then(|h| h.parse().ok())
-        .ok_or("no height in status")?;
-    let root = field("bbg-root").unwrap_or_default();
-    Ok((height, root, body.len()))
+    let status = soft3::wallet::Status::parse(&body).map_err(|e| short_err(&e.to_string()))?;
+    Ok((status, body.len()))
 }
 
 pub fn short_http_err(e: &str) -> String {
@@ -462,14 +479,14 @@ mod tests {
     fn status_fields_parse_from_soft3_form() {
         let body = "particle: status\nchain: spacepussy-test\nheight: 3\n\
                     bbg-root: 3acf50598b5f855224a4d253e5a1395c01d2ee17\n";
-        let field = |key: &str| -> Option<String> {
-            body.lines()
-                .find(|l| l.trim_start().starts_with(key))
-                .and_then(|l| l.split_once(':'))
-                .map(|(_, v)| v.trim().to_string())
-        };
-        assert_eq!(field("height").unwrap(), "3");
-        assert!(field("bbg-root").unwrap().starts_with("3acf5059"));
+        let st = soft3::wallet::Status::parse(body).unwrap();
+        assert_eq!(st.height, 3);
+        assert!(st.root.starts_with("3acf5059"));
+        assert_eq!(st.chain_id, None, "the chaosnet publishes no chain id");
+        let chain = format!("{body}tip: {}\ngenesis: {}\n", "ab".repeat(32), "44".repeat(32));
+        let st = soft3::wallet::Status::parse(&chain).unwrap();
+        assert_eq!(st.chain_id, Some([0x44; 32]));
+        assert_eq!(st.tip, "ab".repeat(32));
     }
 
     /// The regression for the frozen-h incident: a socket that accepts
@@ -502,10 +519,10 @@ mod tests {
     #[test]
     #[ignore]
     fn net_step_live() {
-        let (h, root, bytes) =
+        let (st, bytes) =
             step_status_with(&agent(), "https://cyb.ai/spacepussy-test").expect("reachable");
-        eprintln!("pussy: h={h} root={root} ({bytes} bytes)");
-        assert!(h >= 1);
-        assert!(!root.is_empty());
+        eprintln!("pussy: h={} root={} ({bytes} bytes)", st.height, st.root);
+        assert!(st.height >= 1);
+        assert!(!st.root.is_empty());
     }
 }
