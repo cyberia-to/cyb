@@ -71,6 +71,12 @@ impl Identity {
         mudra::claim::sign_arbitrary(&self.signer, &self.hex(), data)
     }
 
+    /// This identity as the chain's wallet signs: the same key, so the
+    /// neuron a transfer or cyberlink is authored by IS this cyb.
+    pub fn wallet(&self) -> soft3::wallet::Signer {
+        soft3::wallet::Signer::from_key((*self.signer).clone())
+    }
+
     /// The pubkey as lowercase hex, for the wire.
     pub fn pubkey_hex(&self) -> String {
         self.pubkey.iter().map(|b| format!("{b:02x}")).collect()
@@ -192,6 +198,27 @@ mod tests {
         assert_eq!(a.address, b.address);
         assert!(a.address.starts_with("pussy1"), "address: {}", a.address);
         assert_ne!(a.neuron, [0u8; 32]);
+    }
+
+    /// The chain wallet signs as this very neuron: the same key, the
+    /// same hemera(pubkey), the known-answer id of chain-conformance §7.
+    #[test]
+    fn wallet_is_the_same_neuron() {
+        let who = identity_from_spell(
+            "abandon abandon abandon abandon abandon abandon abandon \
+             abandon abandon abandon abandon about",
+        )
+        .unwrap();
+        let wallet = who.wallet();
+        assert_eq!(wallet.neuron, who.neuron);
+        assert_eq!(wallet.pubkey, who.pubkey);
+        assert_eq!(
+            wallet.neuron_hex(),
+            "31284576301bacb9c2cad6379244f856dc32c751c38c3b0af4c5c886fd0ed741"
+        );
+        let signed = wallet.transfer(&[0x44; 32], 0, [1; 32], 5, [0x77; 32], None).unwrap();
+        assert!(soft3::wallet::verify(&[0x44; 32], &signed.bytes).is_ok());
+        assert!(soft3::wallet::verify(&[0x45; 32], &signed.bytes).is_err());
     }
 
     #[test]

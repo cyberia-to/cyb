@@ -570,7 +570,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 name = "bbg"
 version = "0.3.0"
 dependencies = [
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "cyber-lens",
  "cyber-nox",
  "fjall",
@@ -2923,7 +2923,7 @@ dependencies = [
  "chrono",
  "cyb-core",
  "cyber-file",
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "cyber-mudra",
  "cyber-spark",
  "cyber-tru",
@@ -2953,10 +2953,11 @@ dependencies = [
  "serde_json",
  "sha1",
  "sha2",
+ "soft3",
  "soma-kernel",
  "tade",
  "tray-icon",
- "ureq",
+ "ureq 3.4.0",
 ]
 
 [[package]]
@@ -2964,7 +2965,7 @@ name = "cyb-core"
 version = "0.1.0"
 dependencies = [
  "bbg",
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "cyber-tok",
  "cyber-tru",
  "cybergraph",
@@ -2977,12 +2978,18 @@ dependencies = [
 name = "cyber-file"
 version = "0.1.0"
 dependencies = [
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
 ]
 
 [[package]]
 name = "cyber-hemera"
 version = "0.3.1"
+
+[[package]]
+name = "cyber-hemera"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "ebcf7ffcd69170adde7e792826d7cececda962ea220b9834c6535bbc71e5a6df"
 
 [[package]]
 name = "cyber-lens"
@@ -2994,7 +3001,6 @@ dependencies = [
  "cyber-lens-core",
  "cyber-lens-ikat",
  "cyber-lens-porphyry",
- "cyber-lens-rspcs",
 ]
 
 [[package]]
@@ -3011,7 +3017,7 @@ dependencies = [
 name = "cyber-lens-binius"
 version = "0.1.1"
 dependencies = [
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "cyber-lens-core",
  "strata-kuro",
 ]
@@ -3020,7 +3026,7 @@ dependencies = [
 name = "cyber-lens-brakedown"
 version = "0.2.0"
 dependencies = [
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "cyber-lens-core",
  "strata-nebu",
 ]
@@ -3029,7 +3035,7 @@ dependencies = [
 name = "cyber-lens-core"
 version = "0.1.2"
 dependencies = [
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "strata-core",
  "strata-nebu",
  "strata-proof",
@@ -3049,18 +3055,9 @@ dependencies = [
 name = "cyber-lens-porphyry"
 version = "0.2.0"
 dependencies = [
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "cyber-lens-core",
  "strata-genies",
-]
-
-[[package]]
-name = "cyber-lens-rspcs"
-version = "0.1.0"
-dependencies = [
- "cyber-hemera",
- "cyber-lens-core",
- "strata-nebu",
 ]
 
 [[package]]
@@ -3071,7 +3068,7 @@ dependencies = [
  "bech32",
  "bip32",
  "bip39",
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "k256",
  "neuron-id",
  "ripemd",
@@ -3082,7 +3079,7 @@ dependencies = [
 name = "cyber-nox"
 version = "0.3.0"
 dependencies = [
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "cyber-lens-brakedown",
  "cyber-lens-core",
  "strata-nebu",
@@ -3099,7 +3096,7 @@ dependencies = [
 name = "cyber-tok"
 version = "0.1.1"
 dependencies = [
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "cyber-tru",
  "neuron-id",
 ]
@@ -3108,7 +3105,7 @@ dependencies = [
 name = "cyber-tru"
 version = "0.1.1"
 dependencies = [
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "memmap2",
  "serde",
  "strata-nebu",
@@ -3121,7 +3118,7 @@ name = "cybergraph"
 version = "0.1.1"
 dependencies = [
  "bbg",
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "cyber-nox",
  "foculus",
  "inf-eval",
@@ -3875,7 +3872,7 @@ dependencies = [
  "anyhow",
  "bbg",
  "clap",
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "cyber-lens",
  "cyber-tok",
  "cyber-tru",
@@ -4760,7 +4757,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.18",
  "tokio",
- "ureq",
+ "ureq 3.4.0",
  "windows-sys 0.61.2",
 ]
 
@@ -6223,7 +6220,7 @@ version = "0.1.0"
 name = "neuron-model"
 version = "0.1.0"
 dependencies = [
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "cyber-nox",
  "neuron-id",
  "serde",
@@ -8479,7 +8476,7 @@ version = "0.1.0"
 name = "rune-interp"
 version = "0.1.0"
 dependencies = [
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "rune-ast",
 ]
 
@@ -8499,7 +8496,7 @@ dependencies = [
 name = "rune-parse"
 version = "0.1.0"
 dependencies = [
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "rune-ast",
  "rune-lex",
  "rune-parse-pure",
@@ -8509,7 +8506,7 @@ dependencies = [
 name = "rune-parse-pure"
 version = "0.1.0"
 dependencies = [
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "rune-ast",
  "rune-lex",
 ]
@@ -8526,7 +8523,7 @@ dependencies = [
 name = "rune-subject"
 version = "0.1.0"
 dependencies = [
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "rune-ast",
 ]
 
@@ -9082,10 +9079,23 @@ dependencies = [
 ]
 
 [[package]]
+name = "soft3"
+version = "0.10.0"
+dependencies = [
+ "cyber-hemera 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cyber-mudra",
+ "cybergraph",
+ "foculus",
+ "serde",
+ "serde_json",
+ "ureq 2.12.1",
+]
+
+[[package]]
 name = "soma-agent"
 version = "0.1.0"
 dependencies = [
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "cybergraph",
  "neuron-engine",
  "neuron-id",
@@ -9101,7 +9111,7 @@ dependencies = [
 name = "soma-kernel"
 version = "0.1.0"
 dependencies = [
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "log",
  "run",
  "serde",
@@ -10281,6 +10291,21 @@ checksum = "8ecb6da28b8a351d773b68d5825ac39017e680750f980f3a1a85cd8dd28a47c1"
 
 [[package]]
 name = "ureq"
+version = "2.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "02d1a66277ed75f640d608235660df48c8e3c19f3b4edb6a263315626cc3c01d"
+dependencies = [
+ "base64 0.22.1",
+ "log",
+ "once_cell",
+ "rustls",
+ "rustls-pki-types",
+ "url",
+ "webpki-roots 0.26.11",
+]
+
+[[package]]
+name = "ureq"
 version = "3.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "972d7902c8735f2695410b8aed7df6ed12a47394aa1c8d7af49f0497b731a94d"
@@ -10300,7 +10325,7 @@ dependencies = [
  "ureq-proto",
  "utf8-zero",
  "webpki-root-certs",
- "webpki-roots",
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
@@ -10878,6 +10903,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "b96554aa2acc8ccdb7e1c9a58a7a68dd5d13bccc69cd124cb09406db612a1c9b"
 dependencies = [
  "rustls-pki-types",
+]
+
+[[package]]
+name = "webpki-roots"
+version = "0.26.11"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "521bc38abb08001b01866da9f51eb7c5d647a19260e00054a8c7fd5f9e57f7a9"
+dependencies = [
+ "webpki-roots 1.0.9",
 ]
 
 [[package]]
@@ -12246,7 +12280,7 @@ dependencies = [
 name = "zheng"
 version = "0.4.0"
 dependencies = [
- "cyber-hemera",
+ "cyber-hemera 0.3.1",
  "cyber-lens",
  "cyber-nox",
  "getrandom 0.3.4",
