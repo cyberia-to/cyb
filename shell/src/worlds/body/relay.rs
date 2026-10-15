@@ -24,6 +24,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
+use bevy::log::{info, warn};
 use soft3::wallet::{Client, Signer};
 
 use super::networks::NetHub;
@@ -104,7 +105,20 @@ impl Relay {
             .spawn(move || {
                 let mut marks = load_marks();
                 let first_run = !relay_file().exists();
+                if first_run {
+                    // The past stays local; relay from now. Seeded at thread
+                    // start, not at the first pass, so a body whose boot casts
+                    // land inside the first five seconds still relays them.
+                    let cell = shared.cell.lock().expect("shared cell poisoned");
+                    for (neuron, chain) in cell.graph.chains.iter() {
+                        let last = chain.entries.keys().next_back().copied().unwrap_or(0);
+                        marks.insert(hex32(neuron), last);
+                    }
+                }
                 let mut note = |m: String| {
+                    if !m.is_empty() {
+                        warn!("relay: {m}");
+                    }
                     if let Ok(mut e) = last_error.lock() {
                         *e = m;
                     }
@@ -125,15 +139,9 @@ impl Relay {
                         let mut out = Vec::new();
                         for (neuron, chain) in cell.graph.chains.iter() {
                             let key = hex32(neuron);
-                            let mark = marks.get(&key).copied().unwrap_or_else(|| {
-                                if first_run {
-                                    // The past stays local; relay from now.
-                                    chain.entries.keys().next_back().copied().unwrap_or(0)
-                                } else {
-                                    0
-                                }
-                            });
-                            marks.entry(key.clone()).or_insert(mark);
+                            // A neuron first seen after the seed relays from its
+                            // first step: it is new, so is everything it says.
+                            let mark = *marks.entry(key.clone()).or_insert(0);
                             for (step, sig) in chain.entries.range(mark + 1..) {
                                 for l in &sig.links {
                                     out.push(Fresh {
@@ -149,7 +157,7 @@ impl Relay {
                         out
                     };
                     if fresh.is_empty() {
-                        if marks_dirty(&marks) {
+                        if first_run && !relay_file().exists() {
                             save_marks(&marks);
                         }
                         pending.store(0, Ordering::Relaxed);
@@ -192,7 +200,8 @@ impl Relay {
                             .map_err(|e| e.to_string())
                             .and_then(|tx| client.submit(&tx).map_err(|e| e.to_string()));
                         match outcome {
-                            Ok(_txid) => {
+                            Ok(txid) => {
+                                info!("relay: {net_name} took cyberlink nonce {nonce} txid {}", soft3::wallet::hex(&txid));
                                 nonce += 1;
                                 done += 1;
                                 sent.fetch_add(1, Ordering::Relaxed);
@@ -231,7 +240,3 @@ fn bump_mark(marks: &mut HashMap<String, u64>, key: &str, step: u64) {
     }
 }
 
-/// Marks always persist after seeding so a restart never re-floods.
-fn marks_dirty(marks: &HashMap<String, u64>) -> bool {
-    !marks.is_empty() && !relay_file().exists()
-}
