@@ -2,9 +2,10 @@
 //!
 //! A signal is an atomic bundle of cyberlinks signed by one neuron.
 //! Inside a single cyb process the bus is just a FIFO queue — the
-//! `proof` field stays `None` because local signals do not need a
-//! STARK. When a neuron commits the signal on-chain, `proof` becomes
-//! `Some(zheng::Proof)` and the same value rides the network.
+//! `proof` field stays `None` because local signals need no proof. A pay
+//! signal carries `Some(foculus::Proof)` — a pay proof of itself (zheng
+//! public certificate v3) that cybergraph admission verifies — and the
+//! same value rides the network.
 //!
 //! Bevy/wgpu wrappers live in higher layers. This module is plain
 //! Rust so the core can run in a CLI, on a server, on Android, or
