@@ -7,13 +7,13 @@ crystal-domain: cyb
 ---
 # anatomy — the source of truth
 
-the robot is cy with a body. the agent's sixteen organs are specified in [[cy/specs/anatomy|cy]]; this page keeps the organs that need a screen, a camera or a speaker, and the parts that belong to neither yet. every surface of the body — the app's worlds, the docs, [cyb.ai](https://cyb.ai), the crates — names things by this page and by [[cy/specs/anatomy|cy anatomy]]. a page that cannot be traced to a part is either legacy or component matter.
+the robot is cy with a body. the agent's sixteen organs — the eight of the [[cy/specs/chroma|chroma]] and the eight unseen — are specified in [[cy/specs/anatomy|cy]]; this page keeps the organs that need a camera, a speaker or a rendered world, and the parts that belong to neither yet. cy designs the chroma, cyb paints it: name is drawn here as the avatar, memory as the brain, time as the flagship view — the organs themselves moved to cy on 2026-10-07. every surface of the body — the app's worlds, the docs, [cyb.ai](https://cyb.ai), the crates — names things by this page and by [[cy/specs/anatomy|cy anatomy]]. a page that cannot be traced to a part is either legacy or component matter.
 
 ## I · identity — who
 
 | part | is | today |
 |---|---|---|
-| **[[cyb/parts/name|name]]** | the NFT resolver — the robot's name resolves through the graph ([[moon-passport]] lineage), owned like a token, not set in a config | ports with the soft3 genesis |
+| *name* | moved to cy — [[cy/specs/name|name]], the resolver; cyb draws it as the avatar | ports with the soft3 genesis |
 | **[[cyb/parts/avatar|avatar]]** | the robot's visualization — its model, the rendered creature others see and you recognize | to grow; the robot world's creature is its seed |
 
 ## II · mind — what thinks
@@ -37,7 +37,7 @@ the robot is cy with a body. the agent's sixteen organs are specified in [[cy/sp
 
 | part | is | today |
 |---|---|---|
-| **[[cyb/parts/time|time]]** | one screen: log ← **now** → plan, the present in the middle | to build; the flagship view |
+| *time* | moved to cy — [[cy/specs/time|time]] (log ← now → plan); cyb paints it as the flagship view | to build |
 
 ## VI · flesh — what it is made of
 
@@ -52,7 +52,7 @@ the robot is cy with a body. the agent's sixteen organs are specified in [[cy/sp
 
 ## banned words
 
-*wallet* → [[cyb/anatomy|sigma]] · *oracle, portal, old brain* → legacy (the JS era) · *graph (as a world name)* → brain · *face* → avatar
+*wallet* → [[cy/specs/sigma|sigma]] · *oracle, portal, old brain* → legacy (the JS era) · *graph (as a world name)* → brain · *face* → avatar
 
 ## alignment phases
 

@@ -2903,9 +2903,9 @@ name = "cy"
 version = "0.1.0"
 dependencies = [
  "cyb-core",
- "cyber-mudra",
  "cyber-tru",
  "inf-value",
+ "neuron-auth",
  "serde",
  "toml 0.8.2",
 ]
@@ -2924,7 +2924,6 @@ dependencies = [
  "cyb-core",
  "cyber-file",
  "cyber-hemera",
- "cyber-mudra",
  "cyber-spark",
  "cyber-tru",
  "getrandom 0.2.17",
@@ -2933,6 +2932,7 @@ dependencies = [
  "import",
  "libc",
  "mir",
+ "neuron-auth",
  "nu-cli",
  "nu-cmd-extra",
  "nu-cmd-lang",
@@ -3051,21 +3051,6 @@ dependencies = [
  "cyber-hemera",
  "cyber-lens-core",
  "strata-genies",
-]
-
-[[package]]
-name = "cyber-mudra"
-version = "0.1.0"
-dependencies = [
- "base64 0.22.1",
- "bech32",
- "bip32",
- "bip39",
- "cyber-hemera",
- "k256",
- "neuron-id",
- "ripemd",
- "sha2",
 ]
 
 [[package]]
@@ -6199,6 +6184,21 @@ dependencies = [
 ]
 
 [[package]]
+name = "neuron-auth"
+version = "0.1.0"
+dependencies = [
+ "base64 0.22.1",
+ "bech32",
+ "bip32",
+ "bip39",
+ "cyber-hemera",
+ "k256",
+ "neuron-id",
+ "ripemd",
+ "sha2",
+]
+
+[[package]]
 name = "neuron-engine"
 version = "0.1.0"
 dependencies = [
@@ -6224,8 +6224,8 @@ dependencies = [
 name = "neuron-node"
 version = "0.1.0"
 dependencies = [
- "cyber-mudra",
  "cybergraph",
+ "neuron-auth",
  "neuron-engine",
  "neuron-model",
  "neuron-rune",
