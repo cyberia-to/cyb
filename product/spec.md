@@ -101,7 +101,7 @@ Components can be overlaid over the space and can be toggled with hotkeys. Any a
 - osx
 - linux
 - windows
-- chrome
+- chroma
 - android
 - vive
 - daydream

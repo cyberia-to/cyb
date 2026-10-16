@@ -8,7 +8,7 @@ use cyb_core::{MoneyEvent, MoneyWallet, money_to_sense};
 use prysm::theme;
 
 use super::{ComInbox, Notice, SharedCell, Speaker, WorldState};
-use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H};
+use crate::shell::chroma::{CHROMA_BOTTOM_H, CHROMA_TOP_H};
 
 pub mod chain;
 
@@ -136,13 +136,13 @@ fn setup_sigma(
     if crate::worlds::reveal_world(WorldState::Sigma, &mut worlds) {
         return;
     }
-    let top = CHROME_TOP_H + 12.0;
-    let bottom = CHROME_BOTTOM_H + 12.0;
+    let top = CHROMA_TOP_H + 12.0;
+    let bottom = CHROMA_BOTTOM_H + 12.0;
     commands
         .spawn((
             SigmaRoot,
             crate::worlds::WorldUi(WorldState::Sigma),
-            crate::shell::chrome::ContentRoot,
+            crate::shell::chroma::ContentRoot,
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(16.0),
@@ -152,7 +152,7 @@ fn setup_sigma(
                 flex_direction: FlexDirection::Column,
                 row_gap: Val::Px(12.0),
                 padding: UiRect::all(Val::Px(16.0)),
-                // The root's bottom edge is the chrome's top edge, so clipping
+                // The root's bottom edge is the chroma's top edge, so clipping
                 // here is what makes the page pass under the bars instead of
                 // drawing over them.
                 overflow: Overflow::clip(),
@@ -441,7 +441,7 @@ fn refresh_chain_on_enter(
 fn handle_chain_buttons(
     sends: Query<&Interaction, (Changed<Interaction>, With<ChainSendBtn>)>,
     addrs: Query<&Interaction, (Changed<Interaction>, With<ChainAddrBtn>)>,
-    chrome: Option<ResMut<crate::shell::chrome::ChromeState>>,
+    chroma: Option<ResMut<crate::shell::chroma::ChromaState>>,
     who: Option<Res<crate::worlds::identity::Identity>>,
     notice: Option<ResMut<crate::worlds::Notice>>,
 ) {
@@ -452,9 +452,9 @@ fn handle_chain_buttons(
     }
     if send {
         // The commander folds into the pay form: recipient, then amount.
-        if let Some(mut chrome) = chrome {
-            chrome.pay = Some(crate::shell::chrome::PayDraft::default());
-            chrome.focused = true;
+        if let Some(mut chroma) = chroma {
+            chroma.pay = Some(crate::shell::chroma::PayDraft::default());
+            chroma.focused = true;
         }
     } else if let (Some(who), Some(mut notice)) = (who, notice) {
         let hex = chain::neuron_hex(&who);

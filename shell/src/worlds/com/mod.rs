@@ -23,7 +23,7 @@ use prysm::{StreamScrollback, dispatch, theme};
 use tade::Chunk;
 
 use super::{ComInbox, ComSay, Notice, Speaker, WorldState};
-use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
+use crate::shell::chroma::{CHROMA_BOTTOM_H, CHROMA_TOP_H, ContentRoot};
 
 const G: f32 = theme::G;
 
@@ -474,7 +474,7 @@ fn poll_eval_results(world: &mut World) {
 
 /// Run what the commander sent.
 ///
-/// com has no input of its own: the chrome commander is the one line in cyb,
+/// com has no input of its own: the chroma commander is the one line in cyb,
 /// on every screen, and this world is where its history lives. A submitted
 /// line arrives as `PendingShellCmd`, gets echoed into the scrollback, and
 /// runs — the same path whichever world it was typed from.
@@ -912,7 +912,7 @@ fn publish_prompt(world: &mut World) {
         state.nu_engine.as_ref().map(prompt_text)
     };
     let Some(prompt) = prompt else { return };
-    if let Some(mut res) = world.get_resource_mut::<crate::shell::chrome::ComPrompt>() {
+    if let Some(mut res) = world.get_resource_mut::<crate::shell::chroma::ComPrompt>() {
         if res.0 != prompt {
             res.0 = prompt;
         }
@@ -980,7 +980,7 @@ fn setup_terminal(world: &mut World) {
 }
 
 fn spawn_terminal_ui(world: &mut World, scrollback_entity: Entity) -> (Entity, Entity) {
-    // Root container: the band between the chrome bars (ContentRoot keeps
+    // Root container: the band between the chroma bars (ContentRoot keeps
     // top/bottom tracking the bars' true heights, safe areas included).
     let root = world
         .spawn((
@@ -989,8 +989,8 @@ fn spawn_terminal_ui(world: &mut World, scrollback_entity: Entity) -> (Entity, E
             Visibility::Visible,
             Node {
                 position_type: PositionType::Absolute,
-                top: Val::Px(CHROME_TOP_H),
-                bottom: Val::Px(CHROME_BOTTOM_H),
+                top: Val::Px(CHROMA_TOP_H),
+                bottom: Val::Px(CHROMA_BOTTOM_H),
                 left: Val::Px(0.0),
                 right: Val::Px(0.0),
                 flex_direction: FlexDirection::Column,

@@ -7,7 +7,7 @@
 
 use bevy::prelude::*;
 
-/// Screen margins the system reserves, in logical pixels. Chrome adds these to
+/// Screen margins the system reserves, in logical pixels. Chroma adds these to
 /// its own padding so nothing it draws lands under a system bar.
 #[derive(Resource, Default, Clone, Copy, PartialEq)]
 pub struct SafeArea {
@@ -73,7 +73,7 @@ fn track_safe_area(mut safe: ResMut<SafeArea>, windows: Query<&Window>) {
     let packed = SYSTEM_INSETS.load(std::sync::atomic::Ordering::Relaxed);
     let scale = window.scale_factor().max(1.0);
     // The keyboard is a bottom inset like any other: while it is up the
-    // chrome rides above it instead of hiding underneath.
+    // chroma rides above it instead of hiding underneath.
     let ime = IME_INSET.load(std::sync::atomic::Ordering::Relaxed);
     let next = SafeArea {
         top: (packed >> 16) as f32 / scale,

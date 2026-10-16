@@ -30,7 +30,7 @@ the robot is one organism with **21 parts in six layers**. every surface — the
 
 | part | is | today |
 |---|---|---|
-| **[[cyb/parts/com|com]]** | the commander — the one line where the user types; the mouth of the robot, reads [[cyb/anatomy|soul]] on every ask | live (com world); becomes omnipresent chrome, not a world |
+| **[[cyb/parts/com|com]]** | the commander — the one line where the user types; the mouth of the robot, reads [[cyb/anatomy|soul]] on every ask | live (com world); becomes omnipresent chroma, not a world |
 | **[[cyb/parts/sense|sense]]** | the messenger — interaction with other neurons, files, robots | seed exists (`money_to_sense`, notices); grows into the robot's inbox/outbox |
 | **[[cyb/parts/voice|voice]]** | speech — the robot heard and speaking | to grow |
 | **[[cyb/parts/vision|vision]]** | sight — camera, screen, world | to grow |
@@ -71,7 +71,7 @@ the robot is one organism with **21 parts in six layers**. every surface — the
 ## alignment phases
 
 1. **docs** — [[cyb/product/robot|robot]], [[cyb/product/spec|spec]], [[cyb/product/product|product]], [[cyb/decide/os|os]] restate themselves as expansions of parts; anything untraceable goes legacy (per [[restructure]])
-2. **app** — world *graph* → *brain*; com becomes chrome; *now* indicator; *time* world from tade + standing orders
+2. **app** — world *graph* → *brain*; com becomes chroma; *now* indicator; *time* world from tade + standing orders
 3. **landing** — cyb.ai lists the anatomy, one line per part
 4. **code** — crates and modules adopt part names; `~/cyb/soul` file is born
 

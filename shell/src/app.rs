@@ -1,7 +1,7 @@
 //! The one cyb App — every platform builds it here.
 //!
 //! Desktop (`main.rs`) and Android (`lib.rs`'s `android_main`) call
-//! [`build_app`] and get the same Bevy app: same worlds, same chrome, same
+//! [`build_app`] and get the same Bevy app: same worlds, same chroma, same
 //! nav. Only the surfaces that name a platform differ — global hotkeys, the
 //! tray, and the hide-on-close window contract exist where a desktop does.
 
@@ -148,7 +148,7 @@ pub fn build_app() -> App {
     .add_plugins(GpuBridgePlugin)
     .add_plugins(prysm::PrysmPlugin)
     .add_plugins(worlds::WorldsPlugin)
-    .add_plugins(shell::chrome::ChromePlugin)
+    .add_plugins(shell::chroma::ChromaPlugin)
     .add_plugins(shell::platform::PlatformPlugin)
     .add_plugins(shell::nav::NavPlugin)
     .add_plugins(mir::bevy::GraphWorldPlugin)

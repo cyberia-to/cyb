@@ -9,7 +9,7 @@ from the stack we have (rune + prysm + radio + inf + cybergraph). The landing mu
 ## the key idea
 
 cyb stops being a monolith where every screen is hardcoded Rust. It becomes a thin
-native **shell** (chrome + renderer + runtimes) that loads **cells** — application pages
+native **shell** (chroma + renderer + runtimes) that loads **cells** — application pages
 authored in `rune`, decoded by `prysm`, rendered as Bevy entities — at runtime.
 
 ```
@@ -132,7 +132,7 @@ P4 (radio) and P5 (inf) are independent and can be done in either order once P1 
 ## key decisions to confirm before P1
 
 1. **New WorldState vs. reuse Terminal?** Recommend a dedicated `Cell`/`Landing` world —
-   cleaner than overloading the scrollback. Chrome stays on top unchanged.
+   cleaner than overloading the scrollback. Chroma stays on top unchanged.
 2. **Page layout depth for MVP.** Recommend minimal centered section/column now; do NOT
    build the proof-grid (`grid.rs`) yet. Revisit if the landing needs 2D placement.
 3. **New rune builtins vs. compose from `col`+`anno`+theme.** Prefer composing where

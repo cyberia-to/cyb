@@ -1,4 +1,4 @@
-//! Stamp the build so the chrome can say which cyb is running.
+//! Stamp the build so the chroma can say which cyb is running.
 //!
 //! `CYB_VERSION` = the RELEASE version first (`v0.12.1` — the number on
 //! the GitHub release), then the short git hash (+ `*` when the tree is

@@ -16,7 +16,7 @@ elements. the cell world feeds that result through the existing
 terminal uses for `rune <expr>`), but renders into a centered, non-scrolling
 **page container** instead of an append-only scrollback.
 
-the binary is a frozen shell (chrome + renderer + runtimes). the app is the set of
+the binary is a frozen shell (chroma + renderer + runtimes). the app is the set of
 cells. **update the app = edit/publish a cell.**
 
 ## the contract
@@ -77,7 +77,7 @@ names are no-ops for now.
 ## the cell world
 
 a dedicated `WorldState::Cell` (fills the roadmap's reserved "Interface / Cmd+6 /
-Native Bevy UI" slot). chrome stays on top unchanged. on enter, the world loads
+Native Bevy UI" slot). chroma stays on top unchanged. on enter, the world loads
 its current cell, evaluates it, and renders the result into a centered page
 container. switching away despawns the page; switching back re-renders.
 

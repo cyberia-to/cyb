@@ -7,7 +7,7 @@ use mir::graph::{Csr, Cyberlink, ParticleIndex};
 use prysm::theme;
 
 use super::{SharedCell, WorldState};
-use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H};
+use crate::shell::chroma::{CHROMA_BOTTOM_H, CHROMA_TOP_H};
 use crate::shell::platform::SafeArea;
 
 pub struct GraphBridgePlugin;
@@ -372,7 +372,7 @@ fn spawn_hud(
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(12.0),
-                top: Val::Px(CHROME_TOP_H + 10.0),
+                top: Val::Px(CHROMA_TOP_H + 10.0),
                 padding: UiRect::all(Val::Px(8.0)),
                 ..default()
             },
@@ -486,7 +486,7 @@ fn place_labels(
 
     // Move the labels that exist; note which particles still need one.
     // Round to a pixel and skip the write when nothing moved — assigning
-    // Node every frame dirties Bevy UI layout and the whole chrome jerks
+    // Node every frame dirties Bevy UI layout and the whole chroma jerks
     // while you pan.
     for (_, label, mut node, mut text, mut vis) in &mut existing {
         match spots.remove(&label.0) {
@@ -546,15 +546,15 @@ fn hide_labels(mut q: Query<&mut Visibility, With<ParticleLabel>>) {
     }
 }
 
-/// Tell mir which screen bands the chrome owns, so a thumb on the tab strip
+/// Tell mir which screen bands the chroma owns, so a thumb on the tab strip
 /// or in the commander never reaches the camera.
 fn sync_camera_inset(cam: Option<ResMut<GraphCamera>>, safe: Res<SafeArea>) {
     // Optional: mir only inserts the camera once the graph world runs, and
     // this system ticks from the first frame.
     let Some(mut cam) = cam else { return };
     let inset = [
-        CHROME_TOP_H + safe.top,
-        CHROME_BOTTOM_H + safe.bottom,
+        CHROMA_TOP_H + safe.top,
+        CHROMA_BOTTOM_H + safe.bottom,
         0.0,
         0.0,
     ];

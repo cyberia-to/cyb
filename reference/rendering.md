@@ -6,21 +6,21 @@ crystal-domain: cyber
 
 # cyb rendering
 
-one runtime, one chrome, exclusive worlds. two rendering models. five surfaces. zero compositing fights.
+one runtime, one chroma, exclusive worlds. two rendering models. five surfaces. zero compositing fights.
 
 ---
 
 ## the insight
 
-cyb renders fundamentally different kinds of content — text streams, 3D spatial graphs, terminal output, media frames, arbitrary external web. they belong to two natively different rendering models, not one. trying to unify them as a single overlay-stacked surface is what creates compositing problems. treating them as exclusive worlds dispatched by a uri scheme, with chrome as a separate overlay layer, makes everything compose cleanly.
+cyb renders fundamentally different kinds of content — text streams, 3D spatial graphs, terminal output, media frames, arbitrary external web. they belong to two natively different rendering models, not one. trying to unify them as a single overlay-stacked surface is what creates compositing problems. treating them as exclusive worlds dispatched by a uri scheme, with chroma as a separate overlay layer, makes everything compose cleanly.
 
 three commitments:
 
 - [[bevy]] is the runtime. it owns the window, input, wgpu device, ecs, and world state machine. it does not render application content itself
 - worlds are exclusive. exactly one world owns the surface at a time. switching worlds is a state transition, not a z-order rearrangement
-- chrome is a cell-grid overlay rendered by bevy as the last pass over whichever world is active. it never lives inside a world
+- chroma is a cell-grid overlay rendered by bevy as the last pass over whichever world is active. it never lives inside a world
 
-the chrome carries the address bar, commander, and status — the navigation and identity layer that follows the [[neuron]] across every world. worlds focus on rendering their content; chrome handles cross-world concerns.
+the chroma carries the address bar, commander, and status — the navigation and identity layer that follows the [[neuron]] across every world. worlds focus on rendering their content; chroma handles cross-world concerns.
 
 ---
 
@@ -49,7 +49,7 @@ surfaces that use model b:
 | surface | renderer | content |
 |---|---|---|
 | terminal + all cyb apps | [[sugarloaf]] (wgpu) | nushell sessions, agent conversations, cyb apps (oracle, brain, sense, sigma, settings, wallet, chat) |
-| chrome overlay | bevy cell renderer | address bar, commander, status — shared across worlds |
+| chroma overlay | bevy cell renderer | address bar, commander, status — shared across worlds |
 
 model b is a strict subset of model a. cells snap to integer coordinates; pixel-positioned content uses arbitrary coordinates. both rasterize through the same wgpu device, share the same glyph atlas, share the same gpu resources. one substrate, two semantic modes.
 
@@ -61,7 +61,7 @@ model b is a strict subset of model a. cells snap to integer coordinates; pixel-
 bevy
   owns: window (winit), wgpu device + queue,
         input events, ecs, world state machine,
-        chrome overlay render pass
+        chroma overlay render pass
   ↓
   ├── exclusive world (one active at a time):
   │
@@ -81,18 +81,18 @@ bevy
   │                 audio + video playback
   │                 activated by cyb://media/...
   │
-  └── chrome overlay (always on top, every world):
+  └── chroma overlay (always on top, every world):
       → cell grid rendered by bevy
       → address bar (top), commander (bottom), status
 ```
 
-[[bevy]] never renders application content. its job is orchestration: route input, manage world state, run the render graph. each world plugs into the render graph as an exclusive content renderer, and chrome plugs in as the final overlay pass.
+[[bevy]] never renders application content. its job is orchestration: route input, manage world state, run the render graph. each world plugs into the render graph as an exclusive content renderer, and chroma plugs in as the final overlay pass.
 
 ---
 
-## chrome — cross-world overlay
+## chroma — cross-world overlay
 
-chrome is the layer the [[neuron]] sees regardless of which world is active. it must transcend worlds. four cell rows total
+chroma is the layer the [[neuron]] sees regardless of which world is active. it must transcend worlds. four cell rows total
 
 ```
 ┌─ cyb://graph/ai/safety/alignment ───────  master · 12 peers · 482 ξ ─┐  ← address bar (1 row)
@@ -107,9 +107,9 @@ chrome is the layer the [[neuron]] sees regardless of which world is active. it 
 └───────────────────────────────────────────────────────────────────────┘
 ```
 
-chrome cells render via bevy's render graph as the final pass. the active world has already painted its surface (cells, voxels, frames, pixels — whichever); chrome overlays text cells on top. no compositing across heterogeneous engines, no os-window stacking, no transparency hack. just an extra render pass in the same wgpu surface.
+chroma cells render via bevy's render graph as the final pass. the active world has already painted its surface (cells, voxels, frames, pixels — whichever); chroma overlays text cells on top. no compositing across heterogeneous engines, no os-window stacking, no transparency hack. just an extra render pass in the same wgpu surface.
 
-the chrome cell renderer shares primitives with sugarloaf — same shaders, same glyph atlas, same cosmic-text shaping pipeline. the only difference is where the cells get drawn from: sugarloaf draws cells representing terminal/app content within its world; chrome draws cells representing navigation/status above any world.
+the chroma cell renderer shares primitives with sugarloaf — same shaders, same glyph atlas, same cosmic-text shaping pipeline. the only difference is where the cells get drawn from: sugarloaf draws cells representing terminal/app content within its world; chroma draws cells representing navigation/status above any world.
 
 ---
 
@@ -162,13 +162,13 @@ recorded sessions reference particles by hash, not by inline bytes. a recording 
 
 ## mir — the 3d escalation
 
-[[mir]] is the spatial cybergraph viewer. when the address resolves to `cyb://graph/...`, bevy transitions to the mir world. mir owns the full surface; chrome overlays it. mir is not part of the cell grid — it is the model-a escalation for spatial content.
+[[mir]] is the spatial cybergraph viewer. when the address resolves to `cyb://graph/...`, bevy transitions to the mir world. mir owns the full surface; chroma overlays it. mir is not part of the cell grid — it is the model-a escalation for spatial content.
 
 ```
 cyb://graph/ai/safety
   → bevy: transition world state to Graph
   → mir: activate, focus camera on the graph location indicated by the path
-  → chrome: keep address bar and commander visible as overlay
+  → chroma: keep address bar and commander visible as overlay
   → no other world is rendering
 ```
 
@@ -180,7 +180,7 @@ mir is also reachable from within sugarloaf via an osc that requests a spatial p
 
 ## wry — the open-web escalation
 
-[[wry]] hosts arbitrary external web content. it is wgpu's opposite — an os-provided webview that cannot composite into bevy's surface. cyb treats wry as a model-a escalation: when active, wry owns the full surface (as a child window or fullscreen overlay), bevy pauses cell-grid rendering for that surface region, chrome continues overlaying on top.
+[[wry]] hosts arbitrary external web content. it is wgpu's opposite — an os-provided webview that cannot composite into bevy's surface. cyb treats wry as a model-a escalation: when active, wry owns the full surface (as a child window or fullscreen overlay), bevy pauses cell-grid rendering for that surface region, chroma continues overlaying on top.
 
 uses for wry
 
@@ -190,13 +190,13 @@ uses for wry
 - the [[agent]]'s headless browser instance (off-screen, separate from ui)
 - legacy webapps that cannot be ported
 
-wry is a sandbox-for-the-external-web. it is not the chrome. it is not a daily-driver world. it is the escape hatch when content does not fit the cell-grid model and cannot be served by mir or media.
+wry is a sandbox-for-the-external-web. it is not the chroma. it is not a daily-driver world. it is the escape hatch when content does not fit the cell-grid model and cannot be served by mir or media.
 
 ---
 
 ## media — symphonia and decoders
 
-audio playback uses [[symphonia]] for decode and [[rodio]] for output. when the address resolves to `cyb://media/<particle>`, the media world activates with a player ui (also cells in chrome) and a continuous-pixel waveform/video surface below.
+audio playback uses [[symphonia]] for decode and [[rodio]] for output. when the address resolves to `cyb://media/<particle>`, the media world activates with a player ui (also cells in chroma) and a continuous-pixel waveform/video surface below.
 
 video uses native rust decoders where available (ffmpeg-next, av1-rs, or a vendored video crate) or falls back to wry for codecs that are too costly to implement.
 
@@ -214,10 +214,10 @@ bevy
   ├── mir (3d)                  │
   ├── wry (excluded — os pipe)  ├── all use the same wgpu device
   ├── media (continuous)        │   no context switching
-  └── chrome overlay (cells)   ─┘   one glyph atlas across cell renderers
+  └── chroma overlay (cells)   ─┘   one glyph atlas across cell renderers
 ```
 
-bevy's `GpuBridgePlugin` exposes the wgpu device as an ecs resource. cell-grid renderers (sugarloaf for worlds, chrome for overlay) share a single glyph atlas — fonts are cached once. mir and media each maintain their own gpu pipelines but share the same device.
+bevy's `GpuBridgePlugin` exposes the wgpu device as an ecs resource. cell-grid renderers (sugarloaf for worlds, chroma for overlay) share a single glyph atlas — fonts are cached once. mir and media each maintain their own gpu pipelines but share the same device.
 
 wry is the exception. it renders into an os-provided surface that cannot share resources with wgpu. this is the architectural cost of supporting the open web; it is paid only in the wry world, not everywhere.
 
@@ -229,28 +229,28 @@ wry is the exception. it renders into an os-provided surface that cannot share r
 
 at most one world is active. switching worlds is an ecs state transition. the previous world's render pass is removed from the graph; the new world's render pass is added. no overlap, no z-order ambiguity, no transparent layers fighting over which pixels show through.
 
-### chrome always renders last
+### chroma always renders last
 
-chrome's render pass is unconditional and runs after the active world's pass. nothing can occlude chrome. the address bar and commander remain visible regardless of which world is showing.
+chroma's render pass is unconditional and runs after the active world's pass. nothing can occlude chroma. the address bar and commander remain visible regardless of which world is showing.
 
 ### input routing
 
 bevy's input system routes events based on hit-test:
 
-1. if the event hits a chrome cell → chrome handles it (typing in address bar, in commander, etc.)
+1. if the event hits a chroma cell → chroma handles it (typing in address bar, in commander, etc.)
 2. else, forward to the active world's input handler
 
 this is a clean two-layer model. no ambiguity. cell-grid hit-testing is integer cell math, trivial.
 
 ### transitions
 
-world transitions can fade or crossfade (a simple opacity ramp across two render passes during a transition window of ~150ms). chrome stays solid throughout — only the world surface fades. this gives cinematic feel without compositing complexity.
+world transitions can fade or crossfade (a simple opacity ramp across two render passes during a transition window of ~150ms). chroma stays solid throughout — only the world surface fades. this gives cinematic feel without compositing complexity.
 
 ---
 
 ## platforms
 
-| platform | window | sugarloaf | mir | wry | media | chrome |
+| platform | window | sugarloaf | mir | wry | media | chroma |
 |---|---|---|---|---|---|---|
 | macos desktop | bevy / winit | ✓ wgpu (metal) | ✓ wgpu (metal) | wkwebview | ✓ | ✓ |
 | android | bevy / winit | ✓ wgpu (vulkan) | ✓ wgpu (vulkan) | android webview | ✓ | ✓ |
@@ -284,11 +284,11 @@ problems that consumed prior iterations and are now structurally absent
 - the always-on transparent webview that fought bevy's wgpu surface
 - coordinate-system divergence between wry (logical pixels) and wgpu (physical pixels)
 - click-through routing via css `pointer-events` and pixel-transparency hacks
-- z-order battles between chrome (webview) and worlds (wgpu)
+- z-order battles between chroma (webview) and worlds (wgpu)
 - compositing different rendering models in the same surface
 - scale-factor bugs across windowed and fullscreen modes
 - ipc-vs-eval-script choices for cross-layer navigation
-- duplicate ui implementations per world for chrome elements
+- duplicate ui implementations per world for chroma elements
 
 these are not solved — they do not exist. the architecture removes the conditions that produce them.
 

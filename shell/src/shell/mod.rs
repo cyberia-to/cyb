@@ -1,4 +1,4 @@
-pub mod chrome;
+pub mod chroma;
 pub mod clipboard;
 pub mod nav;
 pub mod platform;

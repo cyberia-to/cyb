@@ -21,7 +21,7 @@ use prysm::theme;
 
 use super::graph::BrainIndex;
 use super::{ComInbox, ComSay, SharedCell, WorldState, content, identity::Identity};
-use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ChromeState};
+use crate::shell::chroma::{CHROMA_BOTTOM_H, CHROMA_TOP_H, ChromaState};
 
 pub struct ViewerPlugin;
 
@@ -114,7 +114,7 @@ fn scripted_tap(
     let (Some(index), Some(gpu), Some(cam)) = (index, gpu, cam) else {
         return;
     };
-    let in_view = Vec2::new(script.pos.x, script.pos.y - CHROME_TOP_H);
+    let in_view = Vec2::new(script.pos.x, script.pos.y - CHROMA_TOP_H);
     let picked = pick(&index, &gpu, &cam, in_view);
     info!("viewer: scripted tap at {in_view:?} -> {picked:?}");
     if let Some(idx) = picked {
@@ -173,12 +173,12 @@ fn detect_tap(
     }
 
     let Some(at) = tap else { return };
-    // Chrome bands belong to the chrome.
+    // Chroma bands belong to the chroma.
     let [_, lh] = cam.input_viewport;
-    if at.y < CHROME_TOP_H || at.y > lh + CHROME_TOP_H {
+    if at.y < CHROMA_TOP_H || at.y > lh + CHROMA_TOP_H {
         return;
     }
-    let in_view = Vec2::new(at.x, at.y - CHROME_TOP_H);
+    let in_view = Vec2::new(at.x, at.y - CHROMA_TOP_H);
 
     let picked = pick(&index, &gpu, &cam, in_view);
     info!("viewer: tap at {in_view:?} -> {picked:?}");
@@ -266,8 +266,8 @@ fn open_viewer(
             ViewerRoot,
             Node {
                 position_type: PositionType::Absolute,
-                top: Val::Px(CHROME_TOP_H),
-                bottom: Val::Px(CHROME_BOTTOM_H),
+                top: Val::Px(CHROMA_TOP_H),
+                bottom: Val::Px(CHROMA_BOTTOM_H),
                 left: Val::Px(0.0),
                 right: Val::Px(0.0),
                 flex_direction: FlexDirection::Column,
@@ -496,7 +496,7 @@ fn handle_close(
     mut commands: Commands,
     interactions: Query<&Interaction, (Changed<Interaction>, With<CloseButton>)>,
     keys: Res<ButtonInput<KeyCode>>,
-    chrome: Res<ChromeState>,
+    chroma: Res<ChromaState>,
     viewed: Option<Res<Viewed>>,
     roots: Query<Entity, With<ViewerRoot>>,
     shared: Option<Res<SharedCell>>,
@@ -505,7 +505,7 @@ fn handle_close(
 ) {
     let Some(viewed) = viewed else { return };
     let pressed = interactions.iter().any(|i| *i == Interaction::Pressed);
-    let escaped = keys.just_pressed(KeyCode::Escape) && !chrome.focused;
+    let escaped = keys.just_pressed(KeyCode::Escape) && !chroma.focused;
     if !pressed && !escaped {
         return;
     }
