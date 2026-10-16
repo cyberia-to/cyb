@@ -87,7 +87,7 @@ a Robot presents two read-only surfaces to the network. mutations always come fr
 
 | surface | shows | computed by |
 |---|---|---|
-| Avatar | visible model + capability spec + current state — rendered as chrome | [[prysm/chroma]] organs + [[mir]] visual layout |
+| Avatar | visible model + capability spec + current state — rendered as chroma | [[prysm/chroma]] organs + [[mir]] visual layout |
 | Standing | [[karma]] (accumulated trust) + [[cyberank]] (network-attention probability) | [[tru]] convergence VM — recomputed every block from all signed [[cyberlink|cyberlinks]] |
 
 Avatar is what a Robot *looks like*. Standing is what a Robot *is worth* in the attention economy.
@@ -142,7 +142,7 @@ the 1:1:1 rule governs structure. the ownership rule governs scale.
 - [[cyb/product/product]] — market thesis, TAM, the rent → own gap
 - [[soma]] — cognition runtime
 - [[plumb]] — value layer (TSP-1, TSP-2, PLUMB)
-- [[prysm/chroma]] — presentation chrome
+- [[prysm/chroma]] — presentation chroma
 - [[tru]] — convergence VM (focus, karma, cyberank)
 - [[aos]] — cell catalog (Robot's apps)
 - [[cyberia/protocol]] — sovereign-state layer

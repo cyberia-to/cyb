@@ -1,7 +1,7 @@
 #!/bin/bash
 # ship — every version becomes a GitHub release, the erga way.
 #
-# One command: bump the version, commit through the fleet gate, tag,
+# One command: bump the version, commit, tag,
 # build the dmg AND the signed APK from the clean tagged tree (a release
 # never wears the dirty star), publish to GitHub with both attached,
 # install locally. One binary, every body: apple silicon + android in
@@ -47,7 +47,7 @@ fi
 
 echo "ship: $CUR -> $V  ($TITLE)"
 
-# ── bump + commit (the pre-commit fleet gate runs here) ─────────────────
+# ── bump + commit ───────────────────────────────────────────────────────
 # Idempotent: a ship that died after the bump resumes without re-bumping.
 if [ "$V" != "$CUR" ]; then
   sed -i '' "s/^version = \"$CUR\"/version = \"$V\"/" shell/Cargo.toml

@@ -90,7 +90,7 @@ ever matches it on Apple, that is a measurement to bring to the user, not a lice
 Landed as cyb e943eacc + c2e8968c, mir a0e17a1. All four worlds verified by touch on the API 34
 arm64 emulator: terminal prompts (nushell cross-compiled untouched), sigma trades, the landing
 renders from a baked-in cell, mir runs the CPU epoch with paint pending P3. World tabs in the
-bottom chrome are the touch navigation. Gotchas that cost time, recorded for the next pass:
+bottom chroma are the touch navigation. Gotchas that cost time, recorded for the next pass:
 libc++_shared.so must ship in jniLibs (bevy's android_shared_stdcxx); android-activity 0.6.0
 pairs with games-activity 2.0.2 but 0.6.1 with 4.4.0 — a mismatch dies at JNI registration
 (onTouchEventNative); GameActivity is an AppCompatActivity and refuses a non-AppCompat theme.

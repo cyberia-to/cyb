@@ -6,24 +6,24 @@
 //! Android backend; there the read reports empty until a JNI-backed
 //! clipboard lands with `nu_plugin_android` (android-support.md P3).
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(cyb_phone))]
 pub fn read_clipboard() -> Result<String, arboard::Error> {
     let mut clip = arboard::Clipboard::new()?;
     clip.get_text()
 }
 
-#[cfg(target_os = "android")]
+#[cfg(cyb_phone)]
 pub fn read_clipboard() -> Result<String, std::convert::Infallible> {
     Ok(String::new())
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(cyb_phone))]
 pub fn write_clipboard(text: &str) -> Result<(), arboard::Error> {
     let mut clip = arboard::Clipboard::new()?;
     clip.set_text(text.to_string())
 }
 
-#[cfg(target_os = "android")]
+#[cfg(cyb_phone)]
 pub fn write_clipboard(_text: &str) -> Result<(), std::convert::Infallible> {
     Ok(())
 }

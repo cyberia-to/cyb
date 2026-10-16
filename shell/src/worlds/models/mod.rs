@@ -16,7 +16,7 @@ use prysm::theme;
 
 use super::WorldState;
 use super::cell;
-use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
+use crate::shell::chroma::{CHROMA_BOTTOM_H, CHROMA_TOP_H, ContentRoot};
 use prysm::molecules::action::ActionButton;
 use rune_ast::Noun;
 use rune_interp::{Host, InterpError};
@@ -243,8 +243,8 @@ fn build_page(mut commands: Commands, status: Res<MindStatus>, fetch: Res<FetchS
             ContentRoot,
             Node {
                 position_type: PositionType::Absolute,
-                top: Val::Px(CHROME_TOP_H),
-                bottom: Val::Px(CHROME_BOTTOM_H),
+                top: Val::Px(CHROMA_TOP_H),
+                bottom: Val::Px(CHROMA_BOTTOM_H),
                 left: Val::Px(0.0),
                 right: Val::Px(0.0),
                 flex_direction: FlexDirection::Column,

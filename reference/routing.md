@@ -46,7 +46,7 @@ addresses are first-class. they are shareable — paste a `cyb://` uri into a ch
 
 ## the address bar
 
-the address bar is the top row of [[rendering|chrome]]. it is rendered by bevy as a cell-grid overlay above whichever world is active.
+the address bar is the top row of [[rendering|chroma]]. it is rendered by bevy as a cell-grid overlay above whichever world is active.
 
 ```
 ┌─ cyb://graph/ai/safety/alignment ─────────────  master · 12 peers · 482 ξ ─┐
@@ -67,7 +67,7 @@ the address bar follows the [[neuron]] across every world. switching from termin
 
 ## the commander
 
-the commander is the bottom row of chrome. it accepts commands, not addresses. addresses go in the address bar; commands go here. they look similar but serve different purposes.
+the commander is the bottom row of chroma. it accepts commands, not addresses. addresses go in the address bar; commands go here. they look similar but serve different purposes.
 
 ```
 │  > _                                                          ⌘k commander │
@@ -97,7 +97,7 @@ commands are the action layer; addresses are the navigation layer. some commands
   → bevy state transition: NextState<World>::set(Graph)
   → previous world's render pass deactivated (with optional 150ms crossfade)
   → mir activates, reads the path component → focuses camera on /ai/safety
-  → chrome continues rendering above; address bar shows the new uri
+  → chroma continues rendering above; address bar shows the new uri
   → history pushes the previous uri onto the back stack
 ```
 
@@ -280,7 +280,7 @@ in this fallback mode
 - sugarloaf falls back to a wasm cell renderer
 - wry is the host browser itself (cyb is inside it)
 - hotkeys are not available
-- chrome is rendered by leptos in the browser, not bevy
+- chroma is rendered by leptos in the browser, not bevy
 
 this fallback is not the primary deploy. it exists for shareability (anyone with a browser can follow a `https://cyb.ai/...` link), for seo (file pages render as proper html), and for low-friction discovery. the desktop and android targets are the primary.
 
@@ -288,7 +288,7 @@ this fallback is not the primary deploy. it exists for shareability (anyone with
 
 ## why this is the architecture
 
-the previous routing model treated bevy and leptos as two subsystems sharing url ownership via pushState/popState plumbing. that worked but coupled the chrome to wry. it required the always-on transparent webview, which forced the compositing fight we eventually resolved by separating concerns.
+the previous routing model treated bevy and leptos as two subsystems sharing url ownership via pushState/popState plumbing. that worked but coupled the chroma to wry. it required the always-on transparent webview, which forced the compositing fight we eventually resolved by separating concerns.
 
 this model separates them cleanly
 
@@ -298,7 +298,7 @@ this model separates them cleanly
 - history is one stack in bevy, shared across all worlds
 - external links and in-app links go through the same event
 
-no two layers race for who owns the url. no pushState/popState contract spans layers. no webview to keep alive for chrome to function. just events, parsing, and state transitions. simple, single-owner, single-direction.
+no two layers race for who owns the url. no pushState/popState contract spans layers. no webview to keep alive for chroma to function. just events, parsing, and state transitions. simple, single-owner, single-direction.
 
 ---
 

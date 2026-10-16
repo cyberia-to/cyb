@@ -13,7 +13,7 @@ thinks, an android body that keeps its graph and its weights.
 - chat world; commander is nushell everywhere, questions go to chat
 - soma streams prefill progress and tokens into the bubble
 - android HOME, FUSE-to-internal model copy, IME, one-line header
-- sigma paints last-known; chrome uses Visibility, never Display::None
+- sigma paints last-known; chroma uses Visibility, never Display::None
   on a live world tree
 - bodies: apple silicon dmg, android apk, ubuntu x86_64. windows msvc
   is red this cut (glia `run` / memmap2).

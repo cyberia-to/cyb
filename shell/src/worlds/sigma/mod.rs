@@ -8,7 +8,7 @@ use cyb_core::{MoneyEvent, MoneyWallet, money_to_sense};
 use prysm::theme;
 
 use super::{ComInbox, Notice, SharedCell, Speaker, WorldState};
-use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H};
+use crate::shell::chroma::{CHROMA_BOTTOM_H, CHROMA_TOP_H};
 
 pub mod chain;
 
@@ -157,13 +157,13 @@ fn setup_sigma(
         .spawn((
             SigmaRoot,
             crate::worlds::WorldUi(WorldState::Sigma),
-            crate::shell::chrome::ContentRoot,
+            crate::shell::chroma::ContentRoot,
             Node {
                 position_type: PositionType::Absolute,
                 left: Val::Px(0.0),
                 right: Val::Px(0.0),
-                top: Val::Px(CHROME_TOP_H),
-                bottom: Val::Px(CHROME_BOTTOM_H),
+                top: Val::Px(CHROMA_TOP_H),
+                bottom: Val::Px(CHROMA_BOTTOM_H),
                 flex_direction: FlexDirection::Column,
                 justify_content: JustifyContent::Center,
                 align_items: AlignItems::Center,
@@ -384,7 +384,7 @@ fn refresh_chain_on_enter(
 fn handle_chain_buttons(
     sends: Query<&Interaction, (Changed<Interaction>, With<ChainSendBtn>)>,
     addrs: Query<&Interaction, (Changed<Interaction>, With<ChainAddrBtn>)>,
-    chrome: Option<ResMut<crate::shell::chrome::ChromeState>>,
+    chroma: Option<ResMut<crate::shell::chroma::ChromaState>>,
     who: Option<Res<crate::worlds::identity::Identity>>,
     notice: Option<ResMut<crate::worlds::Notice>>,
 ) {
@@ -395,9 +395,9 @@ fn handle_chain_buttons(
     }
     if send {
         // The commander folds into the pay form: recipient, then amount.
-        if let Some(mut chrome) = chrome {
-            chrome.pay = Some(crate::shell::chrome::PayDraft::default());
-            chrome.focused = true;
+        if let Some(mut chroma) = chroma {
+            chroma.pay = Some(crate::shell::chroma::PayDraft::default());
+            chroma.focused = true;
         }
     } else if let (Some(who), Some(mut notice)) = (who, notice) {
         let hex = chain::neuron_hex(&who);

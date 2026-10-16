@@ -55,13 +55,10 @@ make dev                           # cargo run -p cyb
 
 ## Проверка после изменений
 
-- **Fleet (обязателен перед коммитом)**: `make fleet` — мульти-окружение:
-  N изолированных тел (свои HOME) + детерминированный mockchain
-  (`harness/mockchain.py`), ассерты на boot/identity/graph/networks/
-  beacon/prover/vault/orphans. Хук pre-commit гоняет его сам;
-  `SKIP_FLEET=1` для docs-only коммитов. `FLEET_SKIP_BUILD=1` если
-  бинарь свежий.
 - **Shell**: `cargo check -p cyb`
+- **Fleet** (по запросу, не на каждый коммит): `make fleet` — мульти-окружение,
+  N изолированных тел + mockchain. Поднимает GUI-окна, поэтому больше не
+  висит на pre-commit. `FLEET_SKIP_BUILD=1` если бинарь свежий.
 - **Apps**: `cd apps && trunk build --release`
 - **Release**: `make dmg`
 - **Android**: `make android`
@@ -79,9 +76,9 @@ make dev                           # cargo run -p cyb
   публикуется красным с уликами, руками артефакт не чинится.
 - бамп версии — один PR `chore: cyb <version>` (Cargo.toml, CHANGELOG,
   пины сиблингов в cyber и soft3), ничего больше.
-- **`make ship`** — рука владельца: бамп, коммит через fleet-ворота, тег,
-  dmg чистого дерева, notes из git log, push master+tags. Агент `ship`
-  не запускает, тег не пушит, кандидат в релиз не продвигает.
+- **`make ship`** — рука владельца: бамп, коммит, тег, dmg чистого дерева,
+  notes из git log, push master+tags. Агент `ship` не запускает, тег не
+  пушит, кандидат в релиз не продвигает.
 - квитанции в `audit/release-<date>/`; одна строка в work log
   `cyber/launch.md` на кандидат.
 

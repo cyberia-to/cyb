@@ -1,7 +1,7 @@
 //! The one cyb App — every platform builds it here.
 //!
 //! Desktop (`main.rs`) and Android (`lib.rs`'s `android_main`) call
-//! [`build_app`] and get the same Bevy app: same worlds, same chrome, same
+//! [`build_app`] and get the same Bevy app: same worlds, same chroma, same
 //! nav. Only the surfaces that name a platform differ — global hotkeys, the
 //! tray, and the hide-on-close window contract exist where a desktop does.
 
@@ -111,11 +111,11 @@ pub fn build_app() -> App {
             // swapchain between world trees — the nav flicker desktop
             // never showed because vsync kept the previous frame.
             present_mode: {
-                #[cfg(target_os = "android")]
+                #[cfg(cyb_phone)]
                 {
                     bevy::window::PresentMode::AutoVsync
                 }
-                #[cfg(not(target_os = "android"))]
+                #[cfg(not(cyb_phone))]
                 {
                     bevy::window::PresentMode::AutoNoVsync
                 }
@@ -126,9 +126,9 @@ pub fn build_app() -> App {
     };
 
     // The robot outlives its window: closing hides, the tray brings it back,
-    // only tray → Quit ends the process. See `shell/window.rs`. On Android
+    // only tray → Quit ends the process. See `shell/window.rs`. On a phone
     // the OS owns the app lifecycle, so the defaults stand.
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(cyb_phone))]
     {
         window_plugin.close_when_requested = false;
         window_plugin.exit_condition = bevy::window::ExitCondition::DontExit;
@@ -148,7 +148,7 @@ pub fn build_app() -> App {
 
     // A dead EntityCommands on Android used to panic the apply phase and
     // take the whole GameActivity with it. Warn and keep the frame.
-    #[cfg(target_os = "android")]
+    #[cfg(cyb_phone)]
     {
         app.set_error_handler(bevy::ecs::error::warn);
     }
@@ -159,7 +159,7 @@ pub fn build_app() -> App {
         .add_plugins(worlds::scroll::ScrollPlugin)
         .add_plugins(worlds::nav::NavPlugin)
         .add_plugins(worlds::WorldsPlugin)
-        .add_plugins(shell::chrome::ChromePlugin)
+        .add_plugins(shell::chroma::ChromaPlugin)
         .add_plugins(shell::platform::PlatformPlugin)
         .add_plugins(shell::nav::NavPlugin)
         .add_plugins(mir::bevy::GraphWorldPlugin)
@@ -183,7 +183,7 @@ pub fn build_app() -> App {
     // saves one frame of the app's own framebuffer — UI included — and is how
     // a build proves what it looks like without anyone photographing a
     // screen. The app's framebuffer shows the app alone, which is the point.
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(cyb_phone))]
     if let Ok(path) = std::env::var("CYB_SHOT") {
         let at: f32 = std::env::var("CYB_SHOT_AT")
             .ok()
@@ -207,7 +207,7 @@ pub fn build_app() -> App {
         );
     }
 
-    #[cfg(not(target_os = "android"))]
+    #[cfg(not(cyb_phone))]
     app.add_plugins(shell::hotkeys::HotkeysPlugin)
         .add_plugins(shell::window::WindowLifecyclePlugin)
         .add_plugins(shell::tray::TrayPlugin);

@@ -36,7 +36,7 @@ lands almost as a side effect.
   particle id = `hemera::hash(bytes)`.
 - interaction hooks: terminal `poll_eval_results` (`terminal/mod.rs:420`, has chunks +
   done_error + command history), `process_keyboard_input` Enter (~541); nav `nav.rs:12`,
-  `chrome.rs::handle_chrome_input` (~360), `hotkeys.rs`.
+  `chroma.rs::handle_chroma_input` (~360), `hotkeys.rs`.
 
 ## what's missing
 
@@ -67,7 +67,7 @@ lands almost as a side effect.
   (shell), inserted at Startup with a couple of seed nodes (so it's never empty).
 - Add `#[derive(Event)] Link { from: String, to: String }` (label-addressed). Emit from:
   - `poll_eval_results`: `cmd → output`, `prev-cmd → cmd`, `cwd → cmd`
-  - `nav` / `chrome` / `hotkeys`: `from-world → to-world`, `world → cell`
+  - `nav` / `chroma` / `hotkeys`: `from-world → to-world`, `world → cell`
 - Drain system: for each `Link`, hash labels → particles, record labels, build a Signal,
   `graph.link(signal)`.
 - Replace `build_synthetic_csr()` with `build_csr(&LiveGraph)`: enumerate axon_edges →

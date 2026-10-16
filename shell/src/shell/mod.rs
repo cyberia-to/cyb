@@ -1,11 +1,11 @@
-pub mod chrome;
+pub mod chroma;
 pub mod clipboard;
 pub mod nav;
 pub mod platform;
 
-#[cfg(not(target_os = "android"))]
+#[cfg(not(cyb_phone))]
 pub mod hotkeys;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(cyb_phone))]
 pub mod tray;
-#[cfg(not(target_os = "android"))]
+#[cfg(not(cyb_phone))]
 pub mod window;

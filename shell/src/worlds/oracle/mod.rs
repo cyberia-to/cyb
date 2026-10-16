@@ -15,7 +15,7 @@ use prysm::theme;
 
 use super::WorldState;
 use super::body::BodyLinkHub;
-use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
+use crate::shell::chroma::{CHROMA_BOTTOM_H, CHROMA_TOP_H, ContentRoot};
 
 pub struct OracleWorldPlugin;
 
@@ -435,8 +435,8 @@ fn spawn_overlay(commands: &mut Commands, h: u64, row: Option<&BlockRow>) {
             BlockPage(h),
             Node {
                 position_type: PositionType::Absolute,
-                top: Val::Px(CHROME_TOP_H),
-                bottom: Val::Px(CHROME_BOTTOM_H),
+                top: Val::Px(CHROMA_TOP_H),
+                bottom: Val::Px(CHROMA_BOTTOM_H),
                 left: Val::Px(0.0),
                 right: Val::Px(0.0),
                 flex_direction: FlexDirection::Column,
@@ -522,8 +522,8 @@ fn build_page(mut commands: Commands, snap: &OracleState, _ui: &OracleUi) {
             ContentRoot,
             Node {
                 position_type: PositionType::Absolute,
-                top: Val::Px(CHROME_TOP_H),
-                bottom: Val::Px(CHROME_BOTTOM_H),
+                top: Val::Px(CHROMA_TOP_H),
+                bottom: Val::Px(CHROMA_BOTTOM_H),
                 left: Val::Px(0.0),
                 right: Val::Px(0.0),
                 flex_direction: FlexDirection::Column,

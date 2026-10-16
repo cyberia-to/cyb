@@ -1,5 +1,6 @@
 .PHONY: dev fast build run clean check apps dmg android android-rust android-assets \
-        android-jnilibs android-apk android-debug android-run android-log
+        android-jnilibs android-apk android-debug android-run android-log \
+        ios ios-ipa
 
 # Resolve the toolchain by absolute path instead of trusting PATH. Homebrew
 # ships its own cargo and rustc, and a `rustc` picked up from PATH here can be
@@ -42,13 +43,13 @@ run:
 	$(CARGO) run --release -p cyb
 
 # Check all (fast, no codegen)
-# Multi-environment gate: N isolated bodies + mockchain + assertions.
-# Run before every commit. FLEET_SKIP_BUILD=1 to trust the binary.
+# Optional multi-environment proof: N isolated bodies + mockchain.
+# Not a commit hook — it opens GUI windows. FLEET_SKIP_BUILD=1 to trust the binary.
 fleet:
 	bash harness/fleet.sh
 
-# Every version is a GitHub release, the erga way: bump, fleet-gated
-# commit, tag, dmg, publish, install. V=x.y.z T="headline" to override.
+# Every version is a GitHub release, the erga way: bump, commit, tag,
+# dmg, publish, install. V=x.y.z T="headline" to override.
 ship:
 	bash harness/ship.sh
 
@@ -158,3 +159,48 @@ android-run: android-debug
 # Live Rust logs from the device — panics land here and nowhere else
 android-log:
 	$(ADB) logcat -s cyb:V RustStdoutStderr:V
+
+# ── iOS (TrollStore / jailbreak, unsigned IPA) ───────────────
+# Device arm64. Min iOS 14 so TrollStore's 14–17.0 window can open it.
+# ldid fakesigns; TrollStore re-signs on install. Not App Store.
+# Needs an iPhoneOS SDK. This machine has no Xcode.app; unpack
+# theos iPhoneOS16.5.sdk into ~/.cyb/sdks and keep the xcrun shim
+# at ~/.cyb/ios-bin so rustc/cc can find it.
+IOS_TARGET  ?= aarch64-apple-ios
+IOS_APP     := target/$(IOS_TARGET)/release/cyb.app
+IOS_IPA     := target/release/cyb-$(VERSION).ipa
+IOS_SDKROOT ?= $(HOME)/.cyb/sdks/iPhoneOS16.5.sdk
+IOS_XCRUN   ?= $(HOME)/.cyb/ios-bin
+
+ios: ios-ipa
+
+ios-ipa:
+	@test -d "$(IOS_SDKROOT)" || { echo "missing iPhoneOS SDK at $(IOS_SDKROOT)"; exit 1; }
+	@test -x "$(IOS_XCRUN)/xcrun" || { echo "missing xcrun shim at $(IOS_XCRUN)/xcrun"; exit 1; }
+	IPHONEOS_DEPLOYMENT_TARGET=14.0 \
+	IOS_SDKROOT=$(IOS_SDKROOT) \
+	PATH="$(IOS_XCRUN):$(PATH)" \
+	CARGO_TARGET_AARCH64_APPLE_IOS_RUSTFLAGS="-C target-feature=+aes,+sha2 -C link-arg=-miphoneos-version-min=14.0" \
+	$(CARGO) build --release --target $(IOS_TARGET) --bin cyb -p cyb
+	rm -rf $(IOS_APP) Payload
+	mkdir -p $(IOS_APP)
+	cp target/$(IOS_TARGET)/release/cyb $(IOS_APP)/cyb
+	cp shell/gen/ios/Info.plist $(IOS_APP)/Info.plist
+	/usr/libexec/PlistBuddy -c "Set :CFBundleShortVersionString $(VERSION)" $(IOS_APP)/Info.plist
+	/usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(CYB_VER_CODE)" $(IOS_APP)/Info.plist
+	sips -z 120 120 shell/assets/icon-source.png --out $(IOS_APP)/AppIcon60x60@2x.png >/dev/null
+	sips -z 180 180 shell/assets/icon-source.png --out $(IOS_APP)/AppIcon60x60@3x.png >/dev/null
+	sips -z 152 152 shell/assets/icon-source.png --out $(IOS_APP)/AppIcon76x76@2x.png >/dev/null
+	printf 'APPL????' > $(IOS_APP)/PkgInfo
+	mkdir -p $(IOS_APP)/assets
+	cp -R shell/assets/. $(IOS_APP)/assets/
+	ldid -Sshell/gen/ios/entitlements.plist $(IOS_APP)/cyb
+	rm -rf Payload
+	mkdir Payload
+	cp -R $(IOS_APP) Payload/cyb.app
+	rm -f $(IOS_IPA)
+	zip -qry $(IOS_IPA) Payload
+	rm -rf Payload
+	@echo "IPA: $(IOS_IPA)"
+	@echo "TrollStore: open the ipa in TrollStore (iOS 14–17.0)"
+	@echo "jailbreak: Filza / TrollStore / AppSync, same file"
