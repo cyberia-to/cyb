@@ -83,7 +83,8 @@ ash = "0.38"
 bevy = { workspace = true, features = ["raw_vulkan_init"] }
 
 # Desktop-only surfaces: global hotkeys, the tray, the pasteboard.
-[target.'cfg(not(target_os = "android"))'.dependencies]
+# iOS is a phone body (TrollStore / jailbreak IPA); those crates do not.
+[target.'cfg(any(target_os = "macos", target_os = "linux", target_os = "windows"))'.dependencies]
 global-hotkey = "0.7.0"
 tray-icon = "0.21"
 arboard = "3"

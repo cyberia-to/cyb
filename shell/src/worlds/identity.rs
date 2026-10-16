@@ -49,7 +49,7 @@ impl Identity {
         )
     }
 
-    /// Short neuron id — what the chrome shows. Not the pussy bech32.
+    /// Short neuron id — what the chroma shows. Not the pussy bech32.
     pub fn short_neuron(&self) -> String {
         let h = self.hex();
         if h.len() <= 12 {

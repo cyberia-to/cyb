@@ -7,7 +7,7 @@
 
 use bevy::prelude::*;
 
-/// Screen margins the system reserves, in logical pixels. Chrome adds these to
+/// Screen margins the system reserves, in logical pixels. Chroma adds these to
 /// its own padding so nothing it draws lands under a system bar.
 #[derive(Resource, Default, Clone, Copy, PartialEq)]
 pub struct SafeArea {
@@ -113,7 +113,20 @@ fn track_safe_area(mut safe: ResMut<SafeArea>, windows: Query<&Window>, input: R
     }
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(target_os = "ios")]
+fn track_safe_area(mut safe: ResMut<SafeArea>) {
+    // Notch-class inset until UIKit safeAreaInsets are wired through winit.
+    // Too small overlaps the status bar; too large just shortens the page.
+    let next = SafeArea {
+        top: 47.0,
+        bottom: 34.0,
+    };
+    if (safe.top - next.top).abs() >= 1.0 || (safe.bottom - next.bottom).abs() >= 1.0 {
+        *safe = next;
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn track_safe_area(_safe: ResMut<SafeArea>, _windows: Query<&Window>) {}
 
 /// GameActivity starts at the desktop WindowPlugin size (1280×800). Until the
@@ -226,7 +239,18 @@ fn drive_soft_input(mut input: ResMut<SoftInput>, mut hz_set: Local<bool>) {
     }
 }
 
-#[cfg(not(target_os = "android"))]
+#[cfg(target_os = "ios")]
+fn drive_soft_input(mut input: ResMut<SoftInput>, mut windows: Query<&mut Window>) {
+    input.shown = input.wanted;
+    let Ok(mut window) = windows.single_mut() else {
+        return;
+    };
+    if window.ime_enabled != input.wanted {
+        window.ime_enabled = input.wanted;
+    }
+}
+
+#[cfg(not(any(target_os = "android", target_os = "ios")))]
 fn drive_soft_input(mut input: ResMut<SoftInput>) {
     // Desktop has a keyboard already; keep the state honest so the commander
     // does not think it is waiting on one.

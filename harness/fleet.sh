@@ -15,8 +15,8 @@
 #   vault     a sealed secret exists NOWHERE in plaintext
 #   orphans   nothing we spawned outlives the fleet
 #
-# This is the per-commit gate: `make fleet`. It uses the debug binary and
-# rebuilds only what changed. ~60-90s on a warm target dir.
+# Manual proof: `make fleet`. It uses the debug binary and rebuilds only
+# what changed. ~60-90s on a warm target dir. Opens GUI windows.
 #
 # Env knobs: FLEET_N (bodies, default 3), FLEET_SECS (run time, default 30),
 # FLEET_SKIP_BUILD=1 (trust the existing binary).

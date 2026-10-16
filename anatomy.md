@@ -57,7 +57,7 @@ the robot is cy with a body. the agent's sixteen organs are specified in [[cy/sp
 ## alignment phases
 
 1. **docs** — [[cyb/product/robot|robot]], [[cyb/product/spec|spec]], [[cyb/product/product|product]], [[cyb/decide/os|os]] restate themselves as expansions of parts; anything untraceable goes legacy (per [[restructure]])
-2. **app** — world *graph* → *brain*; com becomes chrome; *now* indicator; *time* world from tade + standing orders
+2. **app** — world *graph* → *brain*; com becomes chroma; *now* indicator; *time* world from tade + standing orders
 3. **landing** — cyb.ai lists the anatomy, one line per part
 4. **code** — crates and modules adopt part names; `~/cyb/soul` file is born
 

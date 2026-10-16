@@ -45,14 +45,14 @@ pub fn overlay_band(top: bool) -> Node {
         left: Val::Px(0.0),
         right: Val::Px(0.0),
         top: if top {
-            Val::Px(crate::shell::chrome::CHROME_TOP_H + 8.0)
+            Val::Px(crate::shell::chroma::CHROMA_TOP_H + 8.0)
         } else {
             Val::Auto
         },
         bottom: if top {
             Val::Auto
         } else {
-            Val::Px(crate::shell::chrome::CHROME_BOTTOM_H + 8.0)
+            Val::Px(crate::shell::chroma::CHROMA_BOTTOM_H + 8.0)
         },
         height: Val::Px(56.0),
         flex_direction: FlexDirection::Row,

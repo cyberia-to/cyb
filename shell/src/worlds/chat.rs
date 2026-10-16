@@ -9,7 +9,7 @@ use prysm::theme;
 
 use super::scroll::PersistScroll;
 use super::{ComSay, Speaker, WorldState};
-use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
+use crate::shell::chroma::{CHROMA_BOTTOM_H, CHROMA_TOP_H, ContentRoot};
 
 /// Talk waiting to be drawn. Same shape as com's inbox; a separate queue
 /// so sigma events and vault notes stay in the log.
@@ -76,8 +76,8 @@ fn enter(mut commands: Commands, mut worlds: Query<(&crate::worlds::WorldUi, &mu
             ContentRoot,
             Node {
                 position_type: PositionType::Absolute,
-                top: Val::Px(CHROME_TOP_H),
-                bottom: Val::Px(CHROME_BOTTOM_H),
+                top: Val::Px(CHROMA_TOP_H),
+                bottom: Val::Px(CHROMA_BOTTOM_H),
                 left: Val::Px(0.0),
                 right: Val::Px(0.0),
                 flex_direction: FlexDirection::Column,

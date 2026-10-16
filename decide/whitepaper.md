@@ -452,7 +452,7 @@ the robot is not an app. it is your presence in the most important network in th
 
 ## 15. numbers
 
-~130K lines of [[Rust]] total. 270× less code than Chrome (35M lines C++) for a system that does more: keypair identity instead of cookies, permanent [[cybergraph]] memory instead of server-side state, native [[smart contracts]] instead of HTTP round-trips, ~10MB binary instead of ~150MB. see [[cyb/architecture]] for the full breakdown
+~130K lines of [[Rust]] total. 270× less code than Chroma (35M lines C++) for a system that does more: keypair identity instead of cookies, permanent [[cybergraph]] memory instead of server-side state, native [[smart contracts]] instead of HTTP round-trips, ~10MB binary instead of ~150MB. see [[cyb/architecture]] for the full breakdown
 
 ---
 

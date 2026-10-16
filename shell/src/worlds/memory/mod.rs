@@ -11,7 +11,7 @@ use super::cell;
 use super::graph::{BrainIndex, BrainStats};
 use super::windowed;
 use super::{WorldState, content};
-use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
+use crate::shell::chroma::{CHROMA_BOTTOM_H, CHROMA_TOP_H, ContentRoot};
 
 pub struct MemoryWorldPlugin;
 
@@ -219,8 +219,8 @@ fn build_page(
             ContentRoot,
             Node {
                 position_type: PositionType::Absolute,
-                top: Val::Px(CHROME_TOP_H),
-                bottom: Val::Px(CHROME_BOTTOM_H),
+                top: Val::Px(CHROMA_TOP_H),
+                bottom: Val::Px(CHROMA_BOTTOM_H),
                 left: Val::Px(0.0),
                 right: Val::Px(0.0),
                 flex_direction: FlexDirection::Column,

@@ -8,7 +8,7 @@ use mir::graph::{Csr, Cyberlink, ParticleIndex};
 use prysm::theme;
 
 use super::{SharedCell, WorldState};
-use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H};
+use crate::shell::chroma::{CHROMA_BOTTOM_H, CHROMA_TOP_H};
 use crate::shell::platform::SafeArea;
 
 pub struct GraphBridgePlugin;
@@ -509,11 +509,11 @@ fn despawn_hud(mut q: Query<&mut Visibility, With<HudRoot>>) {
     }
 }
 
-/// Chrome grows by the system insets; these bands were spawned against the
-/// desktop chrome height and sat under the address bar / on the commander.
+/// Chroma grows by the system insets; these bands were spawned against the
+/// desktop chroma height and sat under the address bar / on the commander.
 fn place_hud(safe: Res<SafeArea>, mut q: Query<(&HudRoot, &mut Node)>) {
-    let top = Val::Px(CHROME_TOP_H + safe.top + 8.0);
-    let bot = Val::Px(CHROME_BOTTOM_H + safe.bottom + 8.0);
+    let top = Val::Px(CHROMA_TOP_H + safe.top + 8.0);
+    let bot = Val::Px(CHROMA_BOTTOM_H + safe.bottom + 8.0);
     for (hud, mut node) in &mut q {
         if hud.top {
             if node.top != top {
@@ -599,14 +599,10 @@ fn place_labels(
     let (Some(gpu), Some(cam)) = (gpu, cam) else {
         return;
     };
-    // Reprojecting hundreds of label Nodes dirties taffy and the chrome
+    // Reprojecting hundreds of label Nodes dirties taffy and the chroma
     // jerks with them. Phone: 2 Hz, 32 labels. Desktop: 12 Hz, all named.
     *acc += time.delta_secs();
-    let hz = if cfg!(target_os = "android") {
-        2.0
-    } else {
-        12.0
-    };
+    let hz = if cfg!(cyb_phone) { 2.0 } else { 12.0 };
     if *acc < 1.0 / hz && !index.is_changed() {
         return;
     }
@@ -617,7 +613,7 @@ fn place_labels(
     // Where each labelled particle lands on screen this frame.
     let mut spots: std::collections::HashMap<usize, Option<(f32, f32)>> =
         std::collections::HashMap::new();
-    let named = if cfg!(target_os = "android") {
+    let named = if cfg!(cyb_phone) {
         index.named.get(..32).unwrap_or(&index.named)
     } else {
         index.named.as_slice()
@@ -652,7 +648,7 @@ fn place_labels(
 
     // Move the labels that exist; note which particles still need one.
     // Round to a pixel and skip the write when nothing moved — assigning
-    // Node every frame dirties Bevy UI layout and the whole chrome jerks
+    // Node every frame dirties Bevy UI layout and the whole chroma jerks
     // while you pan.
     for (_, label, mut node, mut text, mut vis) in &mut existing {
         match spots.remove(&label.0) {
@@ -714,15 +710,15 @@ fn hide_labels(mut q: Query<&mut Visibility, With<ParticleLabel>>) {
     }
 }
 
-/// Tell mir which screen bands the chrome owns, so a thumb on the tab strip
+/// Tell mir which screen bands the chroma owns, so a thumb on the tab strip
 /// or in the commander never reaches the camera.
 fn sync_camera_inset(cam: Option<ResMut<GraphCamera>>, safe: Res<SafeArea>) {
     // Optional: mir only inserts the camera once the graph world runs, and
     // this system ticks from the first frame.
     let Some(mut cam) = cam else { return };
     let inset = [
-        CHROME_TOP_H + safe.top,
-        CHROME_BOTTOM_H + safe.bottom,
+        CHROMA_TOP_H + safe.top,
+        CHROMA_BOTTOM_H + safe.bottom,
         0.0,
         0.0,
     ];

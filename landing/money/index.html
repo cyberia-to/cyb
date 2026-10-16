@@ -1,0 +1,1478 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>CYB — the best money</title>
+  <meta name="description" content="Smart, safe, easy, useful, alive, growing, scarce. The more the network learns, the better the money.">
+  <meta name="theme-color" content="#000000">
+  <meta name="color-scheme" content="dark">
+  <link rel="canonical" href="https://cyb.money">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://cyb.money">
+  <meta property="og:title" content="CYB — the best money">
+  <meta property="og:description" content="The more the network learns, the better the money.">
+  <meta property="og:image" content="https://cyb.money/og.jpg">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="CYB — the best money">
+  <meta name="twitter:description" content="The more the network learns, the better the money.">
+  <meta name="twitter:image" content="https://cyb.money/og.jpg">
+  <link rel="icon" type="image/svg+xml" href='data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="15.5 15 69 68"><circle cx="50" cy="26.25" r="10" fill="%2300ff01"/><circle cx="68.57" cy="35.19" r="10" fill="%2300b4ff"/><circle cx="73.15" cy="55.28" r="10" fill="%231700fe"/><circle cx="60.30" cy="71.40" r="10" fill="%236b00fe"/><circle cx="39.70" cy="71.40" r="10" fill="%23fe0000"/><circle cx="26.85" cy="55.28" r="10" fill="%23ff6501"/><circle cx="31.43" cy="35.19" r="10" fill="%23ffc501"/></svg>'>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Play:wght@400;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --void: #000;
+      --ink: #f2f2f2;
+      --mute: #8a8a8a;
+      --green: #00ff01;
+      --cyan: #00b4ff;
+      --indigo: #1700fe;
+      --violet: #6b00fe;
+      --red: #fe0000;
+      --orange: #ff6501;
+      --yellow: #ffc501;
+      --app-height: 100dvh;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: var(--void); color: var(--ink);
+      font-family: 'Play', system-ui, sans-serif;
+    }
+    button, a { font: inherit; color: inherit; }
+    button { background: none; border: 0; cursor: pointer; }
+    ::selection { background: var(--green); color: #000; }
+
+    .app {
+      position: relative;
+      width: 100%;
+      height: 100vh;
+      height: var(--app-height, 100dvh);
+      overflow: hidden;
+      display: grid;
+      grid-template-rows: 1fr auto;
+    }
+
+    .chapters {
+      position: relative;
+      min-height: 0;
+      overflow: hidden;
+      isolation: isolate;
+      z-index: 0;
+    }
+    .chapter {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      visibility: hidden;
+      pointer-events: none;
+      overflow: hidden;
+      overscroll-behavior: contain;
+      background: #000;
+      transition: opacity .4s ease, visibility .58s step-end;
+      z-index: 0;
+    }
+    .chapter.no-anim,
+    .chapter.no-anim .sheet h2,
+    .chapter.no-anim .stage {
+      transition: none !important;
+    }
+    .chapter.to-up, .chapter.to-down { z-index: 1; }
+    .chapter.active {
+      opacity: 1;
+      visibility: visible;
+      pointer-events: auto;
+      transition: opacity .4s ease, visibility 0s;
+      z-index: 2;
+    }
+
+    .belong {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .55rem;
+      font-size: clamp(1.2rem, 2.4vw, 1.85rem);
+      font-weight: 700;
+      letter-spacing: -.035em;
+      color: #fff;
+      line-height: 1.1;
+    }
+    .caption .belong {
+      max-width: none;
+      font-size: clamp(1.2rem, 2.4vw, 1.85rem);
+      font-weight: 700;
+      color: #fff;
+    }
+    .belong .flag {
+      width: 1.28em;
+      height: 1.28em;
+      display: block;
+      flex-shrink: 0;
+    }
+    .ticker {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .12em;
+      font-size: clamp(5.4rem, 22vw, 13.5rem);
+      font-weight: 700;
+      line-height: .76;
+      color: var(--green);
+    }
+    .ticker .ico {
+      font-size: .58em;
+      line-height: 1;
+      font-family: "Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif;
+      transform: translateY(.04em);
+    }
+    .ticker .name { letter-spacing: -.08em; }
+
+
+    .chapter { --accent: var(--green); --hl: var(--accent); }
+    .tone-g { --accent: var(--green); }
+    .tone-c { --accent: var(--cyan); }
+    .tone-i { --accent: var(--indigo); --hl: #8b9cff; }
+    .tone-p { --accent: var(--violet); --hl: #c090ff; }
+    .tone-r { --accent: var(--red); }
+    .tone-o { --accent: var(--orange); }
+    .tone-y { --accent: var(--yellow); }
+    .tone-w { --accent: #fff; }
+
+    .sheet {
+      height: 100%;
+      width: 100%;
+      display: grid;
+      grid-template-rows: minmax(0, 19fr) minmax(0, 62fr) minmax(0, 19fr);
+    }
+    .phrase {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      min-height: 0;
+      overflow: hidden;
+      position: relative;
+      padding: calc(2.4rem + env(safe-area-inset-top)) 24px 4px;
+    }
+    .stage {
+      display: grid;
+      grid-template-columns: 2.6rem minmax(0, 1fr) 2.6rem;
+      align-items: center;
+      min-height: 0;
+      overflow: hidden;
+      padding: 0 4px;
+      opacity: 0;
+      transition: opacity .5s ease;
+    }
+    .chapter.active .stage { opacity: 1; }
+    .pane {
+      grid-column: 2;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      min-height: 0;
+      height: 100%;
+      width: 100%;
+    }
+    .pane-btn {
+      display: grid;
+      place-items: center;
+      width: 2.4rem;
+      height: 2.4rem;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: #fff;
+      opacity: .3;
+      cursor: pointer;
+    }
+    .pane-btn svg { width: 1.15rem; height: 1.15rem; display: block; }
+    .pane-btn:hover { opacity: 1; }
+    .pane-btn:disabled { opacity: .22; cursor: default; }
+    .pane-btn:disabled:hover { opacity: .22; }
+    .chapter:not([data-deck]) .pane-l,
+    .chapter:not([data-deck]) .pane-r {
+      visibility: hidden;
+      pointer-events: none;
+    }
+    .pane-u, .pane-d {
+      position: absolute;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 3;
+    }
+    .pane-u { top: calc(4px + env(safe-area-inset-top)); }
+    .pane-d { bottom: 2px; }
+    @keyframes next-hint {
+      0%, 100% { opacity: .85; }
+      50% { opacity: .22; }
+    }
+    .app[data-current-step="0"] .pane-d.hint:not(:disabled) {
+      animation: next-hint 2.6s ease-in-out infinite;
+    }
+    .caption {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      min-height: 0;
+      overflow: hidden;
+      position: relative;
+      padding: 6px 24px 2.6rem;
+      gap: .5rem;
+    }
+    .caption p {
+      margin: 0;
+      max-width: 48ch;
+      font-size: clamp(.95rem, 1.7vw, 1.2rem);
+      line-height: 1.35;
+      color: var(--ink);
+    }
+    .subdots {
+      display: flex;
+      gap: 7px;
+      justify-content: center;
+      min-height: 8px;
+    }
+    .subdots button {
+      width: 7px;
+      height: 7px;
+      border: 0;
+      padding: 0;
+      border-radius: 50%;
+      background: #333;
+      cursor: pointer;
+    }
+    .subdots button.on { background: var(--hl); }
+    .prop {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: .7rem;
+      text-align: center;
+    }
+    .prop i {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      display: block;
+    }
+    .prop kbd {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: clamp(.72rem, 1.4vw, .9rem);
+      letter-spacing: .16em;
+      color: var(--mute);
+      font-weight: 500;
+    }
+    .prop b {
+      font-size: clamp(2.3rem, 6.2vw, 4.4rem);
+      font-weight: 700;
+      letter-spacing: -.045em;
+      line-height: .95;
+      color: #fff;
+    }
+    .sheet h2 {
+      font-size: clamp(1.4rem, 2.7vw, 2.15rem);
+      letter-spacing: -.04em;
+      line-height: 1.08;
+      margin: 0;
+      text-wrap: balance;
+      transition: transform .58s cubic-bezier(.22, .82, .16, 1);
+    }
+    .chapter.from-down .sheet h2,
+    .chapter.to-down .sheet h2 { transform: translate3d(0, 13vh, 0); }
+    .chapter.from-up .sheet h2,
+    .chapter.to-up .sheet h2 { transform: translate3d(0, -13vh, 0); }
+    .chapter.active .sheet h2 { transform: none; }
+    .sheet h2 .hl { color: var(--hl); font-style: normal; }
+    .sheet .note {
+      margin-top: 1.4rem;
+      color: var(--mute);
+      font-size: 1rem;
+      line-height: 1.4;
+      max-width: 46ch;
+      text-align: center;
+    }
+    .explain {
+      margin: 0;
+      max-width: 44ch;
+      min-height: 4.4rem;
+      flex: 0 0 auto;
+      text-align: center;
+    }
+    .explain kbd {
+      display: block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .78rem;
+      letter-spacing: .14em;
+      color: var(--hl);
+      margin-bottom: .35rem;
+    }
+    .explain p {
+      font-size: 1.12rem;
+      line-height: 1.4;
+      color: var(--ink);
+    }
+    .sheet .note b { color: #fff; font-weight: 700; }
+    .sheet .cap {
+      margin-top: 1.1rem;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--green);
+      font-size: clamp(1.15rem, 2.4vw, 1.8rem);
+      letter-spacing: -.04em;
+    }
+    .sheet .cap kbd {
+      display: block;
+      color: var(--mute);
+      font-size: .62rem;
+      letter-spacing: .14em;
+      margin-bottom: .25rem;
+    }
+
+    .rows {
+      display: grid;
+      gap: 0;
+      width: min(34rem, 100%);
+    }
+    .row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 10px minmax(0, 1fr);
+      grid-template-areas: "k t v";
+      align-items: baseline;
+      column-gap: .9rem;
+      padding: .55rem 0;
+      border-bottom: 1px solid #1a1a1a;
+      font-size: clamp(1.15rem, 2vw, 1.45rem);
+      letter-spacing: -.03em;
+      line-height: 1.15;
+    }
+    .row:last-child { border-bottom: 0; }
+    .row i {
+      grid-area: t;
+      width: 8px; height: 8px;
+      border-radius: 50%;
+      align-self: center;
+      justify-self: center;
+      display: block;
+      font-style: normal;
+    }
+    .row kbd {
+      grid-area: k;
+      justify-self: end;
+      text-align: right;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .62rem;
+      letter-spacing: .12em;
+      color: var(--mute);
+      font-weight: 500;
+    }
+    .row b {
+      grid-area: v;
+      justify-self: start;
+      text-align: left;
+      font-weight: 700;
+    }
+    .row.on kbd, .row.on b { color: var(--hl); }
+    .chapter[data-deck] .row {
+      cursor: pointer;
+      opacity: .4;
+      transition: opacity .2s ease;
+    }
+    .chapter[data-deck] .row.on,
+    .chapter[data-deck] .row:hover { opacity: 1; }
+    .rows.pack .row {
+      padding: .32rem 0;
+      font-size: clamp(1.02rem, 1.7vw, 1.28rem);
+    }
+    a.row { color: inherit; text-decoration: none; }
+    .get .row {
+      cursor: pointer;
+      opacity: .4;
+      transition: opacity .2s ease;
+    }
+    .get .row:hover { opacity: 1; }
+    .row .y, .prop .y { background: var(--yellow); }
+    .row .b, .prop .b { background: var(--cyan); }
+    .row .i, .prop .i { background: var(--indigo); }
+    .row .p, .prop .p { background: var(--violet); }
+    .row .r, .prop .r { background: var(--red); }
+    .row .o, .prop .o { background: var(--orange); }
+    .row .g, .prop .g { background: var(--green); }
+
+    .supply { text-align: center; }
+    .supply kbd {
+      display: block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .62rem;
+      letter-spacing: .16em;
+      color: var(--mute);
+      margin-bottom: .15rem;
+    }
+    .supply b {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: clamp(2.8rem, 9vw, 5.6rem);
+      letter-spacing: -.07em;
+      line-height: .9;
+      color: #fff;
+    }
+    .supply b em {
+      font-style: normal;
+      color: var(--hl);
+      font-size: .38em;
+      letter-spacing: -.04em;
+      margin-left: .12em;
+    }
+    .chart {
+      margin-top: .4rem;
+      width: min(40rem, 100%);
+      color: var(--hl);
+    }
+    .chart svg { width: 100%; height: auto; display: block; }
+    .cap-line {
+      margin-top: 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .78rem;
+      letter-spacing: .04em;
+      color: var(--mute);
+      text-align: center;
+    }
+    .cap-line strong { color: #fff; font-weight: 700; }
+
+    .bagel {
+      --r-lab: 41%;
+      position: relative;
+      width: min(30rem, 86%);
+      aspect-ratio: 1;
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: 100%;
+      margin: 0 auto;
+    }
+    .bagel svg { width: 100%; height: 100%; display: block; overflow: visible; }
+    .bagel .track { fill: none; stroke: #181818; }
+    .bagel .arc { fill: none; stroke-width: 9; opacity: .4; stroke-linecap: butt; transition: opacity .2s ease; }
+    .bagel .hit { fill: none; stroke: transparent; stroke-width: 16; }
+    .bagel .seg { cursor: pointer; }
+    .bagel .seg.on .arc, .bagel .seg:hover .arc { opacity: 1; }
+    .bagel-thirds .arc { stroke-width: 16; opacity: .45; }
+    .bagel-thirds .hit { stroke-width: 22; }
+    .bagel-thirds { --r-lab: 46%; }
+    .bagel-hub {
+      position: absolute;
+      inset: 26%;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      pointer-events: none;
+    }
+    .bagel-hub b {
+      font-size: clamp(1.15rem, 3.4vw, 1.75rem);
+      font-weight: 700;
+      letter-spacing: -.04em;
+      line-height: 1.05;
+      color: var(--seg, var(--hl));
+      min-height: 2.2em;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .bagel-hub span {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: clamp(.68rem, 1.5vw, .85rem);
+      letter-spacing: .1em;
+      color: var(--mute);
+      margin-top: .3rem;
+      text-transform: uppercase;
+    }
+    .bagel-lab {
+      position: absolute;
+      left: var(--x);
+      top: var(--y);
+      z-index: 1;
+      transform: translate(-50%, -50%);
+      padding: .2rem .35rem;
+      border: 0;
+      background: none;
+      color: #f2f2f2;
+      text-align: center;
+      cursor: pointer;
+      line-height: 1.1;
+      white-space: nowrap;
+    }
+    .bagel-lab b {
+      display: block;
+      font-size: clamp(.78rem, 1.7vw, 1.05rem);
+      font-weight: 700;
+      letter-spacing: -.03em;
+    }
+    .bagel-lab span {
+      display: block;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: clamp(.58rem, 1.2vw, .7rem);
+      letter-spacing: .1em;
+      color: var(--mute);
+      margin-top: .12rem;
+    }
+    .bagel-lab.on b, .bagel-lab:hover b, .bagel-lab:focus-visible b {
+      color: var(--c, var(--hl));
+    }
+    .bagel-thirds .bagel-lab b {
+      font-size: clamp(1rem, 2.4vw, 1.35rem);
+    }
+    .bagel-thirds .bagel-lab span {
+      font-size: clamp(.72rem, 1.5vw, .88rem);
+      letter-spacing: .14em;
+    }
+
+    .split {
+      margin-top: 1.5rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .85rem;
+      letter-spacing: .06em;
+      color: #fff;
+    }
+    .split em {
+      color: var(--hl);
+      font-style: normal;
+    }
+
+    .cta-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+    .tone-w .cta { background: #fff; color: #000; }
+    .cta {
+      display: inline-block;
+      padding: .9rem 1.25rem;
+      background: var(--green);
+      color: #000;
+      font-family: 'JetBrains Mono', monospace;
+      font-weight: 700;
+      font-size: .85rem;
+      letter-spacing: .06em;
+      text-decoration: none;
+    }
+    .cta.ghost { background: transparent; color: #fff; box-shadow: inset 0 0 0 1px #333; }
+    .get {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 1rem;
+      width: min(36rem, 100%);
+      height: 100%;
+    }
+    .oses {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .95rem;
+    }
+    .os {
+      width: 1.7rem;
+      height: 1.7rem;
+      color: #fff;
+      opacity: .34;
+      display: grid;
+      place-items: center;
+      text-decoration: none;
+    }
+    .os svg { width: 1.28rem; height: 1.28rem; display: block; }
+    .os:hover, .os.on { opacity: 1; }
+    .get .rows { width: 100%; margin-top: .35rem; }
+
+    .bar {
+      --lift: 7px;
+      display: flex;
+      align-items: stretch;
+      min-height: calc(3.25rem + var(--lift));
+      background: #000;
+      padding-top: var(--lift);
+      padding-bottom: env(safe-area-inset-bottom);
+      position: relative;
+      z-index: 5;
+    }
+    .track {
+      flex: 1 1 0px;
+      width: 0;
+      min-width: 0;
+      overflow: visible;
+      display: grid;
+      grid-template-columns: repeat(9, minmax(0, 1fr));
+      min-height: 3.25rem;
+    }
+    .dot {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-width: 0;
+      min-height: 3.25rem;
+      padding: 0 .2rem;
+      border: 0;
+      border-radius: 0;
+      cursor: pointer;
+      font-family: 'Play', system-ui, sans-serif;
+      font-weight: 700;
+      font-size: clamp(.58rem, 1.05vw, .8rem);
+      letter-spacing: -.02em;
+      line-height: 1;
+      opacity: .48;
+      transition: opacity .28s ease, margin-top .35s cubic-bezier(.22, .82, .16, 1), padding-top .35s cubic-bezier(.22, .82, .16, 1);
+    }
+    .dot.r { background: var(--red); color: #fff; }
+    .dot.o { background: var(--orange); color: #000; }
+    .dot.y { background: var(--yellow); color: #000; }
+    .dot.g { background: var(--green); color: #000; }
+    .dot.b { background: var(--cyan); color: #000; }
+    .dot.bl { background: var(--indigo); color: #fff; }
+    .dot.p { background: var(--violet); color: #fff; }
+    .dot.k { background: #000; color: #fff; box-shadow: inset 0 0 0 1px #2a2a2a; }
+    .dot.w { background: #fff; color: #000; }
+    .dot.getcyb {
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: .04em;
+      font-size: clamp(.52rem, .95vw, .72rem);
+    }
+    .dot.long { font-size: clamp(.5rem, .88vw, .68rem); letter-spacing: -.04em; }
+    .dot span { white-space: nowrap; }
+    .dot.on {
+      opacity: 1;
+      margin-top: calc(var(--lift) * -1);
+      padding-top: var(--lift);
+    }
+    .dot.k.on { box-shadow: inset 0 0 0 1px #3a3a3a; }
+    .dot:hover { filter: none; opacity: .82; }
+    .dot.on:hover { opacity: 1; }
+
+    @media (max-width: 640px) {
+      .ticker { font-size: 4.6rem; }
+      .belong { font-size: 1.15rem; }
+      .caption .belong { font-size: 1.15rem; }
+      .phrase { padding: calc(2.2rem + env(safe-area-inset-top)) 16px 4px; }
+      .caption { padding: 6px 16px 2.4rem; }
+      .sheet h2 { font-size: 1.28rem; }
+      .prop b { font-size: 2.15rem; }
+      .stage { grid-template-columns: 2rem minmax(0, 1fr) 2rem; }
+      .row { column-gap: .6rem; font-size: 1.15rem; }
+      .rows.pack .row { padding: .26rem 0; font-size: 1.02rem; }
+      .oses { gap: .7rem; }
+      .bar { --lift: 9px; min-height: calc(5.4rem + var(--lift)); }
+      .track, .dot { min-height: 5.4rem; }
+      .dot span {
+        writing-mode: vertical-rl;
+        transform: rotate(180deg);
+        font-size: .68rem;
+        letter-spacing: .1em;
+      }
+      .dot.getcyb span { font-size: .62rem; letter-spacing: .08em; }
+      .bagel { width: min(22rem, 88%); }
+      .bagel-lab span { display: none; }
+      .bagel-lab b { font-size: .78rem; }
+      .bagel-thirds .bagel-lab b { font-size: .95rem; }
+      .bagel-hub b { font-size: 1.2rem; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .chapter, .chapter.active, .sheet h2, .chapter .stage {
+        transition: opacity .2s ease, visibility .2s;
+        transform: none !important;
+      }
+      .dot { transition: opacity .2s ease; }
+      .app[data-current-step="0"] .pane-d.hint:not(:disabled) { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="app" id="app" data-current-step="0">
+    <div class="chapters">
+      <section class="chapter cover active" data-step="0">
+        <div class="sheet">
+          <div class="phrase">
+            <button type="button" class="pane-btn pane-u" data-dy="-1" aria-label="Previous quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 15.2 L12 6.4 l8.4 8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <h2>the best money</h2>
+          </div>
+          <div class="stage">
+            <button type="button" class="pane-btn pane-l" data-dx="-1" aria-label="Previous property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.2 3.6 L6.4 12 l8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <div class="pane">
+              <h1 class="ticker"><span class="ico" aria-hidden="true">🟢</span><span class="name">CYB</span></h1>
+            </div>
+            <button type="button" class="pane-btn pane-r" data-dx="1" aria-label="Next property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.8 3.6 L17.6 12 l-8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+          <div class="caption">
+            <p class="belong">
+              <svg class="flag" viewBox="15.5 15 69 68" aria-hidden="true">
+                <circle cx="50" cy="26.25" r="10" fill="#00ff01"/>
+                <circle cx="68.57" cy="35.19" r="10" fill="#00b4ff"/>
+                <circle cx="73.15" cy="55.28" r="10" fill="#1700fe"/>
+                <circle cx="60.30" cy="71.40" r="10" fill="#6b00fe"/>
+                <circle cx="39.70" cy="71.40" r="10" fill="#fe0000"/>
+                <circle cx="26.85" cy="55.28" r="10" fill="#ff6501"/>
+                <circle cx="31.43" cy="35.19" r="10" fill="#ffc501"/>
+              </svg>
+              the money of Cyberia
+            </p>
+            <button type="button" class="pane-btn pane-d hint" data-dy="1" aria-label="Next quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 8.8 L12 17.6 l8.4 -8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="chapter tone-g" data-step="1">
+        <div class="sheet">
+          <div class="phrase">
+            <button type="button" class="pane-btn pane-u" data-dy="-1" aria-label="Previous quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 15.2 L12 6.4 l8.4 8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <h2>Every money is defined by <span class="hl">what creates it.</span></h2>
+          </div>
+          <div class="stage">
+            <button type="button" class="pane-btn pane-l" data-dx="-1" aria-label="Previous property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.2 3.6 L6.4 12 l8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <div class="pane">
+              <div class="rows">
+                <div class="row"><i class="y"></i><kbd>GOLD</kbd><b>Production</b></div>
+                <div class="row"><i class="b"></i><kbd>USD</kbd><b>Debt</b></div>
+                <div class="row"><i class="r"></i><kbd>BTC</kbd><b>Energy</b></div>
+                <div class="row"><i class="p"></i><kbd>ETH</kbd><b>Capital</b></div>
+                <div class="row on"><i class="g"></i><kbd>CYB</kbd><b>Information</b></div>
+              </div>
+            </div>
+            <button type="button" class="pane-btn pane-r" data-dx="1" aria-label="Next property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.8 3.6 L17.6 12 l-8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+          <div class="caption">
+            <button type="button" class="pane-btn pane-d" data-dy="1" aria-label="Next quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 8.8 L12 17.6 l8.4 -8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="chapter tone-c" data-step="2" data-deck="safe">
+        <div class="sheet">
+          <div class="phrase">
+            <button type="button" class="pane-btn pane-u" data-dy="-1" aria-label="Previous quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 15.2 L12 6.4 l8.4 8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <h2>Once it is yours it <span class="hl">stays yours.</span></h2>
+          </div>
+          <div class="stage">
+            <button type="button" class="pane-btn pane-l" data-dx="-1" aria-label="Previous property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.2 3.6 L6.4 12 l8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <div class="pane">
+              <div class="rows">
+                <div class="row" data-s="0"><i class="y"></i><kbd>PRIVATE</kbd><b>Unseen</b></div>
+                <div class="row" data-s="1"><i class="i"></i><kbd>DURABLE</kbd><b>Post-quantum</b></div>
+                <div class="row" data-s="2"><i class="r"></i><kbd>UNCENSORABLE</kbd><b>No freeze</b></div>
+                <div class="row" data-s="3"><i class="g"></i><kbd>VERIFIABLE</kbd><b>Zheng</b></div>
+              </div>
+            </div>
+            <button type="button" class="pane-btn pane-r" data-dx="1" aria-label="Next property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.8 3.6 L17.6 12 l-8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+          <div class="caption">
+            <p data-cap></p>
+            <div class="subdots" data-dots></div>
+            <button type="button" class="pane-btn pane-d" data-dy="1" aria-label="Next quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 8.8 L12 17.6 l8.4 -8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="chapter tone-p" data-step="3" data-deck="easy">
+        <div class="sheet">
+          <div class="phrase">
+            <button type="button" class="pane-btn pane-u" data-dy="-1" aria-label="Previous quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 15.2 L12 6.4 l8.4 8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <h2>Then it <span class="hl">goes.</span></h2>
+          </div>
+          <div class="stage">
+            <button type="button" class="pane-btn pane-l" data-dx="-1" aria-label="Previous property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.2 3.6 L6.4 12 l8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <div class="pane">
+              <div class="rows pack">
+                <div class="row" data-s="0"><i class="y"></i><kbd>SIMPLE</kbd><b>Hold, send, receive</b></div>
+                <div class="row" data-s="1"><i class="g"></i><kbd>FAST</kbd><b>1 second</b></div>
+                <div class="row" data-s="2"><i class="b"></i><kbd>CHEAP</kbd><b>0.1%</b></div>
+                <div class="row" data-s="3"><i class="r"></i><kbd>OPEN</kbd><b>Anyone</b></div>
+                <div class="row" data-s="4"><i class="o"></i><kbd>NAMED</kbd><b>A name</b></div>
+                <div class="row" data-s="5"><i class="p"></i><kbd>LIGHT</kbd><b>A phone</b></div>
+                <div class="row" data-s="6"><i class="i"></i><kbd>DIVISIBLE</kbd><b>10¹² cy</b></div>
+                <div class="row" data-s="7"><i class="g"></i><kbd>SCALABLE</kbd><b>10⁶ /s</b></div>
+              </div>
+            </div>
+            <button type="button" class="pane-btn pane-r" data-dx="1" aria-label="Next property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.8 3.6 L17.6 12 l-8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+          <div class="caption">
+            <p data-cap></p>
+            <div class="subdots" data-dots></div>
+            <button type="button" class="pane-btn pane-d" data-dy="1" aria-label="Next quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 8.8 L12 17.6 l8.4 -8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="chapter tone-r" data-step="4" data-deck="useful">
+        <div class="sheet">
+          <div class="phrase">
+            <button type="button" class="pane-btn pane-u" data-dy="-1" aria-label="Previous quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 15.2 L12 6.4 l8.4 8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <h2>Spent on <span class="hl">intelligence.</span></h2>
+          </div>
+          <div class="stage">
+            <button type="button" class="pane-btn pane-l" data-dx="-1" aria-label="Previous property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.2 3.6 L6.4 12 l8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <div class="pane">
+              <div class="rows">
+                <div class="row" data-s="0"><i class="g"></i><kbd>COMPUTE</kbd><b>Prove</b></div>
+                <div class="row" data-s="1"><i class="b"></i><kbd>STORAGE</kbd><b>Hold</b></div>
+                <div class="row" data-s="2"><i class="y"></i><kbd>BANDWIDTH</kbd><b>The pipe</b></div>
+                <div class="row" data-s="3"><i class="p"></i><kbd>INFERENCE</kbd><b>Answers</b></div>
+              </div>
+            </div>
+            <button type="button" class="pane-btn pane-r" data-dx="1" aria-label="Next property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.8 3.6 L17.6 12 l-8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+          <div class="caption">
+            <p data-cap></p>
+            <div class="subdots" data-dots></div>
+            <button type="button" class="pane-btn pane-d" data-dy="1" aria-label="Next quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 8.8 L12 17.6 l8.4 -8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="chapter tone-y" data-step="5" data-deck="alive">
+        <div class="sheet">
+          <div class="phrase">
+            <button type="button" class="pane-btn pane-u" data-dy="-1" aria-label="Previous quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 15.2 L12 6.4 l8.4 8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <h2>Inflation bootstraps.<br><span class="hl">Use replaces it.</span></h2>
+          </div>
+          <div class="stage">
+            <button type="button" class="pane-btn pane-l" data-dx="-1" aria-label="Previous property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.2 3.6 L6.4 12 l8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <div class="pane">
+              <div class="bagel bagel-thirds" id="cyb-donut"></div>
+            </div>
+            <button type="button" class="pane-btn pane-r" data-dx="1" aria-label="Next property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.8 3.6 L17.6 12 l-8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+          <div class="caption">
+            <p data-cap></p>
+            <div class="subdots" data-dots></div>
+            <button type="button" class="pane-btn pane-d" data-dy="1" aria-label="Next quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 8.8 L12 17.6 l8.4 -8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="chapter tone-o" data-step="6" data-deck="growing">
+        <div class="sheet">
+          <div class="phrase">
+            <button type="button" class="pane-btn pane-u" data-dy="-1" aria-label="Previous quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 15.2 L12 6.4 l8.4 8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <h2>The more the network learns,<br><span class="hl">the better the money.</span></h2>
+          </div>
+          <div class="stage">
+            <button type="button" class="pane-btn pane-l" data-dx="-1" aria-label="Previous property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.2 3.6 L6.4 12 l8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <div class="pane">
+              <div class="bagel" id="cyb-ring"></div>
+            </div>
+            <button type="button" class="pane-btn pane-r" data-dx="1" aria-label="Next property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.8 3.6 L17.6 12 l-8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+          <div class="caption">
+            <p data-cap></p>
+            <div class="subdots" data-dots></div>
+            <button type="button" class="pane-btn pane-d" data-dy="1" aria-label="Next quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 8.8 L12 17.6 l8.4 -8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="chapter tone-i" data-step="7">
+        <div class="sheet">
+          <div class="phrase">
+            <button type="button" class="pane-btn pane-u" data-dy="-1" aria-label="Previous quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 15.2 L12 6.4 l8.4 8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <h2>This is already out.<br><span class="hl">Most is still unearned.</span></h2>
+          </div>
+          <div class="stage">
+            <button type="button" class="pane-btn pane-l" data-dx="-1" aria-label="Previous property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.2 3.6 L6.4 12 l8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <div class="pane">
+              <div class="supply">
+                <kbd>SUPPLY</kbd>
+                <b id="v-supply">187,416<em>CYB</em></b>
+              </div>
+              <div class="chart" id="emission"></div>
+            </div>
+            <button type="button" class="pane-btn pane-r" data-dx="1" aria-label="Next property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.8 3.6 L17.6 12 l-8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+          <div class="caption">
+            <p class="cap-line">cap <strong id="v-cap-big">18,446,744 CYB</strong></p>
+            <button type="button" class="pane-btn pane-d" data-dy="1" aria-label="Next quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 8.8 L12 17.6 l8.4 -8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+        </div>
+      </section>
+
+      <section class="chapter tone-w" data-step="8">
+        <div class="sheet">
+          <div class="phrase">
+            <button type="button" class="pane-btn pane-u" data-dy="-1" aria-label="Previous quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 15.2 L12 6.4 l8.4 8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <h2>Start earning <span class="hl">what you know.</span></h2>
+          </div>
+          <div class="stage">
+            <button type="button" class="pane-btn pane-l" data-dx="-1" aria-label="Previous property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M15.2 3.6 L6.4 12 l8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+            <div class="pane">
+              <div class="get">
+                <a class="cta" id="dl" href="https://github.com/cyberia-to/cyb/releases/download/v0.16.0/cyb-0.16.0.dmg">Get the robot</a>
+                <div class="oses" aria-label="download for your machine">
+                  <a class="os" data-os="mac" href="https://github.com/cyberia-to/cyb/releases/download/v0.16.0/cyb-0.16.0.dmg" title="macOS" aria-label="macOS"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M16.7 12.7c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.9-3.4-1.9-1.4-.2-2.8.9-3.5.9s-2-.8-3.4-.8c-1.7.1-3.3 1-4.2 2.5-1.8 3.1-.5 7.7 1.3 10.2.9 1.2 1.9 2.6 3.3 2.5 1.3-.1 1.8-.8 3.4-.8s2 .8 3.4.8c1.8 0 3.1-1.6 4.2-3.1 1-1.4 1.4-2.7 1.4-2.8 0 0-2.8-1.1-2.8-4.2zm-2.4-7.1c.7-.9 1.2-2.1 1.1-3.3-1 .1-2.3.7-3 1.6-.7.8-1.2 2.1-1.1 3.2 1.1.1 2.2-.6 3-1.5z"/></svg></a>
+                  <a class="os" data-os="linux" href="https://github.com/cyberia-to/cyb/releases/download/v0.16.0/cyb-0.16.0-linux-x86_64.tar.gz" title="Linux" aria-label="Linux"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M12 3c2.2 0 4 2.1 4 4.7 0 1.2-.4 2.3-1 3.1 1.7 1 2.8 2.7 2.8 4.6 0 .7-.2 1.4-.5 2 .9.5 1.7 1.4 1.7 2.6 0 1.6-1.6 2.5-3.4 2.5-1.1 0-2.1-.3-2.8-.9-.5.1-1 .2-1.8.2s-1.3-.1-1.8-.2c-.7.6-1.7.9-2.8.9-1.8 0-3.4-.9-3.4-2.5 0-1.2.8-2.1 1.7-2.6-.3-.6-.5-1.3-.5-2 0-1.9 1.1-3.6 2.8-4.6-.6-.8-1-1.9-1-3.1C8 5.1 9.8 3 12 3zm-1.7 5.2a1.1 1.1 0 1 0 0-2.2 1.1 1.1 0 0 0 0 2.2zm3.4 0a1.1 1.1 0 1 0 0-2.2 1.1 1.1 0 0 0 0 2.2z"/></svg></a>
+                  <a class="os" data-os="win" href="https://github.com/cyberia-to/cyb/releases/download/v0.16.0/cyb-0.16.0-windows-x86_64.zip" title="Windows" aria-label="Windows"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M3 4.5 11 3.4v8.1H3zm9.2-1.3L21 2v9.5h-8.8zM3 13.3h8V21L3 19.8zm9.2 0H21V22l-8.8-1.4z"/></svg></a>
+                  <a class="os" data-os="android" href="https://github.com/cyberia-to/cyb/releases/download/v0.16.0/cyb-0.16.0.apk" title="Android" aria-label="Android"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M8.2 4.7L6.6 2.5l1-.6 1.7 2.3-1.1.5zm7.6 0l-1.1-.5 1.7-2.3 1 .6-1.6 2.2zM12 2.5l1.2 2A4.8 4.8 0 0 1 17 9H7a4.8 4.8 0 0 1 3.8-4.5L12 2.5zM5.5 10.2h13v7.3a2 2 0 0 1-2 2h-9a2 2 0 0 1-2-2zM3.6 11.3h1.6v4H3.6zm15.2 0h1.6v4h-1.6z"/></svg></a>
+                  <a class="os" data-os="ios" href="https://github.com/cyberia-to/cyb/releases/download/v0.16.0/cyb-0.16.0.ipa" title="iOS" aria-label="iOS"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="6.5" y="2" width="11" height="20" rx="2.2" fill="currentColor"/><circle cx="12" cy="19.3" r=".9" fill="#000"/></svg></a>
+                </div>
+                <div class="rows pack">
+                  <a class="row" href="https://cyberia.to" target="_blank" rel="noopener" data-get="cyberia"><i class="g"></i><kbd>CYBERIA.TO</kbd><b>The cyberstate</b></a>
+                  <a class="row" href="https://cyber.page" target="_blank" rel="noopener" data-get="protocol"><i class="b"></i><kbd>CYBER.PAGE</kbd><b>The protocol</b></a>
+                  <a class="row" href="https://soft3.org" target="_blank" rel="noopener" data-get="stack"><i class="y"></i><kbd>SOFT3</kbd><b>The stack</b></a>
+                </div>
+              </div>
+            </div>
+            <button type="button" class="pane-btn pane-r" data-dx="1" aria-label="Next property"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8.8 3.6 L17.6 12 l-8.8 8.4" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+          <div class="caption">
+            <p data-cap>One binary. macOS, Linux, Windows, Android, iOS. Yours, on your machine.</p>
+            <button type="button" class="pane-btn pane-d" data-dy="1" aria-label="Next quality"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3.6 8.8 L12 17.6 l8.4 -8.8" fill="none" stroke="currentColor" stroke-width="3.4" stroke-linecap="square" stroke-linejoin="miter"/></svg></button>
+          </div>
+        </div>
+      </section>
+    </div>
+
+    <div class="bar">
+      <nav class="track" id="track" aria-label="what this money is">
+        <button type="button" class="dot k on" data-go="0" data-prop="best" title="the best money" aria-label="Best"><span>Best</span></button>
+        <button type="button" class="dot g" data-go="1" data-prop="smart" title="CYB is minted when the network learns." aria-label="Smart"><span>Smart</span></button>
+        <button type="button" class="dot b" data-go="2" data-prop="safe" title="Once it is yours it stays yours." aria-label="Safe"><span>Safe</span></button>
+        <button type="button" class="dot p" data-go="3" data-prop="easy" title="Then it goes." aria-label="Easy"><span>Easy</span></button>
+        <button type="button" class="dot r" data-go="4" data-prop="useful" title="Spent on intelligence." aria-label="Useful"><span>Useful</span></button>
+        <button type="button" class="dot y" data-go="5" data-prop="alive" title="Inflation bootstraps. Use replaces it." aria-label="Alive"><span>Alive</span></button>
+        <button type="button" class="dot o" data-go="6" data-prop="growing" title="The more the network learns, the better the money." aria-label="Growing"><span>Growing</span></button>
+        <button type="button" class="dot bl" data-go="7" data-prop="scarce" title="This is already out. Most is still unearned." aria-label="Scarce"><span>Scarce</span></button>
+        <button type="button" class="dot w getcyb" data-go="8" data-prop="get" title="Start earning what you know." aria-label="get CYB"><span>get CYB</span></button>
+      </nav>
+    </div>
+  </div>
+
+  <script>
+    (function () {
+      const app = document.getElementById('app');
+      const chapters = [...document.querySelectorAll('.chapter')];
+      const n = chapters.length;
+      const PROPS = ['best', 'smart', 'safe', 'easy', 'useful', 'alive', 'growing', 'scarce', 'get'];
+      const ALIAS = {
+        complete: 0,
+        spend: 4, resources: 4, use: 4,
+        viable: 5, sustain: 5, sustainable: 5, sustainably: 5, living: 5,
+        compound: 6, compounding: 6, looped: 6, ring: 6,
+        fair: 7, finite: 7
+      };
+      const DECKS = {
+        safe: [
+          { slug: 'private', kbd: 'PRIVATE', punch: 'Unseen', dot: 'y', caption: 'Unseen by default. A zheng proof can show a hop is valid without showing the amount — the witness stays in the proof, not on a public line.' },
+          { slug: 'durable', kbd: 'DURABLE', punch: 'Post-quantum', dot: 'i', caption: 'Hash-only proofs, post-quantum signatures. Several independent implementations that cross-check each other. Time does not eat it.' },
+          { slug: 'uncensorable', kbd: 'UNCENSORABLE', punch: 'No freeze', dot: 'r', caption: 'No admin key. Nobody freezes or seizes an account. Kill one binary and the others still settle — the protocol has no switch-off.' },
+          { slug: 'verifiable', kbd: 'VERIFIABLE', punch: 'Zheng', dot: 'g', caption: 'Every mint and every move carries a zheng proof: SuperSpartan over Goldilocks, no trusted setup. Check O(log n) against the header. You verify. You do not trust a node.' }
+        ],
+        easy: [
+          { slug: 'simple', kbd: 'SIMPLE', punch: 'Hold, send, receive', dot: 'y', caption: 'Hold, send, receive — that is the whole money. Coins and a cyberlink. No extra product to rent.' },
+          { slug: 'fast', kbd: 'FAST', punch: '1 second', dot: 'g', caption: 'Foculus clock A. One second to final. Fold packs the proofs so the whole network accepts one claim.' },
+          { slug: 'cheap', kbd: 'CHEAP', punch: '0.1%', dot: 'b', caption: '0.1% is a consensus parameter, not a company fee. Proof cost stays flat from a million particles to a quadrillion — a phone proves its own hops. Visa asks more.' },
+          { slug: 'open', kbd: 'OPEN', punch: 'Anyone', dot: 'r', caption: 'Humans, agents, animals. A key, not a passport. No KYC, and no government in the path.' },
+          { slug: 'named', kbd: 'NAMED', punch: 'A name', dot: 'o', caption: 'Send to a name. oikos resolves it to one particle — latest link wins. Not a 64-byte address.' },
+          { slug: 'light', kbd: 'LIGHT', punch: 'A phone', dot: 'p', caption: 'A phone is sure it sent and received. It follows the fold tip and samples availability. It never stores the world.' },
+          { slug: 'divisible', kbd: 'DIVISIBLE', punch: '10¹² cy', dot: 'i', caption: '1 CYB = 10¹² cy. Native arithmetic, any amount, down to one cy — not a display trick.' },
+          { slug: 'scalable', kbd: 'SCALABLE', punch: '10⁶ /s', dot: 'g', caption: 'Fold, locality, parallel settlement. About a million signals a second per machine. Load grows. The proof stays small.' }
+        ],
+        useful: [
+          { slug: 'compute', kbd: 'COMPUTE', punch: 'Prove', dot: 'g', caption: 'Cycles. The work of proving.' },
+          { slug: 'storage', kbd: 'STORAGE', punch: 'Hold', dot: 'b', caption: 'Particles stay. The graph holds them.' },
+          { slug: 'bandwidth', kbd: 'BANDWIDTH', punch: 'The pipe', dot: 'y', caption: 'Gossip. The network is the pipe.' },
+          { slug: 'inference', kbd: 'INFERENCE', punch: 'Answers', dot: 'p', caption: 'All three, plus a mind. That is answers.' }
+        ],
+        alive: [
+          { slug: 'burn', caption: 'A dividend to everyone who holds. Empty hops cost; remaining units worth more.' },
+          { slug: 'earners', caption: 'Value to those who create it — miners and stakers, the slow replacement of inflation.' },
+          { slug: 'self', caption: 'Public good the cybergraph names. Spent on what the graph infers is worth doing.' }
+        ],
+        growing: [
+          { slug: 'fairness', caption: 'A larger population returns here: more minds on the work. Hashrate splits who taught what — no bag required.' },
+          { slug: 'finality', caption: 'Fair work is useless if it does not stick. Fold packs those proofs into one claim the whole network accepts.' },
+          { slug: 'truth', caption: 'Final settlement is what staking can trust. Capital takes a side because the fold will hold.' },
+          { slug: 'intelligence', caption: 'Fair split, final fold, staked truth — denser knowledge. That is answers.' },
+          { slug: 'revenue', caption: 'Intelligence is used. Every move pays 0.1% — a third burns, a third to earners, a third to self.' },
+          { slug: 'efficiency', caption: 'Revenue buys GFP silicon. The same chip mines and proves — cheaper fairness, cheaper answers.' },
+          { slug: 'population', caption: 'Cheaper chips, plus a residual on every robot you ship. Then fairness starts again, larger.' }
+        ]
+      };
+      const painters = {};
+      let step = -1;
+      let sub = 0;
+      let lock = 0;
+      let hinted = false;
+
+      const setH = () => document.documentElement.style.setProperty('--app-height', window.innerHeight + 'px');
+      setH();
+      window.addEventListener('resize', setH);
+
+      const dots = [...document.querySelectorAll('.dot')];
+      function pathFor(i, s) {
+        if (!i) return '/';
+        const id = PROPS[i] || i;
+        const deck = DECKS[id];
+        if (deck && s) return '/' + id + '/' + deck[s].slug;
+        return '/' + id;
+      }
+      function tokenIndex(tok) {
+        if (!tok) return 0;
+        tok = tok.toLowerCase();
+        const pi = PROPS.indexOf(tok);
+        if (pi >= 0) return pi;
+        if (tok in ALIAS) return ALIAS[tok];
+        const n = parseInt(tok, 10);
+        return Number.isFinite(n) ? n : 0;
+      }
+      function findSub(tok) {
+        tok = (tok || '').toLowerCase();
+        for (const id of Object.keys(DECKS)) {
+          const idx = DECKS[id].findIndex((x) => x.slug === tok);
+          if (idx >= 0) return { i: PROPS.indexOf(id), s: idx };
+        }
+        return null;
+      }
+      function parseRoute() {
+        let path = (location.pathname || '/').replace(/^\/+|\/+$/g, '');
+        if (!path) {
+          const h = (location.hash || '').replace(/^#/, '');
+          if (h) path = h;
+        }
+        const parts = path.split('/').filter(Boolean);
+        if (!parts.length) return { i: 0, s: 0 };
+        if (parts[0] === 'safe' && parts[1] === 'scarce') return { i: PROPS.indexOf('scarce'), s: 0 };
+        const hit = findSub(parts[0]);
+        let i = tokenIndex(parts[0]);
+        let s = 0;
+        if (hit && PROPS.indexOf(parts[0]) < 0 && !(parts[0] in ALIAS)) {
+          i = hit.i;
+          s = hit.s;
+        }
+        if (parts[1] && DECKS[PROPS[i]]) {
+          const idx = DECKS[PROPS[i]].findIndex((x) => x.slug === parts[1].toLowerCase());
+          if (idx >= 0) s = idx;
+        }
+        return { i: i, s: s };
+      }
+      function syncUrl(push) {
+        const url = pathFor(step, sub);
+        const cur = (location.pathname.replace(/\/+$/, '') || '/') + (location.hash || '');
+        const state = { i: step, s: sub };
+        if (push !== false && cur !== url) history.pushState(state, '', url);
+        else if (location.hash || cur !== url) history.replaceState(state, '', url);
+      }
+      function showSub(s, push) {
+        const id = PROPS[step];
+        const deck = DECKS[id];
+        const ch = chapters[step];
+        if (!deck) {
+          sub = 0;
+          if (id === 'get' && ch) {
+            const cap = ch.querySelector('[data-cap]');
+            if (cap) cap.textContent = 'One binary. macOS, Linux, Windows, Android, iOS. Yours, on your machine.';
+          }
+          if (push !== false) syncUrl(push);
+          return;
+        }
+        if (!ch) return;
+        s = ((s % deck.length) + deck.length) % deck.length;
+        sub = s;
+        const item = deck[s];
+        const cap = ch.querySelector('[data-cap]');
+        const dotsEl = ch.querySelector('[data-dots]');
+        ch.querySelectorAll('.row[data-s]').forEach((row) => {
+          row.classList.toggle('on', +row.getAttribute('data-s') === s);
+        });
+        if (painters[id]) painters[id](s);
+        if (cap) cap.textContent = item.caption;
+        if (dotsEl) {
+          dotsEl.innerHTML = deck.map(function (_, idx) {
+            return '<button type="button" data-s="' + idx + '"' + (idx === s ? ' class="on"' : '') + ' aria-label="property ' + (idx + 1) + '"></button>';
+          }).join('');
+        }
+        app.dataset.currentSub = String(s);
+        syncUrl(push);
+      }
+      function goSub(dx, push) {
+        const deck = DECKS[PROPS[step]];
+        if (!deck) return;
+        showSub(sub + dx, push);
+      }
+      function compass(i) {
+        document.querySelectorAll('[data-dy="-1"]').forEach((b) => { b.disabled = i === 0; });
+        document.querySelectorAll('[data-dy="1"]').forEach((b) => { b.disabled = i === n - 1; });
+        const coverDown = chapters[0].querySelector('.pane-d');
+        if (!coverDown) return;
+        if (i === 0 && !hinted) coverDown.classList.add('hint');
+        else {
+          coverDown.classList.remove('hint');
+          if (i !== 0) hinted = true;
+        }
+      }
+      function go(i, push, s) {
+        i = Math.max(0, Math.min(n - 1, i | 0));
+        const wantSub = s == null ? 0 : s;
+        if (i === step) {
+          compass(i);
+          showSub(wantSub, push);
+          return;
+        }
+        const dir = step < 0 ? 0 : (i > step ? 1 : -1);
+        const outgoing = step >= 0 ? chapters[step] : null;
+        const incoming = chapters[i];
+        chapters.forEach((c) => c.classList.remove('from-down', 'from-up', 'to-up', 'to-down', 'no-anim'));
+        if (outgoing) {
+          outgoing.classList.remove('active');
+          if (dir > 0) outgoing.classList.add('to-up');
+          else if (dir < 0) outgoing.classList.add('to-down');
+        }
+        if (dir !== 0) {
+          incoming.classList.add('no-anim', dir > 0 ? 'from-down' : 'from-up');
+          incoming.offsetWidth;
+          incoming.classList.remove('no-anim', 'from-down', 'from-up');
+        }
+        incoming.classList.add('active');
+        chapters.forEach((c, k) => { if (k !== i) c.classList.remove('active'); });
+        step = i;
+        app.dataset.currentStep = String(i);
+        dots.forEach((d, k) => {
+          d.classList.toggle('on', k === i);
+          d.setAttribute('aria-current', k === i ? 'step' : 'false');
+        });
+        compass(i);
+        showSub(wantSub, push);
+      }
+
+      document.querySelectorAll('[data-deck] .row[data-s]').forEach((row) => {
+        row.addEventListener('mouseenter', () => {
+          if (row.closest('.chapter') !== chapters[step]) return;
+          showSub(+row.getAttribute('data-s'), false);
+        });
+      });
+      document.getElementById('track').addEventListener('click', e => {
+        const b = e.target.closest('[data-go]');
+        if (b) go(+b.getAttribute('data-go'));
+      });
+      document.addEventListener('click', e => {
+        const dyb = e.target.closest('[data-dy]');
+        if (dyb) {
+          e.preventDefault();
+          go(step + +dyb.getAttribute('data-dy'));
+          return;
+        }
+        const dxb = e.target.closest('[data-dx]');
+        if (dxb && dxb.closest('.stage')) {
+          e.preventDefault();
+          goSub(+dxb.getAttribute('data-dx'));
+          return;
+        }
+        const sb = e.target.closest('[data-s]');
+        if (sb && (sb.closest('.subdots') || sb.closest('.rows'))) {
+          e.preventDefault();
+          showSub(+sb.getAttribute('data-s'));
+          return;
+        }
+        const a = e.target.closest('a[href^="#"], a[href^="/"]');
+        if (!a) return;
+        const href = a.getAttribute('href');
+        let path = '';
+        if (href.startsWith('#')) path = href.slice(1);
+        else {
+          try {
+            const u = new URL(href, location.origin);
+            if (u.origin !== location.origin) return;
+            path = u.pathname.replace(/^\/+|\/+$/g, '');
+          } catch (err) { return; }
+        }
+        if (!path && href !== '/' && href !== '#') return;
+        const parts = path.split('/').filter(Boolean);
+        const tok = parts[0] || '';
+        const i = tokenIndex(tok);
+        const subHit = findSub(tok);
+        if (tok && i === 0 && tok !== 'best' && tok !== 'complete' && !/^\d+$/.test(tok) && !subHit) return;
+        e.preventDefault();
+        if (subHit && PROPS.indexOf(tok) < 0 && !(tok in ALIAS)) go(subHit.i, true, subHit.s);
+        else {
+          let s = 0;
+          if (parts[1] && DECKS[PROPS[i]]) {
+            const idx = DECKS[PROPS[i]].findIndex((x) => x.slug === parts[1].toLowerCase());
+            if (idx >= 0) s = idx;
+          }
+          go(i, true, s);
+        }
+      });
+      window.addEventListener('popstate', e => {
+        if (e.state && Number.isInteger(e.state.i)) {
+          go(e.state.i, false, Number.isInteger(e.state.s) ? e.state.s : 0);
+          return;
+        }
+        const r = parseRoute();
+        go(r.i, false, r.s);
+      });
+      window.addEventListener('keydown', e => {
+        if (e.target.closest('a, input, textarea')) {
+          if (e.key === ' ' || e.key === 'Enter') return;
+        }
+        if (e.key >= '1' && e.key <= String(n)) { e.preventDefault(); go(+e.key - 1); return; }
+        if (e.key === 'ArrowRight') { e.preventDefault(); goSub(1); }
+        else if (e.key === 'ArrowLeft') { e.preventDefault(); goSub(-1); }
+        else if (e.key === 'ArrowDown' || e.key === 'PageDown' || e.key === ' ') {
+          e.preventDefault(); go(step + 1);
+        } else if (e.key === 'ArrowUp' || e.key === 'PageUp') {
+          e.preventDefault(); go(step - 1);
+        } else if (e.key === 'Home') { e.preventDefault(); go(0); }
+        else if (e.key === 'End') { e.preventDefault(); go(n - 1); }
+      });
+
+
+
+      window.addEventListener('wheel', e => {
+        if (Date.now() < lock) return;
+        if (Math.abs(e.deltaX) > Math.abs(e.deltaY) && Math.abs(e.deltaX) > 24) {
+          e.preventDefault();
+          lock = Date.now() + 520;
+          goSub(e.deltaX > 0 ? 1 : -1);
+          return;
+        }
+        const ch = chapters[step];
+        if (!ch) return;
+        if (ch.scrollHeight > ch.clientHeight + 8) {
+          const top = ch.scrollTop <= 0;
+          const bot = ch.scrollTop + ch.clientHeight >= ch.scrollHeight - 2;
+          if (!(e.deltaY > 0 && bot) && !(e.deltaY < 0 && top)) return;
+        }
+        if (Math.abs(e.deltaY) < 24) return;
+        e.preventDefault();
+        lock = Date.now() + 720;
+        go(step + (e.deltaY > 0 ? 1 : -1));
+      }, { passive: false });
+
+      let tx = 0, ty = 0;
+      window.addEventListener('touchstart', e => {
+        tx = e.changedTouches[0].clientX;
+        ty = e.changedTouches[0].clientY;
+      }, { passive: true });
+      window.addEventListener('touchend', e => {
+        const dx = e.changedTouches[0].clientX - tx;
+        const dy = e.changedTouches[0].clientY - ty;
+        if (Math.abs(dx) < 48 && Math.abs(dy) < 48) return;
+        if (Math.abs(dx) > Math.abs(dy)) {
+          goSub(dx < 0 ? 1 : -1);
+          return;
+        }
+        const ch = chapters[step];
+        if (ch && ch.scrollHeight > ch.clientHeight + 8) {
+          const top = ch.scrollTop <= 0;
+          const bot = ch.scrollTop + ch.clientHeight >= ch.scrollHeight - 2;
+          if (!(dy < 0 && bot) && !(dy > 0 && top)) return;
+        }
+        go(step + (dy < 0 ? 1 : -1));
+      }, { passive: true });
+
+      const CAP = 18446744069414584321n;
+      const X = 666n;
+      const CYB = 10n ** 12n;
+      const group = (n) => n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+      const fmtCyb = (native) => {
+        const q = native / CYB;
+        const r = native % CYB;
+        return group(r * 2n >= CYB ? q + 1n : q);
+      };
+
+      async function valuation() {
+        const fallback = { tocybSupply: 281405532467645n };
+        let tocybSupply = fallback.tocybSupply;
+        try {
+          const s = await fetch('https://lcd.bostrom.cybernode.ai/cosmos/bank/v1beta1/supply/by_denom?denom=tocyb').then(r => r.json());
+          if (s && s.amount && s.amount.amount) tocybSupply = BigInt(s.amount.amount);
+        } catch (e) {}
+        const native = tocybSupply * X;
+        const shown = fmtCyb(native);
+        document.getElementById('v-supply').innerHTML = shown + '<em>CYB</em>';
+        document.getElementById('v-cap-big').textContent = fmtCyb(CAP) + ' CYB';
+      }
+      valuation();
+
+      (function getRobot() {
+        const builds = {
+          mac: { href: 'https://github.com/cyberia-to/cyb/releases/download/v0.16.0/cyb-0.16.0.dmg', cap: 'Apple Silicon. Mount the dmg, then xattr -cr /Applications/cyb.app — not notarized yet.' },
+          linux: { href: 'https://github.com/cyberia-to/cyb/releases/download/v0.16.0/cyb-0.16.0-linux-x86_64.tar.gz', cap: 'Unpack the tarball and run ./cyb. Or cargo install cyb.' },
+          win: { href: 'https://github.com/cyberia-to/cyb/releases/download/v0.16.0/cyb-0.16.0-windows-x86_64.zip', cap: 'Unzip and run cyb.exe. Same robot, same terminal.' },
+          android: { href: 'https://github.com/cyberia-to/cyb/releases/download/v0.16.0/cyb-0.16.0.apk', cap: 'Sideload the APK. Allow unknown sources. The graph lives in the app.' },
+          ios: { href: 'https://github.com/cyberia-to/cyb/releases/download/v0.16.0/cyb-0.16.0.ipa', cap: 'TrollStore IPA, or a jailbreak. App Store is a later cut.' }
+        };
+        const links = {
+          cyberia: 'CYB is not just money. It is the money of Cyberia — the cyberstate guided by superintelligence. An interplanetary movement.',
+          protocol: 'The protocol: how the graph learns, how a neuron earns, how proofs settle. Read it on cyber.page.',
+          stack: 'soft3 — collective, private, provable computing. The stack built to take civilization to the next level.'
+        };
+        const def = 'One binary. macOS, Linux, Windows, Android, iOS. Yours, on your machine.';
+        const ua = navigator.userAgent || '';
+        const plat = navigator.platform || '';
+        let os = 'mac';
+        if (/Android/i.test(ua)) os = 'android';
+        else if (/iPhone|iPad|iPod/i.test(ua)) os = 'ios';
+        else if (/Win/i.test(ua) || /Win/i.test(plat)) os = 'win';
+        else if (/Mac/i.test(plat) || /Mac OS/i.test(ua)) os = 'mac';
+        else if (/Linux/i.test(ua) || /Linux/i.test(plat)) os = 'linux';
+        const dl = document.getElementById('dl');
+        const cap = document.querySelector('.tone-w [data-cap]');
+        if (dl && builds[os]) dl.href = builds[os].href;
+        document.querySelectorAll('.os').forEach((a) => {
+          a.classList.toggle('on', a.getAttribute('data-os') === os);
+          a.addEventListener('mouseenter', () => {
+            const k = a.getAttribute('data-os');
+            if (cap && builds[k]) cap.textContent = builds[k].cap;
+          });
+        });
+        document.querySelectorAll('[data-get]').forEach((a) => {
+          a.addEventListener('mouseenter', () => {
+            const k = a.getAttribute('data-get');
+            if (cap && links[k]) cap.textContent = links[k];
+          });
+        });
+        const root = document.querySelector('.get');
+        if (root) root.addEventListener('mouseleave', () => { if (cap) cap.textContent = def; });
+      })();
+
+      (function emissionChart() {
+        const el = document.getElementById('emission');
+        if (!el) return;
+        const tau = 0.33, k = 0.5, years = 20;
+        const p = Number(CAP / CYB);
+        const M = (t) => p * (1 - Math.pow(1 + t / tau, -k));
+        const W = 720, H = 260;
+        const L = 36, T = 16, R = 12, B = 32;
+        const pw = W - L - R, ph = H - T - B;
+        const n = 96;
+        const pts = [];
+        for (let i = 0; i <= n; i++) {
+          const t = (i / n) * years;
+          pts.push([t, M(t)]);
+        }
+        const x = (t) => L + (t / years) * pw;
+        const y = (v) => T + (1 - v / p) * ph;
+        let d = '';
+        pts.forEach((pt, i) => {
+          d += (i ? 'L' : 'M') + x(pt[0]).toFixed(1) + ' ' + y(pt[1]).toFixed(1) + ' ';
+        });
+        const fill = d + 'L' + x(years).toFixed(1) + ' ' + y(0).toFixed(1) + ' L' + x(0).toFixed(1) + ' ' + y(0).toFixed(1) + ' Z';
+        const ticks = [0, 1, 5, 10, 20];
+        const xt = ticks.map((t) =>
+          '<text x="' + x(t).toFixed(1) + '" y="' + (H - 10) + '" text-anchor="middle" fill="#8a8a8a" font-family="JetBrains Mono,monospace" font-size="11">' + t + 'y</text>'
+        ).join('');
+        el.innerHTML =
+          '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet">' +
+          '<line x1="' + L + '" y1="' + y(p).toFixed(1) + '" x2="' + (W - R) + '" y2="' + y(p).toFixed(1) + '" stroke="#222" stroke-dasharray="4 4"/>' +
+          '<path d="' + fill + '" fill="currentColor" fill-opacity=".14"/>' +
+          '<path d="' + d + '" fill="none" stroke="currentColor" stroke-width="2"/>' +
+          '<text x="' + (W - R) + '" y="' + (y(p) + 14).toFixed(1) + '" text-anchor="end" fill="#8a8a8a" font-family="JetBrains Mono,monospace" font-size="11">18m</text>' +
+          xt +
+          '</svg>';
+      })();
+
+      (function bagels() {
+        const INK = { '#1700fe': '#8b9cff', '#6b00fe': '#c090ff' };
+        function polar(cx, cy, r, ang) {
+          return [cx + r * Math.cos(ang), cy + r * Math.sin(ang)];
+        }
+        function arcPath(cx, cy, r, a0, a1) {
+          const p0 = polar(cx, cy, r, a0), p1 = polar(cx, cy, r, a1);
+          const large = (a1 - a0) > Math.PI ? 1 : 0;
+          return 'M ' + p0[0].toFixed(2) + ' ' + p0[1].toFixed(2) +
+            ' A ' + r + ' ' + r + ' 0 ' + large + ' 1 ' + p1[0].toFixed(2) + ' ' + p1[1].toFixed(2);
+        }
+        function mount(root, steps, opts) {
+          if (!root) return;
+          const n = steps.length;
+          const R = opts.r;
+          const gap = opts.gap;
+          const sweep = Math.PI * 2 / n;
+          const aStart = -Math.PI / 2;
+          const lr = parseFloat(getComputedStyle(root).getPropertyValue('--r-lab')) || 41;
+          let arcs = '';
+          let labs = '';
+          for (let i = 0; i < n; i++) {
+            const a0 = aStart + i * sweep + gap / 2;
+            const a1 = aStart + (i + 1) * sweep - gap / 2;
+            const mid = (a0 + a1) / 2;
+            const s = steps[i];
+            const x = 50 + lr * Math.cos(mid);
+            const y = 50 + lr * Math.sin(mid);
+            arcs +=
+              '<g class="seg" data-i="' + i + '">' +
+              '<path class="hit" d="' + arcPath(50, 50, R, a0, a1) + '"></path>' +
+              '<path class="arc" d="' + arcPath(50, 50, R, a0, a1) + '" stroke="' + s.color + '"></path>' +
+              '</g>';
+            labs +=
+              '<button type="button" class="bagel-lab" data-i="' + i +
+              '" style="--x:' + x.toFixed(2) + '%;--y:' + y.toFixed(2) + '%;--c:' + (INK[s.color] || s.color) +
+              '" aria-pressed="false">' +
+              '<b>' + s.label + '</b><span>' + s.sub + '</span></button>';
+          }
+          root.innerHTML =
+            '<svg viewBox="0 0 100 100" preserveAspectRatio="xMidYMid meet">' +
+            '<circle class="track" cx="50" cy="50" r="' + R + '" stroke-width="' + (opts.track || 9) + '"></circle>' +
+            arcs +
+            '</svg>' +
+            '<div class="bagel-hub"><b></b><span></span></div>' +
+            labs;
+          const hubB = root.querySelector('.bagel-hub b');
+          const hubS = root.querySelector('.bagel-hub span');
+          function paint(i) {
+            const s = steps[i];
+            const ink = INK[s.color] || s.color;
+            root.style.setProperty('--seg', ink);
+            root.querySelectorAll('.seg').forEach((el, idx) => el.classList.toggle('on', idx === i));
+            root.querySelectorAll('.bagel-lab').forEach((el, idx) => {
+              const on = idx === i;
+              el.classList.toggle('on', on);
+              el.setAttribute('aria-pressed', on ? 'true' : 'false');
+            });
+            hubB.textContent = s.hub || s.label;
+            hubS.textContent = s.hubSub || s.sub;
+          }
+          function bind(el) {
+            const i = +el.getAttribute('data-i');
+            el.addEventListener('mouseenter', () => showSub(i, false));
+            el.addEventListener('focus', () => showSub(i, false));
+            el.addEventListener('click', () => showSub(i, true));
+          }
+          root.querySelectorAll('.seg, .bagel-lab').forEach(bind);
+          painters[opts.id] = paint;
+          paint(0);
+        }
+
+        mount(document.getElementById('cyb-ring'), [
+          { label: 'fairness', sub: 'split', color: '#00ff01',
+            body: 'A larger population returns here: more minds on the work. Hashrate splits who taught what — no bag required.' },
+          { label: 'finality', sub: 'fold', color: '#00b4ff',
+            body: 'Fair work is useless if it does not stick. Fold packs those proofs into one claim the whole network accepts.' },
+          { label: 'truth', sub: 'stake', color: '#1700fe',
+            body: 'Final settlement is what staking can trust. Capital takes a side because the fold will hold. Idle bags do not mint.' },
+          { label: 'intelligence', sub: 'answers', color: '#6b00fe',
+            body: 'Fair split, final fold, staked truth — denser knowledge. That is answers. Demand follows quality.' },
+          { label: 'revenue', sub: 'use pays', color: '#fe0000',
+            body: 'Intelligence is used. Every move pays 0.1% — a third burns, a third to earners, a third to self.' },
+          { label: 'efficiency', sub: 'GFP', color: '#ff6501',
+            body: 'Revenue buys GFP silicon. The same chip mines and proves — cheaper fairness and cheaper answers next round.' },
+          { label: 'population', sub: 'robots', color: '#ffc501',
+            body: 'Cheaper chips, plus a residual on every robot you ship. Efficiency and referral fill the graph. Then fairness starts again, larger.' }
+        ], { r: 29, gap: 0.08, track: 9, id: 'growing' });
+
+        mount(document.getElementById('cyb-donut'), [
+          { label: 'burn', sub: '⅓ of V', color: '#fe0000', hub: 'burn', hubSub: '⅓ of every move',
+            k: '⅓ BURN',
+            body: 'A dividend to everyone who holds. Empty hops cost; remaining units worth more.' },
+          { label: 'earners', sub: '⅓ of V', color: '#00ff01', hub: 'earners', hubSub: '⅓ of every move',
+            k: '⅓ EARNERS',
+            body: 'Value to those who create it — miners and stakers, the slow replacement of inflation.' },
+          { label: 'self', sub: '⅓ of V', color: '#6b00fe', hub: 'self', hubSub: '⅓ of every move',
+            k: '⅓ SELF',
+            body: 'Public good the cybergraph names. Spent by the protocol neuron on what the graph infers is worth doing.' }
+        ], { r: 33, gap: 0.06, track: 16, id: 'alive' });
+
+        const start = parseRoute();
+        go(start.i, false, start.s);
+      })();
+    })();
+  </script>
+</body>
+</html>

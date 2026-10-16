@@ -4,6 +4,6 @@ lived-in worlds, a chat apart from the log, soma that writes as it thinks.
 - chat: questions from any world; `help` and `nu` list commands there
 - soma streams prefill (`reading 120 / 380`) then tokens, notice holds
 - android keeps HOME, copies weights off FUSE, IME before submit
-- sigma paints last-known; chrome never Display::None on a live world
+- sigma paints last-known; chroma never Display::None on a live world
 
 windows msvc is red this cut (glia `run` / memmap2). apple silicon, android, ubuntu ship.
