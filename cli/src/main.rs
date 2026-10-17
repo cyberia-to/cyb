@@ -1101,17 +1101,26 @@ mod tests {
     #[test]
     fn whitespace_separates_bare_words() {
         assert_eq!(split_args("send alice 10"), vec!["send", "alice", "10"]);
-        assert_eq!(split_args("  send   alice  10  "), vec!["send", "alice", "10"]);
+        assert_eq!(
+            split_args("  send   alice  10  "),
+            vec!["send", "alice", "10"]
+        );
     }
 
     #[test]
     fn single_quotes_group_a_token_and_are_stripped() {
-        assert_eq!(split_args("echo 'hello world'"), vec!["echo", "hello world"]);
+        assert_eq!(
+            split_args("echo 'hello world'"),
+            vec!["echo", "hello world"]
+        );
     }
 
     #[test]
     fn double_quotes_group_a_token_and_are_stripped() {
-        assert_eq!(split_args("echo \"hello world\""), vec!["echo", "hello world"]);
+        assert_eq!(
+            split_args("echo \"hello world\""),
+            vec!["echo", "hello world"]
+        );
     }
 
     #[test]
@@ -1132,7 +1141,10 @@ mod tests {
 
     #[test]
     fn unicode_content_does_not_panic() {
-        assert_eq!(split_args("echo 你好 'мир ¢'"), vec!["echo", "你好", "мир ¢"]);
+        assert_eq!(
+            split_args("echo 你好 'мир ¢'"),
+            vec!["echo", "你好", "мир ¢"]
+        );
     }
 
     #[test]
