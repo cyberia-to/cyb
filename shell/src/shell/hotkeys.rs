@@ -29,6 +29,7 @@ fn register_hotkeys(world: &mut World) {
         (Code::Digit1, WorldState::Body),
         (Code::Digit2, WorldState::Graph),
         (Code::Digit3, WorldState::Com),
+        (Code::Digit8, WorldState::Chat),
         (Code::Digit4, WorldState::Robot),
         (Code::Digit5, WorldState::Sigma),
         (Code::Digit6, WorldState::Models),
@@ -37,11 +38,16 @@ fn register_hotkeys(world: &mut World) {
     let mut map = Vec::new();
     for (code, w) in worlds {
         let hk = HotKey::new(Some(mods), code);
-        manager.register(hk).unwrap_or_else(|e| panic!("register {code:?}: {e}"));
+        manager
+            .register(hk)
+            .unwrap_or_else(|e| panic!("register {code:?}: {e}"));
         map.push((hk.id(), w));
     }
 
-    world.insert_non_send_resource(HotkeyManagerRes { _manager: manager, map });
+    world.insert_non_send_resource(HotkeyManagerRes {
+        _manager: manager,
+        map,
+    });
 }
 
 fn poll_hotkey_events(

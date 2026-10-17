@@ -663,6 +663,20 @@ fn print_money_event(e: &MoneyEvent) {
             dim(&particle(token)),
             dim(&format!("reason {}", &hex3(reason))),
         ),
+        MoneyEvent::ReferralAccrued {
+            referrer,
+            amount,
+            token,
+            share_micros,
+            ..
+        } => println!(
+            "  {} {} {} {}  {}",
+            green("referral"),
+            cyan(&particle(referrer)),
+            yellow(&amount.to_string()),
+            dim(&particle(token)),
+            dim(&format!("{share_micros}u")),
+        ),
         MoneyEvent::Finalized { signal, .. } => {
             println!(
                 "  {} {}",

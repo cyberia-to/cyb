@@ -41,11 +41,7 @@ fn sync_page(
     index: Option<Res<BrainIndex>>,
     gpu: Option<Res<GpuBuffers>>,
     pages: Query<Entity, With<ParticlePage>>,
-    mut worlds: Query<&mut Visibility, With<crate::worlds::WorldUi>>,
 ) {
-    for mut v in &mut worlds {
-        *v = Visibility::Hidden;
-    }
     if !now.is_changed() && !pages.is_empty() {
         return;
     }
@@ -61,7 +57,7 @@ fn sync_page(
                 .as_ref()
                 .and_then(|ix| ix.labels.get(i).cloned().flatten())
         })
-        .or_else(|| content::load().get(&hash).cloned())
+        .or_else(|| content::lookup(&hash))
         .unwrap_or_else(|| p.short_hex());
     let focus = idx
         .and_then(|i| index.as_ref().and_then(|ix| ix.focus.get(i).copied()))
@@ -96,17 +92,9 @@ fn sync_page(
         .id();
     let page = commands
         .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                max_width: Val::Px(theme::MEASURE),
-                height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(theme::G * 3.0)),
-                row_gap: Val::Px(theme::G * 1.5),
-                overflow: Overflow::scroll_y(),
-                ..default()
-            },
+            crate::worlds::page::scroll_column(),
             ScrollPosition::default(),
+            crate::worlds::scroll::PersistScroll("particle"),
             ChildOf(root),
         ))
         .id();
@@ -122,7 +110,12 @@ fn sync_page(
     let Some(gpu) = gpu else { return };
     let Some(csr) = gpu.csr.as_ref() else { return };
     let Some(index) = index else { return };
-    for (n_idx, weight) in neighbors(csr, i) {
+    // A hub particle can have thousands of axons. Spawning a button for
+    // each one hangs the UI thread — the click that opened this page.
+    const AXON_CAP: usize = 32;
+    let all: Vec<(usize, f32)> = neighbors(csr, i).collect();
+    let extra = all.len().saturating_sub(AXON_CAP);
+    for (n_idx, weight) in all.into_iter().take(AXON_CAP) {
         let name = index
             .labels
             .get(n_idx)
@@ -169,12 +162,25 @@ fn sync_page(
                 ));
             });
     }
+    if extra > 0 {
+        commands.spawn((
+            Text::new(format!("{extra} more axons")),
+            TextFont {
+                font_size: theme::CAPTION,
+                ..default()
+            },
+            TextColor(theme::TEXT_DIM),
+            ChildOf(page),
+        ));
+    }
 }
 
 fn walk_axon(
     interactions: Query<(&Interaction, &AxonRow), Changed<Interaction>>,
     index: Option<Res<BrainIndex>>,
     mut now: ResMut<Now>,
+    mut nav: ResMut<crate::worlds::nav::Nav>,
+    world: Res<State<crate::worlds::WorldState>>,
     warp: Option<ResMut<WarpTarget>>,
 ) {
     let Some(index) = index else { return };
@@ -185,7 +191,7 @@ fn walk_axon(
         let Some(&hash) = index.hashes.get(row.0) else {
             continue;
         };
-        now.stand(hash, Some(row.0));
+        crate::worlds::nav::stand_from(&mut nav, &mut now, *world.get(), hash, Some(row.0), false);
         if let Some(mut warp) = warp {
             warp.particle_idx = Some(row.0 as u32);
         }

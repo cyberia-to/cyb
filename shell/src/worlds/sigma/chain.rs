@@ -5,6 +5,9 @@
 //! response carries the height and root it finalized in, and that pair
 //! is shown as the receipt.
 //!
+//! The last good snapshot is painted immediately; a fetch never blanks
+//! the page. See [[cyb/parts/live]].
+//!
 //! The subsidy side of the loop (proofs -> testpussy) lives on the node
 //! per tru/specs/rewards.md §8; here is where the earned balance becomes
 //! visible and spendable.
@@ -27,8 +30,14 @@ pub struct ChainMoneyState {
     pub version: u64,
 }
 
-#[derive(Resource, Clone, Default)]
+#[derive(Resource, Clone)]
 pub struct ChainMoney(pub Arc<Mutex<ChainMoneyState>>);
+
+impl Default for ChainMoney {
+    fn default() -> Self {
+        Self(Arc::new(Mutex::new(load_cache())))
+    }
+}
 
 impl ChainMoney {
     pub fn snapshot(&self) -> ChainMoneyState {
@@ -36,11 +45,14 @@ impl ChainMoney {
     }
 
     /// Ask the chain for this neuron's balance, off-thread.
+    /// The last snapshot stays on screen; busy never blanks it.
     pub fn refresh(&self, url: String, neuron_hex: String) {
         let slot = self.0.clone();
         if let Ok(mut s) = slot.lock() {
+            if s.busy {
+                return;
+            }
             s.busy = true;
-            s.version += 1;
         }
         std::thread::Builder::new()
             .name("sigma-balance".into())
@@ -89,6 +101,7 @@ impl ChainMoney {
                             s.height = h;
                         }
                         s.error.clear();
+                        save_cache(&s);
                     }
                     None if status.is_none() => {
                         s.error = "chain unreachable".into();
@@ -109,8 +122,10 @@ impl ChainMoney {
         let slot = self.0.clone();
         let me = self.clone();
         if let Ok(mut s) = slot.lock() {
+            if s.busy {
+                return;
+            }
             s.busy = true;
-            s.version += 1;
         }
         std::thread::Builder::new()
             .name("sigma-pay".into())
@@ -173,6 +188,38 @@ impl ChainMoney {
 /// The identity neuron as the chain spells it.
 pub fn neuron_hex(who: &crate::worlds::identity::Identity) -> String {
     who.neuron.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn cache_path() -> std::path::PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| ".".into());
+    std::path::PathBuf::from(home)
+        .join("cyb")
+        .join("sigma-chain.json")
+}
+
+fn load_cache() -> ChainMoneyState {
+    let Ok(raw) = std::fs::read_to_string(cache_path()) else {
+        return ChainMoneyState::default();
+    };
+    let mut s = ChainMoneyState::default();
+    for line in raw.lines() {
+        if let Some(v) = line.strip_prefix("balance:") {
+            s.balance = v.trim().parse().unwrap_or(0);
+        } else if let Some(v) = line.strip_prefix("supply:") {
+            s.supply = v.trim().parse().unwrap_or(0);
+        } else if let Some(v) = line.strip_prefix("height:") {
+            s.height = v.trim().parse().unwrap_or(0);
+        }
+    }
+    s
+}
+
+fn save_cache(s: &ChainMoneyState) {
+    let body = format!(
+        "balance: {}\nsupply: {}\nheight: {}\n",
+        s.balance, s.supply, s.height
+    );
+    let _ = std::fs::write(cache_path(), body);
 }
 
 /// First network's URL, if any is configured.

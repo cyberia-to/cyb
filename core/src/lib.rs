@@ -17,6 +17,7 @@ pub mod cell;
 pub mod chroma;
 pub mod intent;
 pub mod money;
+pub mod referral;
 pub mod sense;
 pub mod signal;
 
@@ -27,6 +28,7 @@ pub use intent::{
     intent_particle,
 };
 pub use money::{ClockKind, Grade, MoneyError, MoneyEvent, MoneyWallet, PayLeg, PrivateNote};
+pub use referral::{Referral, ReferralCut, ReferralError, share_micros};
 pub use sense::{SenseNotify, money_to_sense};
 pub use signal::{SignalBuilder, SignalBus, link};
 

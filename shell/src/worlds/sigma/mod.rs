@@ -34,6 +34,7 @@ struct SigmaBalanceLabel;
 struct SigmaStatusLabel;
 
 #[derive(Component)]
+#[allow(dead_code)]
 enum SigmaBtn {
     Fund,
     Send,
@@ -97,7 +98,7 @@ impl Plugin for SigmaWorldPlugin {
         app.init_resource::<chain::ChainMoney>();
         app.add_systems(
             OnEnter(WorldState::Sigma),
-            (sync_local_tip, setup_sigma, refresh_chain_on_enter),
+            (setup_sigma, refresh_chain_on_enter),
         )
         .add_systems(
             Update,
@@ -112,6 +113,21 @@ impl Plugin for SigmaWorldPlugin {
 
 /// Fill the local BBG tip now that the window is up. Never at plugin
 /// build: `state.root()` is what killed 0.14.0 on a lived-in graph.log.
+/// Not on the enter path — that work froze the frame. Chain money paints
+/// without it.
+#[allow(dead_code)]
+fn sync_local_tip_once(mut frames: Local<u8>, sigma: ResMut<SigmaState>, shared: Res<SharedCell>) {
+    if *frames > 2 {
+        return;
+    }
+    *frames += 1;
+    if *frames < 2 {
+        return;
+    }
+    sync_local_tip(sigma, shared);
+}
+
+#[allow(dead_code)]
 fn sync_local_tip(mut sigma: ResMut<SigmaState>, shared: Res<SharedCell>) {
     let cell = shared.cell.lock().expect("shared cell poisoned");
     let neuron = sigma.wallet.neuron;
@@ -130,14 +146,13 @@ fn sync_local_tip(mut sigma: ResMut<SigmaState>, shared: Res<SharedCell>) {
 
 fn setup_sigma(
     mut commands: Commands,
-    _state: Res<SigmaState>,
+    money: Res<chain::ChainMoney>,
     mut worlds: Query<(&crate::worlds::WorldUi, &mut Visibility)>,
 ) {
     if crate::worlds::reveal_world(WorldState::Sigma, &mut worlds) {
         return;
     }
-    let top = CHROME_TOP_H + 12.0;
-    let bottom = CHROME_BOTTOM_H + 12.0;
+    let cached = money.snapshot();
     commands
         .spawn((
             SigmaRoot,
@@ -145,45 +160,26 @@ fn setup_sigma(
             crate::shell::chrome::ContentRoot,
             Node {
                 position_type: PositionType::Absolute,
-                left: Val::Px(16.0),
-                right: Val::Px(16.0),
-                top: Val::Px(top),
-                bottom: Val::Px(bottom),
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                top: Val::Px(CHROME_TOP_H),
+                bottom: Val::Px(CHROME_BOTTOM_H),
                 flex_direction: FlexDirection::Column,
-                row_gap: Val::Px(12.0),
-                padding: UiRect::all(Val::Px(16.0)),
-                // The root's bottom edge is the chrome's top edge, so clipping
-                // here is what makes the page pass under the bars instead of
-                // drawing over them.
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                row_gap: Val::Px(theme::G),
                 overflow: Overflow::clip(),
                 ..default()
             },
             BackgroundColor(theme::DARK_BASE),
         ))
         .with_children(|root| {
-            root.spawn((
-                Text::new("sigma / money"),
-                TextFont {
-                    font_size: 22.0,
-                    ..default()
-                },
-                TextColor(Color::srgb(0.7, 0.95, 0.8)),
-            ));
-
-            // ── the chain: earned by proving, spendable now ────────────
-            root.spawn((
-                Text::new("on the chain (pussy) - earned by proven work"),
-                TextFont {
-                    font_size: 13.0,
-                    ..default()
-                },
-                TextColor(Color::srgb(0.55, 0.6, 0.65)),
-            ));
+            // Last known balance, immediately. The chain fetch is silent.
             root.spawn((
                 ChainMoneyLabel,
-                Text::new("querying the chain..."),
+                Text::new(format!("{} PUSSY", cached.balance)),
                 TextFont {
-                    font_size: 28.0,
+                    font_size: 48.0,
                     ..default()
                 },
                 TextColor(Color::srgb(0.4, 0.95, 0.6)),
@@ -192,69 +188,11 @@ fn setup_sigma(
                 ChainReceiptLabel,
                 Text::new(""),
                 TextFont {
-                    font_size: 13.0,
+                    font_size: theme::CAPTION,
                     ..default()
                 },
-                TextColor(Color::srgb(0.55, 0.6, 0.65)),
+                TextColor(theme::TEXT_DIM),
             ));
-            // One lever: send. It folds the commander into a pay form
-            // (recipient + amount). Everything else is automatic — the
-            // balance polls itself, every pay finalizes in its own block.
-            root.spawn(Node {
-                flex_direction: FlexDirection::Row,
-                column_gap: Val::Px(8.0),
-                ..default()
-            })
-            .with_children(|row| {
-                row.spawn((
-                    ChainSendBtn,
-                    Button,
-                    Node {
-                        padding: UiRect::axes(Val::Px(22.0), Val::Px(8.0)),
-                        border: UiRect::all(Val::Px(1.0)),
-                        ..default()
-                    },
-                    BackgroundColor(theme::DARK_BASE),
-                    BorderColor::all(Color::srgb(0.2, 0.5, 0.35)),
-                ))
-                .with_children(|inner| {
-                    inner.spawn((
-                        Text::new("send"),
-                        TextFont {
-                            font_size: 14.0,
-                            ..default()
-                        },
-                        TextColor(Color::srgb(0.8, 0.9, 0.85)),
-                    ));
-                });
-                row.spawn((
-                    ChainAddrBtn,
-                    Button,
-                    Node {
-                        padding: UiRect::axes(Val::Px(14.0), Val::Px(8.0)),
-                        border: UiRect::all(Val::Px(1.0)),
-                        ..default()
-                    },
-                    BackgroundColor(theme::DARK_BASE),
-                    BorderColor::all(theme::BORDER),
-                ))
-                .with_children(|inner| {
-                    inner.spawn((
-                        Text::new("receive"),
-                        TextFont {
-                            font_size: 14.0,
-                            ..default()
-                        },
-                        TextColor(Color::srgb(0.6, 0.65, 0.7)),
-                    ));
-                });
-            });
-
-            // No event list here. Everything this page does is said in com,
-            // where it can be scrolled back through; repeating the last twelve
-            // lines beside the buttons was two records and one of them always
-            // stale. What is left on the page is the state — balance, tip —
-            // and what just happened arrives as a notice under the address bar.
         });
 }
 
@@ -393,6 +331,11 @@ fn format_event(e: &MoneyEvent) -> String {
             format!("in {amount} <- {}", hex3(from))
         }
         MoneyEvent::RewardCredited { amount, clock, .. } => format!("reward {:?} {amount}", clock),
+        MoneyEvent::ReferralAccrued {
+            amount,
+            share_micros,
+            ..
+        } => format!("ref {amount} ({share_micros}u)"),
         MoneyEvent::Finalized { signal, .. } => format!("final {}", hex3(signal)),
         MoneyEvent::TipAdvanced { height, grade4, .. } => {
             format!("tip h={height} g4={grade4}")
@@ -479,11 +422,7 @@ fn refresh_chain_labels(
     }
     *seen = s.version;
     for mut t in &mut balance_q {
-        **t = if s.busy && s.balance == 0 {
-            "querying the chain...".into()
-        } else {
-            format!("{} PUSSY", s.balance)
-        };
+        **t = format!("{} PUSSY", s.balance);
     }
     for mut t in &mut receipt_q {
         **t = if !s.error.is_empty() {

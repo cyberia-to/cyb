@@ -19,7 +19,11 @@ use bevy::prelude::*;
 use prysm::theme;
 
 use super::WorldState;
+use super::cell;
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
+use prysm::molecules::action::ActionButton;
+use rune_ast::Noun;
+use rune_interp::{Host, InterpError};
 
 pub struct VaultWorldPlugin;
 
@@ -38,6 +42,9 @@ struct VaultView {
 #[derive(Component)]
 struct VaultRoot;
 
+#[derive(Component)]
+pub struct SpellPage;
+
 /// Tap the row: the secret (or the live code) goes to the clipboard.
 #[derive(Component)]
 struct CopyRow(usize);
@@ -45,6 +52,19 @@ struct CopyRow(usize);
 /// Tap to read; tap again to hide.
 #[derive(Component)]
 struct RevealChip(usize);
+
+struct VaultHost {
+    rows: Noun,
+}
+
+impl Host for VaultHost {
+    fn perform(&mut self, act: u64, args: &Noun, _caps: &Noun) -> Result<Noun, InterpError> {
+        if cell::act_is_query(act) && cell::query_name(args) == "table-body" {
+            return Ok(self.rows.clone());
+        }
+        Ok(Noun::Atom(0))
+    }
+}
 
 impl Plugin for VaultWorldPlugin {
     fn build(&self, app: &mut App) {
@@ -54,7 +74,8 @@ impl Plugin for VaultWorldPlugin {
             .add_systems(Update, forget_clipboard)
             .add_systems(
                 Update,
-                (tick_page, handle_copy, handle_reveal).run_if(in_state(WorldState::Vault)),
+                (tick_page, handle_copy, handle_reveal, handle_table_copy)
+                    .run_if(in_state(WorldState::Vault)),
             );
     }
 }
@@ -101,6 +122,17 @@ fn load_view(view: &mut VaultView) {
     view.revealed = None;
 }
 
+/// Checksum of the spell words — the id in `cyb://vault/spell/<id>`.
+pub fn spell_id(spell: &str) -> String {
+    file::Particle::hash(spell.trim().as_bytes()).short_hex()
+}
+
+pub fn spell_url() -> String {
+    identity_spell()
+        .map(|s| format!("cyb://vault/spell/{}", spell_id(&s)))
+        .unwrap_or_else(|| "cyb://vault/spell".into())
+}
+
 /// The twelve words, straight from the identity file.
 fn identity_spell() -> Option<String> {
     std::fs::read_to_string(super::identity::spell_path())
@@ -115,11 +147,15 @@ fn seal_page(
     mut commands: Commands,
     mut view: ResMut<VaultView>,
     roots: Query<Entity, With<VaultRoot>>,
+    spells: Query<Entity, With<SpellPage>>,
 ) {
     view.entries.clear();
     view.key = None;
     view.revealed = None;
     for e in &roots {
+        commands.entity(e).despawn();
+    }
+    for e in &spells {
         commands.entity(e).despawn();
     }
 }
@@ -175,6 +211,7 @@ fn build_page(commands: &mut Commands, view: &VaultView) {
     let root = commands
         .spawn((
             VaultRoot,
+            crate::worlds::WorldUi(WorldState::Vault),
             ContentRoot,
             Node {
                 position_type: PositionType::Absolute,
@@ -194,13 +231,10 @@ fn build_page(commands: &mut Commands, view: &VaultView) {
     let page = commands
         .spawn((
             Node {
-                width: Val::Percent(100.0),
-                max_width: Val::Px(theme::MEASURE),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(theme::G * 3.0)),
-                row_gap: Val::Px(theme::G),
-                ..default()
+                ..super::page::scroll_column()
             },
+            ScrollPosition::default(),
+            crate::worlds::scroll::PersistScroll("vault"),
             ChildOf(root),
         ))
         .id();
@@ -217,26 +251,10 @@ fn build_page(commands: &mut Commands, view: &VaultView) {
         ));
     };
 
-    text(
-        commands,
-        page,
-        "vault".into(),
-        theme::H2,
-        theme::TEXT_PRIMARY,
-    );
-
     if let Some(err) = &view.error {
         text(commands, page, err.clone(), theme::BODY, theme::ACID_RED);
         return;
     }
-
-    text(
-        commands,
-        page,
-        "tap a name to copy (clears in 30s). tap show to read, tap again to hide".into(),
-        theme::CAPTION,
-        theme::TEXT_DIM,
-    );
 
     if view.entries.is_empty() {
         text(
@@ -252,133 +270,106 @@ fn build_page(commands: &mut Commands, view: &VaultView) {
     }
 
     let unix = store::now();
-    for (i, entry) in view.entries.iter().enumerate() {
+    let rows = cell::list(
+        view.entries
+            .iter()
+            .enumerate()
+            .map(|(i, entry)| {
+                let value = if entry.kind == "otp" {
+                    match store::totp(&entry.value, unix) {
+                        Some((code, left_s)) => format!("{code}  {left_s}s"),
+                        None => "bad otp".into(),
+                    }
+                } else if view.revealed == Some(i) {
+                    entry.value.clone()
+                } else {
+                    mask(&entry.value)
+                };
+                let target = if entry.name == "identity" || entry.kind == "spell" {
+                    "vault:spell".into()
+                } else {
+                    format!("vault:{i}")
+                };
+                cell::row(&[&entry.name, &entry.kind, &value, &target])
+            })
+            .collect(),
+    );
+    let mut host = VaultHost { rows };
+    match cell::load("vault").and_then(|src| cell::eval(&src, &mut host)) {
+        Ok(chunks) => cell::dispatch_page(commands, page, &chunks),
+        Err(e) => text(commands, page, e, theme::CAPTION, theme::ACID_RED),
+    }
+}
+
+fn spawn_spell_page(commands: &mut Commands, spell: String) {
+    let words: Vec<&str> = spell.split_whitespace().collect();
+    let root = commands
+        .spawn((
+            SpellPage,
+            ContentRoot,
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(CHROME_TOP_H),
+                bottom: Val::Px(CHROME_BOTTOM_H),
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                flex_direction: FlexDirection::Column,
+                justify_content: JustifyContent::Center,
+                align_items: AlignItems::Center,
+                padding: UiRect::all(Val::Px(theme::G * 4.0)),
+                row_gap: Val::Px(theme::G * 2.5),
+                ..default()
+            },
+            BackgroundColor(theme::DARK_BASE),
+            GlobalZIndex(12),
+        ))
+        .id();
+    for (row_i, chunk) in words.chunks(4).enumerate() {
         let row = commands
             .spawn((
                 Node {
+                    flex_direction: FlexDirection::Row,
                     width: Val::Percent(100.0),
-                    justify_content: JustifyContent::SpaceBetween,
-                    align_items: AlignItems::Center,
-                    padding: UiRect::axes(Val::Px(theme::G * 1.5), Val::Px(theme::G)),
-                    border: UiRect::all(Val::Px(1.0)),
-                    column_gap: Val::Px(theme::G),
+                    max_width: Val::Px(560.0),
+                    column_gap: Val::Px(theme::G * 2.0),
                     ..default()
                 },
-                BackgroundColor(theme::DARK_BASE),
-                BorderColor::all(theme::BORDER),
-                ChildOf(page),
+                ChildOf(root),
             ))
             .id();
-
-        let left = commands
-            .spawn((
-                CopyRow(i),
-                Button,
-                Node {
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(theme::G * 1.5),
-                    flex_grow: 1.0,
+        for (col, w) in chunk.iter().enumerate() {
+            let idx = row_i * 4 + col + 1;
+            let cell = commands
+                .spawn((
+                    Node {
+                        flex_direction: FlexDirection::Column,
+                        width: Val::Percent(25.0),
+                        row_gap: Val::Px(4.0),
+                        align_items: AlignItems::FlexStart,
+                        ..default()
+                    },
+                    ChildOf(row),
+                ))
+                .id();
+            commands.spawn((
+                Text::new(format!("{idx}")),
+                TextFont {
+                    font_size: theme::CAPTION,
                     ..default()
                 },
-                ChildOf(row),
-            ))
-            .id();
-        let is_identity = i == 0 && entry.name == "identity" && entry.created == 0;
-        text(
-            commands,
-            left,
-            entry.name.clone(),
-            theme::BODY,
-            if is_identity {
-                theme::ACID_GREEN
-            } else {
-                theme::TEXT_PRIMARY
-            },
-        );
-        text(
-            commands,
-            left,
-            if is_identity {
-                "spell - the key behind your address and every PUSSY it earned".into()
-            } else {
-                entry.kind.clone()
-            },
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
-
-        let right = commands
-            .spawn((
-                Node {
-                    flex_direction: FlexDirection::Row,
-                    align_items: AlignItems::Center,
-                    column_gap: Val::Px(theme::G * 1.5),
+                TextColor(theme::TEXT_DIM),
+                ChildOf(cell),
+            ));
+            commands.spawn((
+                Text::new(*w),
+                TextFont {
+                    font_size: theme::H2,
                     ..default()
                 },
-                ChildOf(row),
-            ))
-            .id();
-
-        if entry.kind == "otp" {
-            match store::totp(&entry.value, unix) {
-                Some((code, left_s)) => {
-                    text(commands, right, code, theme::H3, theme::ACID_GREEN);
-                    text(
-                        commands,
-                        right,
-                        format!("{left_s}s"),
-                        theme::CAPTION,
-                        theme::TEXT_DIM,
-                    );
-                }
-                None => text(
-                    commands,
-                    right,
-                    "bad otp secret".into(),
-                    theme::CAPTION,
-                    theme::ACID_RED,
-                ),
-            }
-        } else if view.revealed == Some(i) {
-            text(
-                commands,
-                right,
-                entry.value.clone(),
-                theme::BODY,
-                theme::ACID_YELLOW,
-            );
-        } else {
-            text(
-                commands,
-                right,
-                mask(&entry.value),
-                theme::BODY,
-                theme::TEXT_DIM,
-            );
+                TextColor(theme::ACID_GREEN),
+                ChildOf(cell),
+            ));
         }
-
-        let chip = commands
-            .spawn((
-                RevealChip(i),
-                Button,
-                Node {
-                    padding: UiRect::axes(Val::Px(theme::G), Val::Px(theme::G * 0.5)),
-                    border: UiRect::all(Val::Px(1.0)),
-                    ..default()
-                },
-                BackgroundColor(theme::DARK_BASE),
-                BorderColor::all(theme::BORDER),
-                ChildOf(right),
-            ))
-            .id();
-        text(
-            commands,
-            chip,
-            "show".into(),
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
     }
 }
 
@@ -388,6 +379,68 @@ fn mask(value: &str) -> String {
 
 /// Tap a row: its secret (or the code of the moment) goes to the clipboard
 /// with a 30-second fuse.
+fn handle_table_copy(
+    mut commands: Commands,
+    interactions: Query<(&Interaction, &ActionButton), Changed<Interaction>>,
+    pages: Query<Entity, With<SpellPage>>,
+    mut view: ResMut<VaultView>,
+    mut notice: ResMut<super::Notice>,
+    mut nav: ResMut<crate::worlds::nav::Nav>,
+    now: Res<crate::now::Now>,
+    world: Res<State<super::WorldState>>,
+) {
+    for (i, btn) in &interactions {
+        if *i != Interaction::Pressed {
+            continue;
+        }
+        let Some(idx) = btn.target_ref.strip_prefix("vault:") else {
+            continue;
+        };
+        if idx == "spell" {
+            if let Some(spell) = identity_spell() {
+                for e in &pages {
+                    commands.entity(e).despawn();
+                }
+                let _ = crate::shell::clipboard::write_clipboard(&spell);
+                view.copied = Some((spell.clone(), Instant::now()));
+                nav.push(crate::worlds::nav::Place::capture(
+                    *world.get(),
+                    &now,
+                    false,
+                ));
+                spawn_spell_page(&mut commands, spell);
+            }
+            continue;
+        }
+        let Ok(n) = idx.parse::<usize>() else {
+            continue;
+        };
+        let Some(entry) = view.entries.get(n) else {
+            continue;
+        };
+        let payload = if entry.kind == "otp" {
+            match store::totp(&entry.value, store::now()) {
+                Some((code, _)) => code,
+                None => continue,
+            }
+        } else {
+            entry.value.clone()
+        };
+        match crate::shell::clipboard::write_clipboard(&payload) {
+            Ok(()) => {
+                notice.show(format!("{} copied - clears in 30s", entry.name));
+                view.copied = Some((payload, Instant::now()));
+                view.revealed = if view.revealed == Some(n) {
+                    None
+                } else {
+                    Some(n)
+                };
+            }
+            Err(e) => notice.show(format!("clipboard: {e}")),
+        }
+    }
+}
+
 fn handle_copy(
     interactions: Query<(&Interaction, &CopyRow), Changed<Interaction>>,
     mut view: ResMut<VaultView>,
@@ -462,14 +515,14 @@ pub fn handle_command(rest: &str) -> String {
     if let Some(spec) = rest.strip_prefix("add ") {
         let mut it = spec.splitn(3, char::is_whitespace);
         let (Some(name), Some(kind), Some(value)) = (it.next(), it.next(), it.next()) else {
-            return "vault add <name> <kind> <secret>   kinds: password key spell otp custom".into();
+            return "vault add <name> <kind> <secret>   kinds: password key spell otp custom"
+                .into();
         };
         if !store::KINDS.contains(&kind) {
             return format!("vault: unknown kind {kind} - use password key spell otp custom");
         }
         if name == "identity" {
-            return "vault: identity is the built-in root entry - it lives in ~/cyb/spell"
-                .into();
+            return "vault: identity is the built-in root entry - it lives in ~/cyb/spell".into();
         }
         let Some(key) = store::key() else {
             return "vault: no identity aboard (~/cyb/spell missing)".into();

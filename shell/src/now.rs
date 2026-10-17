@@ -5,9 +5,7 @@
 
 use bevy::prelude::*;
 use file::{File, Particle};
-use spark;
 
-use crate::worlds::WorldState;
 use crate::worlds::content;
 
 /// The particle underfoot, and whether spacetime is showing its meta,
@@ -28,20 +26,24 @@ pub enum NowKind {
 }
 
 impl Now {
-    /// Stand on this particle. Glide to file if a spark resolves.
+    /// Stand on this particle's meta page. Never dump the file onto the
+    /// UI thread — a text spark of a lived-in particle is megabytes of
+    /// Bevy `Text` and hangs the process. The file page is a later door.
     pub fn stand(&mut self, hash: [u8; 32], idx: Option<usize>) {
-        let p = Particle::from_bytes(hash);
-        self.hash = Some(p);
+        self.hash = Some(Particle::from_bytes(hash));
         self.idx = idx;
-        self.kind = match load_file(hash) {
-            Some(f) if spark::resolve(&f).is_some() => NowKind::File,
-            Some(_) | None => NowKind::Meta,
-        };
+        self.kind = NowKind::Meta;
+    }
+
+    pub fn dismiss(&mut self) {
+        self.kind = NowKind::World;
+        self.hash = None;
+        self.idx = None;
     }
 }
 
 pub fn load_file(hash: [u8; 32]) -> Option<File> {
-    let text = content::load().remove(&hash)?;
+    let text = content::lookup(&hash)?;
     Some(File::bind(Particle::from_bytes(hash), text.into_bytes()))
 }
 

@@ -6,7 +6,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use bevy::ecs::system::SystemState;
-use bevy::input::mouse::MouseWheel;
+use bevy::input::mouse::{MouseScrollUnit, MouseWheel};
 use bevy::prelude::*;
 
 use nu_cli::{eval_source, gather_parent_env_vars};
@@ -25,8 +25,6 @@ use tade::Chunk;
 use super::{ComInbox, ComSay, Notice, Speaker, WorldState};
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
 
-const G: f32 = theme::G;
-
 const NU_ENV_SOURCE: &str = include_str!("../../../assets/nu-config/env.nu");
 const NU_CONFIG_SOURCE: &str = include_str!("../../../assets/nu-config/config.nu");
 
@@ -42,6 +40,7 @@ impl Plugin for ComWorldPlugin {
             // are looking at them, and the record has to be waiting when you
             // arrive. com's tree is hidden between visits, never torn down.
             .add_systems(Update, drain_com_inbox)
+            .init_resource::<chronicle::LogFollowTop>()
             .add_systems(Update, chronicle::refresh.run_if(in_state(WorldState::Com)))
             // `CYB_RUN="..."` submits one line through the same path typing
             // does — commander, routing, echo, cast — for scripted runs.
@@ -55,7 +54,9 @@ impl Plugin for ComWorldPlugin {
                     }
                 },
             )
-            .add_systems(Update, terminal_update.run_if(in_state(WorldState::Com)));
+            // Pending lines are routed here from every world — the
+            // commander is one mouth. Eval output still only paints on log.
+            .add_systems(Update, terminal_update);
     }
 }
 
@@ -82,6 +83,7 @@ struct TerminalNonSendState {
     scrollback_entity: Entity,
     scroll_area_entity: Entity,
     scroll_offset: f32,
+    scroll_v: f32,
     /// Follow the tail: new output scrolls into view until the reader
     /// scrolls up, and resumes when they scroll back down to the end.
     stick_to_bottom: bool,
@@ -705,20 +707,36 @@ fn run_pending_command(world: &mut World) {
     // goes there too. Typing `privet` into a box whose placeholder says
     // "ask, search, transact" should get an answer, not
     // `External command failed` in a red bar.
+    if world
+        .get_non_send_resource::<TerminalNonSendState>()
+        .is_none()
+    {
+        setup_terminal(world);
+    }
     let to_soma = crate::worlds::soma_bridge::parse_ask(&cmd)
         .map(str::to_string)
         .or_else(|| {
             let state = world.get_non_send_resource::<TerminalNonSendState>()?;
             let engine = state.nu_engine.as_ref()?;
-            (!resolves_in_shell(&engine.engine_state, &cmd)).then(|| cmd.clone())
+            talk_not_shell(&engine.engine_state, &cmd)
         });
     if let Some(q) = to_soma {
+        info!("com: {cmd:?} -> soma");
         crate::worlds::soma_bridge::ask(world, &q);
         return;
     }
 
+    info!("com: {cmd:?} -> nu");
+    world
+        .resource_mut::<bevy::prelude::NextState<crate::worlds::WorldState>>()
+        .set(crate::worlds::WorldState::Com);
+    world
+        .resource_mut::<crate::worlds::Notice>()
+        .show(format!("nu: {cmd}"));
+
     let (scrollback_entity, busy) = {
         let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() else {
+            warn!("com: no engine after setup — dropped {cmd:?}");
             return;
         };
         (state.scrollback_entity, state.eval_in_progress)
@@ -799,66 +817,107 @@ fn drain_com_inbox(world: &mut World) {
 
     // com may not have been opened yet, in which case there is nowhere to put
     // these. Hold them rather than drop them.
-    let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() else {
+    if world
+        .get_non_send_resource::<TerminalNonSendState>()
+        .is_none()
+    {
         world.resource_mut::<ComInbox>().0 = lines;
         return;
-    };
-    let scrollback = state.scrollback_entity;
+    }
 
     for say in lines {
         match say {
-            ComSay::Line(who, text) => {
+            // The table is the log. Session rows beside it were the
+            // "fresh events render outside the table" bug.
+            ComSay::Line(_, text) | ComSay::Note(text) | ComSay::StreamEnd(text) => {
                 persist_log_line(world, &text);
-                spawn_said_row(world, scrollback, who, text);
             }
-            ComSay::Note(text) => {
-                persist_log_line(world, &text);
-                spawn_note_row(world, scrollback, text);
-            }
-            // A streamed reply is one system row whose text grows as the
-            // model writes. The row exists from the first instant, so the
-            // reply visibly *starts* — the difference between a mind at work
-            // and a frozen app.
-            ComSay::StreamStart => {
-                let entity = spawn_said_row(world, scrollback, Speaker::System, String::new());
-                let state = world
-                    .get_non_send_resource_mut::<TerminalNonSendState>()
-                    .unwrap()
-                    .into_inner();
-                state.stream_row = entity.into();
-            }
-            ComSay::StreamDelta(delta) => {
-                let row = world
-                    .get_non_send_resource::<TerminalNonSendState>()
-                    .and_then(|s| s.stream_row);
-                match row.and_then(|e| world.get_mut::<Text>(e)) {
-                    Some(mut text) => text.0.push_str(&delta),
-                    // A delta with no open row (com opened mid-answer):
-                    // better a plain line than a lost piece.
-                    None => {
-                        spawn_said_row(world, scrollback, Speaker::System, delta);
-                    }
-                }
-            }
-            ComSay::StreamEnd(fin) => {
-                persist_log_line(world, &fin);
-                let row = world
-                    .get_non_send_resource_mut::<TerminalNonSendState>()
-                    .unwrap()
-                    .into_inner()
-                    .stream_row
-                    .take();
-                if let Some(mut text) = row.and_then(|e| world.get_mut::<Text>(e)) {
-                    text.0 = fin;
-                }
-            }
+            ComSay::StreamStart | ComSay::StreamStatus(_) | ComSay::StreamDelta(_) => {}
         }
     }
 
-    // A line arriving is news; follow it.
+    // Newest rows sit at the top of the table, not the session tail.
     if let Some(state) = world.get_non_send_resource_mut::<TerminalNonSendState>() {
-        state.into_inner().stick_to_bottom = true;
+        state.into_inner().stick_to_bottom = false;
     }
+}
+
+fn shell_names(world: &World) -> Vec<String> {
+    let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() else {
+        return Vec::new();
+    };
+    let Some(engine) = state.nu_engine.as_ref() else {
+        return Vec::new();
+    };
+    engine
+        .engine_state
+        .get_decls_sorted(false)
+        .into_iter()
+        .filter_map(|(b, _)| String::from_utf8(b).ok())
+        .filter(|n| n.len() <= 24 && !n.starts_with('_'))
+        .collect()
+}
+
+/// Names the shell currently knows, for soma's standing prompt. Empty
+/// until com has been opened once (the engine lives there). Capped so a
+/// 0.6B prefill still fits.
+pub fn shell_catalog(world: &World) -> String {
+    let mut names = shell_names(world);
+    names.truncate(80);
+    if names.is_empty() {
+        return String::new();
+    }
+    format!("Commands on this body: {}.", names.join(", "))
+}
+
+/// The index that `help` / `nu` print in chat — type any of these to run it.
+pub fn shell_index(world: &World) -> String {
+    let names = shell_names(world);
+    if names.is_empty() {
+        return "nushell is on this commander. Type a command to run it. Open log once if this list is empty.".into();
+    }
+    let mut out = String::from("nushell on this commander — type a command to run it.\n");
+    let mut line = String::new();
+    for n in &names {
+        if !line.is_empty() && line.len() + n.len() > 52 {
+            out.push_str(&line);
+            out.push('\n');
+            line.clear();
+        }
+        if !line.is_empty() {
+            line.push(' ');
+        }
+        line.push_str(n);
+    }
+    if !line.is_empty() {
+        out.push_str(&line);
+    }
+    out
+}
+
+/// `help` and `nu` are builtins / PATH binaries. Running them dumps a
+/// session pane at the top of log. Bare, they are talk — the index
+/// belongs in chat. `help ls` stays nushell help for that command.
+fn talk_not_shell(engine_state: &EngineState, line: &str) -> Option<String> {
+    let t = line.trim();
+    let mut words = t.split_whitespace();
+    let Some(head) = words.next() else {
+        return None;
+    };
+    if head.eq_ignore_ascii_case("help") || head.eq_ignore_ascii_case("nu") {
+        match words.next() {
+            None => return Some(t.to_string()),
+            Some(topic)
+                if head.eq_ignore_ascii_case("help")
+                    && words.next().is_none()
+                    && resolves_in_shell(engine_state, topic) =>
+            {
+                return None;
+            }
+            _ => return Some(t.to_string()),
+        }
+    }
+    (!resolves_in_shell(engine_state, t)).then(|| t.to_string())
 }
 
 /// Would nushell recognise this line's head word as something it can run?
@@ -971,6 +1030,7 @@ fn setup_terminal(world: &mut World) {
         scrollback_entity,
         scroll_area_entity,
         scroll_offset: 0.0,
+        scroll_v: 0.0,
         stick_to_bottom: true,
         last_cmd: String::new(),
         stream_row: None,
@@ -1005,38 +1065,46 @@ fn spawn_terminal_ui(world: &mut World, scrollback_entity: Entity) -> (Entity, E
         .id();
 
     // Scrollback area (flex-grow, scrolled via ScrollPosition)
+    let mut session = crate::worlds::page::scroll_column();
+    session.max_height = Val::Px(160.0);
+    session.flex_grow = 0.0;
+    session.flex_shrink = 0.0;
+    session.height = Val::Auto;
     let scroll_area = world
         .spawn((
-            Node {
-                flex_grow: 1.0,
-                width: Val::Percent(100.0),
-                max_width: Val::Px(theme::MEASURE),
-                flex_direction: FlexDirection::Column,
-                // Scroll, not clip: bevy_ui ignores ScrollPosition unless an axis
-                // is actually declared scrollable, so a clipping node stays fixed
-                // at the top however the position is set.
-                overflow: Overflow::scroll_y(),
-                padding: UiRect::all(Val::Px(G)),
-                ..default()
-            },
+            session,
             ScrollPosition::default(),
+            crate::worlds::scroll::PersistScroll("log-session"),
             ChildOf(root),
         ))
         .id();
 
-    // Chronicle first: census + numbers table over the signal chain.
-    // Live session (nushell, inbox) stays below and is never torn down.
+    // Same shape as memory: a bounded scroller (flex leftover under the
+    // session band) wrapping a slot that grows with the table track.
+    let mut log_scroll = crate::worlds::page::column();
+    log_scroll.flex_grow = 1.0;
+    log_scroll.flex_shrink = 1.0;
+    log_scroll.flex_basis = Val::Px(0.0);
+    log_scroll.min_height = Val::Px(0.0);
+    log_scroll.overflow = Overflow::scroll_y();
+    let log_scroll = world
+        .spawn((
+            log_scroll,
+            ScrollPosition::default(),
+            crate::worlds::scroll::PersistScroll("log"),
+            ChildOf(root),
+        ))
+        .id();
     world.spawn((
         chronicle::LogSlot,
         Node {
             width: Val::Percent(100.0),
             flex_direction: FlexDirection::Column,
-            row_gap: Val::Px(G),
+            row_gap: Val::Px(theme::G),
             flex_shrink: 0.0,
-            padding: UiRect::bottom(Val::Px(G * 2.0)),
             ..default()
         },
-        ChildOf(scroll_area),
+        ChildOf(log_scroll),
     ));
 
     // Attach scrollback entity into scroll area
@@ -1138,17 +1206,21 @@ fn process_scroll(world: &mut World) {
             state_ref.wheel_cursor.clone()
         };
         let messages = world.resource::<bevy::ecs::message::Messages<MouseWheel>>();
-        let dy: f32 = cursor.read(messages).map(|e| -e.y).sum();
+        let dy: f32 = cursor
+            .read(messages)
+            .map(|e| match e.unit {
+                MouseScrollUnit::Line => -e.y * 48.0,
+                MouseScrollUnit::Pixel => -e.y,
+            })
+            .sum();
         let state = world
             .get_non_send_resource_mut::<TerminalNonSendState>()
             .unwrap()
             .into_inner();
         state.wheel_cursor = cursor;
-        dy * 40.0
+        dy
     };
 
-    // A single finger dragging up sends the text up: content follows the
-    // finger, so the offset moves against it.
     let drag: f32 = {
         let touches = world.resource::<bevy::input::touch::Touches>();
         let live: Vec<&bevy::input::touch::Touch> = touches.iter().collect();
@@ -1159,7 +1231,33 @@ fn process_scroll(world: &mut World) {
         }
     };
 
+    let dt = world.resource::<Time>().delta_secs().max(1e-4);
     let delta_y = wheel + drag;
+    {
+        let state = world
+            .get_non_send_resource_mut::<TerminalNonSendState>()
+            .unwrap()
+            .into_inner();
+        if delta_y != 0.0 {
+            let inst = delta_y / dt;
+            state.scroll_v = (state.scroll_v * 0.35 + inst * 0.65).clamp(-12_000.0, 12_000.0);
+        } else if state.scroll_v.abs() > 80.0 {
+            state.scroll_v *= (-5.5 * dt).exp();
+        } else {
+            state.scroll_v = 0.0;
+        }
+    }
+    let coast = {
+        let state = world
+            .get_non_send_resource::<TerminalNonSendState>()
+            .unwrap();
+        if delta_y == 0.0 {
+            state.scroll_v * dt
+        } else {
+            0.0
+        }
+    };
+    let delta_y = delta_y + coast;
     if delta_y == 0.0 {
         return;
     }
@@ -1175,13 +1273,26 @@ fn process_scroll(world: &mut World) {
     let (scrollback_h, area_h) = scroll_extent(world);
 
     let max_scroll = (scrollback_h - area_h).max(0.0);
+    let pin = world
+        .get_resource::<chronicle::LogFollowTop>()
+        .map(|p| p.0)
+        .unwrap_or(false);
     let state = world
         .get_non_send_resource_mut::<TerminalNonSendState>()
         .unwrap()
         .into_inner();
-    state.scroll_offset = (state.scroll_offset + delta_y).clamp(0.0, max_scroll);
-    // Reaching the end re-arms the follow; leaving it hands control back.
-    state.stick_to_bottom = state.scroll_offset >= max_scroll - 1.0;
+    if pin {
+        state.scroll_offset = 0.0;
+        state.stick_to_bottom = false;
+    } else {
+        state.scroll_offset = (state.scroll_offset + delta_y).clamp(0.0, max_scroll);
+        state.stick_to_bottom = state.scroll_offset >= max_scroll - 1.0;
+    }
+    if pin {
+        if let Some(mut p) = world.get_resource_mut::<chronicle::LogFollowTop>() {
+            p.0 = false;
+        }
+    }
 }
 
 /// Content and viewport heights of the scrollback, in logical pixels.
@@ -1189,14 +1300,16 @@ fn scroll_extent(world: &mut World) -> (f32, f32) {
     let Some(state) = world.get_non_send_resource::<TerminalNonSendState>() else {
         return (0.0, 0.0);
     };
-    let (sb, sa) = (state.scrollback_entity, state.scroll_area_entity);
-    let logical = |e: Entity| -> f32 {
-        world
-            .get::<ComputedNode>(e)
-            .map(|cn| cn.size().y * cn.inverse_scale_factor())
-            .unwrap_or(0.0)
-    };
-    (logical(sb), logical(sa))
+    let sa = state.scroll_area_entity;
+    // Content size of the scroll area — census + every signal (via spacers)
+    // + the session. Measuring only the session left the table unscrolled.
+    world
+        .get::<ComputedNode>(sa)
+        .map(|cn| {
+            let s = cn.inverse_scale_factor();
+            (cn.content_size().y * s, cn.size().y * s)
+        })
+        .unwrap_or((0.0, 0.0))
 }
 
 fn apply_scroll_offset(world: &mut World) {
@@ -1244,6 +1357,11 @@ fn apply_scroll_offset(world: &mut World) {
 // ── Update ────────────────────────────────────────────────────────────────────
 
 fn terminal_update(world: &mut World) {
+    run_pending_command(world);
+    let here = *world.resource::<State<WorldState>>().get();
+    if here != WorldState::Com {
+        return;
+    }
     if world
         .get_non_send_resource::<TerminalNonSendState>()
         .is_none()
@@ -1251,8 +1369,6 @@ fn terminal_update(world: &mut World) {
         setup_terminal(world);
         return;
     }
-
-    run_pending_command(world);
     publish_prompt(world);
     poll_eval_results(world);
     process_scroll(world);

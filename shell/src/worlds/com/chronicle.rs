@@ -1,24 +1,40 @@
-//! The log page: a rune census + numbers table over the signal chain.
+//! The log page: a rune census + the same windowed table memory uses.
 //!
-//! com keeps the nushell engine and the live session scrollback. This is
-//! the chronicle those commands write into — `~/cyb/graph.log` as a table.
+//! Attention casts `world → world` on every tab hop. Those hops are real
+//! signals, but they dominate the newest end of the tape (13k `body→sigma`
+//! on a lived-in log) so the table looks frozen. They stay in the graph;
+//! this page lists the rest.
 
 use bevy::prelude::*;
 use rune_ast::Noun;
 use rune_interp::{Host, InterpError};
 
-use super::super::{SharedCell, cell, content, identity::Identity};
-
-const ROW_CAP: usize = 200;
+use super::super::{SharedCell, cell, content, identity::Identity, windowed};
+use crate::worlds::scroll::PersistScroll;
 
 #[derive(Component)]
 pub struct LogSlot;
 
+#[derive(Clone)]
+struct LogRow {
+    step: String,
+    from: String,
+    to: String,
+    token: String,
+    stake: String,
+    valence: String,
+    from_h: [u8; 32],
+    to_h: [u8; 32],
+    token_h: [u8; 32],
+}
+
+#[derive(Resource, Default)]
+pub struct LogFollowTop(pub bool);
+
 struct LogHost {
     signals: String,
-    links: String,
-    weight: String,
-    rows: Noun,
+    axons: String,
+    stake: String,
 }
 
 impl Host for LogHost {
@@ -28,99 +44,155 @@ impl Host for LogHost {
         }
         match cell::query_name(args).as_str() {
             "signals" => Ok(cell::tape(&self.signals)),
-            "links" => Ok(cell::tape(&self.links)),
-            "weight" => Ok(cell::tape(&self.weight)),
-            "table-body" => Ok(self.rows.clone()),
+            "axons" => Ok(cell::tape(&self.axons)),
+            "stake" => Ok(cell::tape(&self.stake)),
             other => Err(cell::unknown_query(other)),
         }
     }
 }
 
-struct Row {
-    step: u64,
-    n: usize,
-    wt: u64,
-    label: String,
-    ours: bool,
+fn name_of(p: &[u8; 32], texts: &std::collections::HashMap<[u8; 32], String>) -> String {
+    texts
+        .get(p)
+        .cloned()
+        .unwrap_or_else(|| file::Particle::from_bytes(*p).short_hex())
 }
 
-fn label_of(sig: &cyb_core::Signal, texts: &std::collections::HashMap<[u8; 32], String>) -> String {
-    let Some(first) = sig.links.first() else {
-        return format!("step {}", sig.step);
-    };
-    let name = |p: &[u8; 32]| {
-        texts
-            .get(p)
-            .cloned()
-            .unwrap_or_else(|| file::Particle::from_bytes(*p).short_hex())
-    };
-    let a = name(&first.from);
-    let b = name(&first.to);
-    if sig.links.len() == 1 {
-        format!("{a} → {b}")
+fn is_zero(p: &[u8; 32]) -> bool {
+    p.iter().all(|&b| b == 0)
+}
+
+fn is_world_label(s: &str) -> bool {
+    matches!(
+        s,
+        "body"
+            | "brain"
+            | "log"
+            | "com"
+            | "robot"
+            | "sigma"
+            | "models"
+            | "vault"
+            | "memory"
+            | "oracle"
+    )
+}
+
+fn token_of(
+    link_token: &[u8; 32],
+    network: &[u8; 32],
+    texts: &std::collections::HashMap<[u8; 32], String>,
+) -> ([u8; 32], String) {
+    let p = if !is_zero(link_token) {
+        *link_token
+    } else if !is_zero(network) {
+        *network
     } else {
-        format!("{a} → {b} +{}", sig.links.len() - 1)
+        [0u8; 32]
+    };
+    let name = if is_zero(&p) {
+        "self".into()
+    } else {
+        name_of(&p, texts)
+    };
+    (p, name)
+}
+
+fn valence_text(v: i8) -> String {
+    if v > 0 {
+        format!("+{v}")
+    } else {
+        v.to_string()
     }
 }
 
-fn collect(shared: &SharedCell, who: [u8; 32]) -> (u64, u64, u64, Vec<Row>) {
+fn collect(shared: &SharedCell, _who: [u8; 32]) -> (u64, u64, u64, Vec<LogRow>) {
     let texts = content::load();
     let Ok(cell) = shared.cell.lock() else {
         return (0, 0, 0, Vec::new());
     };
-    let mut links = 0u64;
-    let mut weight = 0u64;
+    let n_signals = cell.len() as u64;
+    let axons = cell.axons();
+    let n_axons = axons.len() as u64;
+    let stake: u64 = axons.iter().map(|(_, _, w)| *w).sum();
     let mut rows = Vec::new();
+    let mut seen = std::collections::HashSet::new();
     for sig in cell.signals() {
-        let n = sig.links.len();
-        let wt: u64 = sig.links.iter().map(|l| l.amount).sum();
-        links += n as u64;
-        weight += wt;
-        rows.push(Row {
-            step: sig.step,
-            n,
-            wt,
-            label: label_of(sig, &texts),
-            ours: sig.neuron == who,
-        });
+        if sig.links.is_empty() {
+            continue;
+        }
+        for link in &sig.links {
+            let from = name_of(&link.from, &texts);
+            let to = name_of(&link.to, &texts);
+            // Tab hops seed the graph; they are not the log you read.
+            if is_world_label(&from) && is_world_label(&to) {
+                continue;
+            }
+            let (token_h, token) = token_of(&link.token, &sig.network, &texts);
+            if !seen.insert((sig.neuron, sig.step, link.from, link.to, token_h)) {
+                continue;
+            }
+            rows.push((
+                sig.step,
+                LogRow {
+                    step: sig.step.to_string(),
+                    from,
+                    to,
+                    token,
+                    stake: link.amount.to_string(),
+                    valence: valence_text(link.valence),
+                    from_h: link.from,
+                    to_h: link.to,
+                    token_h,
+                },
+            ));
+        }
     }
-    let signals = rows.len() as u64;
-    rows.sort_by(|a, b| b.ours.cmp(&a.ours).then(b.step.cmp(&a.step)));
-    rows.truncate(ROW_CAP);
-    (signals, links, weight, rows)
+    rows.sort_by(|a, b| b.0.cmp(&a.0));
+    let rows = rows.into_iter().map(|(_, r)| r).collect();
+    (n_signals, n_axons, stake, rows)
 }
 
-fn chunks_of(shared: &SharedCell, who: [u8; 32]) -> Result<Vec<tade::Chunk>, String> {
-    let (signals, links, weight, rows) = collect(shared, who);
-    let body = cell::list(
-        rows.iter()
-            .map(|r| {
-                cell::row(&[
-                    &r.label,
-                    &r.step.to_string(),
-                    &r.n.to_string(),
-                    &cell::compact(r.wt),
-                ])
-            })
-            .collect(),
-    );
-    let mut host = LogHost {
-        signals: cell::compact(signals),
-        links: cell::compact(links),
-        weight: cell::compact(weight),
-        rows: body,
-    };
-    cell::eval(&cell::load("log")?, &mut host)
+fn table_rows(rows: &[LogRow]) -> Vec<Vec<String>> {
+    rows.iter()
+        .map(|r| {
+            vec![
+                r.step.clone(),
+                r.from.clone(),
+                r.to.clone(),
+                r.token.clone(),
+                r.stake.clone(),
+                r.valence.clone(),
+                "_".into(),
+                particle_ref(&r.from_h),
+                particle_ref(&r.to_h),
+                particle_ref(&r.token_h),
+            ]
+        })
+        .collect()
 }
 
-/// Rebuild the chronicle when the cell moves. The slot stays put so the
-/// live session under it is not torn down.
+fn particle_ref(h: &[u8; 32]) -> String {
+    if is_zero(h) {
+        "_".into()
+    } else {
+        format!("particle:{}", hex32(h))
+    }
+}
+
+fn hex32(h: &[u8; 32]) -> String {
+    h.iter().map(|b| format!("{b:02x}")).collect()
+}
+
 pub fn refresh(
     mut commands: Commands,
     shared: Res<SharedCell>,
     who: Res<Identity>,
     slot: Query<Entity, With<LogSlot>>,
-    children: Query<&Children>,
+    tracks: Query<&windowed::TableTrack>,
+    mut scrolls: Query<(&PersistScroll, &mut ScrollPosition)>,
+    mut bodies: ResMut<windowed::TableBodies>,
+    mut follow: ResMut<LogFollowTop>,
     mut last: Local<Option<u64>>,
 ) {
     let Ok(slot) = slot.single() else {
@@ -131,12 +203,25 @@ pub fn refresh(
         return;
     }
     *last = Some(v);
-    if let Ok(kids) = children.get(slot) {
-        for c in kids.iter() {
-            commands.entity(c).despawn();
+    follow.0 = true;
+    let mounted = tracks.iter().any(|t| t.key == "log");
+    let (signals, axons, stake, rows) = collect(&shared, who.neuron);
+    let table = table_rows(&rows);
+    bodies.rows.insert("log", table.clone());
+    if mounted {
+        return;
+    }
+    for (p, mut pos) in &mut scrolls {
+        if p.0 == "log" {
+            pos.y = 0.0;
         }
     }
-    match chunks_of(&shared, who.neuron) {
+    let mut host = LogHost {
+        signals: cell::exact(signals),
+        axons: cell::exact(axons),
+        stake: cell::exact(stake),
+    };
+    match cell::load("log").and_then(|src| cell::eval(&src, &mut host)) {
         Ok(chunks) => cell::dispatch_page(&mut commands, slot, &chunks),
         Err(e) => {
             commands.spawn((
@@ -150,4 +235,12 @@ pub fn refresh(
             ));
         }
     }
+    windowed::mount(
+        &mut commands,
+        slot,
+        "log",
+        &["step", "from", "to", "token", "stake", "valence"],
+        &table,
+        &mut bodies,
+    );
 }

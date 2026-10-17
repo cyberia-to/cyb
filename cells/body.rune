@@ -1,0 +1,20 @@
+col(
+  row(
+    stat(query("cpu"), "cpu"),
+    stat(query("mem"), "mem"),
+    stat(query("net"), "net")
+  ),
+  table(
+    row("resource", "used", "of", "note"),
+    query("resources")
+  ),
+  table(
+    row("process", "cpu", "rss", "note"),
+    query("processes")
+  ),
+  table(
+    row("network", "height", "ago", "note"),
+    query("networks")
+  )
+)
+

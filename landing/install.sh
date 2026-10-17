@@ -1,15 +1,15 @@
 #!/bin/sh
-# cyb dev preview installer — macOS arm64
-# Downloads the latest cyb.dmg and installs cyb.app into /Applications.
+# cyb 0.16.0 installer — macOS arm64
+# Downloads cyb-0.16.0.dmg and installs cyb.app into /Applications.
 # curl downloads carry no quarantine attribute, so Gatekeeper lets the
-# (not yet notarized) preview run.
+# (not yet notarized) build run.
 set -eu
 
-URL="https://github.com/cyberia-to/cyb/releases/latest/download/cyb.dmg"
+URL="https://github.com/cyberia-to/cyb/releases/download/v0.16.0/cyb-0.16.0.dmg"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"; hdiutil detach "$TMP/mnt" >/dev/null 2>&1 || true' EXIT
 
-echo "downloading cyb.dmg ..."
+echo "downloading cyb-0.16.0.dmg ..."
 curl -fL --progress-bar -o "$TMP/cyb.dmg" "$URL"
 
 echo "installing cyb.app -> /Applications"

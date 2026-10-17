@@ -1,22 +1,17 @@
 //! memory — the file manager.
 //!
-//! Every file this body holds text for, one row each, ranked by the
-//! same tru φ* focus brain draws by (`super::graph::BrainIndex` — one
-//! computation, two consumers), with its size in bytes and when it was
-//! last remembered. Tap a row to read it: the exact fullscreen page brain
-//! opens on a tap, landed on without ever touching the graph itself.
+//! Same census as brain (particles, axons, graph bytes). Same windowed
+//! table + scroll as log. One row per particle the graph actually holds.
 
 use bevy::prelude::*;
-use mir::bevy::resources::WarpTarget;
-use prysm::theme;
-
-use super::cell;
-use super::graph::BrainIndex;
-use super::{SharedCell, WorldState, content};
-use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
-use prysm::molecules::action::ActionButton;
 use rune_ast::Noun;
 use rune_interp::{Host, InterpError};
+
+use super::cell;
+use super::graph::{BrainIndex, BrainStats};
+use super::windowed;
+use super::{WorldState, content};
+use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
 
 pub struct MemoryWorldPlugin;
 
@@ -24,81 +19,9 @@ pub struct MemoryWorldPlugin;
 struct MemoryRoot;
 
 #[derive(Component)]
-struct MemoryScroll;
+struct MemorySlot;
 
-fn index_of_hash(hash: &[u8; 32], index: Option<&BrainIndex>) -> usize {
-    index
-        .and_then(|i| i.hashes.iter().position(|h| h == hash))
-        .unwrap_or(0)
-}
-
-impl Plugin for MemoryWorldPlugin {
-    fn build(&self, app: &mut App) {
-        app.add_systems(OnEnter(WorldState::Memory), enter)
-            .add_systems(
-                Update,
-                (refresh_on_index, finger).run_if(in_state(WorldState::Memory)),
-            );
-    }
-}
-
-fn enter(
-    commands: Commands,
-    index: Option<Res<BrainIndex>>,
-    shared: Res<SharedCell>,
-    mut worlds: Query<(&crate::worlds::WorldUi, &mut Visibility)>,
-) {
-    if crate::worlds::reveal_world(WorldState::Memory, &mut worlds) {
-        return;
-    }
-    build_page(commands, index, shared);
-}
-
-/// Rebuild whenever the graph's own index moves — which includes the very
-/// first frames after a `CYB_WORLD=memory` boot, where OnEnter fired
-/// before graph's Startup pass had computed anything: the page was built
-/// against an empty index and would otherwise stay empty forever.
-fn refresh_on_index(
-    mut commands: Commands,
-    index: Option<Res<BrainIndex>>,
-    shared: Res<SharedCell>,
-    roots: Query<Entity, With<MemoryRoot>>,
-    mut last: Local<Option<(usize, Option<[u8; 32]>, Option<[u8; 32]>)>>,
-) {
-    let Some(ref idx) = index else { return };
-    // Focus floats change every tri-kernel run; tearing the list down
-    // for that is the flash when you surf memory ↔ brain. Rebuild only
-    // when the set of particles actually moved.
-    let fp = (
-        idx.hashes.len(),
-        idx.hashes.first().copied(),
-        idx.hashes.last().copied(),
-    );
-    if last.is_none() && !roots.is_empty() {
-        *last = Some(fp);
-        return;
-    }
-    if Some(fp) == *last && !roots.is_empty() {
-        return;
-    }
-    if !idx.is_changed() && !roots.is_empty() {
-        *last = Some(fp);
-        return;
-    }
-    *last = Some(fp);
-    if roots.is_empty() {
-        return;
-    }
-    for e in &roots {
-        commands.entity(e).despawn();
-    }
-    build_page(commands, index, shared);
-}
-
-/// One ranked row: hash, label, focus, byte size, and when it was last
-/// remembered — `None` when the store never carried a `created` stamp for
-/// this particle (the graph's own label-only guesses, or lines soma-kernel
-/// wrote before the field existed).
+#[derive(Clone)]
 struct Row {
     hash: [u8; 32],
     label: String,
@@ -107,22 +30,82 @@ struct Row {
     created: Option<u64>,
 }
 
-fn ranked_rows(index: &BrainIndex) -> Vec<Row> {
+#[derive(Resource, Default)]
+struct MemoryList {
+    rows: Vec<Row>,
+}
+
+impl Plugin for MemoryWorldPlugin {
+    fn build(&self, app: &mut App) {
+        app.init_resource::<MemoryList>()
+            .add_systems(OnEnter(WorldState::Memory), enter)
+            .add_systems(Update, refresh.run_if(in_state(WorldState::Memory)));
+    }
+}
+
+fn enter(
+    mut commands: Commands,
+    index: Option<Res<BrainIndex>>,
+    stats: Res<BrainStats>,
+    mut bodies: ResMut<windowed::TableBodies>,
+    mut worlds: Query<(&crate::worlds::WorldUi, &mut Visibility)>,
+) {
+    let ranked = ranked_rows(index.as_deref());
+    if crate::worlds::reveal_world(WorldState::Memory, &mut worlds) {
+        commands.insert_resource(MemoryList {
+            rows: ranked.clone(),
+        });
+        bodies.rows.insert("memory", table_rows(&ranked));
+        return;
+    }
+    build_page(commands, index, stats, bodies);
+}
+
+fn refresh(
+    index: Option<Res<BrainIndex>>,
+    stats: Res<BrainStats>,
+    roots: Query<Entity, With<MemoryRoot>>,
+    mut last: Local<Option<(usize, u32, Option<[u8; 32]>)>>,
+    mut list: ResMut<MemoryList>,
+    mut bodies: ResMut<windowed::TableBodies>,
+) {
+    // Never despawn the world root — tearing a live taffy tree panics
+    // `invalid SlotMap key` and kills the process. The first Update after
+    // OnEnter used to do exactly that.
+    if roots.is_empty() {
+        return;
+    }
+    let Some(ref idx) = index else { return };
+    let focus_fp = idx.focus.iter().copied().fold(0.0f32, f32::max).to_bits();
+    let fp = (idx.hashes.len(), focus_fp, idx.hashes.first().copied());
+    if Some(fp) == *last {
+        return;
+    }
+    *last = Some(fp);
+    list.rows = ranked_rows(Some(idx));
+    bodies.rows.insert("memory", table_rows(&list.rows));
+    let _ = stats;
+}
+
+fn ranked_rows(index: Option<&BrainIndex>) -> Vec<Row> {
     let meta = content::load_with_meta();
+    let Some(index) = index else {
+        return Vec::new();
+    };
     let mut rows: Vec<Row> = index
         .hashes
         .iter()
         .enumerate()
-        .map(|(idx, hash)| {
+        .map(|(i, hash)| {
             let m = meta.get(hash);
             let label = m
                 .map(|m| m.text.clone())
-                .or_else(|| index.labels.get(idx).cloned().flatten())
+                .or_else(|| index.labels.get(i).cloned().flatten())
                 .unwrap_or_else(|| short_hex(hash));
             Row {
                 hash: *hash,
                 label,
-                focus: index.focus.get(idx).copied().unwrap_or(0.0),
+                focus: index.focus.get(i).copied().unwrap_or(0.0),
                 size: m.map(|m| m.text.len()).unwrap_or(0),
                 created: m.and_then(|m| m.created),
             }
@@ -132,12 +115,27 @@ fn ranked_rows(index: &BrainIndex) -> Vec<Row> {
         b.focus
             .partial_cmp(&a.focus)
             .unwrap_or(std::cmp::Ordering::Equal)
+            .then_with(|| a.label.cmp(&b.label))
     });
     rows
 }
 
+fn focus_text(f: f32) -> String {
+    if f <= 0.0 {
+        "0".into()
+    } else if f >= 0.001 {
+        format!("{f:.3}")
+    } else {
+        format!("{f:.2e}")
+    }
+}
+
 fn short_hex(hash: &[u8; 32]) -> String {
     hash[..4].iter().map(|b| format!("{b:02x}")).collect()
+}
+
+fn hex32(h: &[u8; 32]) -> String {
+    h.iter().map(|b| format!("{b:02x}")).collect()
 }
 
 fn size_text(n: usize) -> String {
@@ -174,36 +172,24 @@ fn date_text(created: Option<u64>) -> String {
     }
 }
 
-fn bytes_text(n: u64) -> String {
-    if n >= 1_000_000 {
-        format!("{:.1} MB", n as f64 / 1e6)
-    } else if n >= 1000 {
-        format!("{:.1} KB", n as f64 / 1e3)
-    } else {
-        format!("{n} B")
-    }
-}
-
-fn hex32(h: &[u8; 32]) -> String {
-    h.iter().map(|b| format!("{b:02x}")).collect()
-}
-
-fn unhex32(s: &str) -> Option<[u8; 32]> {
-    if s.len() != 64 || !s.is_ascii() {
-        return None;
-    }
-    let mut out = [0u8; 32];
-    for i in 0..32 {
-        out[i] = u8::from_str_radix(&s[i * 2..i * 2 + 2], 16).ok()?;
-    }
-    Some(out)
+fn table_rows(rows: &[Row]) -> Vec<Vec<String>> {
+    rows.iter()
+        .map(|r| {
+            vec![
+                r.label.clone(),
+                focus_text(r.focus),
+                size_text(r.size),
+                date_text(r.created),
+                format!("particle:{}", hex32(&r.hash)),
+            ]
+        })
+        .collect()
 }
 
 struct MemoryHost {
     particles: String,
-    bytes: String,
-    links: String,
-    rows: Noun,
+    axons: String,
+    graph: String,
 }
 
 impl Host for MemoryHost {
@@ -213,16 +199,19 @@ impl Host for MemoryHost {
         }
         match cell::query_name(args).as_str() {
             "particles" => Ok(cell::tape(&self.particles)),
-            "bytes" => Ok(cell::tape(&self.bytes)),
-            "links" => Ok(cell::tape(&self.links)),
-            "rows" => Ok(self.rows.clone()),
-            "table-body" => Ok(self.rows.clone()),
+            "axons" => Ok(cell::tape(&self.axons)),
+            "graph" => Ok(cell::tape(&self.graph)),
             other => Err(cell::unknown_query(other)),
         }
     }
 }
 
-fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Res<SharedCell>) {
+fn build_page(
+    mut commands: Commands,
+    index: Option<Res<BrainIndex>>,
+    stats: Res<BrainStats>,
+    mut bodies: ResMut<windowed::TableBodies>,
+) {
     let root = commands
         .spawn((
             MemoryRoot,
@@ -236,302 +225,65 @@ fn build_page(mut commands: Commands, index: Option<Res<BrainIndex>>, shared: Re
                 right: Val::Px(0.0),
                 flex_direction: FlexDirection::Column,
                 align_items: AlignItems::Center,
-                overflow: Overflow::clip(),
+                overflow: Overflow::clip_y(),
                 ..default()
             },
-            BackgroundColor(theme::DARK_BASE),
+            BackgroundColor(prysm::theme::DARK_BASE),
         ))
         .id();
 
-    let Some(index) = index else {
-        commands.spawn((
-            Text::new("the graph has not opened yet"),
-            TextFont {
-                font_size: theme::CAPTION,
+    let scroll = commands
+        .spawn((
+            crate::worlds::page::scroll_column(),
+            ScrollPosition::default(),
+            crate::worlds::scroll::PersistScroll("memory"),
+            ChildOf(root),
+        ))
+        .id();
+
+    let slot = commands
+        .spawn((
+            MemorySlot,
+            Node {
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(prysm::theme::G),
+                flex_shrink: 0.0,
                 ..default()
             },
-            TextColor(theme::TEXT_DIM),
-            ChildOf(root),
-        ));
-        return;
-    };
+            ChildOf(scroll),
+        ))
+        .id();
 
-    let ranked = ranked_rows(&index);
-    let bytes: u64 = ranked.iter().map(|r| r.size as u64).sum();
-    let particles = ranked.len() as u64;
-    let links = shared
-        .cell
-        .lock()
-        .map(|c| c.axons().len() as u64)
-        .unwrap_or(0);
-    let rows = cell::list(
-        ranked
-            .iter()
-            .map(|r| {
-                cell::row(&[
-                    &r.label,
-                    &format!("{:.3}", r.focus),
-                    &size_text(r.size),
-                    &date_text(r.created),
-                    &format!("particle:{}", hex32(&r.hash)),
-                ])
-            })
-            .collect(),
-    );
+    let ranked = ranked_rows(index.as_deref());
     let mut host = MemoryHost {
-        particles: cell::compact(particles),
-        bytes: bytes_text(bytes),
-        links: cell::compact(links),
-        rows,
+        particles: cell::exact(stats.particles as u64),
+        axons: cell::exact(stats.axons as u64),
+        graph: format!("{:.0} KB", stats.graph_bytes as f64 / 1024.0),
     };
-    let chunks = match cell::load("memory").and_then(|src| cell::eval(&src, &mut host)) {
-        Ok(c) => c,
+    match cell::load("memory").and_then(|src| cell::eval(&src, &mut host)) {
+        Ok(chunks) => cell::dispatch_page(&mut commands, slot, &chunks),
         Err(e) => {
             commands.spawn((
                 Text::new(e),
                 TextFont {
-                    font_size: theme::CAPTION,
+                    font_size: prysm::theme::CAPTION,
                     ..default()
                 },
-                TextColor(theme::ACID_RED),
-                ChildOf(root),
+                TextColor(prysm::theme::ACID_RED),
+                ChildOf(slot),
             ));
-            return;
-        }
-    };
-
-    let page = commands
-        .spawn((
-            MemoryScroll,
-            Node {
-                width: Val::Percent(100.0),
-                max_width: Val::Px(theme::MEASURE),
-                flex_grow: 1.0,
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::new(
-                    Val::Px(theme::G * 3.0),
-                    Val::Px(theme::G * 3.0),
-                    Val::Px(0.0),
-                    Val::Px(theme::G * 3.0),
-                ),
-                row_gap: Val::Px(theme::G),
-                overflow: Overflow::scroll_y(),
-                ..default()
-            },
-            ScrollPosition::default(),
-            ChildOf(root),
-        ))
-        .id();
-
-    cell::dispatch_page(&mut commands, page, &chunks);
-}
-
-/// A tap is a press that did not travel. Drag is scroll. Opening used to
-/// fire on Button-Pressed, so the first finger-down jumped to brain and
-/// the list never moved.
-const TAP_SLOP_PX: f32 = 12.0;
-/// Finger delta multiplier — the list should outrun the thumb a little.
-const DRAG_GAIN: f32 = 2.45;
-const FRICTION: f32 = 2.05;
-const FLING_MIN: f32 = 40.0;
-const V_MAX: f32 = 24_000.0;
-
-struct Gesture {
-    start: Vec2,
-    last: Vec2,
-    scrolling: bool,
-    row: Option<String>,
-}
-
-#[derive(Default)]
-struct Fling {
-    v: f32,
-}
-
-fn extents(computed: &ComputedNode) -> f32 {
-    let content = computed.content_size().y * computed.inverse_scale_factor();
-    let view = computed.size().y * computed.inverse_scale_factor();
-    (content - view).max(0.0)
-}
-
-fn nudge(pos: &mut f32, dy: f32, max: f32) {
-    let next = *pos + dy;
-    *pos = if next < 0.0 {
-        next * 0.38
-    } else if next > max {
-        max + (next - max) * 0.38
-    } else {
-        next
-    };
-}
-
-fn spring_back(pos: &mut f32, v: &mut f32, max: f32, dt: f32) {
-    if *pos < 0.0 {
-        *pos += (0.0 - *pos) * (1.0 - (-18.0 * dt).exp());
-        *v *= 0.35;
-        if pos.abs() < 0.5 {
-            *pos = 0.0;
-        }
-    } else if *pos > max {
-        *pos += (max - *pos) * (1.0 - (-18.0 * dt).exp());
-        *v *= 0.35;
-        if (*pos - max).abs() < 0.5 {
-            *pos = max;
         }
     }
-}
-
-fn finger(
-    mut g: Local<Option<Gesture>>,
-    mut fling: Local<Fling>,
-    mut wheel: MessageReader<bevy::input::mouse::MouseWheel>,
-    time: Res<Time>,
-    windows: Query<&Window>,
-    touches: Res<Touches>,
-    mouse: Res<ButtonInput<MouseButton>>,
-    rows: Query<(&Interaction, &ActionButton)>,
-    index: Option<Res<BrainIndex>>,
-    mut scroll: Query<(&mut ScrollPosition, &ComputedNode), With<MemoryScroll>>,
-    mut now: ResMut<crate::now::Now>,
-    warp: Option<ResMut<WarpTarget>>,
-) {
-    let dt = time.delta_secs().max(1.0 / 240.0);
-    let mut dy: f32 = wheel.read().map(|e| -e.y * 72.0).sum();
-
-    let Ok(window) = windows.single() else {
-        return;
-    };
-    let mouse_pos = window.cursor_position();
-    let down_pos = touches.iter().next().map(|t| t.position()).or_else(|| {
-        mouse
-            .pressed(MouseButton::Left)
-            .then_some(())
-            .and_then(|_| mouse_pos)
+    commands.insert_resource(MemoryList {
+        rows: ranked.clone(),
     });
-    let released_pos = touches
-        .iter_just_released()
-        .next()
-        .map(|t| t.position())
-        .or_else(|| {
-            mouse
-                .just_released(MouseButton::Left)
-                .then_some(())
-                .and_then(|_| mouse_pos)
-        });
-
-    let dragging = down_pos.is_some();
-
-    if let Some(pos) = down_pos {
-        if g.is_none() {
-            let row = rows
-                .iter()
-                .find_map(|(i, r)| (*i == Interaction::Pressed).then_some(r.target_ref.clone()));
-            *g = Some(Gesture {
-                start: pos,
-                last: pos,
-                scrolling: false,
-                row,
-            });
-        }
-        if let Some(g) = g.as_mut() {
-            let delta = pos - g.last;
-            g.last = pos;
-            if (pos - g.start).length() > TAP_SLOP_PX {
-                g.scrolling = true;
-            }
-            if g.scrolling {
-                let step = -delta.y * DRAG_GAIN;
-                dy += step;
-                let inst = step / dt;
-                fling.v = (fling.v * 0.45 + inst * 0.55).clamp(-V_MAX, V_MAX);
-            }
-        }
-    }
-
-    if dragging {
-        if dy != 0.0 {
-            for (mut pos, computed) in &mut scroll {
-                let max = extents(computed);
-                nudge(&mut pos.y, dy, max);
-            }
-        }
-    } else {
-        if dy != 0.0 {
-            fling.v += dy / dt;
-        }
-        if fling.v.abs() > FLING_MIN {
-            let step = fling.v * dt;
-            fling.v *= (-FRICTION * dt).exp();
-            for (mut pos, computed) in &mut scroll {
-                let max = extents(computed);
-                nudge(&mut pos.y, step, max);
-                spring_back(&mut pos.y, &mut fling.v, max, dt);
-            }
-        } else {
-            fling.v = 0.0;
-            for (mut pos, computed) in &mut scroll {
-                let max = extents(computed);
-                let mut v = 0.0;
-                spring_back(&mut pos.y, &mut v, max, dt);
-            }
-        }
-    }
-
-    if let Some(pos) = released_pos {
-        let Some(g) = g.take() else { return };
-        if g.scrolling || (pos - g.start).length() > TAP_SLOP_PX {
-            if fling.v.abs() < FLING_MIN {
-                fling.v = 0.0;
-            }
-            return;
-        }
-        fling.v = 0.0;
-        let Some(target) = g.row.or_else(|| {
-            rows.iter().find_map(|(i, r)| {
-                (*i == Interaction::Pressed || *i == Interaction::Hovered)
-                    .then_some(r.target_ref.clone())
-            })
-        }) else {
-            return;
-        };
-        let Some(hash) = target.strip_prefix("particle:").and_then(unhex32) else {
-            return;
-        };
-        let idx = index_of_hash(&hash, index.as_deref());
-        if let Some(mut warp) = warp {
-            warp.particle_idx = Some(idx as u32);
-        }
-        now.stand(hash, Some(idx));
-    } else if down_pos.is_none() {
-        *g = None;
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn unhex32_round_trips_hex32() {
-        let hash = [7u8; 32];
-        assert_eq!(unhex32(&hex32(&hash)), Some(hash));
-    }
-
-    #[test]
-    fn unhex32_rejects_non_ascii_without_panicking() {
-        // "a" + a 3-byte '中' + 60 more ASCII bytes = 64 bytes, but the
-        // even byte-index slicing this used to run unguarded (`&s[0..2]`)
-        // lands inside '中' — a byte index that is not a char boundary —
-        // and panics instead of returning None. A tapped row's
-        // `target_ref` reaches this parser directly (line 497).
-        let s = format!("a中{}", "a".repeat(60));
-        assert_eq!(s.len(), 64);
-        assert_eq!(unhex32(&s), None);
-    }
-
-    #[test]
-    fn unhex32_rejects_wrong_length_and_bad_digits() {
-        assert_eq!(unhex32("00"), None);
-        assert_eq!(unhex32(&"zz".repeat(32)), None);
-    }
+    windowed::mount(
+        &mut commands,
+        slot,
+        "memory",
+        &["name", "focus", "size", "when"],
+        &table_rows(&ranked),
+        &mut bodies,
+    );
 }

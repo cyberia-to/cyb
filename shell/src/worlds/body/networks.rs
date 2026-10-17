@@ -56,6 +56,12 @@ pub fn agent_quick() -> ureq::Agent {
     agent_with(Duration::from_secs(4), false)
 }
 
+/// Block page fetch — must never outlive a frame-budget. The node's
+/// `/block/{h}` can be megabytes of links; 800ms and we show what we have.
+pub fn agent_block() -> ureq::Agent {
+    agent_with(Duration::from_millis(800), false)
+}
+
 fn agent_with(call: Duration, status_is_error: bool) -> ureq::Agent {
     ureq::Agent::config_builder()
         .timeout_connect(Some(CONNECT_TIMEOUT))

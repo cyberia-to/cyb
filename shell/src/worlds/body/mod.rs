@@ -17,7 +17,11 @@ use bevy::prelude::*;
 use prysm::theme;
 
 use super::WorldState;
+use super::cell;
 use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
+use prysm::molecules::action::ActionButton;
+use rune_ast::Noun;
+use rune_interp::{Host, InterpError};
 
 pub struct BodyWorldPlugin;
 
@@ -57,6 +61,9 @@ struct BodyView {
 #[derive(Component)]
 struct BodyRoot;
 
+#[derive(Component)]
+struct BodyTables;
+
 /// The prove/stop lever on the zheng card.
 #[derive(Component)]
 struct ProveButton;
@@ -89,17 +96,19 @@ impl Plugin for BodyWorldPlugin {
         .init_resource::<BodyView>()
         .init_resource::<ProofMeter>()
         .add_systems(OnEnter(WorldState::Body), enter_body)
+        .add_systems(OnExit(WorldState::Body), hide_body)
         .add_systems(
             Update,
             (
                 tick_view,
                 paint_live,
+                paint_tables,
                 paint_seer,
-                rebuild_on_change,
                 handle_prove_press,
                 handle_prover_intensity_press,
                 handle_seer_press,
                 handle_seer_intensity_press,
+                handle_work_row,
             )
                 .run_if(in_state(WorldState::Body)),
         );
@@ -304,7 +313,16 @@ fn enter_body(
     build_page(commands, view, link);
 }
 
+fn hide_body(mut q: Query<(&crate::worlds::WorldUi, &mut Visibility)>) {
+    for (tag, mut vis) in &mut q {
+        if tag.0 == WorldState::Body {
+            *vis = Visibility::Hidden;
+        }
+    }
+}
+
 #[derive(Component, Clone, Copy)]
+#[allow(dead_code)]
 enum BodyStat {
     Cpu,
     CpuTop,
@@ -378,6 +396,187 @@ fn net_io_line(view: &BodyView) -> String {
         rate(v.net_rx_bps),
         rate(v.net_tx_bps)
     )
+}
+
+struct BodyHost {
+    cpu: String,
+    mem: String,
+    net: String,
+    resources: Noun,
+    processes: Noun,
+    networks: Noun,
+}
+
+impl Host for BodyHost {
+    fn perform(&mut self, act: u64, args: &Noun, _caps: &Noun) -> Result<Noun, InterpError> {
+        if !cell::act_is_query(act) {
+            return Ok(Noun::Atom(0));
+        }
+        match cell::query_name(args).as_str() {
+            "cpu" => Ok(cell::tape(&self.cpu)),
+            "mem" => Ok(cell::tape(&self.mem)),
+            "net" => Ok(cell::tape(&self.net)),
+            "resources" => Ok(self.resources.clone()),
+            "processes" => Ok(self.processes.clone()),
+            "networks" => Ok(self.networks.clone()),
+            other => Err(cell::unknown_query(other)),
+        }
+    }
+}
+
+fn body_host(view: &BodyView) -> BodyHost {
+    let v = &view.vitals;
+    let mem = if v.mem_total > 0 {
+        format!(
+            "{:.0}%",
+            v.mem_used as f64 * 100.0 / v.mem_total.max(1) as f64
+        )
+    } else {
+        "—".into()
+    };
+
+    let mut resources = Vec::new();
+    resources.push(cell::row(&[
+        "cpu",
+        &format!("{:.0}%", v.cpu_pct),
+        "100",
+        &if v.cpu_mw > 0 {
+            format!("{:.1} W", v.cpu_mw as f32 / 1000.0)
+        } else {
+            String::new()
+        },
+    ]));
+    if v.gpu_pct >= 0.0 {
+        resources.push(cell::row(&[
+            "gpu",
+            &format!("{:.0}%", v.gpu_pct),
+            "100",
+            &if v.gpu_mw > 0 {
+                format!("{:.1} W", v.gpu_mw as f32 / 1000.0)
+            } else {
+                String::new()
+            },
+        ]));
+    }
+    if v.mem_total > 0 {
+        resources.push(cell::row(&[
+            "memory",
+            &format!(
+                "{:.0}%",
+                v.mem_used as f64 * 100.0 / v.mem_total.max(1) as f64
+            ),
+            &cell::exact(v.mem_total),
+            &format!("{} B", v.mem_used),
+        ]));
+    }
+    resources.push(cell::row(&[
+        "net io",
+        &format!("{:.0}", v.net_rx_bps),
+        &format!("{:.0}", v.net_tx_bps),
+        "B/s ↓ / ↑",
+    ]));
+
+    let mut processes = Vec::new();
+    let p = &view.prover;
+    processes.push(cell::row(&[
+        "zheng",
+        &if p.running {
+            format!("{:.0}/min", p.tickets_per_min())
+        } else {
+            "off".into()
+        },
+        &view.prover_intensity,
+        if p.running { "proving" } else { "idle" },
+        "work:zheng",
+    ]));
+    let s = &view.seer;
+    processes.push(cell::row(&[
+        "seer",
+        &if s.running {
+            format!("{:.0}/min", s.casts_per_min())
+        } else {
+            "off".into()
+        },
+        &view.seer_intensity,
+        if s.running {
+            if s.idle { "watching" } else { "linking" }
+        } else {
+            "idle"
+        },
+        "work:seer",
+    ]));
+    for t in v.top.iter().take(8) {
+        processes.push(cell::row(&[
+            &t.name,
+            &format!("{:.0}%", t.cpu_pct),
+            &format!("{:.0} MB", t.rss_mb),
+            "os",
+        ]));
+    }
+
+    let networks = view
+        .nets
+        .iter()
+        .map(|n| {
+            let height = if n.height > 0 {
+                format!("{}", n.height)
+            } else {
+                "—".into()
+            };
+            let ago = n
+                .last_sync
+                .map(|t| format!("{}s", t.elapsed().as_secs()))
+                .unwrap_or_else(|| "—".into());
+            cell::row(&[&n.name, &height, &ago, if n.ok { "ok" } else { "down" }])
+        })
+        .collect();
+
+    BodyHost {
+        cpu: format!("{:.0}%", v.cpu_pct),
+        mem,
+        net: format!("{:.0}", v.net_rx_bps),
+        resources: cell::list(resources),
+        processes: cell::list(processes),
+        networks: cell::list(networks),
+    }
+}
+
+fn fill_body_tables(commands: &mut Commands, slot: Entity, view: &BodyView) {
+    let mut host = body_host(view);
+    match cell::load("body").and_then(|src| cell::eval(&src, &mut host)) {
+        Ok(chunks) => cell::dispatch_page(commands, slot, &chunks),
+        Err(e) => {
+            commands.spawn((
+                Text::new(e),
+                TextFont {
+                    font_size: theme::CAPTION,
+                    ..default()
+                },
+                TextColor(theme::ACID_RED),
+                ChildOf(slot),
+            ));
+        }
+    }
+}
+
+fn paint_tables(
+    mut commands: Commands,
+    view: Res<BodyView>,
+    slot: Query<Entity, With<BodyTables>>,
+    children: Query<&Children>,
+) {
+    if !view.is_changed() {
+        return;
+    }
+    let Ok(slot) = slot.single() else {
+        return;
+    };
+    if let Ok(kids) = children.get(slot) {
+        for c in kids.iter() {
+            commands.entity(c).despawn();
+        }
+    }
+    fill_body_tables(&mut commands, slot, &view);
 }
 
 fn paint_live(view: Res<BodyView>, mut q: Query<(&BodyStat, &mut Text)>) {
@@ -521,209 +720,32 @@ fn build_page(mut commands: Commands, view: Res<BodyView>, _link: Res<BodyLink>)
                 width: Val::Percent(100.0),
                 max_width: Val::Px(theme::MEASURE),
                 flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(theme::G * 3.0)),
-                row_gap: Val::Px(theme::G),
-                ..default()
+                ..super::page::scroll_column()
             },
+            ScrollPosition::default(),
+            crate::worlds::scroll::PersistScroll("body"),
             ChildOf(root),
         ))
         .id();
 
-    let text = |commands: &mut Commands, parent: Entity, s: String, size: f32, color: Color| {
-        commands.spawn((
-            Text::new(s),
-            TextFont {
-                font_size: size,
-                ..default()
-            },
-            TextColor(color),
-            ChildOf(parent),
-        ));
-    };
-
-    text(
-        &mut commands,
-        page,
-        "body".into(),
-        theme::H2,
-        theme::TEXT_PRIMARY,
-    );
-
-    // ── resources ───────────────────────────────────────────────────────
-    text(
-        &mut commands,
-        page,
-        "resources".into(),
-        theme::CAPTION,
-        theme::TEXT_DIM,
-    );
-
-    let v = &view.vitals;
-    let stat = |commands: &mut Commands,
-                parent: Entity,
-                kind: BodyStat,
-                s: String,
-                size: f32,
-                color: Color| {
-        commands.spawn((
-            kind,
-            Text::new(s),
-            TextFont {
-                font_size: size,
-                ..default()
-            },
-            TextColor(color),
-            ChildOf(parent),
-        ));
-    };
-
-    stat(
-        &mut commands,
-        page,
-        BodyStat::Cpu,
-        cpu_line(&view),
-        theme::BODY,
-        theme::TEXT_PRIMARY,
-    );
-    if !v.top.is_empty() {
-        stat(
-            &mut commands,
-            page,
-            BodyStat::CpuTop,
-            cpu_top_line(&view),
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
-    }
-
-    if v.gpu_pct >= 0.0 {
-        stat(
-            &mut commands,
-            page,
-            BodyStat::Gpu,
-            gpu_line(&view),
-            theme::BODY,
-            theme::TEXT_PRIMARY,
-        );
-    }
-
-    if v.mem_total > 0 {
-        stat(
-            &mut commands,
-            page,
-            BodyStat::Mem,
-            mem_line(&view),
-            theme::BODY,
-            theme::TEXT_PRIMARY,
-        );
-    }
-
-    stat(
-        &mut commands,
-        page,
-        BodyStat::NetIo,
-        net_io_line(&view),
-        theme::BODY,
-        theme::TEXT_PRIMARY,
-    );
-
-    // ── networks: the chains this body follows ──────────────────────────
-    if !view.nets.is_empty() {
-        commands.spawn((
-            Text::new("networks"),
-            TextFont {
-                font_size: theme::CAPTION,
-                ..default()
-            },
-            TextColor(theme::TEXT_DIM),
+    let tables = commands
+        .spawn((
+            BodyTables,
             Node {
-                margin: UiRect::top(Val::Px(theme::G * 2.0)),
+                width: Val::Percent(100.0),
+                flex_direction: FlexDirection::Column,
+                row_gap: Val::Px(theme::G),
                 ..default()
             },
             ChildOf(page),
-        ));
-        for n in &view.nets {
-            let (line, color) = if n.height > 0 {
-                let step = n
-                    .last_sync
-                    .map(|t| format!("{}s", t.elapsed().as_secs()))
-                    .unwrap_or_default();
-                // The step is our probe; the block is the chain's pulse.
-                let block = match n.last_advance {
-                    Some(t) => format!("block {} ago", ago(t.elapsed().as_secs())),
-                    None => "no new block while watching".to_string(),
-                };
-                // Watchdog: a probe older than three cadences is a stall,
-                // whatever the last step said.
-                let probe_age = n
-                    .last_sync
-                    .map(|t| t.elapsed().as_secs())
-                    .unwrap_or(u64::MAX);
-                let stalled = probe_age > 45;
-                let stale = if !n.ok {
-                    format!("  ({})", n.last_step)
-                } else if stalled {
-                    format!("  (stalled {})", ago(probe_age))
-                } else {
-                    String::new()
-                };
-                (
-                    format!(
-                        "{:8} h={}  root {}  step {step}  {block}{stale}   in {}  out {}",
-                        n.name,
-                        n.height,
-                        networks::short_root(&n.root),
-                        human_size(n.rx),
-                        human_size(n.tx),
-                    ),
-                    if n.ok && !stalled {
-                        theme::TEXT_PRIMARY
-                    } else {
-                        theme::ACID_YELLOW
-                    },
-                )
-            } else {
-                (
-                    format!("{:8} {}  -  {}", n.name, n.url, n.last_step),
-                    theme::TEXT_DIM,
-                )
-            };
-            text(&mut commands, page, line, theme::BODY, color);
-        }
-        let stuck = if view.relay_pending > 0 {
-            format!("  ({} waiting)", view.relay_pending)
-        } else {
-            String::new()
-        };
-        text(
-            &mut commands,
-            page,
-            format!(
-                "relayed {} out, absorbed {} in this session{stuck}   -   net add <name> <url> | net set | net rm",
-                view.relayed, view.absorbed
-            ),
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
-    }
-
-    // ── work: every way this body earns ─────────────────────────────────
-    let pussy_day = build_prover_card(&mut commands, page, &view);
-    build_seer_card(&mut commands, page, &view);
-
-    if pussy_day > 0.0 {
-        text(
-            &mut commands,
-            page,
-            format!("total  {pussy_day:.0} PUSSY/day   -   rates declared in ~/cyb/rates.toml"),
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
-    }
+        ))
+        .id();
+    fill_body_tables(&mut commands, tables, &view);
 }
 
 /// The zheng card: PUSSY earned by proving — sumcheck sampling over this
 /// cyb's own graph, HyperNova folding, a verified ticket or nothing.
+#[allow(dead_code)]
 fn build_prover_card(commands: &mut Commands, page: Entity, view: &BodyView) -> f64 {
     let text = |commands: &mut Commands, parent: Entity, s: String, size: f32, color: Color| {
         commands.spawn((
@@ -1013,6 +1035,7 @@ fn paint_seer(view: Res<BodyView>, mut q: Query<(&SeerLive, &mut Text, &mut Text
 
 /// The seer card: structure mining — unlinked pairs of files that already
 /// exist. Never creates a file. Inverse-degree prior until tru φ* is wired.
+#[allow(dead_code)]
 fn build_seer_card(commands: &mut Commands, page: Entity, view: &BodyView) {
     let text = |commands: &mut Commands, parent: Entity, s: String, size: f32, color: Color| {
         commands.spawn((
@@ -1186,5 +1209,74 @@ fn handle_seer_intensity_press(
         }
         seer::set_intensity(b.0);
         notice.show(format!("seer pace -> {} (live)", b.0));
+    }
+}
+
+/// One lever per miner in the table: off → min → eco → max → off.
+fn handle_work_row(
+    interactions: Query<(&Interaction, &ActionButton), Changed<Interaction>>,
+    link: Res<BodyLink>,
+    shared: Res<super::SharedCell>,
+    mut notice: ResMut<super::Notice>,
+    mut meter: ResMut<ProofMeter>,
+    who: Res<super::identity::Identity>,
+    mut inbox: ResMut<super::ComInbox>,
+) {
+    for (i, btn) in &interactions {
+        if *i != Interaction::Pressed {
+            continue;
+        }
+        match btn.target_ref.as_str() {
+            "work:zheng" => {
+                if !link.prover.is_running() {
+                    prover::set_intensity("min");
+                    let axons = shared.cell.lock().expect("shared cell poisoned").axons();
+                    link.prover.prove(axons, link.nets.clone());
+                    let _ = std::fs::write(proving_wanted_file(), "on");
+                    cast_prove_start(&mut meter, &link, &shared, &who, &mut inbox);
+                    notice.show("zheng min");
+                } else {
+                    match prover::intensity().as_str() {
+                        "min" => {
+                            prover::set_intensity("eco");
+                            notice.show("zheng eco");
+                        }
+                        "eco" => {
+                            prover::set_intensity("max");
+                            notice.show("zheng max");
+                        }
+                        _ => {
+                            link.prover.stop();
+                            meter.armed = false;
+                            let _ = std::fs::write(proving_wanted_file(), "off");
+                            notice.show("zheng off");
+                        }
+                    }
+                }
+            }
+            "work:seer" => {
+                if !link.seer.is_running() {
+                    seer::set_intensity("min");
+                    link.seer.mine(shared.clone(), who.neuron);
+                    notice.show("seer min");
+                } else {
+                    match seer::intensity().as_str() {
+                        "min" => {
+                            seer::set_intensity("eco");
+                            notice.show("seer eco");
+                        }
+                        "eco" => {
+                            seer::set_intensity("max");
+                            notice.show("seer max");
+                        }
+                        _ => {
+                            link.seer.stop();
+                            notice.show("seer off");
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
     }
 }

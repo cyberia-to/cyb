@@ -7,13 +7,13 @@
 //! "why is the sky blue"            typed anywhere the commander is
 //!        │
 //!        ▼
-//! ComInbox (User, left)            the question enters the record
+//! ChatInbox (User, left)           the question enters the chat
 //!        │
 //!        ▼
 //! soma-kernel thread               glia runs the model, locally
 //!        │
 //!        ▼  token by token
-//! ComInbox stream (right)          the answer arrives as it is written
+//! ChatInbox stream (right)         the answer arrives as it is written
 //!        │
 //!        ▼
 //! SharedCell::cast                 the exchange becomes graph, one signal
@@ -42,7 +42,7 @@
 
 use bevy::prelude::*;
 
-use super::{identity::Identity, ComInbox, ComSay, Notice, SharedCell, Speaker};
+use super::{ComSay, Notice, SharedCell, Speaker, chat::ChatInbox, identity::Identity};
 
 pub struct SomaBridgePlugin;
 
@@ -62,9 +62,7 @@ impl Plugin for SomaBridgePlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<SomaPending>();
         app.init_resource::<SomaThread>();
-        app.insert_non_send_resource(soma_kernel::Soma::spawn(
-            soma_kernel::SomaConfig::default(),
-        ));
+        app.insert_non_send_resource(soma_kernel::Soma::spawn(soma_kernel::SomaConfig::default()));
         app.add_systems(Update, poll_soma);
         // `SOMA_ASK="..."` asks the moment the app is up — the whole
         // pipeline (wake, think, answer, cast) exercised without a hand
@@ -112,16 +110,41 @@ pub fn parse_ask(line: &str) -> Option<&str> {
 /// already holds, and the mind is nudged with both.
 pub fn ask(world: &mut World, question: &str) {
     world
-        .resource_mut::<ComInbox>()
+        .resource_mut::<ChatInbox>()
         .say(Speaker::User, question.to_string());
+    world
+        .resource_mut::<bevy::prelude::NextState<super::WorldState>>()
+        .set(super::WorldState::Chat);
+
+    let q = question.trim();
+    let index = q.eq_ignore_ascii_case("help") || q.eq_ignore_ascii_case("nu");
+    if index {
+        // The list is a fact about the body, not a guess from the model.
+        let list = super::com::shell_index(world);
+        world.resource_mut::<ChatInbox>().say(Speaker::System, list);
+        world.resource_mut::<Notice>().show("nu commands");
+        return;
+    }
 
     let context = recall(world, question);
     let recalled = context.len();
-    world.resource_mut::<SomaPending>().0.push(question.to_string());
+    let catalog = super::com::shell_catalog(world);
+    let first = {
+        let mut pending = world.resource_mut::<SomaPending>();
+        let first = pending.0.is_empty();
+        pending.0.push(question.to_string());
+        first
+    };
+    if first {
+        let mut inbox = world.resource_mut::<ChatInbox>();
+        inbox.start_stream();
+        inbox.stream_status("...");
+    }
+    info!("soma: ask {question:?} (recalled {recalled})");
     world
         .non_send_resource::<soma_kernel::Soma>()
-        .ask_grounded(question, context);
-    world.resource_mut::<Notice>().show(if recalled > 0 {
+        .ask_on(question, context, catalog);
+    world.resource_mut::<Notice>().show_hold(if recalled > 0 {
         format!("soma: thinking (recalled {recalled})...")
     } else {
         "soma: thinking...".to_string()
@@ -147,11 +170,10 @@ fn recall(world: &World, question: &str) -> Vec<String> {
     /// the essay it arrived in.
     const CLIP: usize = 400;
 
-    let q_concepts: std::collections::HashSet<[u8; 32]> =
-        soma_kernel::concepts_of(question, "")
-            .iter()
-            .map(|c| soma_kernel::particle_of(c))
-            .collect();
+    let q_concepts: std::collections::HashSet<[u8; 32]> = soma_kernel::concepts_of(question, "")
+        .iter()
+        .map(|c| soma_kernel::particle_of(c))
+        .collect();
     if q_concepts.is_empty() {
         return Vec::new();
     }
@@ -166,7 +188,9 @@ fn recall(world: &World, question: &str) -> Vec<String> {
     let mut hits: Vec<(usize, usize, String)> = Vec::new();
     let mut order = 0usize;
     for neuron in [super::local_neuron(), me] {
-        let Some(chain) = cell.graph.chains.get(&neuron) else { continue };
+        let Some(chain) = cell.graph.chains.get(&neuron) else {
+            continue;
+        };
         for sig in chain.entries.values() {
             let links = &sig.links;
             if links.len() < 2 || links[1].from != links[0].to {
@@ -180,8 +204,7 @@ fn recall(world: &World, question: &str) -> Vec<String> {
             if score == 0 {
                 continue;
             }
-            let (Some(q), Some(a)) = (texts.get(&links[0].to), texts.get(&links[1].to))
-            else {
+            let (Some(q), Some(a)) = (texts.get(&links[0].to), texts.get(&links[1].to)) else {
                 continue;
             };
             let mut a_clip = a.clone();
@@ -210,7 +233,7 @@ fn poll_soma(
     who: Res<Identity>,
     mut pending: ResMut<SomaPending>,
     mut thread: ResMut<SomaThread>,
-    mut inbox: ResMut<ComInbox>,
+    mut inbox: ResMut<ChatInbox>,
     mut notice: ResMut<Notice>,
     mut status: ResMut<crate::worlds::models::MindStatus>,
 ) {
@@ -218,13 +241,30 @@ fn poll_soma(
     // tiny, the loop is almost always empty.
     while let Some(ev) = soma.poll() {
         match ev {
-            soma_kernel::SomaEvent::Waking => notice.show("soma: waking (loading model)..."),
+            soma_kernel::SomaEvent::Waking => {
+                inbox.stream_status("loading the mind...");
+                notice.show_hold("soma: loading weights");
+            }
             soma_kernel::SomaEvent::Thinking => {
-                inbox.0.push(ComSay::StreamStart);
-                notice.show("soma: thinking...");
+                inbox.stream_status("reading the question...");
+                notice.show_hold("soma: reading the question");
+            }
+            soma_kernel::SomaEvent::Prefill { done, total } => {
+                let line = if total == 0 {
+                    "reading the question...".into()
+                } else if done >= total {
+                    "writing...".into()
+                } else {
+                    format!("reading {done} / {total}")
+                };
+                inbox.stream_status(line.clone());
+                notice.show_hold(format!("soma: {line}"));
             }
             soma_kernel::SomaEvent::Delta(d) => {
                 inbox.0.push(ComSay::StreamDelta(d));
+                if notice.hold && !notice.text.contains("writing") {
+                    notice.show_hold("soma: writing...");
+                }
             }
             soma_kernel::SomaEvent::Answer {
                 question,
@@ -232,6 +272,8 @@ fn poll_soma(
                 concepts,
                 tokens,
                 tok_per_s,
+                tok_in_s,
+                tok_out_s,
             } => {
                 // The streamed text was raw generation; the final form is the
                 // cleaned answer, and it replaces the stream in place.
@@ -257,8 +299,9 @@ fn poll_soma(
                         shared.bump();
                         thread.0 = Some(a);
                         status.last_tok_per_s = Some(tok_per_s);
+                        status.push_speed(tok_in_s, tok_out_s);
                         notice.show(format!(
-                            "soma: answered ({tokens} tok, {tok_per_s:.0} tok/s) - {n_links} links"
+                            "soma: answered ({tokens} tok, in {tok_in_s:.0} / out {tok_out_s:.0} tok/s) - {n_links} links"
                         ));
                     }
                     Err(e) => {
@@ -271,12 +314,21 @@ fn poll_soma(
                 if !pending.0.is_empty() {
                     pending.0.remove(0);
                 }
+                if !pending.0.is_empty() {
+                    inbox.start_stream();
+                    inbox.stream_status("...");
+                }
             }
             soma_kernel::SomaEvent::Error(e) => {
-                inbox.say(Speaker::System, format!("soma error: {e}"));
+                info!("soma: {e}");
+                inbox.finish_stream(e.clone());
                 notice.show("soma: error");
                 if !pending.0.is_empty() {
                     pending.0.remove(0);
+                }
+                if !pending.0.is_empty() {
+                    inbox.start_stream();
+                    inbox.stream_status("...");
                 }
             }
             // Confirmed by the mind itself, so the models page shows what the
@@ -288,5 +340,3 @@ fn poll_soma(
         }
     }
 }
-
-

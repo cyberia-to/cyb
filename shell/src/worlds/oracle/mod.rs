@@ -19,14 +19,49 @@ use crate::shell::chrome::{CHROME_BOTTOM_H, CHROME_TOP_H, ContentRoot};
 
 pub struct OracleWorldPlugin;
 
+struct OracleHost {
+    height: String,
+    supply: String,
+    signals: String,
+    rows: rune_ast::Noun,
+}
+
+impl rune_interp::Host for OracleHost {
+    fn perform(
+        &mut self,
+        act: u64,
+        args: &rune_ast::Noun,
+        _caps: &rune_ast::Noun,
+    ) -> Result<rune_ast::Noun, rune_interp::InterpError> {
+        if !super::cell::act_is_query(act) {
+            return Ok(rune_ast::Noun::Atom(0));
+        }
+        match super::cell::query_name(args).as_str() {
+            "height" => Ok(super::cell::tape(&self.height)),
+            "supply" => Ok(super::cell::tape(&self.supply)),
+            "signals" => Ok(super::cell::tape(&self.signals)),
+            "table-body" => Ok(self.rows.clone()),
+            other => Err(super::cell::unknown_query(other)),
+        }
+    }
+}
+
 impl Plugin for OracleWorldPlugin {
     fn build(&self, app: &mut App) {
         app.init_resource::<Oracle>()
             .init_resource::<OracleUi>()
+            .init_resource::<OpenBlock>()
             .add_systems(OnEnter(WorldState::Oracle), enter)
+            .add_systems(OnExit(WorldState::Oracle), hide_block_page)
             .add_systems(
                 Update,
-                (poll_list, repaint, handle_row_press, scroll_page)
+                (
+                    handle_table_press,
+                    fill_block_page,
+                    poll_list,
+                    repaint,
+                    scroll_page,
+                )
                     .run_if(in_state(WorldState::Oracle)),
             );
     }
@@ -69,8 +104,19 @@ struct OracleState {
 struct Oracle(Arc<Mutex<OracleState>>);
 
 impl Oracle {
-    fn snapshot(&self) -> OracleState {
-        self.0.lock().map(|s| s.clone()).unwrap_or_default()
+    fn try_list(&self) -> Option<OracleState> {
+        let s = self.0.try_lock().ok()?;
+        Some(OracleState {
+            height: s.height,
+            supply: s.supply,
+            root: s.root.clone(),
+            signals: s.signals,
+            rows: s.rows.clone(),
+            details: HashMap::new(),
+            error: s.error.clone(),
+            busy: s.busy,
+            version: s.version,
+        })
     }
 
     fn refresh_list(&self, url: String) {
@@ -103,53 +149,51 @@ impl Oracle {
                             .then(|| r.body_mut().read_to_string().ok())
                             .flatten()
                     });
+                let mut height = 0u64;
+                let mut root = String::new();
+                let mut signals = 0u64;
+                let mut error = String::new();
+                match status {
+                    Some(body) => {
+                        height = field(&body, "height:")
+                            .and_then(|h| h.parse().ok())
+                            .unwrap_or(0);
+                        root = field(&body, "bbg-root:").unwrap_or_default();
+                        signals = field(&body, "signals:")
+                            .and_then(|n| n.parse().ok())
+                            .unwrap_or(0);
+                    }
+                    None => error = "chain unreachable".into(),
+                }
+                let mut rows = blocks.as_deref().map(parse_blocks).unwrap_or_default();
+                let mut supply = rows.first().map(|r| r.supply).unwrap_or(0);
+                if rows.is_empty() && height > 0 {
+                    rows.push(BlockRow {
+                        height,
+                        time: 0,
+                        supply,
+                        weight: 0,
+                    });
+                } else if let Some(top) = rows.first() {
+                    supply = top.supply;
+                }
                 let mut s = slot.lock().expect("oracle state");
                 s.busy = false;
                 s.version += 1;
-                match status {
-                    Some(body) => {
-                        let field = |key: &str| -> Option<String> {
-                            body.lines()
-                                .find(|l| l.trim_start().starts_with(key))
-                                .and_then(|l| l.split_once(':'))
-                                .map(|(_, v)| v.trim().to_string())
-                        };
-                        s.height = field("height:").and_then(|h| h.parse().ok()).unwrap_or(0);
-                        s.root = field("bbg-root:").unwrap_or_default();
-                        s.signals = field("signals:").and_then(|n| n.parse().ok()).unwrap_or(0);
-                        s.error.clear();
-                    }
-                    None => s.error = "chain unreachable".into(),
-                }
-                if let Some(body) = blocks {
-                    s.rows = parse_blocks(&body);
-                    if let Some(top) = s.rows.first() {
-                        s.supply = top.supply;
-                    }
-                }
+                s.height = height;
+                s.root = root;
+                s.signals = signals;
+                s.error = error;
+                s.rows = rows;
+                s.supply = supply;
             })
             .expect("spawn oracle-blocks");
     }
 
-    fn open_block(&self, url: String, height: u64) {
-        let slot = self.0.clone();
-        std::thread::Builder::new()
-            .name("oracle-block".into())
-            .spawn(move || {
-                let agent = super::body::networks::agent();
-                let out = agent
-                    .get(&format!("{url}/block/{height}"))
-                    .call()
-                    .ok()
-                    .and_then(|mut r| r.body_mut().read_to_string().ok());
-                let Some(body) = out else { return };
-                if let Some(detail) = parse_block(&body) {
-                    let mut s = slot.lock().expect("oracle state");
-                    s.details.insert(height, detail);
-                    s.version += 1;
-                }
-            })
-            .expect("spawn oracle-block");
+    fn open_block(&self, _url: String, _height: u64) {
+        // Never GET /block/{h}. A lived-in height is megabytes of links;
+        // ureq .call() waited on the body and froze the shell. The overlay
+        // shows the list row we already have.
     }
 }
 
@@ -175,14 +219,53 @@ fn field(body: &str, key: &str) -> Option<String> {
         .map(|(_, v)| v.trim().to_string())
 }
 
-fn parse_block(body: &str) -> Option<BlockDetail> {
-    let neuron = field(body, "neuron:")?;
-    let lines = body
+/// A lived-in block can carry tens of thousands of links. Reading the
+/// whole body OOMs the process; keep a page's worth of both bytes and lines.
+const BLOCK_BODY_CAP: usize = 8 * 1024;
+const BLOCK_LINE_CAP: usize = 16;
+
+fn read_capped(body: &mut ureq::Body, cap: usize) -> Option<String> {
+    use std::io::Read;
+    let mut reader = body.as_reader();
+    let mut buf = Vec::new();
+    let mut chunk = [0u8; 4096];
+    loop {
+        if buf.len() >= cap {
+            break;
+        }
+        let n = reader.read(&mut chunk).ok()?;
+        if n == 0 {
+            break;
+        }
+        let take = n.min(cap - buf.len());
+        buf.extend_from_slice(&chunk[..take]);
+    }
+    Some(String::from_utf8_lossy(&buf).into_owned())
+}
+
+fn parse_block(body: &str) -> BlockDetail {
+    let neuron = field(body, "neuron:").unwrap_or_default();
+    let mut total = 0usize;
+    let mut lines: Vec<String> = Vec::new();
+    for l in body
         .lines()
         .filter(|l| l.starts_with("link ") || l.starts_with("pay "))
-        .map(|l| l.to_string())
-        .collect();
-    Some(BlockDetail { neuron, lines })
+    {
+        total += 1;
+        if lines.len() < BLOCK_LINE_CAP {
+            lines.push(l.to_string());
+        }
+    }
+    if total > lines.len() {
+        lines.push(format!("… {} more", total - lines.len()));
+    }
+    if neuron.is_empty() && lines.is_empty() {
+        return BlockDetail {
+            neuron,
+            lines: vec!["no links or transfers".into()],
+        };
+    }
+    BlockDetail { neuron, lines }
 }
 
 /// Which row (by height) is expanded — purely local UI state, never
@@ -196,6 +279,12 @@ struct OracleUi {
 struct OracleRoot;
 
 #[derive(Component)]
+pub struct BlockPage(u64);
+
+#[derive(Resource, Default)]
+pub struct OpenBlock(pub Option<u64>);
+
+#[derive(Component)]
 struct OracleScroll;
 
 #[derive(Component)]
@@ -203,6 +292,12 @@ struct RowButton(u64);
 
 fn network_url(hub: &BodyLinkHub) -> Option<String> {
     crate::worlds::sigma::chain::chain_url(&hub.0)
+}
+
+fn hide_block_page(mut q: Query<&mut Visibility, With<BlockPage>>) {
+    for mut vis in &mut q {
+        *vis = Visibility::Hidden;
+    }
 }
 
 fn enter(
@@ -219,7 +314,11 @@ fn enter(
     if crate::worlds::reveal_world(WorldState::Oracle, &mut worlds) {
         return;
     }
-    build_page(commands, &oracle.snapshot(), &OracleUi::default());
+    build_page(
+        commands,
+        &oracle.try_list().unwrap_or_default(),
+        &OracleUi::default(),
+    );
 }
 
 /// A slow background refresh — block history does not change under you
@@ -235,7 +334,7 @@ fn poll_list(
         return;
     }
     *wait = 0.0;
-    if oracle.snapshot().busy {
+    if oracle.0.try_lock().ok().map(|s| s.busy).unwrap_or(true) {
         return;
     }
     if let Some(hub) = &hub {
@@ -249,43 +348,138 @@ fn repaint(
     mut commands: Commands,
     oracle: Res<Oracle>,
     ui: Res<OracleUi>,
+    open: Res<OpenBlock>,
     mut seen: Local<u64>,
     roots: Query<Entity, With<OracleRoot>>,
 ) {
-    let snap = oracle.snapshot();
+    if open.0.is_some() {
+        return;
+    }
+    let Some(snap) = oracle.try_list() else {
+        return;
+    };
     if snap.version == *seen && !ui.is_changed() {
         return;
     }
     *seen = snap.version;
-    for e in &roots {
-        commands.entity(e).despawn();
+    if !roots.is_empty() {
+        return;
     }
     build_page(commands, &snap, &ui);
 }
 
-fn handle_row_press(
-    interactions: Query<(&Interaction, &RowButton), Changed<Interaction>>,
-    mut ui: ResMut<OracleUi>,
-    oracle: Res<Oracle>,
-    hub: Option<Res<BodyLinkHub>>,
+fn handle_table_press(
+    q: Query<(&Interaction, &prysm::molecules::action::ActionButton), Changed<Interaction>>,
+    mut open: ResMut<OpenBlock>,
+    mut nav: ResMut<crate::worlds::nav::Nav>,
+    now: Res<crate::now::Now>,
+    world: Res<State<WorldState>>,
 ) {
-    for (interaction, row) in &interactions {
-        if *interaction != Interaction::Pressed {
+    for (i, b) in &q {
+        if *i != Interaction::Pressed {
             continue;
         }
-        let height = row.0;
-        if ui.expanded == Some(height) {
-            ui.expanded = None;
-        } else {
-            ui.expanded = Some(height);
-            if !oracle.snapshot().details.contains_key(&height) {
-                if let Some(hub) = &hub {
-                    if let Some(url) = network_url(hub) {
-                        oracle.open_block(url, height);
-                    }
-                }
+        let Some(h) = b.target_ref.strip_prefix("block:") else {
+            continue;
+        };
+        let Ok(height) = h.parse::<u64>() else {
+            continue;
+        };
+        nav.push(crate::worlds::nav::Place::capture(
+            *world.get(),
+            &now,
+            false,
+        ));
+        open.0 = Some(height);
+    }
+}
+
+fn fill_block_page(
+    mut commands: Commands,
+    open: Res<OpenBlock>,
+    oracle: Res<Oracle>,
+    mut pages: Query<(&BlockPage, &mut Visibility)>,
+) {
+    let Some(h) = open.0 else {
+        for (_, mut vis) in &mut pages {
+            if *vis != Visibility::Hidden {
+                *vis = Visibility::Hidden;
             }
         }
+        return;
+    };
+    let mut have = false;
+    for (page, mut vis) in &mut pages {
+        if page.0 == h {
+            have = true;
+            if *vis != Visibility::Visible {
+                *vis = Visibility::Visible;
+            }
+        } else if *vis != Visibility::Hidden {
+            *vis = Visibility::Hidden;
+        }
+    }
+    if !have {
+        let row = oracle
+            .0
+            .try_lock()
+            .ok()
+            .and_then(|s| s.rows.iter().find(|r| r.height == h).cloned());
+        spawn_overlay(&mut commands, h, row.as_ref());
+    }
+}
+
+fn spawn_overlay(commands: &mut Commands, h: u64, row: Option<&BlockRow>) {
+    let root = commands
+        .spawn((
+            BlockPage(h),
+            Node {
+                position_type: PositionType::Absolute,
+                top: Val::Px(CHROME_TOP_H),
+                bottom: Val::Px(CHROME_BOTTOM_H),
+                left: Val::Px(0.0),
+                right: Val::Px(0.0),
+                flex_direction: FlexDirection::Column,
+                padding: UiRect::all(Val::Px(theme::G * 3.0)),
+                row_gap: Val::Px(theme::G),
+                overflow: Overflow::clip_y(),
+                ..default()
+            },
+            BackgroundColor(theme::DARK_BASE),
+            GlobalZIndex(12),
+        ))
+        .id();
+    let line = |commands: &mut Commands, parent: Entity, s: String, size: f32, color: Color| {
+        commands.spawn((
+            Text::new(s),
+            TextFont {
+                font_size: size,
+                ..default()
+            },
+            TextColor(color),
+            ChildOf(parent),
+        ));
+    };
+    line(
+        commands,
+        root,
+        format!("block {h}"),
+        theme::H2,
+        theme::ACID_GREEN,
+    );
+    if let Some(r) = row {
+        line(
+            commands,
+            root,
+            format!(
+                "{}   supply {}   wt {}",
+                time_text(r.time),
+                r.supply,
+                r.weight
+            ),
+            theme::BODY,
+            theme::TEXT_PRIMARY,
+        );
     }
 }
 
@@ -320,7 +514,7 @@ fn time_text(secs: u64) -> String {
         .unwrap_or_else(|| "-".into())
 }
 
-fn build_page(mut commands: Commands, snap: &OracleState, ui: &OracleUi) {
+fn build_page(mut commands: Commands, snap: &OracleState, _ui: &OracleUi) {
     let root = commands
         .spawn((
             OracleRoot,
@@ -345,14 +539,8 @@ fn build_page(mut commands: Commands, snap: &OracleState, ui: &OracleUi) {
         .spawn((
             OracleScroll,
             Node {
-                width: Val::Percent(100.0),
-                max_width: Val::Px(theme::MEASURE),
                 height: Val::Percent(100.0),
-                flex_direction: FlexDirection::Column,
-                padding: UiRect::all(Val::Px(theme::G * 3.0)),
-                row_gap: Val::Px(theme::G),
-                overflow: Overflow::scroll_y(),
-                ..default()
+                ..super::page::scroll_column()
             },
             ScrollPosition::default(),
             ChildOf(root),
@@ -371,32 +559,6 @@ fn build_page(mut commands: Commands, snap: &OracleState, ui: &OracleUi) {
         ));
     };
 
-    text(
-        &mut commands,
-        page,
-        "oracle".into(),
-        theme::H2,
-        theme::TEXT_PRIMARY,
-    );
-
-    if snap.height > 0 {
-        let root = if snap.root.len() > 12 {
-            format!("{}..{}", &snap.root[..8], &snap.root[snap.root.len() - 4..])
-        } else {
-            snap.root.clone()
-        };
-        text(
-            &mut commands,
-            page,
-            format!(
-                "height {}   supply {}   signals {}   root {}",
-                snap.height, snap.supply, snap.signals, root
-            ),
-            theme::BODY,
-            theme::ACID_GREEN,
-        );
-    }
-
     if !snap.error.is_empty() {
         text(
             &mut commands,
@@ -406,134 +568,31 @@ fn build_page(mut commands: Commands, snap: &OracleState, ui: &OracleUi) {
             theme::ACID_RED,
         );
     }
-    if snap.rows.is_empty() {
-        let msg = if snap.busy {
-            "asking the chain...".to_string()
-        } else {
-            "no recorded blocks yet - oracle only sees blocks finalized \
-             since this feature shipped, nothing before is invented"
-                .to_string()
-        };
-        text(&mut commands, page, msg, theme::CAPTION, theme::TEXT_DIM);
-        return;
-    }
 
-    let header = commands
-        .spawn((
-            Node {
-                width: Val::Percent(100.0),
-                justify_content: JustifyContent::SpaceBetween,
-                padding: UiRect::axes(Val::Px(theme::G * 1.5), Val::Px(theme::G * 0.5)),
-                ..default()
-            },
-            ChildOf(page),
-        ))
-        .id();
-    for h in ["height", "time", "hashrate", "supply"] {
-        text(
-            &mut commands,
-            header,
-            h.into(),
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
-    }
-
-    for (i, row) in snap.rows.iter().enumerate() {
-        let r = commands
-            .spawn((
-                RowButton(row.height),
-                Button,
-                Node {
-                    width: Val::Percent(100.0),
-                    flex_direction: FlexDirection::Column,
-                    padding: UiRect::axes(Val::Px(theme::G * 1.5), Val::Px(theme::G * 0.6)),
-                    border: UiRect::all(Val::Px(1.0)),
-                    ..default()
-                },
-                BackgroundColor(theme::DARK_BASE),
-                BorderColor::all(theme::BORDER),
-                ChildOf(page),
-            ))
-            .id();
-
-        let top = commands
-            .spawn((
-                Node {
-                    width: Val::Percent(100.0),
-                    justify_content: JustifyContent::SpaceBetween,
-                    ..default()
-                },
-                ChildOf(r),
-            ))
-            .id();
-        text(
-            &mut commands,
-            top,
-            format!("{}", row.height),
-            theme::BODY,
-            theme::ACID_GREEN,
-        );
-        text(
-            &mut commands,
-            top,
-            time_text(row.time),
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
-        text(
-            &mut commands,
-            top,
-            hashrate_text(&snap.rows, i),
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
-        text(
-            &mut commands,
-            top,
-            format!("{}", row.supply),
-            theme::CAPTION,
-            theme::TEXT_DIM,
-        );
-
-        if ui.expanded == Some(row.height) {
-            match snap.details.get(&row.height) {
-                Some(d) => {
-                    text(
-                        &mut commands,
-                        r,
-                        format!("cast by {}", short_hex(&d.neuron)),
-                        theme::CAPTION,
-                        theme::TEXT_DIM,
-                    );
-                    if d.lines.is_empty() {
-                        text(
-                            &mut commands,
-                            r,
-                            "no links or transfers in this block".into(),
-                            theme::CAPTION,
-                            theme::TEXT_DIM,
-                        );
-                    }
-                    for line in &d.lines {
-                        text(
-                            &mut commands,
-                            r,
-                            line.clone(),
-                            theme::CAPTION,
-                            theme::TEXT_PRIMARY,
-                        );
-                    }
-                }
-                None => text(
-                    &mut commands,
-                    r,
-                    "loading...".into(),
-                    theme::CAPTION,
-                    theme::TEXT_DIM,
-                ),
-            }
-        }
+    let body = super::cell::list(
+        snap.rows
+            .iter()
+            .enumerate()
+            .map(|(i, row)| {
+                super::cell::row(&[
+                    &row.height.to_string(),
+                    &time_text(row.time),
+                    &row.supply.to_string(),
+                    &hashrate_text(&snap.rows, i),
+                    &format!("block:{}", row.height),
+                ])
+            })
+            .collect(),
+    );
+    let mut host = OracleHost {
+        height: super::cell::exact(snap.height),
+        supply: super::cell::exact(snap.supply),
+        signals: super::cell::exact(snap.signals),
+        rows: body,
+    };
+    match super::cell::load("oracle").and_then(|src| super::cell::eval(&src, &mut host)) {
+        Ok(chunks) => super::cell::dispatch_page(&mut commands, page, &chunks),
+        Err(e) => text(&mut commands, page, e, theme::CAPTION, theme::ACID_RED),
     }
 }
 

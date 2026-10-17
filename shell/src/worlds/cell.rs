@@ -13,6 +13,10 @@ const BUILTIN: &[(&str, &str)] = &[
     ("landing", include_str!("../../../cells/landing.rune")),
     ("memory", include_str!("../../../cells/memory.rune")),
     ("log", include_str!("../../../cells/log.rune")),
+    ("body", include_str!("../../../cells/body.rune")),
+    ("models", include_str!("../../../cells/models.rune")),
+    ("vault", include_str!("../../../cells/vault.rune")),
+    ("oracle", include_str!("../../../cells/oracle.rune")),
 ];
 
 pub fn load(name: &str) -> Result<String, String> {
@@ -70,6 +74,11 @@ pub fn row(cells: &[&str]) -> Noun {
     Noun::cell(Noun::Atom(tag::ROW), n)
 }
 
+pub fn row_strings(cells: &[String]) -> Noun {
+    let refs: Vec<&str> = cells.iter().map(String::as_str).collect();
+    row(&refs)
+}
+
 pub fn query_name(args: &Noun) -> String {
     String::from_utf8_lossy(&rune_prysm::noun_to_bytes(args)).into_owned()
 }
@@ -84,15 +93,9 @@ pub fn act_is_query(act: u64) -> bool {
     act == act::QUERY
 }
 
-/// Compact census numbers: 12, 12.4k, 1.2M.
-pub fn compact(n: u64) -> String {
-    if n >= 1_000_000 {
-        format!("{:.1}M", n as f64 / 1e6)
-    } else if n >= 10_000 {
-        format!("{:.1}k", n as f64 / 1e3)
-    } else {
-        n.to_string()
-    }
+/// Census numbers as they are — no 8.6k, no 1.2M.
+pub fn exact(n: u64) -> String {
+    n.to_string()
 }
 
 /// Dispatch a cell's chunks into `parent`. A wrapping component chunk
