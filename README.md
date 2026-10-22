@@ -22,3 +22,13 @@ or open [cyb.ai](https://cyb.ai) and begin linking.
 [[cyber]] · [[soft3]] · [[bootloader]] · [[install]] · [[cyb/philosophy]]
 
 the robot is one organism: **[[cyb/anatomy|anatomy]]** is the source of truth — 21 parts, six layers; every doc, world, and crate names things by it
+
+
+## releases
+
+Cyb selects one concrete soft3 build through
+[`release/soft3.toml`](release/soft3.toml). Its component revisions and stack
+qualification supply the desktop and Android builds, including embedded Nu.
+The [release contract](specs/releases.md) defines product acceptance and evidence.
+[GitHub Releases](https://github.com/cyberia-to/cyb/releases) contains candidate
+artifacts and inventories; the owner promotes candidates.

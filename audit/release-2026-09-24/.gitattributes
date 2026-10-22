@@ -1,0 +1,2 @@
+# Verbatim receipt logs retain their original hashes and line endings.
+logs/** -text -whitespace
