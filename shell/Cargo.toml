@@ -37,6 +37,7 @@ cyb-core   = { path = "../core" }
 hemera     = { package = "cyber-hemera", version = "0.3", path = "../../hemera/rs" }
 file       = { package = "cyber-file", path = "../../file" }
 spark      = { package = "cyber-spark", path = "../../spark" }
+image      = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "webp"] }
 mudra      = { package = "cyber-mudra", path = "../../mudra" }
 tru        = { package = "cyber-tru", path = "../../tru/rs" }
 tade       = { path = "../../tade/impl/rust" }
