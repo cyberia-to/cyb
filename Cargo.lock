@@ -2954,11 +2954,9 @@ dependencies = [
  "sha1",
  "sha2",
  "soma-kernel",
- "strata-nebu",
  "tade",
  "tray-icon",
  "ureq",
- "zheng",
 ]
 
 [[package]]
@@ -2971,6 +2969,7 @@ dependencies = [
  "cyber-tru",
  "cybergraph",
  "foculus",
+ "strata-nebu",
 ]
 
 [[package]]
@@ -12239,7 +12238,9 @@ dependencies = [
  "cyber-hemera",
  "cyber-lens",
  "cyber-nox",
+ "getrandom 0.3.4",
  "strata-nebu",
+ "zeroize",
 ]
 
 [[package]]
