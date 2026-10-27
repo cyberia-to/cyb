@@ -9,6 +9,8 @@ license = "Cyber"
 cybergraph = { path = "../../cybergraph" }
 bbg = { path = "../../bbg/rs" }
 cyber-hemera = { path = "../../hemera/rs" }
+# Goldilocks arithmetic for body tickets (ticket.rs)
+nebu = { package = "strata-nebu", path = "../../strata/nebu/rs" }
 # codec only (chain, frames, tape) — not the iroh/radio transport (`net`)
 foculus = { path = "../../foculus", default-features = false }
 # rewards path: Link / Context for settle_epoch from wallet helpers

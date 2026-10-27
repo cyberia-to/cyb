@@ -8,6 +8,7 @@
 //! - the [`SignalBus`] queue plus helpers to assemble Signals from
 //!   individual cyberlinks
 //! - money loop (balance / send / receive / settle / pay proofs)
+//! - body proving tickets: one SpMV step, checked by recomputation
 //!
 //! Depends on `cybergraph` (which transitively brings in `bbg`,
 //! `hemera`, `zheng`, `nebu`). Does **not** depend on bevy, wgpu, or
@@ -20,6 +21,7 @@ pub mod money;
 pub mod referral;
 pub mod sense;
 pub mod signal;
+pub mod ticket;
 
 pub use cell::Cell;
 pub use chroma::{ChromaId, GridPos, chroma_particle};
