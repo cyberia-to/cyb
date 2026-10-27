@@ -44,7 +44,7 @@ pub fn key() -> Option<[u8; 32]> {
     if spell.is_empty() {
         return None;
     }
-    let spell = mudra::spell::derive(spell, "").ok()?;
+    let spell = neuron_auth::spell::derive(spell, "").ok()?;
     let mut h = Sha256::new();
     h.update(b"cyb-vault-v1");
     h.update(spell);

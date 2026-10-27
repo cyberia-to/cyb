@@ -3,7 +3,7 @@
 //!   cy                         the `cyb›` REPL (interactive)
 //!   cy link cat dog            one-shot
 //!   cy query                   one-shot query
-//!   cy bind <claim>            record a verified mudra migration claim
+//!   cy bind <claim>            record a verified migration claim (neuron-auth)
 //!   cy pull <peer.log>         absorb a peer's signals (file anti-entropy)
 //!
 //! Both modes drive a `cyb_core::Cell`. The REPL is just the interactive mode.
@@ -160,7 +160,7 @@ fn help() {
     let rows = [
         ("id", "this cyb's neuron + pussy address"),
         ("link <a> <b>", "assert a cyberlink a → b"),
-        ("bind <claim>", "record a verified mudra migration claim"),
+        ("bind <claim>", "record a verified migration claim (neuron-auth)"),
         ("fund <token> <amt>", "seed balance for tests (genesis)"),
         ("balance [token]", "show balance (default token CYB)"),
         ("send <to> <token> <amt>", "pay coins (grade-2 finality)"),
@@ -580,24 +580,24 @@ fn pull(cell: &mut Cell, peer: &Path) {
     }
 }
 
-/// Ingest a mudra migration claim. Verify that the holder controls the legacy
+/// Ingest a neuron-auth migration claim. Verify that the holder controls the legacy
 /// Cosmos key, then record the binding `legacy address → native neuron` as a
 /// cyberlink authored by that neuron — migration becomes an immortal graph fact.
 fn bind(cell: &mut Cell, claim_str: &str) {
-    let Some(c) = mudra::Claim::decode(claim_str) else {
+    let Some(c) = neuron_auth::Claim::decode(claim_str) else {
         println!(
             "  {}: malformed claim (expected: address pubkey neuron signature)",
             paint("31", "error")
         );
         return;
     };
-    if !mudra::claim::verify(&c, mudra::cosmos::PUSSY) {
+    if !neuron_auth::claim::verify(&c, neuron_auth::cosmos::PUSSY) {
         println!("  {} {}", paint("31", "✗"), bold("claim does not verify"));
         return;
     }
     // legacy identity as a particle: the 20-byte Cosmos account id, padded
     let mut legacy = [0u8; 32];
-    legacy[..20].copy_from_slice(&mudra::cosmos::account_id(&c.pubkey));
+    legacy[..20].copy_from_slice(&neuron_auth::cosmos::account_id(&c.pubkey));
     // authored by the migrating neuron itself: it asserts it owns the legacy account
     match cell.link(c.neuron, legacy, c.neuron) {
         Ok(sig) => {
@@ -924,7 +924,7 @@ fn exec(cell: &mut Cell, wallet: &mut MoneyWallet, id: &Id, line: &str) -> bool 
         },
         "bind" => match it.next() {
             Some(claim) => bind(cell, claim.trim()),
-            None => println!("  {}: bind <claim>   (from `mudra claim …`)", dim("usage")),
+            None => println!("  {}: bind <claim>   (from `neuron-auth claim …`)", dim("usage")),
         },
         "log" => show_log(cell),
         "state" => println!(
@@ -995,7 +995,7 @@ fn identity() -> Id {
     let spell = match std::fs::read_to_string(&file) {
         Ok(m) if !m.trim().is_empty() => m.trim().to_string(),
         _ => {
-            let m = mudra::spell::generate().expect("generate spell");
+            let m = neuron_auth::spell::generate().expect("generate spell");
             let _ = std::fs::write(&file, format!("{m}\n"));
             #[cfg(unix)]
             {
@@ -1015,10 +1015,10 @@ fn identity() -> Id {
         }
     };
 
-    let key = mudra::spell::cosmos_key(&spell, "").expect("derive key from spell");
-    let pubkey = mudra::cosmos::compressed(key.verifying_key());
-    let neuron = mudra::claim::neuron_of(&pubkey);
-    let address = mudra::cosmos::address(&pubkey, mudra::cosmos::PUSSY).unwrap_or_default();
+    let key = neuron_auth::spell::cosmos_key(&spell, "").expect("derive key from spell");
+    let pubkey = neuron_auth::cosmos::compressed(key.verifying_key());
+    let neuron = neuron_auth::claim::neuron_of(&pubkey);
+    let address = neuron_auth::cosmos::address(&pubkey, neuron_auth::cosmos::PUSSY).unwrap_or_default();
     Id {
         neuron,
         pubkey,

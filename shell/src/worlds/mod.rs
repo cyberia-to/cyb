@@ -50,6 +50,27 @@ pub enum WorldState {
     Oracle,
 }
 
+impl WorldState {
+    /// Which chroma slot this world is painted into — the worlds-as-slots table
+    /// the chroma overlay will drive. `None` is an unseen organ (soma, vault,
+    /// state) that has no slot of its own: it shows through another one.
+    pub fn slot(self) -> Option<cyb_core::ChromaId> {
+        use cyb_core::ChromaId as C;
+        Some(match self {
+            WorldState::Body => C::Sigma,      // the body's energy and work are rows of the sum
+            WorldState::Graph => C::Memory,    // the brain is memory painted
+            WorldState::Com => C::Com,
+            WorldState::Chat => C::Voice,      // what the agent says; soma behind it
+            WorldState::Robot => C::Spacetime, // the pluggable centre
+            WorldState::Sigma => C::Sigma,
+            WorldState::Memory => C::Memory,
+            WorldState::Models => return None, // soma — unseen
+            WorldState::Vault => return None,  // vault — unseen
+            WorldState::Oracle => return None, // state — unseen, graded into sense and sigma
+        })
+    }
+}
+
 /// Shell command forwarded from the commander bar to nushell.
 #[derive(Resource, Default)]
 pub struct PendingShellCmd(pub Option<String>);
