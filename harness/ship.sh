@@ -96,10 +96,12 @@ else
   echo "ship: no $KS - skipping the android body"
 fi
 
-# Linux + Windows: built on the cybernode (deimos, the quiet one) — the
-# workspace spans sibling repos GitHub never sees, so CI cannot build it,
-# a node can. CYB_NODE overrides; CYB_SKIP_NODE=1 ships mac+android only.
-NODE="${CYB_NODE:-deimos}"
+# Linux + Windows: built on the build node — the workspace spans sibling
+# repos GitHub never sees, so CI cannot build it, a node can. the node is
+# `cyb-build` (the `build` user on agent-a, Akash; deimos until 2026-10-31,
+# retired with Hetzner — apparatus/audit/hetzner). CYB_NODE overrides;
+# CYB_SKIP_NODE=1 ships mac+android only.
+NODE="${CYB_NODE:-cyb-build}"
 if [ "${CYB_SKIP_NODE:-0}" != "1" ]; then
   echo "ship: ubuntu + windows on $NODE..."
   if bash harness/build-node.sh "$NODE" "$V" all; then
