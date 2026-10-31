@@ -2,7 +2,8 @@
 # build-node — cyb for ubuntu and windows, built on the cybernode.
 #
 # The cyb workspace reaches into ~21 sibling repos GitHub never sees, so
-# CI cannot build it. deimos (the quietest cybernode: 8 cores, 62G) can:
+# CI cannot build it. the build node `cyb-build` (agent-a on Akash, 8 vCPU,
+# 32 GB, the `build` user; deimos until 2026-10-31) can:
 # this script rsyncs the workspace there, builds linux natively and
 # windows via cargo-xwin (MSVC cross, SDK auto-fetched), and brings both
 # artifacts home.
