@@ -42,7 +42,12 @@ cleanup() {
   sleep 1
   for pid in "${PIDS[@]:-}"; do kill -9 "$pid" 2>/dev/null; done
   # The fleet must leave no machinery running, ours or spawned-by-ours.
-  pkill -f "cyb-fleet" 2>/dev/null
+  # Only processes of THIS run: their command lines name this run's unique
+  # work dir. A machine-wide `pkill -f cyb-fleet` killed every concurrent
+  # fleet (other worktrees, other agents) along with ours.
+  for pid in $(pgrep -f "$WORK" 2>/dev/null); do
+    [ "$pid" != "$$" ] && kill "$pid" 2>/dev/null
+  done
   [ "${FLEET_KEEP:-0}" = "1" ] || rm -rf "$WORK"
 }
 trap cleanup EXIT INT TERM
