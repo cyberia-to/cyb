@@ -17,11 +17,19 @@
 //! Nothing is signed until the node has published its chain id in
 //! `/status` — a tx bound to a guessed chain is a tx for nobody.
 //!
+//! What crosses and what does not. The tx carries `(p, q, valence)` and
+//! nothing else of the link: its token becomes the chain's native token
+//! and its amount 0, so the weight `cast_weighted` records
+//! (core/src/cell.rs) stays local — the chain sees the assertion, not
+//! its price. And only THIS body's signal chain is relayed: the tx is
+//! authored by `signer.neuron`, so another neuron's links would go out
+//! over this body's name. They stay in the cell.
+//!
 //! Toggle: `~/cyb/relay` ("on"/"off", default on).
 
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 use std::time::Duration;
 
 use bevy::log::{info, warn};
@@ -40,8 +48,6 @@ pub struct Relay {
     pub sent: Arc<AtomicU64>,
     /// Links that failed on the last pass (retried next pass).
     pub pending: Arc<AtomicU64>,
-    /// Why the last pass stopped, if it did ("" when the pass was clean).
-    pub last_error: Arc<Mutex<String>>,
 }
 
 fn relay_file() -> std::path::PathBuf {
@@ -97,8 +103,7 @@ struct Fresh {
 impl Relay {
     pub fn start(shared: SharedCell, hub: NetHub, signer: Signer) -> Self {
         let relay = Relay::default();
-        let (sent, pending, last_error) =
-            (relay.sent.clone(), relay.pending.clone(), relay.last_error.clone());
+        let (sent, pending) = (relay.sent.clone(), relay.pending.clone());
 
         std::thread::Builder::new()
             .name("body-relay".into())
@@ -115,14 +120,6 @@ impl Relay {
                         marks.insert(hex32(neuron), last);
                     }
                 }
-                let mut note = |m: String| {
-                    if !m.is_empty() {
-                        warn!("relay: {m}");
-                    }
-                    if let Ok(mut e) = last_error.lock() {
-                        *e = m;
-                    }
-                };
                 loop {
                     std::thread::sleep(PASS_EVERY);
                     if !wanted() {
@@ -138,6 +135,11 @@ impl Relay {
                         let cell = shared.cell.lock().expect("shared cell poisoned");
                         let mut out = Vec::new();
                         for (neuron, chain) in cell.graph.chains.iter() {
+                            if *neuron != signer.neuron {
+                                // Signed as us or not at all: another
+                                // neuron's links are not ours to publish.
+                                continue;
+                            }
                             let key = hex32(neuron);
                             // A neuron first seen after the seed relays from its
                             // first step: it is new, so is everything it says.
@@ -166,13 +168,13 @@ impl Relay {
                     // A chain that has not said who it is gets nothing signed.
                     let Some(chain_id) = chain_id else {
                         pending.store(fresh.len() as u64, Ordering::Relaxed);
-                        note(format!("{net_name}: no chain id in /status yet"));
+                        warn!("relay: {net_name}: no chain id in /status yet");
                         continue;
                     };
                     let client = match Client::new(&url) {
                         Ok(c) => c,
                         Err(e) => {
-                            note(e.to_string());
+                            warn!("relay: {e}");
                             continue;
                         }
                     };
@@ -182,7 +184,7 @@ impl Relay {
                         Ok(n) => n,
                         Err(e) => {
                             pending.store(fresh.len() as u64, Ordering::Relaxed);
-                            note(format!("nonce: {e}"));
+                            warn!("relay: nonce: {e}");
                             continue;
                         }
                     };
@@ -208,17 +210,15 @@ impl Relay {
                                 bump_mark(&mut marks, &f.neuron_key, f.step);
                             }
                             Err(e) => {
-                                note(e);
+                                warn!("relay: {e}");
                                 // Stop the pass; the next one retries from
                                 // the mark — order within a chain holds.
                                 break;
                             }
                         }
                     }
-                    let any = done > 0;
                     let failed = total - done;
-                    if any {
-                        note(String::new());
+                    if done > 0 {
                         // The page learns the new height NOW, not on the next probe.
                         if let Ok(st) = client.status() {
                             hub.note_block(&net_name, st.height, &st.root);
