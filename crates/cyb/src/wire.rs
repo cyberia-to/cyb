@@ -55,7 +55,7 @@ fn hex(p: &[u8; 32]) -> String {
 
 fn hex32(s: &str) -> Option<[u8; 32]> {
     let s = s.trim();
-    if s.len() != 64 {
+    if s.len() != 64 || !s.is_ascii() {
         return None;
     }
     let mut out = [0u8; 32];
@@ -64,6 +64,9 @@ fn hex32(s: &str) -> Option<[u8; 32]> {
     }
     Some(out)
 }
+
+#[cfg(test)]
+mod hex32_tests;
 
 // ── the graph as address book ────────────────────────────────────────────
 
