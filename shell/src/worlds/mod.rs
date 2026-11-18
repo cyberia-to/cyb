@@ -319,3 +319,56 @@ fn hide_foreign_worlds(
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use cyb_core::ChromaId as C;
+
+    /// The worlds-as-slots table, pinned row by row: `slot` is a hand-written
+    /// mapping nothing paints yet, so a wrong row would otherwise be silent
+    /// until the chroma overlay reads it.
+    #[test]
+    fn every_world_keeps_its_slot() {
+        let table = [
+            (WorldState::Body, Some(C::Sigma)),
+            (WorldState::Graph, Some(C::Memory)),
+            (WorldState::Com, Some(C::Com)),
+            (WorldState::Chat, Some(C::Voice)),
+            (WorldState::Robot, Some(C::Spacetime)),
+            (WorldState::Sigma, Some(C::Sigma)),
+            (WorldState::Memory, Some(C::Memory)),
+            (WorldState::Models, None),
+            (WorldState::Vault, None),
+            (WorldState::Oracle, None),
+        ];
+        for (world, want) in table {
+            assert_eq!(world.slot(), want, "slot of {world:?}");
+        }
+    }
+
+    /// The unseen organs have no world of their own, and the slots no world
+    /// claims — now, name, time — are the overlay's remaining work.
+    #[test]
+    fn three_worlds_are_unseen() {
+        let worlds = [
+            WorldState::Body,
+            WorldState::Graph,
+            WorldState::Com,
+            WorldState::Chat,
+            WorldState::Robot,
+            WorldState::Sigma,
+            WorldState::Memory,
+            WorldState::Models,
+            WorldState::Vault,
+            WorldState::Oracle,
+        ];
+        assert_eq!(worlds.iter().filter(|w| w.slot().is_none()).count(), 3);
+        for unpainted in [C::Now, C::Name, C::Time] {
+            assert!(
+                !worlds.iter().any(|w| w.slot() == Some(unpainted)),
+                "{unpainted:?} is painted by a world now — update the table"
+            );
+        }
+    }
+}

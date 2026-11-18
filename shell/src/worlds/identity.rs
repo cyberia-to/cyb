@@ -3,18 +3,18 @@
 //! The neuron every world signs as used to be `$USER` padded with zeros: a
 //! placeholder that made "the robot belongs to its owner" a sentence about
 //! nobody. Identity is now derived the way the rest of cyber derives it —
-//! mudra's pipeline, BIP-39 spell → secp256k1 key → `neuron_of(pubkey)` —
-//! so the neuron is the fingerprint of a key only the owner holds, and the
-//! same spell reproduces the same identity on any body.
+//! neuron-auth's pipeline, BIP-39 spell → secp256k1 key →
+//! `neuron_of(pubkey)` — so the neuron is the fingerprint of a key only the
+//! owner holds, and the same spell reproduces the same identity on any body.
 //!
 //! The spell lives in `~/cyb/spell`, mode 0600, generated on first
 //! boot; existing installations keep reading their original `mnemonic` file.
 //! That file IS the owner: back it up and the identity survives the
 //! machine; lose it and nobody — by construction — can produce the neuron
 //! again. Every outgoing signal now signs — `Identity::sign` produces the
-//! same ADR-036 doc mudra's claim module already uses, over the wire's own
-//! canonical bytes, so a chain that verifies rejects anything not backed by
-//! this key.
+//! same ADR-036 doc neuron-auth's claim module already uses, over the wire's
+//! own canonical bytes, so a chain that verifies rejects anything not backed
+//! by this key.
 
 use bevy::prelude::*;
 use std::sync::Arc;

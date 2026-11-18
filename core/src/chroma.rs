@@ -2,7 +2,7 @@
 //!
 //! Eight organs that show, arranged around a pluggable centre (spacetime).
 //! The slots are named by the organs of `cy/specs/anatomy.md`, the grid by
-//! `cy/specs/chroma.md`: cy designs it, cyb paints it. The layout is closed —
+//! `cy/chroma/README.md`: cy designs it, cyb paints it. The layout is closed —
 //! adding a feature means a new intent particle, never a new slot.
 //!
 //! ```text
@@ -91,9 +91,15 @@ impl ChromaId {
         }
     }
 
-    /// The painter's pre-2026-10-07 slot name, for reading old particles and
-    /// old pages (`prysm/chroma/specs/*`): space → now, ad → voice,
-    /// ava → name, brain → memory; the rest never changed.
+    /// The painter's pre-2026-10-07 slot name, for reading old pages
+    /// (`prysm/chroma/specs/*`): space → now, ad → voice, ava → name,
+    /// brain → memory; the rest never changed.
+    ///
+    /// Names only. The rename moved the well-known particles with the
+    /// labels — `chroma_particle` was the bytes of `chroma/space` and is
+    /// now the bytes of `chroma/now` — and there is no way back from a
+    /// particle to a `ChromaId` here: the old slot particles are abandoned.
+    /// Nothing outside these tests ever wrote one.
     pub fn from_painter_name(name: &str) -> Option<Self> {
         Some(match name {
             "space" | "now" => ChromaId::Now,
