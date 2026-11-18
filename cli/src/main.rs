@@ -1101,3 +1101,6 @@ fn main() {
 fn hex3(b: &[u8]) -> String {
     b[..3].iter().map(|x| format!("{x:02x}")).collect()
 }
+
+#[cfg(test)]
+mod tests;
