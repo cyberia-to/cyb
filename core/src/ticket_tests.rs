@@ -186,6 +186,10 @@ fn ticket_profile_one_lower_bound() {
         let c = committed(&g);
         let x = challenge(42, 1, g.n);
         let reps = 5;
+        // Mean of `reps`, no warmup — unlike the profile-1 cells below, which
+        // are medians. The printed ratio is order-of-magnitude only, and this
+        // figure disagrees with the 0.58 ms that calibrates TICKET_DIFFICULTY
+        // (see the audit page: the constant is flagged for recalibration).
         let t0 = std::time::Instant::now();
         for k in 0..reps {
             assert!(prove(&c, 42, k).is_some());
