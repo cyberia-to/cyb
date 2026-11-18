@@ -529,7 +529,14 @@ fn body_host(view: &BodyView) -> BodyHost {
                 .last_sync
                 .map(|t| format!("{}s", t.elapsed().as_secs()))
                 .unwrap_or_else(|| "—".into());
-            let tip = if n.tip.len() >= 8 { format!("{}..", &n.tip[..8]) } else { "—".into() };
+            // By characters, not bytes: the tip is whatever the endpoint's
+            // /status said, and a byte slice can land inside a multi-byte
+            // one and panic the render.
+            let tip = if n.tip.is_empty() {
+                "—".into()
+            } else {
+                format!("{}..", n.tip.chars().take(8).collect::<String>())
+            };
             cell::row(&[&n.name, &height, &tip, &ago, if n.ok { "ok" } else { "down" }])
         })
         .collect();

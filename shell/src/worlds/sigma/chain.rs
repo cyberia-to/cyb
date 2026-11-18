@@ -28,10 +28,6 @@ pub struct ChainMoneyState {
     pub balance: u64,
     pub supply: u64,
     pub height: u64,
-    /// The tip block id as the chain spells it (empty on the chaosnet).
-    pub tip: String,
-    /// The state root of the tip.
-    pub root: String,
     /// The last receipt: "paid N to X - txid .. in block h=.."
     pub receipt: String,
     pub error: String,
@@ -105,8 +101,6 @@ impl ChainMoney {
                     if st.height > 0 {
                         s.height = st.height;
                     }
-                    s.tip = st.tip.clone();
-                    s.root = st.root.clone();
                     if let Some(supply) = st.field("supply").and_then(|v| v.parse().ok()) {
                         s.supply = supply;
                     }
@@ -240,17 +234,25 @@ fn send(
         submitted = client.submit(&signed);
     }
     submitted.map_err(|e| e.to_string())?;
+    // Past this line the transfer has left this body. Whatever the poll
+    // then says — a timeout, a node that restarted under it, a status
+    // that is not inclusion — it is not a failed pay: the receipt names
+    // the txid so the person can look the transfer up, and the balance is
+    // re-read. Every variant is spelled out, so a new one is a compile
+    // error here rather than a refusal read as "paid".
     let txid = signed.txid_hex();
     let short: String = txid.chars().take(8).collect();
-    match client.wait(&signed.txid, INCLUSION_WAIT) {
+    let said = match client.wait(&signed.txid, INCLUSION_WAIT) {
         Ok(TxStatus::Included { height, .. }) => {
-            Ok(format!("paid {amount} to {to} - tx {short}.. in block h={height}"))
+            return Ok(format!("paid {amount} to {to} - tx {short}.. in block h={height}"))
         }
-        Ok(_) | Err(wallet::Error::Timeout(_)) => {
-            Ok(format!("paid {amount} to {to} - tx {short}.. submitted, awaiting a block"))
-        }
-        Err(e) => Err(e.to_string()),
-    }
+        Ok(TxStatus::Mempool) => "admitted, no block yet".to_string(),
+        Ok(TxStatus::Unknown) => "the node does not know the txid".to_string(),
+        Err(e) => e.to_string(),
+    };
+    Ok(format!(
+        "sent {amount} to {to} - tx {short}.. - no block to show: {said} - look the tx up"
+    ))
 }
 
 /// The identity neuron as the chain spells it.
@@ -277,8 +279,6 @@ fn load_cache() -> ChainMoneyState {
             s.supply = v.trim().parse().unwrap_or(0);
         } else if let Some(v) = line.strip_prefix("height:") {
             s.height = v.trim().parse().unwrap_or(0);
-        } else if let Some(v) = line.strip_prefix("tip:") {
-            s.tip = v.trim().to_string();
         }
     }
     s
@@ -286,8 +286,8 @@ fn load_cache() -> ChainMoneyState {
 
 fn save_cache(s: &ChainMoneyState) {
     let body = format!(
-        "balance: {}\nsupply: {}\nheight: {}\ntip: {}\n",
-        s.balance, s.supply, s.height, s.tip
+        "balance: {}\nsupply: {}\nheight: {}\n",
+        s.balance, s.supply, s.height
     );
     let _ = std::fs::write(cache_path(), body);
 }
@@ -298,4 +298,28 @@ pub fn chain_url(hub: &crate::worlds::body::networks::NetHub) -> Option<String> 
         .lock()
         .ok()
         .and_then(|v| v.first().map(|n| n.url.clone()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::recipient;
+
+    /// The guard of pay: a word the chain does not know must never be
+    /// hashed into an address nobody holds.
+    #[test]
+    fn a_label_is_not_a_recipient() {
+        for label in ["alice", "", "0x1234", "31284576"] {
+            let err = recipient(label).expect_err("a label must be refused");
+            assert!(err.contains("not an address"), "{label}: {err}");
+        }
+    }
+
+    #[test]
+    fn a_64_hex_neuron_id_is_a_recipient() {
+        let hex = "31284576".repeat(8);
+        let id = recipient(&format!("  {hex}  ")).expect("64 hex digits are an address");
+        assert_eq!(id[0], 0x31);
+        assert_eq!(id[7], 0x76);
+        assert_eq!(recipient(&format!("0x{hex}")).expect("0x prefixed too"), id);
+    }
 }

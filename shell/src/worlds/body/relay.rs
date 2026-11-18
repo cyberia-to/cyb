@@ -11,8 +11,8 @@
 //!
 //! Best-effort by design: the chain mirrors the cell, never gates it. A
 //! failed submit is retried on the next pass; the high-water mark
-//! (`~/cyb/relayed`: "neuron-hex last-step" lines) only advances on
-//! success. First boot starts from NOW — the past is local history, not
+//! (`~/cyb/relayed`: "neuron-hex next-step" lines — the step the next
+//! pass starts from) only advances when every link of a step is in. First boot starts from NOW — the past is local history, not
 //! a flood to replay; `relay all` (future) can push it deliberately.
 //! Nothing is signed until the node has published its chain id in
 //! `/status` — a tx bound to a guessed chain is a tx for nobody.
@@ -80,6 +80,13 @@ fn load_marks() -> HashMap<String, u64> {
 }
 
 fn save_marks(marks: &HashMap<String, u64>) {
+    if marks.is_empty() {
+        // An empty file would still make the next boot not a first run:
+        // the mark would fall back to 0 and the whole local past would be
+        // queued for the chain — the flood this module promises not to
+        // replay. Nothing to record is recorded as nothing.
+        return;
+    }
     let mut text = String::new();
     for (n, s) in marks {
         text.push_str(&format!("{n} {s}\n"));
@@ -91,13 +98,14 @@ fn hex32(b: &[u8; 32]) -> String {
     b.iter().map(|x| format!("{x:02x}")).collect()
 }
 
-/// One link the cell made, as the chain will carry it.
+/// One signal the cell made, as the chain will carry it: `Cell::cast`
+/// writes many links under one step, so the step is the unit here too —
+/// the mark may only advance once EVERY link of it is in.
 struct Fresh {
     neuron_key: String,
     step: u64,
-    p: [u8; 32],
-    q: [u8; 32],
-    valence: i8,
+    /// `(p, q, valence)` per link, in the signal's own order.
+    links: Vec<([u8; 32], [u8; 32], i8)>,
 }
 
 impl Relay {
@@ -109,6 +117,10 @@ impl Relay {
             .name("body-relay".into())
             .spawn(move || {
                 let mut marks = load_marks();
+                // Said on the way into the state, not for every pass it
+                // holds: the default network publishes no genesis, and that
+                // is a line a second otherwise.
+                let mut said_no_chain = false;
                 let first_run = !relay_file().exists();
                 if first_run {
                     // The past stays local; relay from now. Seeded at thread
@@ -116,8 +128,12 @@ impl Relay {
                     // land inside the first five seconds still relays them.
                     let cell = shared.cell.lock().expect("shared cell poisoned");
                     for (neuron, chain) in cell.graph.chains.iter() {
-                        let last = chain.entries.keys().next_back().copied().unwrap_or(0);
-                        marks.insert(hex32(neuron), last);
+                        // The mark is the next step to relay, so the seed is
+                        // one past the tip. Steps start at 0 (core
+                        // cell.rs `tip`), and an empty chain is marked 0 —
+                        // its first signal still goes out.
+                        let next = chain.entries.keys().next_back().map_or(0, |last| last + 1);
+                        marks.insert(hex32(neuron), next);
                     }
                 }
                 loop {
@@ -141,36 +157,41 @@ impl Relay {
                                 continue;
                             }
                             let key = hex32(neuron);
-                            // A neuron first seen after the seed relays from its
-                            // first step: it is new, so is everything it says.
+                            // A chain first seen after the seed relays from
+                            // step 0: it is new, so is everything it says.
                             let mark = *marks.entry(key.clone()).or_insert(0);
-                            for (step, sig) in chain.entries.range(mark + 1..) {
-                                for l in &sig.links {
-                                    out.push(Fresh {
-                                        neuron_key: key.clone(),
-                                        step: *step,
-                                        p: l.from,
-                                        q: l.to,
-                                        valence: l.valence.clamp(-1, 1),
-                                    });
-                                }
+                            for (step, sig) in chain.entries.range(mark..) {
+                                out.push(Fresh {
+                                    neuron_key: key.clone(),
+                                    step: *step,
+                                    links: sig
+                                        .links
+                                        .iter()
+                                        .map(|l| (l.from, l.to, l.valence.clamp(-1, 1)))
+                                        .collect(),
+                                });
                             }
                         }
                         out
                     };
                     if fresh.is_empty() {
-                        if first_run && !relay_file().exists() {
+                        if first_run && !marks.is_empty() && !relay_file().exists() {
                             save_marks(&marks);
                         }
                         pending.store(0, Ordering::Relaxed);
                         continue;
                     }
+                    let total: u64 = fresh.iter().map(|f| f.links.len() as u64).sum();
                     // A chain that has not said who it is gets nothing signed.
                     let Some(chain_id) = chain_id else {
-                        pending.store(fresh.len() as u64, Ordering::Relaxed);
-                        warn!("relay: {net_name}: no chain id in /status yet");
+                        pending.store(total, Ordering::Relaxed);
+                        if !said_no_chain {
+                            warn!("relay: {net_name}: no chain id in /status yet");
+                            said_no_chain = true;
+                        }
                         continue;
                     };
+                    said_no_chain = false;
                     let client = match Client::new(&url) {
                         Ok(c) => c,
                         Err(e) => {
@@ -183,39 +204,43 @@ impl Relay {
                     let mut nonce = match client.nonce(&signer.neuron) {
                         Ok(n) => n,
                         Err(e) => {
-                            pending.store(fresh.len() as u64, Ordering::Relaxed);
+                            pending.store(total, Ordering::Relaxed);
                             warn!("relay: nonce: {e}");
                             continue;
                         }
                     };
-                    let total = fresh.len() as u64;
                     let mut done = 0u64;
-                    for f in fresh {
-                        if f.p == f.q {
-                            // A self-link is local vocabulary; the chain refuses p == q.
-                            bump_mark(&mut marks, &f.neuron_key, f.step);
-                            done += 1;
-                            continue;
-                        }
-                        let signed = signer.cyberlink(&chain_id, nonce, f.p, f.q, f.valence, token, 0, None);
-                        let outcome = signed
-                            .map_err(|e| e.to_string())
-                            .and_then(|tx| client.submit(&tx).map_err(|e| e.to_string()));
-                        match outcome {
-                            Ok(txid) => {
-                                info!("relay: {net_name} took cyberlink nonce {nonce} txid {}", soft3::wallet::hex(&txid));
-                                nonce += 1;
+                    'pass: for f in &fresh {
+                        for (p, q, valence) in &f.links {
+                            if p == q {
+                                // A self-link is local vocabulary; the chain refuses p == q.
                                 done += 1;
-                                sent.fetch_add(1, Ordering::Relaxed);
-                                bump_mark(&mut marks, &f.neuron_key, f.step);
+                                continue;
                             }
-                            Err(e) => {
-                                warn!("relay: {e}");
-                                // Stop the pass; the next one retries from
-                                // the mark — order within a chain holds.
-                                break;
+                            let signed =
+                                signer.cyberlink(&chain_id, nonce, *p, *q, *valence, token, 0, None);
+                            let outcome = signed
+                                .map_err(|e| e.to_string())
+                                .and_then(|tx| client.submit(&tx).map_err(|e| e.to_string()));
+                            match outcome {
+                                Ok(txid) => {
+                                    info!("relay: {net_name} took cyberlink nonce {nonce} txid {}", soft3::wallet::hex(&txid));
+                                    nonce += 1;
+                                    done += 1;
+                                    sent.fetch_add(1, Ordering::Relaxed);
+                                }
+                                Err(e) => {
+                                    warn!("relay: {e}");
+                                    // Stop the pass; the next one retries from
+                                    // the mark — this step is not marked done,
+                                    // so the links left of it are not lost.
+                                    break 'pass;
+                                }
                             }
                         }
+                        // Every link of this step is in (or was skipped as
+                        // local): only now is the step behind the mark.
+                        bump_mark(&mut marks, &f.neuron_key, f.step + 1);
                     }
                     let failed = total - done;
                     if done > 0 {
