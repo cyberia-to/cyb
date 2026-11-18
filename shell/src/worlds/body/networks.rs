@@ -433,79 +433,13 @@ fn apply(nets: &[(String, String)], hub: &NetHub, ok: String) -> String {
 }
 
 pub fn short_root(root: &str) -> String {
-    if root.len() <= 8 {
+    if root.chars().count() <= 8 {
         root.to_string()
     } else {
-        format!("{}..", &root[..8])
+        let head: String = root.chars().take(8).collect();
+        format!("{head}..")
     }
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn config_round_trips() {
-        let text = "\n[[network]]\nname = \"pussy\"\nurl = \"https://cyb.ai/spacepussy-test\"\n\
-                    \n[[network]]\nname = \"local\"\nurl = \"http://127.0.0.1:9911/\"\n";
-        let nets = parse_config(text);
-        assert_eq!(
-            nets,
-            vec![
-                ("pussy".into(), "https://cyb.ai/spacepussy-test".into()),
-                ("local".into(), "http://127.0.0.1:9911".into()),
-            ]
-        );
-    }
-
-    #[test]
-    fn status_fields_parse_from_soft3_form() {
-        let body = "particle: status\nchain: spacepussy-test\nheight: 3\n\
-                    bbg-root: 3acf50598b5f855224a4d253e5a1395c01d2ee17\n";
-        let field = |key: &str| -> Option<String> {
-            body.lines()
-                .find(|l| l.trim_start().starts_with(key))
-                .and_then(|l| l.split_once(':'))
-                .map(|(_, v)| v.trim().to_string())
-        };
-        assert_eq!(field("height").unwrap(), "3");
-        assert!(field("bbg-root").unwrap().starts_with("3acf5059"));
-    }
-
-    /// The regression for the frozen-h incident: a socket that accepts
-    /// and then says nothing must cost a bounded timeout, never a thread.
-    /// (ureq's defaults have NO timeouts; networks::agent adds them.)
-    #[test]
-    fn blackhole_times_out_instead_of_hanging() {
-        let listener = std::net::TcpListener::bind("127.0.0.1:0").expect("bind");
-        let addr = listener.local_addr().expect("addr");
-        std::thread::spawn(move || {
-            for stream in listener.incoming() {
-                // Hold the connection open, send nothing.
-                let s = stream;
-                std::thread::sleep(Duration::from_secs(120));
-                drop(s);
-            }
-        });
-        let t0 = Instant::now();
-        let r = step_status_with(&agent(), &format!("http://{addr}"));
-        assert!(r.is_err(), "a silent socket must not look like a chain");
-        assert!(
-            t0.elapsed() < Duration::from_secs(15),
-            "timeout too slow: {:?}",
-            t0.elapsed()
-        );
-    }
-
-    /// Live probe of the first network — run by hand:
-    /// `cargo test -p cyb net_step_live -- --ignored --nocapture`
-    #[test]
-    #[ignore]
-    fn net_step_live() {
-        let (h, root, bytes) =
-            step_status_with(&agent(), "https://cyb.ai/spacepussy-test").expect("reachable");
-        eprintln!("pussy: h={h} root={root} ({bytes} bytes)");
-        assert!(h >= 1);
-        assert!(!root.is_empty());
-    }
-}
+mod tests;
