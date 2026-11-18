@@ -32,3 +32,8 @@ naga = { path = "../evy/forks/naga" }
 aruminium = { path = "../honeycrisp/aruminium" }
 acpu      = { path = "../honeycrisp/acpu" }
 unimem    = { path = "../honeycrisp/unimem" }
+# one hemera in the graph: a neuron id is hemera(pubkey), so the hash that
+# decides who this body is may have exactly one implementation linked in.
+# soft3 asks for it from crates.io; the workspace builds it from the sibling
+# checkout — without this patch both resolve and the identity can split.
+cyber-hemera = { path = "../hemera/rs" }

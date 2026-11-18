@@ -570,7 +570,7 @@ checksum = "2af50177e190e07a26ab74f8b1efbfe2ef87da2116221318cb1c2e82baf7de06"
 name = "bbg"
 version = "0.3.0"
 dependencies = [
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "cyber-lens",
  "cyber-nox",
  "fjall",
@@ -2923,7 +2923,7 @@ dependencies = [
  "chrono",
  "cyb-core",
  "cyber-file",
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "cyber-mudra",
  "cyber-spark",
  "cyber-tru",
@@ -2965,7 +2965,7 @@ name = "cyb-core"
 version = "0.1.0"
 dependencies = [
  "bbg",
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "cyber-tok",
  "cyber-tru",
  "cybergraph",
@@ -2978,18 +2978,12 @@ dependencies = [
 name = "cyber-file"
 version = "0.1.0"
 dependencies = [
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
 ]
 
 [[package]]
 name = "cyber-hemera"
 version = "0.3.1"
-
-[[package]]
-name = "cyber-hemera"
-version = "0.3.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ebcf7ffcd69170adde7e792826d7cececda962ea220b9834c6535bbc71e5a6df"
 
 [[package]]
 name = "cyber-lens"
@@ -3001,6 +2995,7 @@ dependencies = [
  "cyber-lens-core",
  "cyber-lens-ikat",
  "cyber-lens-porphyry",
+ "cyber-lens-rspcs",
 ]
 
 [[package]]
@@ -3017,7 +3012,7 @@ dependencies = [
 name = "cyber-lens-binius"
 version = "0.1.1"
 dependencies = [
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "cyber-lens-core",
  "strata-kuro",
 ]
@@ -3026,7 +3021,7 @@ dependencies = [
 name = "cyber-lens-brakedown"
 version = "0.2.0"
 dependencies = [
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "cyber-lens-core",
  "strata-nebu",
 ]
@@ -3035,7 +3030,7 @@ dependencies = [
 name = "cyber-lens-core"
 version = "0.1.2"
 dependencies = [
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "strata-core",
  "strata-nebu",
  "strata-proof",
@@ -3055,9 +3050,18 @@ dependencies = [
 name = "cyber-lens-porphyry"
 version = "0.2.0"
 dependencies = [
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "cyber-lens-core",
  "strata-genies",
+]
+
+[[package]]
+name = "cyber-lens-rspcs"
+version = "0.1.0"
+dependencies = [
+ "cyber-hemera",
+ "cyber-lens-core",
+ "strata-nebu",
 ]
 
 [[package]]
@@ -3068,7 +3072,7 @@ dependencies = [
  "bech32",
  "bip32",
  "bip39",
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "k256",
  "neuron-id",
  "ripemd",
@@ -3079,7 +3083,7 @@ dependencies = [
 name = "cyber-nox"
 version = "0.3.0"
 dependencies = [
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "cyber-lens-brakedown",
  "cyber-lens-core",
  "strata-nebu",
@@ -3096,7 +3100,7 @@ dependencies = [
 name = "cyber-tok"
 version = "0.1.1"
 dependencies = [
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "cyber-tru",
  "neuron-id",
 ]
@@ -3105,7 +3109,7 @@ dependencies = [
 name = "cyber-tru"
 version = "0.1.1"
 dependencies = [
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "memmap2",
  "serde",
  "strata-nebu",
@@ -3118,7 +3122,7 @@ name = "cybergraph"
 version = "0.1.1"
 dependencies = [
  "bbg",
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "cyber-nox",
  "foculus",
  "inf-eval",
@@ -3872,7 +3876,7 @@ dependencies = [
  "anyhow",
  "bbg",
  "clap",
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "cyber-lens",
  "cyber-tok",
  "cyber-tru",
@@ -6220,7 +6224,7 @@ version = "0.1.0"
 name = "neuron-model"
 version = "0.1.0"
 dependencies = [
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "cyber-nox",
  "neuron-id",
  "serde",
@@ -8476,7 +8480,7 @@ version = "0.1.0"
 name = "rune-interp"
 version = "0.1.0"
 dependencies = [
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "rune-ast",
 ]
 
@@ -8496,7 +8500,7 @@ dependencies = [
 name = "rune-parse"
 version = "0.1.0"
 dependencies = [
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "rune-ast",
  "rune-lex",
  "rune-parse-pure",
@@ -8506,7 +8510,7 @@ dependencies = [
 name = "rune-parse-pure"
 version = "0.1.0"
 dependencies = [
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "rune-ast",
  "rune-lex",
 ]
@@ -8523,7 +8527,7 @@ dependencies = [
 name = "rune-subject"
 version = "0.1.0"
 dependencies = [
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "rune-ast",
 ]
 
@@ -9082,7 +9086,7 @@ dependencies = [
 name = "soft3"
 version = "0.10.0"
 dependencies = [
- "cyber-hemera 0.3.1 (registry+https://github.com/rust-lang/crates.io-index)",
+ "cyber-hemera",
  "cyber-mudra",
  "cybergraph",
  "foculus",
@@ -9095,7 +9099,7 @@ dependencies = [
 name = "soma-agent"
 version = "0.1.0"
 dependencies = [
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "cybergraph",
  "neuron-engine",
  "neuron-id",
@@ -9111,7 +9115,7 @@ dependencies = [
 name = "soma-kernel"
 version = "0.1.0"
 dependencies = [
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "log",
  "run",
  "serde",
@@ -12280,7 +12284,7 @@ dependencies = [
 name = "zheng"
 version = "0.4.0"
 dependencies = [
- "cyber-hemera 0.3.1",
+ "cyber-hemera",
  "cyber-lens",
  "cyber-nox",
  "getrandom 0.3.4",
