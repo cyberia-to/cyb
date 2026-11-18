@@ -13,7 +13,7 @@ col(
     query("processes")
   ),
   table(
-    row("network", "height", "ago", "note"),
+    row("network", "height", "tip", "ago", "note"),
     query("networks")
   )
 )

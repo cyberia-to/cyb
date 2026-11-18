@@ -85,11 +85,13 @@ impl Plugin for BodyWorldPlugin {
         // The relay tails the one shared cell — WorldsPlugin opened it
         // before this plugin was added.
         let shared = app.world().resource::<super::SharedCell>().clone();
+        // The relay signs as this cyb: identity was loaded by WorldsPlugin.
+        let signer = app.world().resource::<super::identity::Identity>().wallet();
         app.insert_resource(BodyLink {
             telemetry: telemetry::Telemetry::start(),
             prover: prover::Prover::start(),
             seer: seer::Seer::start(),
-            relay: relay::Relay::start(shared.clone(), nets.clone()),
+            relay: relay::Relay::start(shared.clone(), nets.clone(), signer),
             chainsync: chainsync::ChainSync::start(shared, nets.clone()),
             nets,
         })
@@ -527,7 +529,15 @@ fn body_host(view: &BodyView) -> BodyHost {
                 .last_sync
                 .map(|t| format!("{}s", t.elapsed().as_secs()))
                 .unwrap_or_else(|| "—".into());
-            cell::row(&[&n.name, &height, &ago, if n.ok { "ok" } else { "down" }])
+            // By characters, not bytes: the tip is whatever the endpoint's
+            // /status said, and a byte slice can land inside a multi-byte
+            // one and panic the render.
+            let tip = if n.tip.is_empty() {
+                "—".into()
+            } else {
+                format!("{}..", n.tip.chars().take(8).collect::<String>())
+            };
+            cell::row(&[&n.name, &height, &tip, &ago, if n.ok { "ok" } else { "down" }])
         })
         .collect();
 
