@@ -35,7 +35,12 @@ pub struct ChainMoneyState {
     /// The last receipt: "paid N to X - txid .. in block h=.."
     pub receipt: String,
     pub error: String,
+    /// A balance refresh is in flight.
     pub busy: bool,
+    /// A pay is in flight — from the signing until its block, which is up
+    /// to [`INCLUSION_WAIT`]. Separate from `busy` on purpose: a pay must
+    /// not freeze the page's own polling, and a second pay must be told.
+    pub paying: bool,
     /// Bumped on every update so the page knows to repaint.
     pub version: u64,
 }
@@ -136,10 +141,14 @@ impl ChainMoney {
             .expect("spawn sigma-balance");
     }
 
-    /// Send `amount` of the chain's native `token` to `to` (label or hex)
-    /// as a signed transfer, then re-read the balance. The receipt names
-    /// the block the transfer was included in — that is the finality
-    /// phase 1 offers (chain.md §5.2: an hour deep, it is final).
+    /// Send `amount` of the chain's native `token` to the 64-hex neuron
+    /// `to` as a signed transfer, then re-read the balance. The receipt
+    /// names the block the transfer was included in — that is the
+    /// finality phase 1 offers (chain.md §5.2: an hour deep, it is final).
+    ///
+    /// `Err` is a refusal the caller must say out loud: a recipient that
+    /// is not an address, or a pay already waiting for its block. Value
+    /// leaves this body only through the `Ok` path.
     pub fn pay(
         &self,
         url: String,
@@ -148,23 +157,28 @@ impl ChainMoney {
         token: [u8; 32],
         to: String,
         amount: u64,
-    ) {
+    ) -> Result<(), String> {
+        // Checked before anything is signed: `wallet::card` turns a label
+        // the chain does not know into hemera(label), an address nobody
+        // holds, and a signed transfer to it is value burned.
+        recipient(&to)?;
         let slot = self.0.clone();
         let me = self.clone();
         if let Ok(mut s) = slot.lock() {
-            if s.busy {
-                return;
+            if s.paying {
+                return Err("a pay is already waiting for its block".into());
             }
-            s.busy = true;
+            s.paying = true;
         }
         std::thread::Builder::new()
             .name("sigma-pay".into())
             .spawn(move || {
                 let neuron_hex = signer.neuron_hex();
                 let outcome = send(&url, &signer, chain_id, token, &to, amount);
+                let good = outcome.is_ok();
                 {
                     let mut s = slot.lock().expect("chain money");
-                    s.busy = false;
+                    s.paying = false;
                     s.version += 1;
                     match outcome {
                         Ok(receipt) => {
@@ -176,10 +190,24 @@ impl ChainMoney {
                         }
                     }
                 }
-                me.refresh(url, neuron_hex);
+                // Only a transfer that happened moved the balance, and a
+                // refresh would wipe the error a failed one just wrote.
+                if good {
+                    me.refresh(url, neuron_hex);
+                }
             })
             .expect("spawn sigma-pay");
+        Ok(())
     }
+}
+
+/// The 32-byte recipient of a transfer, or why the typed word is not one.
+/// Only a full address is accepted: labels are resolved by no registry
+/// this phase has, and `wallet::card` would hash one into an address
+/// nobody can spend from (soft3 wallet/mod.rs `card`).
+fn recipient(to: &str) -> Result<[u8; 32], String> {
+    wallet::parse32(to.trim())
+        .map_err(|_| format!("'{to}' is not an address - pay needs the 64-hex neuron id"))
 }
 
 /// Build, sign, submit, wait. Every step's failure is the error the page shows.
@@ -192,12 +220,26 @@ fn send(
     amount: u64,
 ) -> Result<String, String> {
     let chain_id = chain_id.ok_or("chain id unknown: the node's /status has no genesis yet")?;
+    let to_id = recipient(to)?;
     let client = Client::new(url).map_err(|e| e.to_string())?;
+    let sign = |nonce: u64| {
+        signer
+            .transfer(&chain_id, nonce, token, amount, to_id, None)
+            .map_err(|e| e.to_string())
+    };
     let nonce = client.nonce(&signer.neuron).map_err(|e| format!("nonce: {e}"))?;
-    let signed = signer
-        .transfer(&chain_id, nonce, token, amount, wallet::card(to), None)
-        .map_err(|e| e.to_string())?;
-    client.submit(&signed).map_err(|e| e.to_string())?;
+    let mut signed = sign(nonce)?;
+    // The relay signs from the same sequence and reads `/nonce` once per
+    // pass: a pass in flight may already have spent ours. The node says so,
+    // and the person did nothing to cause it — read the chain again and
+    // sign once more, rather than show them a bad-nonce error.
+    let mut submitted = client.submit(&signed);
+    if matches!(&submitted, Err(wallet::Error::Rejected(why)) if why.contains("nonce")) {
+        let nonce = client.nonce(&signer.neuron).map_err(|e| format!("nonce: {e}"))?;
+        signed = sign(nonce)?;
+        submitted = client.submit(&signed);
+    }
+    submitted.map_err(|e| e.to_string())?;
     let txid = signed.txid_hex();
     let short: String = txid.chars().take(8).collect();
     match client.wait(&signed.txid, INCLUSION_WAIT) {
