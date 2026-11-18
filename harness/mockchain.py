@@ -13,12 +13,19 @@ Serves the chain-wire §7 surface a cyb body uses (soft3/specs/chain-wire.md):
                       exact nonce enforced per neuron, counted; the NSIG1
                       signature is NOT verified here (no secp256k1 in the
                       harness — true-cyber's mock node does that in Rust)
-  GET  /tx/<hex>      included at the current height once anything was
-                      submitted, else 404
+  GET  /tx/<hex>      the height the transaction landed in, else 404. The
+                      harness has no hemera, so it cannot compute a txid:
+                      the first lookup of an unknown id CLAIMS the oldest
+                      accepted-and-unclaimed tx and is bound to it for
+                      good. Every later lookup of that id answers the same
+                      height, and an id with nothing left to claim is 404 —
+                      so a receipt naming the wrong block is a failure
   POST /v1/link,/v1/pay   410 Gone — the unsigned ingress has no place on a
                       chain; a body still using it is a harness failure
-  GET  /hits, /links  how many /status probes and kind-2 txs it saw —
-                      the harness's proof that the bodies talked to the chain
+  GET  /hits, /links, /transfers, /txs
+                      how many /status probes, kind-2 txs and kind-1 txs it
+                      saw, and the bound "<txid> <height>" lines — the
+                      harness's proof that the bodies talked to the chain
 
 Usage: mockchain.py <port> [tick_seconds]
 """
@@ -41,9 +48,14 @@ KINDS = {1: ("transfer", 120), 2: ("cyberlink", 153), 3: ("claim", 36)}
 
 hits = 0
 links = 0
+transfers = 0
 txs = 0
 rejected = 0
 nonces = {}
+# Heights of accepted txs no lookup has claimed yet, oldest first, and the
+# txid -> height bindings a lookup made. See /tx/<hex> in the module doc.
+unclaimed = []
+tx_height = {}
 lock = Lock()
 
 
@@ -122,22 +134,33 @@ class Handler(BaseHTTPRequestHandler):
             h = height()
             self.reply(200, f"---\nparticle: balance\nbalance: 1000\nheight: {h}\nsupply: 1000000\n---\n".encode())
         elif path.startswith("/tx/"):
-            if txs > 0:
-                h = height()
-                self.reply(200, json.dumps({"height": h, "block": tip(h)}).encode(), "application/json")
-            else:
+            txid = path[4:]
+            with lock:
+                h = tx_height.get(txid)
+                if h is None and unclaimed:
+                    h = unclaimed.pop(0)
+                    tx_height[txid] = h
+            if h is None:
                 self.reply(404, b'{"error":"unknown txid"}', "application/json")
+            else:
+                self.reply(200, json.dumps({"height": h, "block": tip(h)}).encode(), "application/json")
         elif path == "/hits":
             self.reply(200, f"{hits}\n".encode())
         elif path == "/links":
             self.reply(200, f"{links}\n".encode())
+        elif path == "/transfers":
+            self.reply(200, f"{transfers}\n".encode())
+        elif path == "/txs":
+            with lock:
+                body = "".join(f"{i} {h}\n" for i, h in tx_height.items())
+            self.reply(200, body.encode())
         elif path == "/rejected":
             self.reply(200, f"{rejected}\n".encode())
         else:
             self.reply(404, b"")
 
     def do_POST(self):
-        global links, txs, rejected
+        global links, transfers, txs, rejected
         length = int(self.headers.get("Content-Length", 0))
         raw = self.rfile.read(length)
         path = self.path.split("?")[0].rstrip("/")
@@ -159,6 +182,11 @@ class Handler(BaseHTTPRequestHandler):
                 txs += 1
                 if name == "cyberlink":
                     links += 1
+                elif name == "transfer":
+                    transfers += 1
+                # The block this tx is in: height() counts accepted txs, so
+                # it is the height the receipt must name, not a later one.
+                unclaimed.append(height())
             # No txid: the harness has no hemera. The client keeps its own.
             self.reply(200, json.dumps({"ok": True, "kind": name}).encode(), "application/json")
         elif path in ("/v1/link", "/v1/pay", "/v1/frame", "/v2/frame"):
