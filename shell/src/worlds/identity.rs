@@ -3,18 +3,18 @@
 //! The neuron every world signs as used to be `$USER` padded with zeros: a
 //! placeholder that made "the robot belongs to its owner" a sentence about
 //! nobody. Identity is now derived the way the rest of cyber derives it —
-//! neuron-auth's pipeline, BIP-39 spell → secp256k1 key →
-//! `neuron_of(pubkey)` — so the neuron is the fingerprint of a key only the
-//! owner holds, and the same spell reproduces the same identity on any body.
+//! mudra's pipeline, BIP-39 spell → secp256k1 key → `neuron_of(pubkey)` —
+//! so the neuron is the fingerprint of a key only the owner holds, and the
+//! same spell reproduces the same identity on any body.
 //!
 //! The spell lives in `~/cyb/spell`, mode 0600, generated on first
 //! boot; existing installations keep reading their original `mnemonic` file.
 //! That file IS the owner: back it up and the identity survives the
 //! machine; lose it and nobody — by construction — can produce the neuron
 //! again. Every outgoing signal now signs — `Identity::sign` produces the
-//! same ADR-036 doc neuron-auth's claim module already uses, over the wire's
-//! own canonical bytes, so a chain that verifies rejects anything not backed
-//! by this key.
+//! same ADR-036 doc mudra's claim module already uses, over the wire's own
+//! canonical bytes, so a chain that verifies rejects anything not backed by
+//! this key.
 
 use bevy::prelude::*;
 use std::sync::Arc;
@@ -33,7 +33,7 @@ pub struct Identity {
     /// on the wire alongside a signature so a verifier can check that
     /// binding itself before trusting anything signed with it.
     pub pubkey: [u8; 33],
-    signer: Arc<neuron_auth::SigningKey>,
+    signer: Arc<mudra::SigningKey>,
 }
 
 impl Identity {
@@ -68,7 +68,7 @@ impl Identity {
     /// verifier rebuilds the identical doc from `pubkey` + the neuron the
     /// request claims, so there is nothing to agree on out of band.
     pub fn sign(&self, data: &[u8]) -> [u8; 64] {
-        neuron_auth::claim::sign_arbitrary(&self.signer, &self.hex(), data)
+        mudra::claim::sign_arbitrary(&self.signer, &self.hex(), data)
     }
 
     /// The pubkey as lowercase hex, for the wire.
@@ -99,7 +99,7 @@ pub fn load_or_mint() -> Identity {
     let spell = match std::fs::read_to_string(&path) {
         Ok(m) if !m.trim().is_empty() => m.trim().to_string(),
         _ => {
-            let minted = neuron_auth::spell::generate()
+            let minted = mudra::spell::generate()
                 .unwrap_or_else(|_| String::new());
             if !minted.is_empty() {
                 if let Some(dir) = path.parent() {
@@ -130,14 +130,14 @@ pub fn load_or_mint() -> Identity {
             // Coherent but unclaimed: a fresh in-memory key whose neuron is
             // its own Hemera(pubkey), so signatures still verify — a chain
             // simply never granted this session-local identity any pussy.
-            neuron_auth::spell::generate()
+            mudra::spell::generate()
                 .ok()
                 .and_then(|m| identity_from_spell(&m))
                 .unwrap_or_else(|| Identity {
                     neuron: super::local_neuron(),
                     address: "ephemeral".into(),
                     pubkey: [0u8; 33],
-                    signer: Arc::new(neuron_auth::spell::cosmos_key(
+                    signer: Arc::new(mudra::spell::cosmos_key(
                         "abandon abandon abandon abandon abandon abandon abandon \
                          abandon abandon abandon abandon about",
                         "",
@@ -152,10 +152,10 @@ fn identity_from_spell(spell: &str) -> Option<Identity> {
     if spell.is_empty() {
         return None;
     }
-    let key = neuron_auth::spell::cosmos_key(spell, "").ok()?;
-    let pubkey = neuron_auth::cosmos::compressed(&key.verifying_key());
-    let neuron = neuron_auth::claim::neuron_of(&pubkey);
-    let address = neuron_auth::cosmos::address(&pubkey, HRP).ok()?;
+    let key = mudra::spell::cosmos_key(spell, "").ok()?;
+    let pubkey = mudra::cosmos::compressed(&key.verifying_key());
+    let neuron = mudra::claim::neuron_of(&pubkey);
+    let address = mudra::cosmos::address(&pubkey, HRP).ok()?;
     Some(Identity {
         neuron,
         address,
