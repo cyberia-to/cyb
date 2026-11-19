@@ -1,6 +1,6 @@
 //! Now — the particle the robot stands on.
 //!
-//! Not a world. Not a tab. The cursor. Space chroma will wear this;
+//! Not a world. Not a tab. The cursor. The now chroma slot will wear this;
 //! spacetime shows particle meta or a file when we stand.
 
 use bevy::prelude::*;

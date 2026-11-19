@@ -5,8 +5,8 @@ alias: cyb time
 crystal-type: entity
 crystal-domain: cyb
 ---
-# time
+# time → [[cy/chroma/time|cy/chroma/time]]
 
-one screen: [[cy/specs/log|log]] ← **now** → [[cy/specs/plan|plan]] — the past flowing into the present flowing into the schedule, with [[cy/specs/now|now]] in the middle. your life on one axis.
+the organ moved to cy on 2026-10-07: [[cy/chroma/time|time]] — one screen, [[cy/chroma/log|log]] ← **now** → [[cy/chroma/plan|plan]], with [[cy/chroma/now|now]] in the middle.
 
-part of the [[cyb/anatomy|anatomy]] (time). to build — the flagship view
+this page stays as the forwarding alias: cy's page carries `cy time`, not the `cyb time` this one was linked by. what cyb owns is the painting — the flagship view, listed on [[cyb/anatomy|anatomy]] (time).
