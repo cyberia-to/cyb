@@ -13,13 +13,21 @@ Serves the chain-wire §7 surface a cyb body uses (soft3/specs/chain-wire.md):
                       exact nonce enforced per neuron, counted; the NSIG1
                       signature is NOT verified here (no secp256k1 in the
                       harness — true-cyber's mock node does that in Rust)
-  GET  /tx/<hex>      the height the transaction landed in, else 404. The
-                      harness has no hemera, so it cannot compute a txid:
-                      the first lookup of an unknown id CLAIMS the oldest
-                      accepted-and-unclaimed tx and is bound to it for
-                      good. Every later lookup of that id answers the same
-                      height, and an id with nothing left to claim is 404 —
-                      so a receipt naming the wrong block is a failure
+  GET  /tx/<hex>      the height a transfer landed in, else 404. The
+                      harness has no hemera, so it cannot compute a txid
+                      and cannot tell a right id from a wrong one: the
+                      first lookup of an unknown id CLAIMS the oldest
+                      accepted-and-unclaimed TRANSFER and is bound to it
+                      for good, and an id with nothing left to claim is
+                      404. So what this route proves is narrow but real —
+                      a pay's receipt names a height that some submitted
+                      transfer was actually accepted at, the same height
+                      every time it is asked, and a receipt claimed when
+                      no transfer was submitted is a failure. It does NOT
+                      prove the receipt names THAT pay's block. Only
+                      transfers enter the pool: the relay never looks its
+                      cyberlinks up, and a cyberlink's height in there
+                      would be handed to a pay as its own
   POST /v1/link,/v1/pay   410 Gone — the unsigned ingress has no place on a
                       chain; a body still using it is a harness failure
   GET  /hits, /links, /transfers, /txs
@@ -52,8 +60,8 @@ transfers = 0
 txs = 0
 rejected = 0
 nonces = {}
-# Heights of accepted txs no lookup has claimed yet, oldest first, and the
-# txid -> height bindings a lookup made. See /tx/<hex> in the module doc.
+# Heights of accepted transfers no lookup has claimed yet, oldest first,
+# and the txid -> height bindings a lookup made. See /tx/<hex> in the doc.
 unclaimed = []
 tx_height = {}
 lock = Lock()
@@ -184,9 +192,13 @@ class Handler(BaseHTTPRequestHandler):
                     links += 1
                 elif name == "transfer":
                     transfers += 1
-                # The block this tx is in: height() counts accepted txs, so
-                # it is the height the receipt must name, not a later one.
-                unclaimed.append(height())
+                    # The block this transfer is in: height() counts
+                    # accepted txs, so it is the height the receipt must
+                    # name, not a later one. Only a transfer is ever read
+                    # back by txid, and only transfers go in the pool a
+                    # lookup claims from — a cyberlink's height in there
+                    # is handed to the next pay as its own block.
+                    unclaimed.append(height())
             # No txid: the harness has no hemera. The client keeps its own.
             self.reply(200, json.dumps({"ok": True, "kind": name}).encode(), "application/json")
         elif path in ("/v1/link", "/v1/pay", "/v1/frame", "/v2/frame"):

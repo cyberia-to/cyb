@@ -55,6 +55,8 @@ struct BodyView {
     nets: Vec<networks::NetState>,
     relayed: u64,
     relay_pending: u64,
+    /// Why the relay is not reaching the chain, when it is not.
+    relay_stall: String,
     absorbed: u64,
 }
 
@@ -297,6 +299,7 @@ fn tick_view(
         .relay
         .pending
         .load(std::sync::atomic::Ordering::Relaxed);
+    view.relay_stall = link.relay.stall.lock().map(|s| s.clone()).unwrap_or_default();
     view.absorbed = link
         .chainsync
         .absorbed
@@ -507,6 +510,10 @@ fn body_host(view: &BodyView) -> BodyHost {
         },
         "work:seer",
     ]));
+    // The relay says out loud what it published and what it could not: a
+    // body that stopped reaching the chain is read here, not in a log.
+    let r = relay::page_cells(view.relayed, view.relay_pending, &view.relay_stall);
+    processes.push(cell::row(&["relay", &r[0], &r[1], &r[2]]));
     for t in v.top.iter().take(8) {
         processes.push(cell::row(&[
             &t.name,

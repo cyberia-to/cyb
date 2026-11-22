@@ -22,6 +22,10 @@ use soft3::wallet::{self, Client, Signer, TxStatus};
 /// How long a pay waits for its block before reporting "submitted".
 const INCLUSION_WAIT: Duration = Duration::from_secs(90);
 
+/// Said when the node's `/status` has published no genesis: nothing can be
+/// signed against a chain that has not named itself.
+const NO_CHAIN_ID: &str = "chain id unknown: the node's /status has no genesis yet";
+
 /// What the chain last told us. Threads write, the page reads.
 #[derive(Clone, Debug, Default)]
 pub struct ChainMoneyState {
@@ -141,8 +145,9 @@ impl ChainMoney {
     /// finality phase 1 offers (chain.md §5.2: an hour deep, it is final).
     ///
     /// `Err` is a refusal the caller must say out loud: a recipient that
-    /// is not an address, or a pay already waiting for its block. Value
-    /// leaves this body only through the `Ok` path.
+    /// is not an address, a chain that has not said who it is, or a pay
+    /// already waiting for its block. Value leaves this body only through
+    /// the `Ok` path.
     pub fn pay(
         &self,
         url: String,
@@ -156,6 +161,11 @@ impl ChainMoney {
         // the chain does not know into hemera(label), an address nobody
         // holds, and a signed transfer to it is value burned.
         recipient(&to)?;
+        // The default network publishes no genesis, so this is the refusal
+        // every pay meets today. It belongs at the prompt that asked for
+        // the pay, beside the recipient check — not in sigma's error field
+        // after the commander has already said "receipt lands in sigma".
+        let chain_id = chain_id.ok_or(NO_CHAIN_ID)?;
         let slot = self.0.clone();
         let me = self.clone();
         if let Ok(mut s) = slot.lock() {
@@ -208,12 +218,11 @@ fn recipient(to: &str) -> Result<[u8; 32], String> {
 fn send(
     url: &str,
     signer: &Signer,
-    chain_id: Option<[u8; 32]>,
+    chain_id: [u8; 32],
     token: [u8; 32],
     to: &str,
     amount: u64,
 ) -> Result<String, String> {
-    let chain_id = chain_id.ok_or("chain id unknown: the node's /status has no genesis yet")?;
     let to_id = recipient(to)?;
     let client = Client::new(url).map_err(|e| e.to_string())?;
     let sign = |nonce: u64| {
@@ -302,7 +311,7 @@ pub fn chain_url(hub: &crate::worlds::body::networks::NetHub) -> Option<String> 
 
 #[cfg(test)]
 mod tests {
-    use super::recipient;
+    use super::*;
 
     /// The guard of pay: a word the chain does not know must never be
     /// hashed into an address nobody holds.
@@ -312,6 +321,32 @@ mod tests {
             let err = recipient(label).expect_err("a label must be refused");
             assert!(err.contains("not an address"), "{label}: {err}");
         }
+    }
+
+    /// A pay against a node that has published no genesis is refused at
+    /// the prompt that asked for it. The default network is exactly that
+    /// node today, so this is the path every pay takes: the commander must
+    /// not answer "receipt lands in sigma" for a transfer that will never
+    /// be signed.
+    #[test]
+    fn an_unknown_chain_id_is_refused_before_the_thread() {
+        let money = ChainMoney(Arc::new(Mutex::new(ChainMoneyState::default())));
+        let signer = Signer::from_secret(&[7u8; 32]).expect("a key");
+        let err = money
+            .pay(
+                "http://127.0.0.1:1".into(),
+                signer,
+                None,
+                [0u8; 32],
+                "31284576".repeat(8),
+                1,
+            )
+            .expect_err("no chain id, no pay");
+        assert!(err.contains("genesis"), "{err}");
+        assert!(
+            !money.snapshot().paying,
+            "a refused pay must leave nothing in flight"
+        );
     }
 
     #[test]
