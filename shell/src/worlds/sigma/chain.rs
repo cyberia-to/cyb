@@ -147,7 +147,10 @@ impl ChainMoney {
     /// `Err` is a refusal the caller must say out loud: a recipient that
     /// is not an address, a chain that has not said who it is, or a pay
     /// already waiting for its block. Value leaves this body only through
-    /// the `Ok` path.
+    /// the `Ok` path — and a submit the node never answered is reported
+    /// there too, as a receipt naming the txid, because the transfer may
+    /// already be on the chain (see [`unanswered`]). A failed pay is only
+    /// ever one the node judged.
     pub fn pay(
         &self,
         url: String,
@@ -214,7 +217,9 @@ fn recipient(to: &str) -> Result<[u8; 32], String> {
         .map_err(|_| format!("'{to}' is not an address - pay needs the 64-hex neuron id"))
 }
 
-/// Build, sign, submit, wait. Every step's failure is the error the page shows.
+/// Build, sign, submit, wait. A failure the node pronounced is the error
+/// the page shows; a submit it never answered is not one — see
+/// [`unanswered`].
 fn send(
     url: &str,
     signer: &Signer,
@@ -242,15 +247,25 @@ fn send(
         signed = sign(nonce)?;
         submitted = client.submit(&signed);
     }
-    submitted.map_err(|e| e.to_string())?;
+    let txid = signed.txid_hex();
+    let short: String = txid.chars().take(8).collect();
+    if let Err(e) = submitted {
+        // A refusal is the node's verdict on these bytes: nothing left
+        // this body, and the error is the whole truth. A submit that was
+        // never answered is the other kind — the node may hold the tx, so
+        // reporting a clean failure would send the person to pay again,
+        // and that second pay is a second, genuinely distinct transfer.
+        if !unanswered(&e) {
+            return Err(e.to_string());
+        }
+        return Ok(maybe_sent(amount, to, &short, &e.to_string()));
+    }
     // Past this line the transfer has left this body. Whatever the poll
     // then says — a timeout, a node that restarted under it, a status
     // that is not inclusion — it is not a failed pay: the receipt names
     // the txid so the person can look the transfer up, and the balance is
     // re-read. Every variant is spelled out, so a new one is a compile
     // error here rather than a refusal read as "paid".
-    let txid = signed.txid_hex();
-    let short: String = txid.chars().take(8).collect();
     let said = match client.wait(&signed.txid, INCLUSION_WAIT) {
         Ok(TxStatus::Included { height, .. }) => {
             return Ok(format!("paid {amount} to {to} - tx {short}.. in block h={height}"))
@@ -262,6 +277,32 @@ fn send(
     Ok(format!(
         "sent {amount} to {to} - tx {short}.. - no block to show: {said} - look the tx up"
     ))
+}
+
+/// Did the node judge the bytes, or did the POST simply go unanswered?
+/// `Http` and `Timeout` judged nothing: the node may well have taken the
+/// transfer and the body cannot tell. `Encoding`, `Rule` and `Key` never
+/// left this body, and a `Rejected` is the mempool's verdict — except the
+/// one soft3's client builds out of a non-2xx status (wallet/client.rs
+/// `submit`), where a 5xx is a gateway's answer and no verdict at all.
+fn unanswered(e: &wallet::Error) -> bool {
+    match e {
+        wallet::Error::Http(_) | wallet::Error::Timeout(_) => true,
+        wallet::Error::Rejected(why) => why.starts_with("HTTP 5"),
+        wallet::Error::Encoding(_) | wallet::Error::Rule(_) | wallet::Error::Key(_) => false,
+    }
+}
+
+/// The receipt of a submit nobody answered: it names the txid, says the
+/// transfer may be on the chain, and sends the person to the balance —
+/// which the caller re-reads — instead of to a second pay. Never the word
+/// "failed": this is the one outcome where the body does not know.
+fn maybe_sent(amount: u64, to: &str, short: &str, why: &str) -> String {
+    format!(
+        "sent {amount} to {to} - tx {short}.. - the node did not answer the submit \
+         ({why}) - the transfer may already be on the chain: read the balance \
+         and look the tx up before paying again"
+    )
 }
 
 /// The identity neuron as the chain spells it.
@@ -347,6 +388,37 @@ mod tests {
             !money.snapshot().paying,
             "a refused pay must leave nothing in flight"
         );
+    }
+
+    /// The split at the submit: a node that said no judged these bytes and
+    /// nothing left this body, so that is a failed pay. A transport
+    /// failure, a timeout, or a 5xx from whatever stands in front of the
+    /// node judged nothing — reported as a failure, the obvious next move
+    /// is a second pay, and that one is a second real transfer.
+    #[test]
+    fn an_unanswered_submit_is_not_a_refusal() {
+        assert!(unanswered(&wallet::Error::Http("connection reset".into())));
+        assert!(unanswered(&wallet::Error::Timeout("90s".into())));
+        assert!(unanswered(&wallet::Error::Rejected(
+            "HTTP 502: bad gateway".into()
+        )));
+        assert!(!unanswered(&wallet::Error::Rejected(
+            "bad nonce 7: expected 9".into()
+        )));
+        assert!(!unanswered(&wallet::Error::Rule("fee below floor".into())));
+        assert!(!unanswered(&wallet::Error::Key("no key".into())));
+        assert!(!unanswered(&wallet::Error::Encoding("short tx".into())));
+    }
+
+    /// What that receipt says: the txid to look up, the balance to read,
+    /// and not one word that reads as a pay that did not happen.
+    #[test]
+    fn the_unanswered_receipt_names_the_txid() {
+        let said = maybe_sent(7, "31284576", "deadbeef", "http: connection reset");
+        assert!(said.contains("deadbeef.."), "the txid must be named: {said}");
+        assert!(said.contains("may already be on the chain"), "{said}");
+        assert!(said.contains("balance"), "{said}");
+        assert!(!said.contains("failed"), "{said}");
     }
 
     #[test]

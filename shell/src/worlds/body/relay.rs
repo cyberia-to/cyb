@@ -169,6 +169,19 @@ pub fn page_cells(sent: u64, pending: u64, stall: &str) -> [String; 3] {
     [format!("{sent}"), format!("{pending}"), note]
 }
 
+/// What the relay's row says after a pass: what is still waiting first,
+/// then the hole a refusal left behind. A pass that ends with nothing
+/// waiting says nothing about retrying — the wait the last pass printed
+/// is over, and leaving it there is a false statement in the one place
+/// the body is meant to be read.
+fn stall_say(waiting: &str, hole: &str) -> String {
+    if waiting.is_empty() {
+        hole.to_string()
+    } else {
+        waiting.to_string()
+    }
+}
+
 fn note_stall(stall: &Arc<Mutex<String>>, say: &str) {
     if let Ok(mut s) = stall.lock() {
         s.clear();
@@ -204,6 +217,11 @@ impl Relay {
                 // holds: the default network publishes no genesis, and that
                 // is a line a second otherwise.
                 let mut said_no_chain = false;
+                // The last refusal: a hole in what this body published,
+                // and the only stall that outlives the pass that found it.
+                // A wait does not: a pass that ends with nothing waiting
+                // must not leave the page saying "retrying".
+                let mut hole = String::new();
                 let first_run = !relay_file().exists();
                 if first_run {
                     // The past stays local; relay from now. Seeded at thread
@@ -258,6 +276,10 @@ impl Relay {
                             save_marks(&marks);
                         }
                         pending.store(0, Ordering::Relaxed);
+                        // Nothing is past the mark, so nothing is being
+                        // retried: whatever the last pass was waiting on
+                        // is over, and only a hole still stands.
+                        note_stall(&stall, &stall_say("", &hole));
                         continue;
                     }
                     let total: u64 = fresh.iter().map(|f| f.links.len() as u64).sum();
@@ -359,15 +381,12 @@ impl Relay {
                     }
                     // What the page says: what is still waiting first, then
                     // the last refusal — a skipped link is a hole in what
-                    // this body published and must not pass unsaid.
-                    let say = if !waiting.is_empty() {
-                        waiting
-                    } else if !refused.is_empty() {
-                        refused
-                    } else {
-                        String::new()
-                    };
-                    note_stall(&stall, &say);
+                    // this body published and must not pass unsaid, so it
+                    // stands through the quiet passes after it.
+                    if !refused.is_empty() {
+                        hole = refused;
+                    }
+                    note_stall(&stall, &stall_say(&waiting, &hole));
                     pending.store(failed, Ordering::Relaxed);
                     save_marks(&marks);
                 }
@@ -468,6 +487,20 @@ mod tests {
         )));
         assert!(!permanent(&wallet::Error::Http("connection refused".into())));
         assert!(!permanent(&wallet::Error::Timeout("90s".into())));
+    }
+
+    /// A quiet pass clears the wait: nothing is past the mark, so nothing
+    /// is being retried, and "retrying" left on the page would be a lie
+    /// for the life of the process. A refused link is a hole in what this
+    /// body published, and that one stands.
+    #[test]
+    fn a_quiet_pass_clears_the_wait_but_not_the_hole() {
+        let waiting = "pussy: http: connection refused - retrying";
+        let hole = "pussy refused step 3: rejected: duplicate";
+        assert_eq!(stall_say(waiting, ""), waiting);
+        assert_eq!(stall_say(waiting, hole), waiting, "a wait is the live news");
+        assert_eq!(stall_say("", hole), hole);
+        assert_eq!(stall_say("", ""), "", "nothing waiting, nothing refused");
     }
 
     /// The stall is what the page prints, so it is never silent about a
