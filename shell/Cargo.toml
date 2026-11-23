@@ -36,6 +36,8 @@ hemera     = { package = "cyber-hemera", version = "0.3", path = "../../hemera/r
 file       = { package = "cyber-file", path = "../../file" }
 spark      = { package = "cyber-spark", path = "../../spark" }
 mudra      = { package = "cyber-mudra", path = "../../mudra" }
+# the chain wallet: signed transfer/cyberlink txs (soft3/specs/chain.md)
+soft3      = { path = "../../soft3/crate" }
 tru        = { package = "cyber-tru", path = "../../tru/rs" }
 tade       = { path = "../../tade/impl/rust" }
 prysm      = { path = "../../prysm" }

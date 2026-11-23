@@ -55,6 +55,8 @@ struct BodyView {
     nets: Vec<networks::NetState>,
     relayed: u64,
     relay_pending: u64,
+    /// Why the relay is not reaching the chain, when it is not.
+    relay_stall: String,
     absorbed: u64,
 }
 
@@ -85,11 +87,13 @@ impl Plugin for BodyWorldPlugin {
         // The relay tails the one shared cell — WorldsPlugin opened it
         // before this plugin was added.
         let shared = app.world().resource::<super::SharedCell>().clone();
+        // The relay signs as this cyb: identity was loaded by WorldsPlugin.
+        let signer = app.world().resource::<super::identity::Identity>().wallet();
         app.insert_resource(BodyLink {
             telemetry: telemetry::Telemetry::start(),
             prover: prover::Prover::start(),
             seer: seer::Seer::start(),
-            relay: relay::Relay::start(shared.clone(), nets.clone()),
+            relay: relay::Relay::start(shared.clone(), nets.clone(), signer),
             chainsync: chainsync::ChainSync::start(shared, nets.clone()),
             nets,
         })
@@ -295,6 +299,7 @@ fn tick_view(
         .relay
         .pending
         .load(std::sync::atomic::Ordering::Relaxed);
+    view.relay_stall = link.relay.stall.lock().map(|s| s.clone()).unwrap_or_default();
     view.absorbed = link
         .chainsync
         .absorbed
@@ -505,6 +510,10 @@ fn body_host(view: &BodyView) -> BodyHost {
         },
         "work:seer",
     ]));
+    // The relay says out loud what it published and what it could not: a
+    // body that stopped reaching the chain is read here, not in a log.
+    let r = relay::page_cells(view.relayed, view.relay_pending, &view.relay_stall);
+    processes.push(cell::row(&["relay", &r[0], &r[1], &r[2]]));
     for t in v.top.iter().take(8) {
         processes.push(cell::row(&[
             &t.name,
@@ -527,7 +536,15 @@ fn body_host(view: &BodyView) -> BodyHost {
                 .last_sync
                 .map(|t| format!("{}s", t.elapsed().as_secs()))
                 .unwrap_or_else(|| "—".into());
-            cell::row(&[&n.name, &height, &ago, if n.ok { "ok" } else { "down" }])
+            // By characters, not bytes: the tip is whatever the endpoint's
+            // /status said, and a byte slice can land inside a multi-byte
+            // one and panic the render.
+            let tip = if n.tip.is_empty() {
+                "—".into()
+            } else {
+                format!("{}..", n.tip.chars().take(8).collect::<String>())
+            };
+            cell::row(&[&n.name, &height, &tip, &ago, if n.ok { "ok" } else { "down" }])
         })
         .collect();
 
